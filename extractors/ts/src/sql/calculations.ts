@@ -12,6 +12,7 @@ export function lowerRoutineCalculation(catalog: Catalog, calculation: SqlRoutin
   if (calculation.query && !lowering.aggregates.length) throw new UnsupportedCalculation("table row multiplicity requires an aggregate");
   if (!numeric(value.type)) throw new UnsupportedCalculation("calculation output is not numeric");
   const output = calculation.outputType;
+  if (catalog.dialect === "tsql" && ["decimal", "numeric"].includes(output.name.toLowerCase())) throw new UnsupportedCalculation("T-SQL decimal return precision and scale cannot be represented faithfully");
   if (output.precision !== undefined || output.scale !== undefined) throw new UnsupportedCalculation("constrained return precision and scale cannot be represented faithfully");
   if (output.name.toLowerCase() !== "table" && scalarType(output.name, catalog.dialect) !== value.type) throw new UnsupportedCalculation("implicit return conversion is unsupported");
   return { lowering, expr: value.ir, inputs: lowering.inputs, output: { type: value.type, unit: { status: "unknown" } } };

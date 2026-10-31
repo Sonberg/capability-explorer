@@ -53,16 +53,16 @@ export function calculationAttributes(c: SqlRoutineCalculation, lowering: Calcul
   const valueColumns = firstAgg ? [...lowering.columns].filter(([e]) => contains(firstAgg.value, (v) => e === v)).map(([, col]) => col) : [];
   const valuesNonNull = lowering.aggregates.length ? lowering.aggregates.every((a) => !lowering.values.get(a.value)?.nullable) : !lowering.values.get(c.expression)!.nullable;
   out.nullHandling = nullZero && valuesNonNull ? known("nullAsZero", nullZero)
-    : valueColumns.length && valueColumns.every((col) => / NOT NULL$/i.test(col.signature)) ? known("notApplicable", valueColumns[0]!.at, { reason: "all inputs are NOT NULL columns" })
+    : valuesNonNull && valueColumns.length && valueColumns.every((col) => / NOT NULL$/i.test(col.signature)) ? known("notApplicable", valueColumns[0]!.at, { reason: "all inputs are NOT NULL columns" })
     : !firstAgg && !lowering.values.get(c.expression)!.nullable ? known("notApplicable", c.expression) : unknown();
   const risky = divisions.filter((d) => d.right.kind !== "number" || isNumber(d.right, 0));
   const guarded = risky.find((d) => isCall(d.right, "NULLIF") && isNumber(d.right.args[1], 0));
   out.zeroDenominator = !risky.length ? known("notApplicable", c.expression)
-    : guarded && risky.every((d) => isCall(d.right, "NULLIF") && isNumber(d.right.args[1], 0)) ? known("returnsNull", guarded.right)
-    : known("unguarded", risky[0]!.right);
+    : guarded && risky.every((d) => isCall(d.right, "NULLIF") && isNumber(d.right.args[1], 0) && nullPropagates(c.expression, d)) ? known("returnsNull", guarded.right)
+    : guarded ? unknown() : known("unguarded", risky[0]!.right);
   out.currency = unknown();
   const overflow = all.find((e) => e.kind === "binary" && e.operator === "*" && lowering.values.get(e)?.type === "bigint");
-  if (overflow) out.overflow = known("throws", overflow, { expression: overflow.kind === "binary" ? `${lowering.values.get(overflow.left)?.type} * ${lowering.values.get(overflow.right)?.type === "int32" ? "integer" : lowering.values.get(overflow.right)?.type}` : "bigint multiplication", error: "bigint out of range" });
+  if (overflow) out.overflow = c.dialect === "tsql" ? unknown() : known("throws", overflow, { expression: overflow.kind === "binary" ? `${lowering.values.get(overflow.left)?.type} * ${lowering.values.get(overflow.right)?.type === "int32" ? "integer" : lowering.values.get(overflow.right)?.type}` : "bigint multiplication", error: "bigint out of range" });
   return out;
 }
 
@@ -112,4 +112,17 @@ function filterText(filter: SqlExpression, lowering: CalculationLowering): strin
   const remaining = parts.filter((e) => !period.boundNodes.includes(e));
   const range = `${text(period.column, false, lowering)} in [${text(period.lower, true)},${period.node.kind === "between" ? "" : " "}${text(period.upper, true)}${period.upperExclusive ? ")" : "]"}`;
   return [...remaining.map((e) => text(e, false, lowering)), range].join(" and ");
+}
+
+/** True only when a NULL at target necessarily makes the final expression NULL. */
+function nullPropagates(root: SqlExpression, target: SqlExpression): boolean {
+  if (root === target) return true;
+  if (root.kind === "unary") return nullPropagates(root.operand, target);
+  if (root.kind === "cast") return nullPropagates(root.expression, target);
+  if (root.kind === "binary") return nullPropagates(root.left, target) || nullPropagates(root.right, target);
+  if (root.kind === "call") {
+    if (["ROUND", "DATEDIFF", "DATE_TRUNC"].includes(root.name.toUpperCase())) return root.args.some((e) => nullPropagates(e, target));
+    if (isCall(root, "NULLIF")) return nullPropagates(root.args[0]!, target);
+  }
+  return false;
 }

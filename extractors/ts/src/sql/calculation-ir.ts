@@ -121,6 +121,7 @@ export class CalculationLowering {
     if (node.kind === "cast") {
       const a = this.lower(node.expression, bind, predicate), target = scalarType(node.type.name, this.c.dialect);
       if (["smallint", "tinyint"].includes(node.type.name)) return fail("narrow integer cast is unsupported");
+      if (this.c.dialect === "tsql" && target === "decimal") return fail("T-SQL decimal cast precision and scale cannot be represented faithfully");
       if (node.type.precision !== undefined || node.type.scale !== undefined) return fail("constrained cast precision and scale cannot be represented faithfully");
       if (!numeric(target) || !numeric(a.type) || !(target === a.type || (a.type === "int32" && target === "bigint") || (integer(a.type) && target === "numeric" && this.c.dialect === "postgresql"))) return fail("lossy or unsupported cast");
       return this.result(node, { op: "conv", to: target, e: a.ir }, target, a.nullable);
@@ -192,10 +193,12 @@ export class CalculationLowering {
       if (args.length !== 2) return fail("unsupported NULLIF signature");
       this.compare(args[0]!.type, args[1]!.type);
       const type = args[0]!.type;
+      if (this.c.dialect === "postgresql" && type !== args[1]!.type && !(type === "bigint" && args[1]!.type === "int32")) return fail("NULLIF comparison coercion is not established");
       return this.result(node, this.call("NULLIF", args.map((a) => a.ir), numeric(type) ? type : undefined), type, true);
     }
     if (name === "ISNULL" || name === "COALESCE") {
       if ((name === "ISNULL" && (this.c.dialect !== "tsql" || args.length !== 2)) || args.length < 2) return fail("unsupported null replacement signature");
+      if (name === "ISNULL" && args[0]!.type === "string") return fail("ISNULL string replacement length is not established");
       if (name === "ISNULL" && ["decimal", "numeric"].includes(args[0]!.type) && !(node.args[1]?.kind === "number" && Number(node.args[1].value) === 0)) return fail("ISNULL replacement precision is not established");
       const real = args.filter((a) => a.type !== "null");
       if (!real.length) return fail("untyped null replacement");
