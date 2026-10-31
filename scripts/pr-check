@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Verify the full local gate still covers the exact source and current main.
+set -euo pipefail
+fail() { echo "pr-check: $*" >&2; exit 1; }
+[[ $# -eq 0 ]] || fail 'usage: scripts/pr-check'
+root="$(git rev-parse --show-toplevel)" || fail 'run inside a Git checkout'
+cd "$root"
+clean() {
+  local state
+  state="$(git status --porcelain --untracked-files=all)" || return 1
+  [[ -z "$state" ]]
+}
+clean || fail 'working tree must be clean'
+cache="$root/.sandbox-cache/local-ci"
+mkdir -p "$cache"
+lock="$cache/run.lock"
+mkdir "$lock" 2>/dev/null || fail 'another local CI or PR check is running'
+trap 'rmdir "$lock" 2>/dev/null || true' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+head="$(git rev-parse --verify HEAD)"
+base="$(scripts/check-main-alignment)"
+receipt=.sandbox-cache/local-ci/last-success.txt
+[[ -f "$receipt" ]] || fail 'no successful local CI receipt; run the full local gate'
+evidence="$(cat "$receipt")"
+[[ "$(printf '%s\n' "$evidence" | sed -n 's/^head=//p')" == "$head" ]] || fail 'receipt does not match HEAD; rerun the full local gate'
+[[ "$(printf '%s\n' "$evidence" | sed -n 's/^main=//p')" == "$base" ]] || fail 'main changed since CI; integrate it and rerun the full local gate'
+[[ "$(git rev-parse --verify HEAD)" == "$head" ]] && clean || fail 'source changed during PR preparation'
+echo "pr-check: verified HEAD $head against main $base"

@@ -61,6 +61,23 @@ the reviewing PR. Adoption by one session does not bind another contributor.
    outstanding risks, and remaining ownership. Release claims explicitly. Mark
    `merged` only with an actual merge reference.
 
+### Main alignment before validation and PRs
+
+At the operator's request, each delivery fetches `origin/main` and integrates it
+before the full local CI gate. `scripts/check-main-alignment` rejects a HEAD that
+does not contain the freshly fetched commit, including fetch failures. It never
+merges, rebases, or resolves conflicts automatically. After integration, commit
+and run the full gate against that clean source. Do not create a PR from an old
+branch just because its earlier checks passed.
+
+Immediately before creating or updating a PR, run `make pr-check`. It refreshes
+main and checks the local CI receipt against both HEAD and that main SHA. If main
+advanced, integrate it and rerun the gate. Record both SHAs in the handoff. GitHub
+can change after a check, so this is not an atomic remote merge guarantee; hosted
+CI and the final mergeability check remain required. After opening a PR, revisit
+issue3/HANDOFF and relevant open issues, use Brain Prompt to bound the next slice,
+and acknowledge its exact ownership before implementation.
+
 ### Agent execution and shared state
 
 The queen is the sole integration writer and assigns workers exact scopes.

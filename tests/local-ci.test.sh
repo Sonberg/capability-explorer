@@ -21,6 +21,12 @@ printf '%s\n' "$@" > "$ACT_TEST_LOG"
 printf '%s\n' "${GH_TOKEN-unset}" "${GITHUB_TOKEN-unset}" "${GH_ENTERPRISE_TOKEN-unset}" "${GITHUB_ENTERPRISE_TOKEN-unset}" > "$ACT_TEST_ENV_LOG"
 [[ -z "${ACT_TEST_CHANGE:-}" ]] || echo changed >> file.txt
 [[ -z "${ACT_TEST_CHANGE_HEAD:-}" ]] || git commit --allow-empty -qm advanced
+if [[ -n "${ACT_TEST_ADVANCE_MAIN:-}" ]]; then
+  next="$(git --git-dir="$ACT_TEST_ADVANCE_MAIN" commit-tree HEAD^{tree} -p HEAD -m advanced)"
+  git --git-dir="$ACT_TEST_ADVANCE_MAIN" update-ref refs/heads/main "$next"
+fi
+[[ -z "${ACT_TEST_REWIND_MAIN:-}" ]] || git --git-dir="$ACT_TEST_REMOTE" update-ref refs/heads/main "$ACT_TEST_REWIND_MAIN"
+[[ -z "${ACT_TEST_LOSE_REMOTE:-}" ]] || git remote set-url origin "$ACT_TEST_LOSE_REMOTE"
 exit "${ACT_TEST_FAIL:-0}"
 MOCK
 cat > "$scratch/bin/docker" <<'MOCK'
@@ -47,24 +53,30 @@ not_run() { [[ ! -f "$ACT_TEST_LOG" ]] || fail 'runner unexpectedly executed'; }
 new_repo() {
   repo="$scratch/repo-$count"
   mkdir -p "$repo/scripts" "$repo/config/git-hooks" "$repo/.github/workflows"
-  cp "$source_root/scripts/local-check" "$source_root/scripts/install-git-hooks" "$repo/scripts/"
+  cp "$source_root/scripts/local-check" "$source_root/scripts/install-git-hooks" "$source_root/scripts/check-main-alignment" "$source_root/scripts/pr-check" "$repo/scripts/"
   printf '#!/bin/sh\nexit "${ACT_TEST_AUDIT_FAIL:-0}"\n' > "$repo/scripts/actions-audit"
   chmod +x "$repo/scripts/actions-audit"
   cp "$source_root/config/git-hooks/pre-push" "$repo/config/git-hooks/"
   printf '.sandbox-cache/\n' > "$repo/.gitignore"
   echo 'name: fixture' > "$repo/.github/workflows/ci.yml"
   echo original > "$repo/file.txt"
-  git -c init.templateDir= init -q "$repo"
+  git -c init.templateDir= init -q -b main "$repo"
   cd "$repo"
   git config user.name 'Local CI test'
   git config user.email 'local-ci@example.invalid'
   git config commit.gpgsign false
   git add .
   git commit -qm initial
+  remote="$scratch/remote-$count.git"
+  git -c init.templateDir= clone --bare -q "$repo" "$remote"
+  git --git-dir="$remote" config user.name 'Local CI test'
+  git --git-dir="$remote" config user.email 'local-ci@example.invalid'
+  git --git-dir="$remote" config commit.gpgsign false
+  git remote add origin "$remote"
   rm -f "$ACT_TEST_LOG" "$ACT_TEST_ENV_LOG"
   unset ACT_TEST_AUDIT_FAIL ACT_TEST_FAIL ACT_TEST_CHANGE ACT_TEST_CHANGE_HEAD ACT_TEST_VERSION ACT_TEST_DOCKER_FAIL ACT_TEST_IMAGE_FAIL
   unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
-  unset LOCAL_CI_EXPECTED_HEAD
+  unset LOCAL_CI_EXPECTED_HEAD ACT_TEST_ADVANCE_MAIN ACT_TEST_REWIND_MAIN ACT_TEST_REMOTE ACT_TEST_LOSE_REMOTE
   zero=0000000000000000000000000000000000000000
   head="$(git rev-parse HEAD)"
 }
@@ -283,5 +295,117 @@ expect_failure scripts/install-git-hooks
 [[ "$(git config core.hooksPath)" == custom-hooks ]] || fail 'custom hooksPath changed'
 [[ ! -e .git/hooks/pre-push ]] || fail 'installed hook despite custom hooksPath'
 pass 'installer preserves custom core.hooksPath'
+
+new_repo
+next="$(git --git-dir="$remote" commit-tree HEAD^{tree} -p HEAD -m upstream)"
+git --git-dir="$remote" update-ref refs/heads/main "$next"
+expect_failure scripts/local-check
+contains 'HEAD does not contain origin/main' "$scratch/output"
+not_run
+pass 'fresh remote main ahead of HEAD blocks CI before runner starts'
+git merge --ff-only origin/main > "$scratch/output" 2>&1
+head="$(git rev-parse HEAD)"
+scripts/local-check > "$scratch/output" 2>&1
+scripts/pr-check >> "$scratch/output" 2>&1
+contains "main=$head" .sandbox-cache/local-ci/last-success.txt
+pass 'integrated main gets exact base receipt and passes PR preparation'
+
+new_repo
+git remote set-url origin "$scratch/missing-remote.git"
+expect_failure scripts/local-check
+contains 'cannot refresh origin/main' "$scratch/output"
+not_run
+pass 'unavailable main never falls back to a cached tracking ref'
+
+new_repo
+export ACT_TEST_ADVANCE_MAIN="$remote"
+expect_failure scripts/local-check
+[[ -f "$ACT_TEST_LOG" ]] || fail 'runner did not run before main advanced'
+[[ ! -f .sandbox-cache/local-ci/last-success.txt ]] || fail 'moving main received success receipt'
+pass 'main advancing during CI invalidates the successful runner result'
+
+new_repo
+expect_failure scripts/pr-check
+contains 'no successful local CI receipt' "$scratch/output"
+scripts/local-check > "$scratch/output" 2>&1
+scripts/pr-check >> "$scratch/output" 2>&1
+next="$(git --git-dir="$remote" commit-tree HEAD^{tree} -p HEAD -m upstream)"
+git --git-dir="$remote" update-ref refs/heads/main "$next"
+expect_failure scripts/pr-check
+contains 'HEAD does not contain origin/main' "$scratch/output"
+pass 'main advancing after CI blocks PR preparation'
+
+new_repo
+scripts/local-check > "$scratch/output" 2>&1
+git commit --allow-empty -qm changed
+expect_failure scripts/pr-check
+contains 'receipt does not match HEAD' "$scratch/output"
+pass 'PR preparation rejects untested HEAD'
+
+new_repo
+scripts/local-check > "$scratch/output" 2>&1
+sed '/^main=/d' .sandbox-cache/local-ci/last-success.txt > "$scratch/old-receipt"
+cp "$scratch/old-receipt" .sandbox-cache/local-ci/last-success.txt
+expect_failure scripts/pr-check
+contains 'main changed since CI' "$scratch/output"
+pass 'legacy receipt without tested main is rejected'
+
+new_repo
+mkdir -p .sandbox-cache/local-ci/run.lock
+expect_failure scripts/pr-check
+contains 'another local CI or PR check' "$scratch/output"
+pass 'PR preparation cannot race a running local gate'
+
+new_repo
+export ACT_TEST_REAL_GIT="$(command -v git)"
+cat > "$scratch/bin/git" <<'MOCK'
+#!/usr/bin/env bash
+[[ "$1" != status ]] || exit 27
+exec "$ACT_TEST_REAL_GIT" "$@"
+MOCK
+chmod +x "$scratch/bin/git"
+expect_failure scripts/pr-check
+contains 'working tree must be clean' "$scratch/output"
+rm -f "$scratch/bin/git"
+pass 'git status failure with empty output cannot pass PR preparation'
+
+new_repo
+old="$head"
+git commit --allow-empty -qm descendant
+head="$(git rev-parse HEAD)"
+git --git-dir="$remote" fetch -q "$repo" main:refs/heads/main
+export ACT_TEST_REWIND_MAIN="$old" ACT_TEST_REMOTE="$remote"
+expect_failure scripts/local-check
+contains 'main changed during CI' "$scratch/output"
+[[ ! -f .sandbox-cache/local-ci/last-success.txt ]] || fail 'different ancestor base received success receipt'
+pass 'a changed main already contained in HEAD still invalidates CI'
+
+new_repo
+export ACT_TEST_LOSE_REMOTE="$scratch/unavailable-after-ci.git"
+expect_failure scripts/local-check
+contains 'cannot refresh origin/main' "$scratch/output"
+[[ -f "$ACT_TEST_LOG" ]] || fail 'runner never executed'
+[[ ! -f .sandbox-cache/local-ci/last-success.txt ]] || fail 'failed final fetch received success receipt'
+pass 'final fetch failure invalidates successful runner evidence'
+
+new_repo
+base="$head"
+git commit --allow-empty -qm local-descendant
+export ACT_TEST_REPLACEMENT="$(git rev-parse HEAD)"
+export ACT_TEST_REAL_GIT="$(command -v git)"
+cat > "$scratch/bin/git" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+"$ACT_TEST_REAL_GIT" "$@"
+if [[ "$1" == fetch ]]; then
+  "$ACT_TEST_REAL_GIT" update-ref refs/remotes/origin/main "$ACT_TEST_REPLACEMENT"
+fi
+MOCK
+chmod +x "$scratch/bin/git"
+actual="$(scripts/check-main-alignment)"
+rm -f "$scratch/bin/git"
+[[ "$actual" == "$base" ]] || fail 'alignment followed another worktree tracking-ref mutation'
+[[ -z "$(git for-each-ref refs/ce-main-check)" ]] || fail 'temporary verification ref leaked'
+pass 'alignment binds its own fetch even if another worktree updates origin/main'
 
 echo "Passed $count local CI harness checks"
