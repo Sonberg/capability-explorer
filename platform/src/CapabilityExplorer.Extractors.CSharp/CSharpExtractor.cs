@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CapabilityExplorer.Extractors.CSharp;
 
-public sealed record ExtractorOptions(string SourceRoot, string RepositoryId, string CommitSha, string? PackagesRoot, string ReferencePacks);
+public sealed record ExtractorOptions(string SourceRoot, string RepositoryId, string CommitSha, string? PackagesRoot, string ReferencePacks, PackageLock? Lock = null);
 
 public sealed record UnitResult(string UnitPath, string UnitName, string Jsonl);
 
@@ -21,7 +21,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
     /// <summary>Errors that only mean "a source generator would have produced this".</summary>
     private static readonly HashSet<string> GeneratorDependent = ["CS8795", "CS8796", "CS8797"];
 
-    internal sealed record Unit(ProjectModel Project, CSharpCompilation Compilation, IReadOnlyList<PackageRef> MissingPackages, IReadOnlyList<ProjectRef> MissingProjects);
+    internal sealed record Unit(ProjectModel Project, CSharpCompilation Compilation, IReadOnlyList<PackageRef> MissingPackages, IReadOnlyList<ProjectRef> MissingProjects, IReadOnlyList<LockedPackage> ResolvedPackages);
 
     public IReadOnlyList<UnitResult> Extract()
     {
@@ -39,7 +39,8 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             visiting.Add(p.FullPath);
             var references = new List<MetadataReference>();
             references.AddRange(FrameworkReferences(p));
-            var (packageAssemblies, missingPackages) = resolver.Resolve(p.Packages.Concat(p.IsWorker ? [new PackageRef("Microsoft.Extensions.Hosting", null, 0)] : []));
+            var resolution = resolver.Resolve(p.PackageRoots(), options.Lock?.For(p.RelativePath) ?? (options.Lock is null ? null : []));
+            var (packageAssemblies, missingPackages) = (resolution.Assemblies, resolution.Missing);
             references.AddRange(packageAssemblies.Select(a => MetadataReference.CreateFromFile(a)));
             var missingProjects = new List<ProjectRef>();
             foreach (var r in p.ProjectReferences)
@@ -66,7 +67,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
 
             var compilation = CSharpCompilation.Create(p.AssemblyName, trees, references.DistinctBy(r => r.Display),
                 new CSharpCompilationOptions(p.IsExecutable ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: p.Nullable ? NullableContextOptions.Enable : NullableContextOptions.Disable, checkOverflow: p.CheckedArithmetic));
-            var unit = new Unit(p, compilation, missingPackages, missingProjects);
+            var unit = new Unit(p, compilation, missingPackages, missingProjects, resolution.Resolved);
             compilations[p.FullPath] = unit;
             visiting.Remove(p.FullPath);
             return unit;
@@ -183,7 +184,9 @@ public sealed class CSharpExtractor(ExtractorOptions options)
 
         var inputHash = ArtifactBuilder.Sha256(string.Concat(p.SourceFiles.Append(p.FullPath).Order(StringComparer.Ordinal)
             .Select(f => $"{Relative(f)}\0{ArtifactBuilder.Sha256(File.ReadAllText(f))}\n")));
-        var configHash = ArtifactBuilder.Sha256($"{Tool.Name}/{Tool.Version}|packages={(options.PackagesRoot is null ? "none" : "folder")}");
+        // The exact package set is part of the configuration: a different set is a different analysis, never silently different bytes.
+        var packageSet = string.Concat(unit.ResolvedPackages.Select(r => $"{r.Id.ToLowerInvariant()}@{r.Version.ToLowerInvariant()}\n"));
+        var configHash = ArtifactBuilder.Sha256($"{Tool.Name}/{Tool.Version}|packages={(options.PackagesRoot is null ? "none" : options.Lock is null ? "folder" : "lock")}\n{packageSet}");
         var jsonl = b.ToJsonl(p.RelativePath, p.AssemblyName, "csharp", Rules.Tools, configHash, inputHash, p.SourceFiles.Count);
         return new UnitResult(p.RelativePath, p.AssemblyName, jsonl);
     }

@@ -6,29 +6,69 @@ namespace CapabilityExplorer.Extractors.CSharp;
 /// Finds package assemblies in a NuGet global-packages layout (&lt;root&gt;/&lt;id&gt;/&lt;version&gt;/lib/&lt;tfm&gt;),
 /// following nuspec dependencies. Read-only: it never downloads, restores or runs package code.
 /// </summary>
+public sealed record PackageResolution(IReadOnlyList<string> Assemblies, IReadOnlyList<PackageRef> Missing, IReadOnlyList<LockedPackage> Resolved);
+
 public sealed class PackageResolver(string? packagesRoot)
 {
     private static readonly string[] AssemblyFolders = ["ref", "lib"];
 
     internal static readonly string[] Frameworks = ["net10.0", "net9.0", "net8.0", "net7.0", "net6.0", "netstandard2.1", "netstandard2.0", "netcoreapp3.1"];
 
-    public (IReadOnlyList<string> Assemblies, IReadOnlyList<PackageRef> Missing) Resolve(IEnumerable<PackageRef> packages)
+    /// <summary>
+    /// The reference assemblies for a project's packages. With a <paramref name="locked"/> set, exactly those versions
+    /// are used and the folder's other contents are ignored; a locked package missing from the folder is an error,
+    /// never silently different output. Without one, versions are picked from the folder (cache-dependent).
+    /// <see cref="PackageResolution.Resolved"/> lists what was used, for the configuration hash.
+    /// </summary>
+    public PackageResolution Resolve(IEnumerable<PackageRef> packages, IReadOnlyList<LockedPackage>? locked = null)
     {
         var assemblies = new List<string>();
+        var resolved = new List<LockedPackage>();
         var missing = new List<PackageRef>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var p in packages)
+        if (locked is not null)
         {
-            if (!Visit(p.Id, p.Version, assemblies, seen, depth: 0))
+            foreach (var l in locked)
             {
-                missing.Add(p);
+                var root = packagesRoot is null ? null : Path.Combine(packagesRoot, l.Id.ToLowerInvariant(), l.Version.ToLowerInvariant());
+                if (root is null || !Directory.Exists(root))
+                {
+                    throw new InvalidOperationException($"locked package {l.Id} {l.Version} is not in the packages folder; run the packages step again");
+                }
+
+                assemblies.AddRange(AssembliesIn(root));
+                resolved.Add(l);
+            }
+
+            var lockedIds = locked.Select(l => l.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            missing.AddRange(packages.Where(p => !lockedIds.Contains(p.Id)));
+        }
+        else
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in packages)
+            {
+                if (!Visit(p.Id, p.Version, assemblies, resolved, seen, depth: 0))
+                {
+                    missing.Add(p);
+                }
             }
         }
 
-        return (assemblies.Distinct(StringComparer.Ordinal).ToList(), missing);
+        return new PackageResolution(
+            assemblies.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList(),
+            missing,
+            resolved.OrderBy(r => r.Id, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Version, StringComparer.Ordinal).ToList());
     }
 
-    private bool Visit(string id, string? versionRange, List<string> assemblies, HashSet<string> seen, int depth)
+    private static IEnumerable<string> AssembliesIn(string root)
+    {
+        // Reference assemblies (ref/) describe the compile surface when a package ships them; lib/ otherwise.
+        var tfm = AssemblyFolders.Select(d => Path.Combine(root, d)).Where(Directory.Exists)
+            .SelectMany(d => Frameworks.Select(f => Path.Combine(d, f))).FirstOrDefault(Directory.Exists);
+        return tfm is null ? [] : Directory.EnumerateFiles(tfm, "*.dll").Order(StringComparer.Ordinal);
+    }
+
+    private bool Visit(string id, string? versionRange, List<string> assemblies, List<LockedPackage> resolved, HashSet<string> seen, int depth)
     {
         if (packagesRoot is null || depth > 6)
         {
@@ -53,13 +93,8 @@ public sealed class PackageResolver(string? packagesRoot)
         }
 
         var root = Path.Combine(dir, version);
-        // Reference assemblies (ref/) describe the compile surface when a package ships them; lib/ otherwise.
-        var tfm = AssemblyFolders.Select(d => Path.Combine(root, d)).Where(Directory.Exists)
-            .SelectMany(d => Frameworks.Select(f => Path.Combine(d, f))).FirstOrDefault(Directory.Exists);
-        if (tfm is not null)
-        {
-            assemblies.AddRange(Directory.EnumerateFiles(tfm, "*.dll"));
-        }
+        resolved.Add(new LockedPackage(id, version));
+        assemblies.AddRange(AssembliesIn(root));
 
         var nuspec = Directory.EnumerateFiles(root, "*.nuspec").FirstOrDefault();
         if (nuspec is not null)
@@ -73,7 +108,7 @@ public sealed class PackageResolver(string? packagesRoot)
             {
                 if ((string?)dep.Attribute("id") is { } depId)
                 {
-                    Visit(depId, (string?)dep.Attribute("version"), assemblies, seen, depth + 1);
+                    Visit(depId, (string?)dep.Attribute("version"), assemblies, resolved, seen, depth + 1);
                 }
             }
         }

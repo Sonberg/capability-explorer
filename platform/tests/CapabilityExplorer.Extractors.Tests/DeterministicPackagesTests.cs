@@ -1,0 +1,200 @@
+using System.Text.Json;
+using CapabilityExplorer.Extractors.CSharp;
+using Xunit;
+
+namespace CapabilityExplorer.Extractors.Tests;
+
+public sealed class DeterministicPackagesTests : IDisposable
+{
+    private const string Sha = "0123456789abcdef0123456789abcdef01234567";
+    private readonly string _root = Directory.CreateTempSubdirectory("ce-pkg-").FullName;
+
+    public void Dispose() => Directory.Delete(_root, recursive: true);
+
+    private static string Packs => Path.GetFullPath(Path.Combine(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", "..", "packs"));
+
+    private string Source(string packageVersion = "1.*", string? nugetConfig = null, string package = "Fake.Lib")
+    {
+        var src = Path.Combine(_root, "src-" + Guid.NewGuid().ToString("N")[..6]);
+        Directory.CreateDirectory(Path.Combine(src, "App"));
+        File.WriteAllText(Path.Combine(src, "App", "App.csproj"),
+            $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+              <ItemGroup><PackageReference Include="{package}" Version="{packageVersion}" /></ItemGroup>
+            </Project>
+            """);
+        File.WriteAllText(Path.Combine(src, "App", "Calc.cs"), $"namespace App; public class Calc {{ public int Run() => {package}.Lib.Value(); }}\n");
+        if (nugetConfig is not null)
+        {
+            File.WriteAllText(Path.Combine(src, "nuget.config"), nugetConfig);
+        }
+
+        return src;
+    }
+
+    private static FakeFeed PublicFeed() => new FakeFeed()
+        .Add("Fake.Lib", "1.0.0", "namespace Fake { public static class Lib { public static int Value() => 1; } }");
+
+    private static async Task<FetchResult> Fetch(string source, string cache, HttpMessageHandler handler, IReadOnlyList<PackageFeed> feeds)
+    {
+        using var http = new HttpClient(handler);
+        var models = ProjectModel.Discover(source);
+        return await new PackageFetcher(cache, http, feeds).FetchAsync(models.Select(m => (m.RelativePath, m.PackageRoots())));
+    }
+
+    private static IReadOnlyList<UnitResult> Extract(string source, string cache, PackageLock? lockFile) =>
+        new CSharpExtractor(new ExtractorOptions(source, "app", Sha, cache, Packs, lockFile)).Extract();
+
+    private static string[] ConfigHashes(IEnumerable<UnitResult> results) =>
+        results.Select(r => JsonDocument.Parse(r.Jsonl.Split('\n')[0]).RootElement.GetProperty("configHash").GetString()!).ToArray();
+
+    [Fact]
+    public async Task Same_commit_with_different_package_caches_yields_byte_identical_artifacts()
+    {
+        var source = Source();
+        var feed = PublicFeed();
+        PackageFeed[] feeds = [new("test", feed.IndexUrl)];
+
+        // Cache A: empty before the packages step.
+        var cacheA = Path.Combine(_root, "cache-a");
+        var fetchedA = await Fetch(source, cacheA, new FeedRouter(feed), feeds);
+        Assert.Empty(fetchedA.Failed);
+        var outputA = Extract(source, cacheA, fetchedA.Lock);
+
+        // Cache B: shared cache that other analyses filled with a newer Fake.Lib and unrelated packages.
+        var cacheB = Path.Combine(_root, "cache-b");
+        var other = new FakeFeed().Add("Fake.Lib", "1.5.0", "namespace Fake { public static class Lib { public static int Value() => 2; public static int Extra() => 3; } }")
+            .Add("Unrelated", "9.9.9", "namespace Unrelated { public static class X { } }");
+        foreach (var (id, version) in new[] { ("Fake.Lib", "1.5.0"), ("Unrelated", "9.9.9") })
+        {
+            await Fetch(Source(version, package: id), cacheB, new FeedRouter(other), [new("other", other.IndexUrl)]);
+        }
+
+        Assert.True(Directory.Exists(Path.Combine(cacheB, "fake.lib", "1.5.0")));
+        var fetchedB = await Fetch(source, cacheB, new FeedRouter(feed), feeds);
+        var outputB = Extract(source, cacheB, fetchedB.Lock);
+
+        Assert.Equal(fetchedA.Lock.ToJson(), fetchedB.Lock.ToJson());
+        Assert.Contains("\"1.0.0\"", fetchedA.Lock.ToJson());
+        Assert.Equal(outputA.Select(r => r.Jsonl), outputB.Select(r => r.Jsonl));
+        Assert.NotEmpty(outputA);
+
+        // Control: without the lock the shared cache decides (the old behaviour), and the artifact says so.
+        var legacy = Extract(source, cacheB, lockFile: null);
+        Assert.NotEqual(ConfigHashes(outputA), ConfigHashes(legacy));
+    }
+
+    [Fact]
+    public async Task The_resolved_package_set_is_part_of_the_config_hash()
+    {
+        var source = Source("1.0.0");
+        var feed = PublicFeed().Add("Fake.Lib", "1.1.0", "namespace Fake { public static class Lib { public static int Value() => 1; } }");
+        var cache = Path.Combine(_root, "cache");
+        await Fetch(source, cache, new FeedRouter(feed), [new("test", feed.IndexUrl)]);
+        await Fetch(Source("1.1.0"), cache, new FeedRouter(feed), [new("test", feed.IndexUrl)]);
+
+        var one = new PackageLock();
+        one.Set("App/App.csproj", [new LockedPackage("Fake.Lib", "1.0.0")]);
+        var two = new PackageLock();
+        two.Set("App/App.csproj", [new LockedPackage("Fake.Lib", "1.1.0")]);
+
+        Assert.NotEqual(ConfigHashes(Extract(source, cache, one)), ConfigHashes(Extract(source, cache, two)));
+        Assert.Equal(ConfigHashes(Extract(source, cache, one)), ConfigHashes(Extract(source, cache, one)));
+    }
+
+    [Fact]
+    public async Task A_locked_package_missing_from_the_folder_fails_instead_of_changing_the_output()
+    {
+        var source = Source("1.0.0");
+        var feed = PublicFeed();
+        var fetched = await Fetch(source, Path.Combine(_root, "cache"), new FeedRouter(feed), [new("test", feed.IndexUrl)]);
+        var empty = Path.Combine(_root, "empty");
+        Directory.CreateDirectory(empty);
+        var e = Assert.Throws<InvalidOperationException>(() => Extract(source, empty, fetched.Lock));
+        Assert.Contains("Fake.Lib 1.0.0", e.Message);
+    }
+
+    [Fact]
+    public void The_lock_file_is_canonical_and_round_trips()
+    {
+        var a = new PackageLock();
+        a.Set("b/B.csproj", [new LockedPackage("Zed", "1.0.0"), new LockedPackage("alpha", "2.0.0")]);
+        a.Set("a/A.csproj", [new LockedPackage("Mid", "3.0.0")]);
+        var b = new PackageLock();
+        b.Set("a/A.csproj", [new LockedPackage("Mid", "3.0.0")]);
+        b.Set("b/B.csproj", [new LockedPackage("alpha", "2.0.0"), new LockedPackage("Zed", "1.0.0")]);
+        Assert.Equal(a.ToJson(), b.ToJson());
+        Assert.Equal(a.ToJson(), PackageLock.Parse(a.ToJson()).ToJson());
+    }
+
+    [Fact]
+    public async Task Private_feed_credentials_come_from_the_environment_and_go_only_to_that_feed()
+    {
+        const string user = "svc-reader";
+        const string secret = "s3cr3t-token-value";
+        var config = """
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="corp" value="https://private.test/v3/index.json" />
+              </packageSources>
+              <packageSourceCredentials>
+                <corp>
+                  <add key="Username" value="%CORP_USER%" />
+                  <add key="ClearTextPassword" value="%CORP_TOKEN%" />
+                </corp>
+              </packageSourceCredentials>
+            </configuration>
+            """;
+        var source = Source("1.0.0", config);
+        var env = new Dictionary<string, string> { ["CORP_USER"] = user, ["CORP_TOKEN"] = secret };
+        var feeds = NuGetConfig.Discover(source, ProjectModel.Discover(source).Select(m => Path.GetDirectoryName(m.FullPath)!), k => env.GetValueOrDefault(k));
+        var feedConfig = Assert.Single(feeds);
+        Assert.Equal("corp", feedConfig.Name);
+        Assert.DoesNotContain(secret, feedConfig.Credentials!.ToString() + feedConfig);
+
+        var priv = new FakeFeed("private.test", requiredBasic: $"{user}:{secret}", redirectNupkgsTo: "cdn.test")
+            .Add("Fake.Lib", "1.0.0", "namespace Fake { public static class Lib { public static int Value() => 1; } }");
+        var cache = Path.Combine(_root, "cache");
+        var fetched = await Fetch(source, cache, new FeedRouter(priv), feeds);
+
+        Assert.Empty(fetched.Failed);
+        Assert.Equal("1.0.0", Assert.Single(fetched.Lock.For("App/App.csproj")).Version);
+        Assert.Contains(priv.Requests, r => r.Url.Host == "private.test" && r.Authorization is not null);
+        Assert.DoesNotContain(priv.Requests, r => r.Url.Host == "cdn.test" && r.Authorization is not null); // never to the redirect target
+        var artifacts = string.Concat(Extract(source, cache, fetched.Lock).Select(r => r.Jsonl));
+        Assert.DoesNotContain(secret, artifacts + fetched.Lock.ToJson() + string.Join("\n", fetched.Failed));
+        Assert.DoesNotContain(user, artifacts + fetched.Lock.ToJson());
+    }
+
+    [Fact]
+    public async Task Without_credentials_a_private_package_is_reported_unresolved_not_guessed()
+    {
+        var config = """<configuration><packageSources><clear /><add key="corp" value="https://private.test/v3/index.json" /></packageSources></configuration>""";
+        var source = Source("1.0.0", config);
+        var feeds = NuGetConfig.Discover(source, ProjectModel.Discover(source).Select(m => Path.GetDirectoryName(m.FullPath)!), _ => null);
+        var priv = new FakeFeed("private.test", requiredBasic: "u:p").Add("Fake.Lib", "1.0.0", "namespace Fake { public static class Lib { public static int Value() => 1; } }");
+        var cache = Path.Combine(_root, "cache");
+        var fetched = await Fetch(source, cache, new FeedRouter(priv), feeds);
+        Assert.Empty(fetched.Lock.For("App/App.csproj"));
+        Assert.NotEmpty(fetched.Failed);
+        var output = Extract(source, cache, fetched.Lock);
+        Assert.Contains("UNRESOLVED_PACKAGE", Assert.Single(output).Jsonl);
+    }
+
+    [Fact]
+    public void Only_https_feeds_are_used_and_default_nuget_org_is_kept_unless_cleared()
+    {
+        var config = """
+            <configuration><packageSources>
+              <add key="plain" value="http://insecure.test/index.json" />
+              <add key="local" value="/tmp/feed" />
+              <add key="corp" value="https://corp.test/v3/index.json" />
+            </packageSources></configuration>
+            """;
+        var source = Source("1.0.0", config);
+        var feeds = NuGetConfig.Discover(source, ProjectModel.Discover(source).Select(m => Path.GetDirectoryName(m.FullPath)!), _ => null);
+        Assert.Equal(["nuget.org", "corp"], feeds.Select(f => f.Name));
+    }
+}
