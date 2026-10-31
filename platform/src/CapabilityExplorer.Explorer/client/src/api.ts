@@ -20,6 +20,7 @@ export interface CapabilitySummary {
 
 export interface Meta {
   capabilities: CapabilitySummary[];
+  githubAuth: { configured: boolean; source: string };
   interpretation: { enabled: boolean; provider: string; model?: string };
   revisions: Revision[];
   defaultView: Record<string, string>;

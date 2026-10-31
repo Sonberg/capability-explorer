@@ -7,9 +7,11 @@ namespace CapabilityExplorer.Capabilities;
 /// blob-less partial clones under the workspace: no checkout, no hooks, no submodules, no build. Local
 /// repositories are only read. Nothing from a repository is executed.
 /// </summary>
-public sealed class SourceSync(string workspace, TimeSpan? timeout = null)
+public sealed class SourceSync(string workspace, TimeSpan? timeout = null, GitHubAuth? auth = null)
 {
     private readonly TimeSpan _timeout = timeout ?? TimeSpan.FromMinutes(3);
+
+    public GitHubAuth Auth { get; } = auth ?? GitHubAuth.None;
 
     /// <summary>The directory git commands for this repository run against.</summary>
     public string GitDirectory(RepositorySource source)
@@ -17,11 +19,27 @@ public sealed class SourceSync(string workspace, TimeSpan? timeout = null)
         ArgumentNullException.ThrowIfNull(source);
         if (source.Kind == SourceKind.Local)
         {
-            return Path.GetFullPath(source.Location);
+            return Path.GetFullPath(ExpandHome(source.Location));
         }
 
         var path = new Uri(source.Location).AbsolutePath.Trim('/'); // owner/repo
         return Path.Combine(Path.GetFullPath(workspace), "github", path + ".git");
+    }
+
+    /// <summary>
+    /// Expands a leading ~ to the user's home on the machine that owns the paths. In the sandbox that is the host's
+    /// home (CE_HOST_HOME, forwarded by `make explore`), not the container's.
+    /// </summary>
+    public static string ExpandHome(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        if (path != "~" && !path.StartsWith("~/", StringComparison.Ordinal))
+        {
+            return path;
+        }
+
+        var home = Environment.GetEnvironmentVariable("CE_HOST_HOME") is { Length: > 0 } host ? host : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return path == "~" ? home : Path.Combine(home, path[2..]);
     }
 
     public async Task<CapabilitySnapshot> CheckAsync(CapabilityDefinition capability, CancellationToken cancellationToken = default)
@@ -46,9 +64,14 @@ public sealed class SourceSync(string workspace, TimeSpan? timeout = null)
             {
                 await AcquireAsync(source, dir, cancellationToken);
             }
+            else if (!Directory.Exists(dir))
+            {
+                return new LockedRepository(source.Id, source.Ref, null, null, null,
+                    $"{dir} is not visible to the explorer. Local repositories in capabilities.json are mounted read-only when `make explore` starts: restart it (or add SOURCES={Path.GetDirectoryName(dir)})");
+            }
             else if (!(await GitAsync(dir, ["rev-parse", "--git-dir"], cancellationToken)).Ok)
             {
-                return new LockedRepository(source.Id, source.Ref, null, null, null, $"{source.Location} is not a git repository (or is not mounted into the sandbox)");
+                return new LockedRepository(source.Id, source.Ref, null, null, null, $"{dir} is not a git repository");
             }
 
             var (ok, sha) = await GitAsync(dir, ["rev-parse", "--verify", "--quiet", $"{source.Ref}^{{commit}}"], cancellationToken);
@@ -73,26 +96,45 @@ public sealed class SourceSync(string workspace, TimeSpan? timeout = null)
     {
         if (Directory.Exists(dir))
         {
-            var fetch = await GitAsync(dir, ["fetch", "--prune", "--tags", "--filter=blob:none", "origin", "+refs/heads/*:refs/heads/*"], cancellationToken);
+            string[] fetchArgs = ["fetch", "--prune", "--tags", "--filter=blob:none", "origin", "+refs/heads/*:refs/heads/*"];
+            var fetch = await GitAsync(dir, fetchArgs, cancellationToken);
+            if (!fetch.Ok && Auth.Configured && GitHubAuth.IsAuthError(fetch.Output))
+            {
+                fetch = await GitAsync(dir, fetchArgs, cancellationToken, anonymous: true);
+            }
+
             if (!fetch.Ok)
             {
-                throw new InvalidOperationException($"fetch failed: {Last(fetch.Output)}");
+                throw new InvalidOperationException($"fetch failed: {Auth.Explain(Last(fetch.Output))}");
             }
 
             return;
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(dir)!);
-        var clone = await GitAsync(null, ["clone", "--bare", "--filter=blob:none", "--no-recurse-submodules", source.Location, dir], cancellationToken);
+        string[] cloneArgs = ["clone", "--bare", "--filter=blob:none", "--no-recurse-submodules", source.Location, dir];
+        var clone = await GitAsync(null, cloneArgs, cancellationToken);
+        if (!clone.Ok && Auth.Configured && GitHubAuth.IsAuthError(clone.Output))
+        {
+            // The token was refused (wrong account, expired, not granted this repository). Public repositories
+            // must still work, so try once without it before reporting.
+            clone = await GitAsync(null, cloneArgs, cancellationToken, anonymous: true);
+            if (!clone.Ok && GitHubAuth.IsAuthError(clone.Output))
+            {
+                throw new InvalidOperationException(
+                    $"clone failed: not readable with the token from {Auth.Source} nor anonymously — the repository does not exist, or it is private and that token has no Contents: read access to it");
+            }
+        }
+
         if (!clone.Ok)
         {
-            throw new InvalidOperationException($"clone failed: {Last(clone.Output)}");
+            throw new InvalidOperationException($"clone failed: {Auth.Explain(Last(clone.Output))}");
         }
     }
 
     private static string Last(string output) => output.Split('\n', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim() ?? "unknown error";
 
-    private async Task<(bool Ok, string Output)> GitAsync(string? directory, string[] args, CancellationToken cancellationToken)
+    private async Task<(bool Ok, string Output)> GitAsync(string? directory, string[] args, CancellationToken cancellationToken, bool anonymous = false)
     {
         var start = new ProcessStartInfo("git") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
         // Never run repository-provided code or prompt for credentials.
@@ -114,6 +156,10 @@ public sealed class SourceSync(string workspace, TimeSpan? timeout = null)
 
         start.Environment["GIT_TERMINAL_PROMPT"] = "0";
         start.Environment["GIT_ASKPASS"] = "/bin/false";
+        if (!anonymous)
+        {
+            Auth.Apply(start);
+        }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(_timeout);

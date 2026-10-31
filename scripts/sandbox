@@ -100,8 +100,11 @@ fi
 
 if [[ -n "${SANDBOX_SOURCES:-}" ]]; then
   IFS=',' read -ra sources <<<"$SANDBOX_SOURCES"
+  mounted=","   # bash 3.2 compatible (macOS): no associative arrays
   for src in "${sources[@]}"; do
+    [[ -z "$src" || "$mounted" == *",$src,"* ]] && continue
     [[ "$src" == /* && -d "$src" ]] || { echo "SANDBOX_SOURCES: '$src' must be an existing absolute directory" >&2; exit 2; }
+    mounted+="$src,"
     args+=(-v "$src:$src:ro")
   done
 fi

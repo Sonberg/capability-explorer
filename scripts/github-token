@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Prints a GitHub token for cloning private repositories to stdout, or nothing. Runs on the host, never
+# prompts, and reports only *where* the token came from (on stderr).
+#
+#   scripts/github-token [auto|git|none]
+#     auto  GITHUB_TOKEN or GH_TOKEN from the environment, else `gh auth token` (GitHub CLI login)   [default]
+#     git   as auto, then also the git credential helper (macOS keychain, Git Credential Manager, ...)
+#     none  no token: public repositories only
+set -uo pipefail
+mode="${1:-auto}"
+
+found() { printf '%s' "$1"; echo "github auth: $2" >&2; exit 0; }
+
+[[ "$mode" == none ]] && { echo "github auth: none" >&2; exit 0; }
+[[ -n "${GITHUB_TOKEN:-}" ]] && found "$GITHUB_TOKEN" "GITHUB_TOKEN"
+[[ -n "${GH_TOKEN:-}" ]] && found "$GH_TOKEN" "GH_TOKEN"
+if command -v gh >/dev/null 2>&1; then
+  token="$(gh auth token --hostname github.com 2>/dev/null)" && [[ -n "$token" ]] && found "$token" "GitHub CLI (gh auth token)"
+fi
+if [[ "$mode" == git ]]; then
+  token="$(printf 'protocol=https\nhost=github.com\n\n' | GIT_TERMINAL_PROMPT=0 git credential fill 2>/dev/null | sed -n 's/^password=//p')"
+  [[ -n "$token" ]] && found "$token" "git credential helper"
+fi
+echo "github auth: none found (public repositories only; set GITHUB_TOKEN or run 'gh auth login')" >&2
+exit 0

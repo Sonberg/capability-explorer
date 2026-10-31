@@ -10,7 +10,7 @@ interface LineError {
 }
 
 export function Capabilities() {
-  const { reloadMeta, setCapability, capability } = useSelection();
+  const { meta, reloadMeta, setCapability, capability } = useSelection();
   const list = useApi<CapabilityStatus[]>("/api/capabilities");
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string>();
@@ -53,6 +53,14 @@ export function Capabilities() {
           A capability is a named set of repositories that are checked together. Checking acquires each source read-only (GitHub repositories as bare, blob-less clones; local repositories in place) and
           locks it to one exact commit. Pick a capability in the bar above to scope every view to it.
         </Muted>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <Pill tone={meta.githubAuth.configured ? "ok" : "neutral"}>{meta.githubAuth.configured ? "GitHub credentials available" : "no GitHub credentials"}</Pill>
+        <span className="text-zinc-500">
+          {meta.githubAuth.configured
+            ? `Private repositories are cloned with the token from ${meta.githubAuth.source}, sent only to github.com.`
+            : "Public repositories only. For private ones, start the explorer with GITHUB_TOKEN set or after `gh auth login` on your machine."}
+        </span>
       </div>
       {actionError && <ErrorBox message={actionError} />}
       {list.error && <ErrorBox message={list.error} />}

@@ -26,11 +26,12 @@ public sealed record ExplorerOptions(
     public (ExplorerIndex Index, CapabilityService Capabilities) Build()
     {
         var store = CapabilityStore.Open(CapabilitiesFile, Path.Combine(Workspace, "snapshots.json"));
-        var sync = new SourceSync(Workspace);
+        var auth = GitHubAuth.FromEnvironment();
+        var sync = new SourceSync(Workspace, auth: auth);
         var git = new GitSource(id =>
             store.FindRepository(id) is { } source ? sync.GitDirectory(source)
             : RepositoriesDirectory is not null && GitSource.IsSafeSegment(id) ? Path.Combine(RepositoriesDirectory, id)
-            : null);
+            : null, auth);
         var index = ExplorerIndex.Load(ArtifactDirectories, git);
         return (index, new CapabilityService(store, sync, index));
     }
@@ -47,6 +48,7 @@ public static class ExplorerApi
         api.MapGet("/meta", (ExplorerIndex index, InterpretationLayer interpretation, CapabilityService capabilities) => new
         {
             capabilities = capabilities.List().Select(c => new { c.Id, c.Name, repositories = c.Repositories.Select(r => r.Id) }),
+            githubAuth = new { configured = capabilities.Sync.Auth.Configured, source = capabilities.Sync.Auth.Source },
             interpretation = new { enabled = interpretation.Enabled, provider = interpretation.Options.Provider, model = interpretation.Explanations?.ModelId },
             revisions = index.Revisions,
             defaultView = index.DefaultSelection,
@@ -67,6 +69,10 @@ public static class ExplorerApi
             Queries.Symbol(index.View(view, caps.Scope(cap)), key) is { } detail ? Results.Ok(detail) : Results.NotFound(new { error = $"{key} is not declared in the selected revisions" }));
 
         api.MapGet("/calculations", (ExplorerIndex index, CapabilityService caps, string? view, string? cap) => Queries.Calculations(index.View(view, caps.Scope(cap))));
+
+        // Layered architecture canvas: level = system | repository | component.
+        api.MapGet("/architecture", (ExplorerIndex index, CapabilityService caps, string? level, string? focus, string? view, string? cap) =>
+            Architecture.Build(index.View(view, caps.Scope(cap)), level ?? "system", focus));
 
         api.MapGet("/integrations", (ExplorerIndex index, CapabilityService caps, string? view, string? cap) => Queries.Integrations(index.View(view, caps.Scope(cap))));
 

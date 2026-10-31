@@ -19,6 +19,7 @@ help:
 	@echo "make fixtures-compile  check every fixture revision compiles (or fails) as intended"
 	@echo "make explore [ARTIFACTS=dir] [EVALUATION=report.json] [CAPABILITIES=file] [SOURCES=/abs/repo,...] [PORT=5080]"
 	@echo "     browse the model at http://127.0.0.1:5080"
+	@echo "     private GitHub repos: GITHUB_TOKEN, or 'gh auth login'; GITHUB_AUTH=git also tries the git credential helper"
 	@echo "     optional LLM: INTERPRETATION=foundry FOUNDRY_ENDPOINT=... FOUNDRY_DEPLOYMENT=... (key via SANDBOX_PASS_ENV=CE_FOUNDRY_API_KEY)"
 	@echo "                   INTERPRETATION=recorded RECORDINGS=dir  replays stored responses, no network model"
 	@echo "make evaluate ACTUAL=out/ [REPO=id,id]  score extractor output against fixtures/expected (report: out/evaluation.json)"
@@ -88,11 +89,19 @@ test-explorer: fixtures build
 # Read-only UI over artifacts. The container publishes the port on 127.0.0.1 only.
 ARTIFACTS ?= fixtures/expected
 CAPABILITIES ?= capabilities.json
+GITHUB_AUTH ?= auto
 PORT ?= 5080
-# Local repositories outside this checkout: SOURCES=/abs/path,/abs/other (mounted read-only).
-explore: export SANDBOX_SOURCES = $(SOURCES)
+# Extra local directories to mount read-only (local repositories in $(CAPABILITIES) are mounted automatically):
+# SOURCES=/abs/path,/abs/other — e.g. SOURCES=$$HOME/Code to add repositories from the UI without restarting.
 explore: fixtures build
 	@echo "Capability Explorer: http://127.0.0.1:$(PORT)"
+	@# GitHub credentials for private capability repositories are resolved on the host and forwarded
+	@# only into this container (see scripts/github-token). The token is never printed.
+	@# Local capability repositories (absolute or ~/ paths in $(CAPABILITIES)) are mounted read-only, and the
+	@# host's home is forwarded so ~ means the same thing inside the container.
+	GITHUB_TOKEN="$$(scripts/github-token $(GITHUB_AUTH))" CE_HOST_HOME="$$HOME" \
+	SANDBOX_PASS_ENV="$${SANDBOX_PASS_ENV:+$$SANDBOX_PASS_ENV,}GITHUB_TOKEN,CE_HOST_HOME" \
+	SANDBOX_SOURCES="$$(s="$(SOURCES)"; c="$$(scripts/capability-sources $(CAPABILITIES))"; echo "$${s}$${s:+$${c:+,}}$${c}")" \
 	$(SANDBOX) --port $(PORT) dotnet dotnet platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll \
 	  --artifacts $(ARTIFACTS) --repos fixtures/.repos $(if $(EVALUATION),--evaluation $(EVALUATION)) \
 	  --capabilities $(CAPABILITIES) --workspace .sandbox-cache/sources \

@@ -4,7 +4,7 @@ using System.Diagnostics;
 namespace CapabilityExplorer.Explorer;
 
 /// <summary>Read-only access to git objects of the analysed repositories. Never checks out or runs code.</summary>
-public sealed class GitSource(Func<string, string?> locate)
+public sealed class GitSource(Func<string, string?> locate, CapabilityExplorer.Capabilities.GitHubAuth? auth = null)
 {
     /// <summary>Repositories found as &lt;directory&gt;/&lt;id&gt; (the fixture layout).</summary>
     public GitSource(string repositoriesDirectory)
@@ -55,6 +55,9 @@ public sealed class GitSource(Func<string, string?> locate)
         }
 
         var start = new ProcessStartInfo("git") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+        // Blob-less clones fetch file contents on demand; private repositories need the same credentials.
+        start.Environment["GIT_TERMINAL_PROMPT"] = "0";
+        auth?.Apply(start);
         start.ArgumentList.Add("-C");
         start.ArgumentList.Add(directory);
         foreach (var a in args)

@@ -82,9 +82,31 @@ commit; the locked revisions live in `.sandbox-cache/sources/snapshots.json`. Re
 because artifacts are keyed by them. A repository shows as *analysed* once artifacts for its locked
 commit are loaded; extractors arrive in stage 2.
 
-- Local repositories outside this checkout have to be mounted:
-  `make explore SOURCES=/abs/path,/abs/other` mounts them read-only.
-- Private GitHub repositories need credentials available to git in the sandbox.
+**Local repositories**
+
+- Absolute and `~/` paths listed in `capabilities.json` are mounted read-only automatically when
+  `make explore` starts.
+- `~` means your home directory on the host, even inside the container.
+- A path added through the UI after start-up needs a restart, or a parent directory mounted up front:
+  `make explore SOURCES=$HOME/Code`.
+- Relative paths resolve inside this checkout.
+
+**Private GitHub repositories**
+
+`make explore` resolves a token on your machine and forwards it into the explorer container only. It
+never prints the token. The order is:
+
+1. `GITHUB_TOKEN` or `GH_TOKEN`.
+2. `gh auth token`, if you are logged in with the GitHub CLI.
+3. With `GITHUB_AUTH=git`, also your git credential helper (macOS keychain or Git Credential Manager).
+
+`GITHUB_AUTH=none` turns this off.
+
+The token is given to git through environment config, as an HTTP header for `https://github.com/` only.
+It never appears in a clone URL, a repository config, a command line or on disk. If GitHub refuses the
+token, the clone is retried anonymously, so public repositories still work. A fine-grained token with
+*Contents: read* on the repositories you need is enough; the Capabilities page shows whether credentials
+are available.
 
 #### Optional LLM explanations
 

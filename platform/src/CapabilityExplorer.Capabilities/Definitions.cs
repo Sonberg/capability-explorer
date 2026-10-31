@@ -96,7 +96,7 @@ public static partial class SourceParser
             }
             else
             {
-                var name = Path.GetFileName(location.TrimEnd('/', '\\'));
+                var name = location is "~" or "~/" ? "home" : Path.GetFileName(location.TrimEnd('/', '\\'));
                 source = new RepositorySource(id ?? Normalise(name.EndsWith(".git", StringComparison.Ordinal) ? name[..^4] : name), location, SourceKind.Local, refName ?? "HEAD");
             }
 

@@ -118,7 +118,7 @@ public sealed class SourceSyncTests
     {
         var sync = new SourceSync(Directory.CreateTempSubdirectory().FullName);
         var missing = await sync.LockAsync(new RepositorySource("x", "/does/not/exist", SourceKind.Local));
-        Assert.Contains("not a git repository", missing.Error, StringComparison.Ordinal);
+        Assert.Contains("not visible to the explorer", missing.Error, StringComparison.Ordinal);
         var badRef = await sync.LockAsync(new RepositorySource("api-cs", FixtureRepo("api-cs"), SourceKind.Local, "no-such-tag"));
         Assert.Contains("not found", badRef.Error, StringComparison.Ordinal);
 
@@ -136,5 +136,83 @@ public sealed class SourceSyncTests
     {
         var sync = new SourceSync("/ws");
         Assert.Equal("/ws/github/octocat/Hello-World.git", sync.GitDirectory(new RepositorySource("hello-world", "https://github.com/octocat/Hello-World", SourceKind.GitHub)));
+    }
+}
+
+public sealed class GitHubAuthTests
+{
+    [Fact]
+    public void Token_is_passed_as_a_github_scoped_header_through_the_environment()
+    {
+        var start = new System.Diagnostics.ProcessStartInfo("git");
+        start.Environment["GIT_CONFIG_COUNT"] = "1";
+        start.Environment["GIT_CONFIG_KEY_0"] = "safe.directory";
+        start.Environment["GIT_CONFIG_VALUE_0"] = "*";
+
+        GitHubAuth.FromToken("s3cret", "GITHUB_TOKEN").Apply(start);
+
+        Assert.Equal("2", start.Environment["GIT_CONFIG_COUNT"]);
+        Assert.Equal("safe.directory", start.Environment["GIT_CONFIG_KEY_0"]);
+        Assert.Equal("http.https://github.com/.extraheader", start.Environment["GIT_CONFIG_KEY_1"]);
+        Assert.Equal("AUTHORIZATION: basic " + Convert.ToBase64String("x-access-token:s3cret"u8.ToArray()), start.Environment["GIT_CONFIG_VALUE_1"]);
+        Assert.Empty(start.ArgumentList); // never on the command line
+    }
+
+    [Fact]
+    public void Without_a_token_nothing_is_added()
+    {
+        var start = new System.Diagnostics.ProcessStartInfo("git");
+        var before = start.Environment.Count;
+        GitHubAuth.None.Apply(start);
+        Assert.Equal(before, start.Environment.Count);
+        Assert.False(GitHubAuth.None.Configured);
+    }
+
+    [Fact]
+    public void Credential_errors_become_actionable()
+    {
+        const string prompt = "fatal: could not read Username for 'https://github.com': terminal prompts disabled";
+        Assert.Contains("GITHUB_TOKEN", GitHubAuth.None.Explain(prompt), StringComparison.Ordinal);
+        Assert.Contains("refused the token from GH_TOKEN", GitHubAuth.FromToken("x", "GH_TOKEN").Explain("remote: Repository not found."), StringComparison.Ordinal);
+        Assert.Equal("fatal: unable to access", GitHubAuth.None.Explain("fatal: unable to access"));
+    }
+
+    [Fact]
+    public void Token_is_never_written_into_the_clone()
+    {
+        var sync = new SourceSync(Directory.CreateTempSubdirectory().FullName, auth: GitHubAuth.FromToken("s3cret", "GITHUB_TOKEN"));
+        var dir = sync.GitDirectory(new RepositorySource("r", "https://github.com/acme/r", SourceKind.GitHub));
+        Assert.DoesNotContain("s3cret", dir, StringComparison.Ordinal);
+        Assert.Equal("GITHUB_TOKEN", sync.Auth.Source);
+    }
+}
+
+public sealed class HomeExpansionTests
+{
+    [Fact]
+    public void Tilde_expands_to_the_host_home_when_forwarded()
+    {
+        var previous = Environment.GetEnvironmentVariable("CE_HOST_HOME");
+        Environment.SetEnvironmentVariable("CE_HOST_HOME", "/Users/me");
+        try
+        {
+            Assert.Equal("/Users/me/Code/glufs-web", SourceSync.ExpandHome("~/Code/glufs-web"));
+            Assert.Equal("/Users/me", SourceSync.ExpandHome("~"));
+            Assert.Equal("/srv/repo", SourceSync.ExpandHome("/srv/repo"));
+            Assert.Equal("~other/repo", SourceSync.ExpandHome("~other/repo")); // other users' homes are not guessed
+            var sync = new SourceSync("/ws");
+            Assert.Equal("/Users/me/Code/glufs-web", sync.GitDirectory(new RepositorySource("glufs-web", "~/Code/glufs-web", SourceKind.Local)));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("CE_HOST_HOME", previous);
+        }
+    }
+
+    [Fact]
+    public void Tilde_paths_parse_to_a_sensible_id()
+    {
+        var s = Assert.Single(SourceParser.Parse(["~/Code/Glufs/glufs-checkout-api"]).Sources);
+        Assert.Equal(("glufs-checkout-api", SourceKind.Local, "~/Code/Glufs/glufs-checkout-api"), (s.Id, s.Kind, s.Location));
     }
 }
