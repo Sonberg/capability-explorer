@@ -10,7 +10,7 @@ Status at handoff: branch `stage-1-contract-and-fixtures`. `make ci` is green.
 | Fixtures + golden set | `fixtures/` (5 repos, locked revisions), `fixtures/golden/facts/*.mjs` → `fixtures/expected/` | Hand-written expected facts for every node, edge and calculation, anchored to text in the source. `make golden` regenerates them. |
 | Validators | `platform/src/CapabilityExplorer.Contracts`, `extractors/ts/src/contracts` | Both stacks validate the same contract. |
 | Scorer | `platform/src/CapabilityExplorer.Evaluation`, `ce evaluate` | Measures recall, accuracy, evidence, precision on exhaustive categories, calculations, attributes, irHash and coverage. Can be limited with `--repository` and `--language`. |
-| C# extractor | `platform/src/CapabilityExplorer.Extractors.CSharp` (`ce-cs`) | 100% on graph metrics. **No calculations.** |
+| C# extractor | `platform/src/CapabilityExplorer.Extractors.CSharp` (`ce-cs`) | 100% on graph metrics and on calculations (`Calculations*.cs`, gated by `fixtures/evaluation.csharp.json`). |
 | TS/JS extractor | `extractors/ts/src/extract` (`ce-ts extract`) | 100% on graph metrics. **No calculations.** |
 | Analyse pipeline | `scripts/analyze`, `make analyze CAPABILITY=<id>` | Three sandboxed steps: export → packages → offline extract, written to `.sandbox-cache/artifacts`. |
 | Explorer | `platform/src/CapabilityExplorer.Explorer` (+ React client) | Live reload. Capabilities, architecture canvas, optional LLM layer. |
@@ -28,7 +28,9 @@ Each workstream owns its own directories so they can run in parallel. The shared
 `fixtures/evaluation.extractors.json` (gates), `Makefile`, `scripts/analyze` and `README.md`. Keep edits
 to these minimal and rebase before merging.
 
-### 1. C# calculation extraction
+### 1. C# calculation extraction — DONE
+
+Implemented in `Calculations.cs`, `CalculationAttributes.cs`, `CalculationIr.cs`; `make evaluate-cs` gates the three calculation metrics at 1.0 via `fixtures/evaluation.csharp.json`. Fold the thresholds into `evaluation.extractors.json` once workstream 2 lands. The original brief follows.
 
 - **Goal:** emit `calculation` records (IR `expr`, `irHash`, `inputs`, `output`, `attributes` with
   evidence) for the methods the golden set marks as calculations. Start with `fixtures/golden/facts/{api-cs,worker-cs,forecast-cs}.mjs`
