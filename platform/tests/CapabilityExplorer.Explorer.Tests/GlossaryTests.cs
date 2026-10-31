@@ -122,7 +122,7 @@ public sealed class GlossaryTests
         Assert.False(candidate.DerivationDiffers);
         Assert.False(candidate.ExpressionDiffers);
         var calculations = records.Where(r => (string?)r["kind"] == "calculation").ToList();
-        calculations[0]["attributes"]!["rounding"] = JsonNode.Parse("""{"status":"known","value":"halfEven"}""");
+        calculations[0]["attributes"]!["rounding"] = JsonNode.Parse("""{"status":"known","value":"halfEven","evidence":["ev:source"]}""");
         calculations[1]["attributes"]!["rounding"] = JsonNode.Parse("""{"status":"unknown"}""");
         calculations[1].AsObject().Remove("irHash");
         candidate = Assert.Single(Glossary.Build(Load(records).View(null)));
@@ -137,8 +137,8 @@ public sealed class GlossaryTests
     {
         var records = Records(2);
         var calculations = records.Where(r => (string?)r["kind"] == "calculation").ToList();
-        calculations[0]["attributes"]!["rounding"] = JsonNode.Parse("""{"status":"known","value":"halfEven"}""");
-        calculations[1]["attributes"]!["rounding"] = JsonNode.Parse("""{"status":"known","value":"truncate"}""");
+        calculations[0]["attributes"]!["rounding"] = JsonNode.Parse("""{"status":"known","value":"halfEven","evidence":["ev:source"]}""");
+        calculations[1]["attributes"]!["rounding"] = JsonNode.Parse("""{"status":"known","value":"truncate","evidence":["ev:source"]}""");
         calculations[1]["irHash"] = new string('b', 64);
         var candidate = Assert.Single(Glossary.Build(Load(records).View(null)));
         Assert.True(candidate.DerivationDiffers);
@@ -219,7 +219,7 @@ public sealed class GlossaryTests
     }
 
     [Fact]
-    public void Conflicting_calculation_records_for_one_symbol_do_not_choose_an_arbitrary_output_or_comparison()
+    public void Distinct_calculation_records_for_one_symbol_preserve_both_observations_deterministically()
     {
         var records = Records(2);
         var original = records.First(r => (string?)r["kind"] == "calculation");
@@ -232,12 +232,59 @@ public sealed class GlossaryTests
         var backward = Glossary.Build(Load(records.AsEnumerable().Reverse().ToList()).View(null));
         Assert.Equal(Serialize(forward), Serialize(backward));
         var candidate = Assert.Single(forward);
-        var ambiguousKey = (string)original["symbolKey"]!;
-        Assert.All(candidate.Occurrences.Where(o => o.Key == ambiguousKey), o => Assert.Null(o.Type));
-        Assert.Empty(candidate.Comparisons);
-        Assert.False(candidate.TypeDiffers);
+        var sharedKey = original["symbolKey"]!.GetValue<string>();
+        var observations = candidate.Occurrences.Where(o => o.Role == "calculation").ToList();
+        Assert.Equal(3, observations.Count);
+        Assert.Equal(3, observations.Select(o => o.Id).Distinct().Count());
+        Assert.Equal(["decimal", "int32"], observations.Where(o => o.Key == sharedKey).Select(o => o.Type).Order());
+        Assert.Equal(3, candidate.Comparisons.Count);
+        Assert.Single(candidate.Comparisons, c => c.SameExpression == true);
+        Assert.Equal(2, candidate.Comparisons.Count(c => c.SameExpression == false));
+        Assert.True(candidate.TypeDiffers);
         Assert.False(candidate.DerivationDiffers);
-        Assert.False(candidate.ExpressionDiffers);
+        Assert.True(candidate.ExpressionDiffers);
+    }
+
+    [Fact]
+    public void Nested_JSON_property_order_does_not_change_candidates_or_create_detail_differences()
+    {
+        var records = Records(2);
+        var calculations = records.Where(r => (string?)r["kind"] == "calculation").ToList();
+        foreach (var calculation in calculations)
+        {
+            calculation["attributes"]!["rounding"] = JsonNode.Parse(
+                """{"status":"known","value":"halfEven","detail":{"digits":2,"scale":4},"evidence":["ev:source"]}""");
+        }
+        calculations[1]["attributes"]!["rounding"] = ReverseProperties(calculations[1]["attributes"]!["rounding"]!);
+        var forward = Glossary.Build(Load(records).View(null));
+        Assert.Empty(Assert.Single(Assert.Single(forward).Comparisons).Differences);
+        var reversed = records.Select(r => (JsonObject)ReverseProperties(r)).ToList();
+        Assert.Equal(Serialize(forward), Serialize(Glossary.Build(Load(reversed).View(null))));
+
+        // Preserve a real value difference so serialized raw detail also exercises canonical property order.
+        calculations[1]["attributes"]!["rounding"]!["value"] = "truncate";
+        forward = Glossary.Build(Load(records).View(null));
+        reversed = records.Select(r => (JsonObject)ReverseProperties(r)).ToList();
+        Assert.Equal(Serialize(forward), Serialize(Glossary.Build(Load(reversed).View(null))));
+        Assert.Equal(DifferenceKind.ValueDiffers, Assert.Single(Assert.Single(Assert.Single(forward).Comparisons).Differences).Kind);
+    }
+
+    private static JsonNode ReverseProperties(JsonNode node)
+    {
+        if (node is JsonObject obj)
+        {
+            var result = new JsonObject();
+            foreach (var property in obj.Reverse())
+            {
+                result[property.Key] = property.Value is null ? null : ReverseProperties(property.Value);
+            }
+            return result;
+        }
+        if (node is JsonArray array)
+        {
+            return new JsonArray(array.Select(item => item is null ? null : ReverseProperties(item)).ToArray());
+        }
+        return node.DeepClone();
     }
 
     private static byte[] Serialize(IReadOnlyList<GlossaryCandidate> candidates) =>
