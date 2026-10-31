@@ -4,6 +4,7 @@ import ts from "typescript";
 import type { ToolRef } from "../contracts/records.ts";
 import { ArtifactBuilder, sha256 } from "./builder.ts";
 import { calls, HANDLER_MAP } from "./calls.ts";
+import { calculations } from "./calculations.ts";
 import { Ctx } from "./context.ts";
 import { declare, detectGenerated } from "./declarations.ts";
 import { discoverUnits, posix, type UnitConfig } from "./project.ts";
@@ -58,6 +59,7 @@ export function extract(options: ExtractOptions): UnitResult[] {
     detectGenerated(ctx);
     declare(ctx);
     calls(ctx);
+    calculations(ctx);
     express(ctx, rules);
     axiosRule(ctx, rules);
     openApiRule(ctx, rules);

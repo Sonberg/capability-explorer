@@ -8,7 +8,7 @@ source span.
 (TypeScript compiler API) produce the ce.v1 contract. Both are gated in CI against a reference fixture
 set with known answers, and `make analyze` runs them over the repositories of a capability. Also
 present: validators on both stacks, an idempotent PostgreSQL importer and the explorer UI.
-C# calculations are extracted and gated; TypeScript calculations and SQL projects are not done yet.
+C# and TypeScript/JavaScript calculations are extracted and gated; SQL projects are not done yet.
 
 ## Layout
 
@@ -188,14 +188,15 @@ capability files and reloads when they change, and the UI refetches what it show
 
 **Known limits**
 
-- TypeScript/JavaScript calculations (the IR and its attributes) are not extracted yet.
+- Calculations are extracted for C# and TypeScript/JavaScript, and gated at 100% (`fixtures/evaluation.csharp.json`, `fixtures/evaluation.extractors.ts.json`).
+- TS/JS calculations cover numeric functions that round (`Math.round/trunc/floor/ceil`, `toFixed`) or aggregate (`filter`/`map`/`reduce`, `new Set(..).size`, `for…of` sums). Other shapes yield a `CALCULATION_UNSUPPORTED` info diagnostic instead of an approximate IR.
 - SQL projects (`.sqlproj`, migrations) are not extracted yet.
 - Edges into package code depend on the package versions the shared download folder holds.
 
 `make evaluate-cs` and `make evaluate-ts` run each extractor over every fixture revision. They score it
-against the golden units of its own languages using `fixtures/evaluation.csharp.json` and
-`fixtures/evaluation.extractors.json`. Graph recall, edge accuracy, evidence and precision are held at 100%;
-for C# so are calculation recall, attribute accuracy and `irHash` match. Both targets run in `make test`.
+against the golden units of its own languages using `fixtures/evaluation.csharp.json` (C#) and
+`fixtures/evaluation.extractors.ts.json` (TS/JS). Graph recall, edge accuracy, evidence and precision are held at
+100%, and so are calculation recall, attribute accuracy and `irHash` match. Both targets run in `make test`.
 
 ### Validating extractor output
 
