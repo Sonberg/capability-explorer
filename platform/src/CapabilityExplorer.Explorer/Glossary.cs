@@ -20,7 +20,7 @@ public static class Glossary
         "HttpClient", "ILogger", "IConfiguration", "IServiceCollection", "IServiceProvider", "WebApplicationBuilder",
     };
 
-    private sealed record Entry(GlossaryOccurrence Occurrence, CalculationSide? Calculation);
+    private sealed record Entry(GlossaryOccurrence Occurrence, CalculationSide? Calculation, string? CalculationId);
 
     public static IReadOnlyList<GlossaryCandidate> Build(
         ViewIndex view, IReadOnlyDictionary<string, IReadOnlyList<string>>? repositoryCapabilities = null)
@@ -49,7 +49,8 @@ public static class Glossary
             }
 
             // ViewIndex.Calculations retains only the first unit occurrence for a key. Keep every unit here.
-            foreach (var calculation in artifact.Artifact.Calculations.OrderBy(c => c.SymbolKey, StringComparer.Ordinal))
+            foreach (var calculation in artifact.Artifact.Calculations.OrderBy(c => c.SymbolKey, StringComparer.Ordinal)
+                         .ThenBy(c => c.Id, StringComparer.Ordinal))
             {
                 if (!localNodes.TryGetValue(calculation.SymbolKey, out var node))
                 {
@@ -60,7 +61,7 @@ public static class Glossary
                 var side = new CalculationSide(node.SymbolKey, node.Name, artifact.RepositoryId, artifact.CommitSha,
                     artifact.Artifact.Header.Language, raw);
                 Add(artifact, node, "calculation", KnownType(Text(raw.GetProperty("output"), "type")),
-                    node.Evidence.Concat(References(raw, "evidence")), side);
+                    node.Evidence.Concat(References(raw, "evidence")), side, calculation.Id);
 
                 foreach (var input in raw.GetProperty("inputs").EnumerateArray())
                 {
@@ -94,11 +95,18 @@ public static class Glossary
             .Select(g => Candidate(g.Key, g)).ToList();
 
         void Add(LoadedArtifact artifact, NodeRecord node, string role, string? type,
-            IEnumerable<string> evidence, CalculationSide? calculation = null)
+            IEnumerable<string> evidence, CalculationSide? calculation = null, string? calculationId = null)
         {
             var unit = artifact.Artifact.Header.Unit;
-            var identity = JsonSerializer.SerializeToUtf8Bytes(new[]
-                { artifact.RepositoryId, artifact.CommitSha, unit.Path, node.SymbolKey, role });
+            var identityParts = new List<string>
+                { artifact.RepositoryId, artifact.CommitSha, unit.Path, node.SymbolKey, role };
+            // Validated artifacts permit several calculations per symbol but reject duplicate record IDs.
+            if (calculationId is not null)
+            {
+                identityParts.Add(calculationId);
+            }
+
+            var identity = JsonSerializer.SerializeToUtf8Bytes(identityParts);
             var id = "glossary:" + Convert.ToHexStringLower(SHA256.HashData(identity));
             var capabilities = repositoryCapabilities is not null && repositoryCapabilities.TryGetValue(artifact.RepositoryId, out var caps)
                 ? Sorted(caps) : [];
@@ -114,7 +122,7 @@ public static class Glossary
                 calculation = existing.Calculation ?? calculation;
             }
 
-            entries[id] = new Entry(occurrence, calculation);
+            entries[id] = new Entry(occurrence, calculation, calculationId);
         }
     }
 
@@ -124,7 +132,8 @@ public static class Glossary
             .ThenBy(e => e.Occurrence.CommitSha, StringComparer.Ordinal)
             .ThenBy(e => e.Occurrence.UnitPath, StringComparer.Ordinal)
             .ThenBy(e => e.Occurrence.Key, StringComparer.Ordinal)
-            .ThenBy(e => e.Occurrence.Role, StringComparer.Ordinal).ToList();
+            .ThenBy(e => e.Occurrence.Role, StringComparer.Ordinal)
+            .ThenBy(e => e.CalculationId, StringComparer.Ordinal).ToList();
         var occurrences = entries.Select(e => e.Occurrence).ToList();
         var calculations = entries.Where(e => e.Calculation is not null).ToList();
         var possible = (long)calculations.Count * (calculations.Count - 1) / 2;
