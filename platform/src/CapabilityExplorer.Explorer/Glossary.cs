@@ -13,7 +13,7 @@ public static class Glossary
     private static readonly HashSet<string> DeclarationKinds = new(StringComparer.Ordinal)
         { "Type", "Property", "Field", "Column", "MessageContract" };
 
-    // Exact names only; domain-bearing suffixes such as Controller/Repository are not excluded.
+    // Small exact denylist, plus the Type-only framework-role suffix heuristic in Eligible.
     private static readonly HashSet<string> InfrastructureNames = new(StringComparer.Ordinal)
     {
         "Program", "Startup", "DbContext", "IHostedService", "BackgroundService", "CancellationToken",
@@ -158,7 +158,11 @@ public static class Glossary
     {
         var parts = SymbolKey.Segments(node.SymbolKey);
         return node.Generated != true && !string.IsNullOrWhiteSpace(node.Name) &&
-            !InfrastructureNames.Contains(node.Name) && !parts.Contains(SymbolKey.External, StringComparer.Ordinal) &&
+            !InfrastructureNames.Contains(node.Name) &&
+            // A reviewable heuristic for framework shells; properties/fields with these labels remain visible.
+            !(node.NodeKind == "Type" && (node.Name.EndsWith("Controller", StringComparison.Ordinal) ||
+                node.Name.EndsWith("DbContext", StringComparison.Ordinal))) &&
+            !parts.Contains(SymbolKey.External, StringComparer.Ordinal) &&
             !(node.Props is { ValueKind: JsonValueKind.Object } props &&
               props.TryGetProperty("external", out var external) && external.ValueKind == JsonValueKind.True);
     }
@@ -207,10 +211,10 @@ public static class Glossary
         element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Array
             ? value.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!) : [];
 
-    private static IReadOnlyList<string> Sorted(IEnumerable<string> values) =>
+    private static List<string> Sorted(IEnumerable<string> values) =>
         values.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
 
-    private static IReadOnlyList<EvidenceDto> SortEvidence(IEnumerable<EvidenceDto> evidence) => evidence.Distinct()
+    private static List<EvidenceDto> SortEvidence(IEnumerable<EvidenceDto> evidence) => evidence.Distinct()
         .OrderBy(e => e.RepositoryId, StringComparer.Ordinal).ThenBy(e => e.CommitSha, StringComparer.Ordinal)
         .ThenBy(e => e.Path, StringComparer.Ordinal).ThenBy(e => e.StartLine).ThenBy(e => e.StartColumn)
         .ThenBy(e => e.EndLine).ThenBy(e => e.EndColumn).ThenBy(e => e.Id, StringComparer.Ordinal).ToList();
