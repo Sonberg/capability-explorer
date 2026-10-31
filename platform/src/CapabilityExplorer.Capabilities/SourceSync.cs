@@ -188,7 +188,10 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
                         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                         await using (var file = File.Create(target))
                         {
-                            await entry.DataStream!.CopyToAsync(file, timeout.Token);
+                            if (entry.DataStream is { } data) // null for empty files
+                            {
+                                await data.CopyToAsync(file, timeout.Token);
+                            }
                         }
 
                         files++;

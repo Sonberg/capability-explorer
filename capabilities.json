@@ -49,6 +49,24 @@
           "ref": "HEAD"
         }
       ]
+    },
+    {
+      "id": "glufs",
+      "name": "Glufs",
+      "repositories": [
+        {
+          "id": "glufs-checkout-api",
+          "location": "https://github.com/glufs/glufs-checkout-api",
+          "kind": "gitHub",
+          "ref": "HEAD"
+        },
+        {
+          "id": "glufs-web",
+          "location": "https://github.com/glufs/glufs-web",
+          "kind": "gitHub",
+          "ref": "HEAD"
+        }
+      ]
     }
   ]
 }

@@ -132,6 +132,28 @@ public sealed class SourceSyncTests
     }
 
     [Fact]
+    public async Task Export_writes_empty_files()
+    {
+        var repo = Directory.CreateTempSubdirectory().FullName;
+        File.WriteAllText(Path.Combine(repo, ".gitkeep"), "");
+        File.WriteAllText(Path.Combine(repo, "a.txt"), "a");
+        foreach (var args in new[] { "init -q", "add .", "-c user.name=t -c user.email=t@t commit -q -m init" })
+        {
+            using var git = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("git", $"-C {repo} {args}"))!;
+            await git.WaitForExitAsync();
+            Assert.Equal(0, git.ExitCode);
+        }
+
+        var sync = new SourceSync(Directory.CreateTempSubdirectory().FullName);
+        var source = new RepositorySource("empty", repo, SourceKind.Local);
+        var head = await sync.LockAsync(source);
+        var destination = Path.Combine(Directory.CreateTempSubdirectory().FullName, "out");
+        var result = await sync.ExportAsync(source, head.CommitSha!, destination);
+        Assert.Equal(2, result.Files);
+        Assert.Equal(0, new FileInfo(Path.Combine(destination, ".gitkeep")).Length);
+    }
+
+    [Fact]
     public void GitHub_sources_become_bare_clones_under_the_workspace()
     {
         var sync = new SourceSync("/ws");

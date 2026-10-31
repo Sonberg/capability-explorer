@@ -313,7 +313,8 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                     openGeneric = implementation is INamedTypeSymbol { IsUnboundGenericType: true };
                 }
 
-                if (!InRepo(implementation))
+                // A type parameter (AddScoped<TService, TImpl>() inside a generic helper) names no concrete class.
+                if (implementation is not INamedTypeSymbol named || !InRepo(named))
                 {
                     continue;
                 }
@@ -339,7 +340,7 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                     props["registration"] = "typedHttpClient";
                 }
 
-                b.Edge(owner, "REGISTERS", keys.Of(((INamedTypeSymbol)implementation!).ConstructedFrom), [f.Evidence(b, inv)], "rule", rule: Di, props: props);
+                b.Edge(owner, "REGISTERS", keys.Of(named.ConstructedFrom), [f.Evidence(b, inv)], "rule", rule: Di, props: props);
             }
         }
 
