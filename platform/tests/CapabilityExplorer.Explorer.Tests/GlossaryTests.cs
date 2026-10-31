@@ -60,7 +60,7 @@ public sealed class GlossaryTests
         var candidate = new GlossaryCandidate("amount", [occurrence], ["repo"], ["sales"], false, false, false,
             false, 66, [new GlossaryComparison("stable-id", "other-id", null, [difference])]);
 
-        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var options = JsonSerializerOptions.Web;
         var bytes = JsonSerializer.SerializeToUtf8Bytes(candidate, options);
         var json = JsonSerializer.Deserialize<JsonElement>(bytes);
         Assert.Equal(JsonValueKind.Null, json.GetProperty("occurrences")[0].GetProperty("type").ValueKind);
@@ -190,7 +190,7 @@ public sealed class GlossaryTests
     {
         var records = Records(1);
         var single = Assert.Single(Glossary.Build(Load(records).View(null)));
-        Assert.Single(single.Occurrences.Where(o => o.Role == "calculation"));
+        Assert.Single(single.Occurrences, o => o.Role == "calculation");
         Assert.Equal(Serialize([single]), Serialize(Glossary.Build(Load(records, records).View(null))));
         var secondUnit = records.Select(r => (JsonObject)r.DeepClone()).ToList();
         secondUnit.Single(r => (string?)r["kind"] == "header")["unit"]!["path"] = "other/Worker.csproj";
@@ -288,7 +288,7 @@ public sealed class GlossaryTests
     }
 
     private static byte[] Serialize(IReadOnlyList<GlossaryCandidate> candidates) =>
-        JsonSerializer.SerializeToUtf8Bytes(candidates, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        JsonSerializer.SerializeToUtf8Bytes(candidates, JsonSerializerOptions.Web);
 
     private static JsonObject Node(string id, string key, string name, string kind) => new()
     {
