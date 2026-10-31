@@ -10,3 +10,6 @@ obj/
 node_modules/
 *.trx
 TestResults/
+
+# Explorer UI build output (built from platform/src/CapabilityExplorer.Explorer/client by `make ui`)
+platform/src/CapabilityExplorer.Explorer/wwwroot/

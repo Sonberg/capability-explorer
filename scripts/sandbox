@@ -25,6 +25,8 @@
 # Environment knobs (host side):
 #   SANDBOX_EXTRA_CA_FILE  extra CA bundle to trust (e.g. a TLS-intercepting egress proxy)
 #   SANDBOX_NETWORK        docker network to use when not --offline (default: bridge)
+#   SANDBOX_SOURCES        comma-separated absolute host paths (local repositories for capabilities) to mount
+#                          read-only at the same path inside the container.
 #   SANDBOX_PASS_ENV       comma-separated host variables to forward, e.g. CE_FOUNDRY_API_KEY.
 #                          Nothing is forwarded unless named here; ignored with --offline.
 #   SANDBOX_DOTNET_IMAGE / SANDBOX_NODE_IMAGE   override images
@@ -96,6 +98,14 @@ if [[ -n "$port" ]]; then
   args+=(-p "127.0.0.1:$port:$port" -e ASPNETCORE_URLS="http://0.0.0.0:$port")
 fi
 
+if [[ -n "${SANDBOX_SOURCES:-}" ]]; then
+  IFS=',' read -ra sources <<<"$SANDBOX_SOURCES"
+  for src in "${sources[@]}"; do
+    [[ "$src" == /* && -d "$src" ]] || { echo "SANDBOX_SOURCES: '$src' must be an existing absolute directory" >&2; exit 2; }
+    args+=(-v "$src:$src:ro")
+  done
+fi
+
 if [[ -n "${SANDBOX_PASS_ENV:-}" && $offline -eq 0 ]]; then
   IFS=',' read -ra pass <<<"$SANDBOX_PASS_ENV"
   for name in "${pass[@]}"; do
@@ -128,6 +138,7 @@ mkdir -p "$HOME"
 if [ -f /etc/sandbox/extra-ca.crt ]; then
   cat /etc/ssl/certs/ca-certificates.crt /etc/sandbox/extra-ca.crt > /tmp/ca-bundle.pem
   export SSL_CERT_FILE=/tmp/ca-bundle.pem
+  export GIT_SSL_CAINFO=/tmp/ca-bundle.pem
 fi
 exec "$@"'
 

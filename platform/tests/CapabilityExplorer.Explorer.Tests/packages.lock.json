@@ -538,6 +538,9 @@
           "xunit.v3.runner.common": "[3.2.2]"
         }
       },
+      "capabilityexplorer.capabilities": {
+        "type": "Project"
+      },
       "capabilityexplorer.contracts": {
         "type": "Project",
         "dependencies": {
@@ -553,6 +556,7 @@
       "ce-explorer": {
         "type": "Project",
         "dependencies": {
+          "CapabilityExplorer.Capabilities": "[1.0.0, )",
           "CapabilityExplorer.Contracts": "[1.0.0, )",
           "CapabilityExplorer.Interpretation": "[1.0.0, )"
         }

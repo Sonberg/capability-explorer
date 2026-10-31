@@ -14,7 +14,7 @@ and an idempotent PostgreSQL importer.
 |---|---|
 | `schema/v1/` | `record.schema.json` (JSON Schema, the source of truth), `relations.json`, [rules](schema/README.md) |
 | `fixtures/` | Five fixture repos (C#, TypeScript/JavaScript, T-SQL, PostgreSQL) built deterministically from overlays, plus golden artifacts. See [fixtures/README.md](fixtures/README.md). |
-| `platform/` | .NET 10: `Contracts` (validator, evidence verifier), `Evaluation` (scoring against golden), `Store` (migrations, importer), `Cli` (`ce`), `Explorer` (read-only UI), tests |
+| `platform/` | .NET 10: `Contracts` (validator, evidence verifier), `Evaluation` (scoring against golden), `Store` (migrations, importer), `Cli` (`ce`), `Capabilities` (repository sets and source acquisition), `Interpretation` (optional LLM), `Explorer` (API + React/Tailwind UI), tests |
 | `extractors/ts/` | Node/TypeScript package. Stage 1 contains only the contract validator (ajv against the same schema). |
 | `scripts/sandbox` | Runs every build, install and test in a disposable container |
 
@@ -38,9 +38,14 @@ make explore                                   # golden fixtures → http://127.
 make explore ARTIFACTS=out/ EVALUATION=out/evaluation.json   # extractor output + its score
 ```
 
-The explorer is a read-only ASP.NET Core server, with a dependency-free HTML/JS UI, over a directory of
-artifacts. It runs in the sandbox and publishes on `127.0.0.1` only.
+The explorer is an ASP.NET Core server over a directory of artifacts. Its UI is React + Tailwind (Vite),
+in `platform/src/CapabilityExplorer.Explorer/client`. `make ui` builds it into `wwwroot`, which is a build
+output and not committed. `npm run dev` in that folder serves it with hot reload and proxies the API to a
+running explorer. Everything runs in the sandbox and publishes on `127.0.0.1` only.
 
+- **Capability selector**: a capability is a named set of repositories, given as GitHub URLs or local
+  paths, that are checked together. Selecting one scopes every view to its repositories at their locked
+  revisions. Manage them on the **Capabilities** page or in `capabilities.json`. See below.
 - **Revisions bar**: pick one revision per repository. Every view shows that combination, which is
   labelled as a selection of code revisions, not a deployment.
 - **Explore**: search symbols; open one to see its exact source span at that revision, its calculation
@@ -58,6 +63,28 @@ artifacts. It runs in the sandbox and publishes on `127.0.0.1` only.
   *not observed* instead of removed for partial analyses.
 - **Artifacts** and **Evaluation**: coverage, diagnostics and rejected files, plus the `ce evaluate`
   report when one is loaded.
+
+#### Capabilities
+
+Each line is `[id=]location [ref]`:
+
+```
+https://github.com/acme/orders-api
+https://github.com/acme/web/tree/release/2026.10
+billing=https://github.com/acme/billing-service v4.2.0
+/home/me/code/warehouse-jobs
+```
+
+*Check now* acquires each source read-only and locks it to one commit. GitHub repositories become bare,
+blob-less partial clones under `.sandbox-cache/sources`, with no checkout, hooks, submodules or build.
+Local repositories are read in place. The definitions live in `capabilities.json`, which is fit to
+commit; the locked revisions live in `.sandbox-cache/sources/snapshots.json`. Repository ids are global,
+because artifacts are keyed by them. A repository shows as *analysed* once artifacts for its locked
+commit are loaded; extractors arrive in stage 2.
+
+- Local repositories outside this checkout have to be mounted:
+  `make explore SOURCES=/abs/path,/abs/other` mounts them read-only.
+- Private GitHub repositories need credentials available to git in the sandbox.
 
 #### Optional LLM explanations
 
@@ -146,6 +173,9 @@ golden set against itself and runs in CI as a self-check of the scorer.
   the layer off by default (409, everything else works), and on with a recorded provider. Invalid model
   output is rejected, responses are cached by input hash, and the Foundry client is tested against a fake
   HTTP endpoint. No test calls a live model.
+- `CapabilityTests` / `CapabilityApiTests`: parsing of repository lines (GitHub URL forms, local paths,
+  refs, rejected input), atomic definition and snapshot storage, global repository ids, locking local
+  repositories, and views scoped to a capability's locked revisions.
 - `extractors/ts` tests: the same golden files validate against the same schema in TypeScript.
 
 ## Next (stage 2)

@@ -12,7 +12,9 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 
 // --artifacts/--repos/--evaluation arrive through configuration (command line, environment or test host).
 var options = ExplorerOptions.From(builder.Configuration);
-builder.Services.AddSingleton(_ => options.Build());
+var (index, capabilities) = options.Build();
+builder.Services.AddSingleton(index);
+builder.Services.AddSingleton(capabilities);
 
 // Optional intelligence layer: provider "none" unless configured (interpretation:provider = recorded | foundry).
 var interpretation = builder.Configuration.GetSection("interpretation").Get<InterpretationOptions>() ?? new InterpretationOptions();

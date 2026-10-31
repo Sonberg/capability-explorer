@@ -1,18 +1,39 @@
+using CapabilityExplorer.Capabilities;
 using CapabilityExplorer.Interpretation;
 
 namespace CapabilityExplorer.Explorer;
 
-public sealed record ExplorerOptions(IReadOnlyList<string> ArtifactDirectories, string? RepositoriesDirectory, string? EvaluationReport)
+public sealed record ExplorerOptions(
+    IReadOnlyList<string> ArtifactDirectories,
+    string? RepositoriesDirectory,
+    string? EvaluationReport,
+    string CapabilitiesFile,
+    string Workspace)
 {
     public static ExplorerOptions From(IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         var artifacts = (configuration["artifacts"] ?? "fixtures/expected").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return new ExplorerOptions(artifacts, configuration["repos"], configuration["evaluation"]);
+        return new ExplorerOptions(
+            artifacts,
+            configuration["repos"],
+            configuration["evaluation"],
+            configuration["capabilities"] ?? "capabilities.json",
+            configuration["workspace"] ?? ".sandbox-cache/sources");
     }
 
-    public ExplorerIndex Build() =>
-        ExplorerIndex.Load(ArtifactDirectories, RepositoriesDirectory is null ? null : new GitSource(RepositoriesDirectory));
+    /// <summary>Builds the index, resolving repository sources through capabilities first, then the repos directory.</summary>
+    public (ExplorerIndex Index, CapabilityService Capabilities) Build()
+    {
+        var store = CapabilityStore.Open(CapabilitiesFile, Path.Combine(Workspace, "snapshots.json"));
+        var sync = new SourceSync(Workspace);
+        var git = new GitSource(id =>
+            store.FindRepository(id) is { } source ? sync.GitDirectory(source)
+            : RepositoriesDirectory is not null && GitSource.IsSafeSegment(id) ? Path.Combine(RepositoriesDirectory, id)
+            : null);
+        var index = ExplorerIndex.Load(ArtifactDirectories, git);
+        return (index, new CapabilityService(store, sync, index));
+    }
 }
 
 public static class ExplorerApi
@@ -23,8 +44,9 @@ public static class ExplorerApi
     {
         var api = app.MapGroup("/api");
 
-        api.MapGet("/meta", (ExplorerIndex index, InterpretationLayer interpretation) => new
+        api.MapGet("/meta", (ExplorerIndex index, InterpretationLayer interpretation, CapabilityService capabilities) => new
         {
+            capabilities = capabilities.List().Select(c => new { c.Id, c.Name, repositories = c.Repositories.Select(r => r.Id) }),
             interpretation = new { enabled = interpretation.Enabled, provider = interpretation.Options.Provider, model = interpretation.Explanations?.ModelId },
             revisions = index.Revisions,
             defaultView = index.DefaultSelection,
@@ -35,15 +57,18 @@ public static class ExplorerApi
             nodeKinds = index.Artifacts.SelectMany(a => a.Artifact.Nodes.Select(n => n.NodeKind)).Distinct().Order(StringComparer.Ordinal),
         });
 
-        api.MapGet("/search", (ExplorerIndex index, string? q, string? kind, string? repo, string? view) =>
-            Queries.Search(index.View(view), q, kind, repo));
+        // Every view can be scoped to a capability (cap=<id>): only its repositories, starting from its locked revisions.
+        api.MapGet("/view", (ExplorerIndex index, CapabilityService caps, string? view, string? cap) => index.View(view, caps.Scope(cap)).Selection);
 
-        api.MapGet("/symbol", (ExplorerIndex index, string key, string? view) =>
-            Queries.Symbol(index.View(view), key) is { } detail ? Results.Ok(detail) : Results.NotFound(new { error = $"{key} is not declared in the selected revisions" }));
+        api.MapGet("/search", (ExplorerIndex index, CapabilityService caps, string? q, string? kind, string? repo, string? view, string? cap) =>
+            Queries.Search(index.View(view, caps.Scope(cap)), q, kind, repo));
 
-        api.MapGet("/calculations", (ExplorerIndex index, string? view) => Queries.Calculations(index.View(view)));
+        api.MapGet("/symbol", (ExplorerIndex index, CapabilityService caps, string key, string? view, string? cap) =>
+            Queries.Symbol(index.View(view, caps.Scope(cap)), key) is { } detail ? Results.Ok(detail) : Results.NotFound(new { error = $"{key} is not declared in the selected revisions" }));
 
-        api.MapGet("/integrations", (ExplorerIndex index, string? view) => Queries.Integrations(index.View(view)));
+        api.MapGet("/calculations", (ExplorerIndex index, CapabilityService caps, string? view, string? cap) => Queries.Calculations(index.View(view, caps.Scope(cap))));
+
+        api.MapGet("/integrations", (ExplorerIndex index, CapabilityService caps, string? view, string? cap) => Queries.Integrations(index.View(view, caps.Scope(cap))));
 
         api.MapGet("/changes", (ExplorerIndex index, string repo, string from, string to) =>
             Changes.Compare(index, repo, from, to) is { } report ? Results.Ok(report) : Results.NotFound(new { error = "unknown repository or revision" }));
@@ -51,20 +76,20 @@ public static class ExplorerApi
         api.MapGet("/artifacts", (ExplorerIndex index) => Queries.Artifacts(index));
 
         // Deterministic comparison: always available, no model involved.
-        api.MapGet("/compare", (ExplorerIndex index, string a, string b, string? view) =>
-            Comparisons.Compare(index.View(view), a, b) is { } c
+        api.MapGet("/compare", (ExplorerIndex index, CapabilityService caps, string a, string b, string? view, string? cap) =>
+            Comparisons.Compare(index.View(view, caps.Scope(cap)), a, b) is { } c
                 ? Results.Ok(Comparisons.ToDto(c))
                 : Results.NotFound(new { error = "both calculations must exist in the selected revisions" }));
 
         // Optional: an AI-written explanation of the deterministic comparison. Off unless a provider is configured.
-        api.MapPost("/explanations", async (ExplorerIndex index, InterpretationLayer interpretation, ExplainRequest request, CancellationToken ct) =>
+        api.MapPost("/explanations", async (ExplorerIndex index, CapabilityService caps, InterpretationLayer interpretation, ExplainRequest request, CancellationToken ct) =>
         {
             if (interpretation.Explanations is not { } service)
             {
                 return Results.Json(new { error = "LLM integration is disabled (interpretation:provider = none)", enabled = false }, statusCode: StatusCodes.Status409Conflict);
             }
 
-            if (Comparisons.Compare(index.View(request.View), request.A, request.B) is not { } comparison)
+            if (Comparisons.Compare(index.View(request.View, caps.Scope(request.Cap)), request.A, request.B) is not { } comparison)
             {
                 return Results.NotFound(new { error = "both calculations must exist in the selected revisions" });
             }
@@ -115,6 +140,43 @@ public static class ExplorerApi
                 lines = Enumerable.Range(from, to - from + 1).Select(n => new { n, text = lines[n - 1] }),
             });
         });
+
+        api.MapGet("/capabilities", (CapabilityService caps) => caps.List());
+
+        api.MapGet("/capabilities/{id}", (CapabilityService caps, string id) =>
+            caps.Get(id) is { } c ? Results.Ok(c) : Results.NotFound(new { error = $"no capability '{id}'" }));
+
+        // Define a capability from one repository per line: [id=]https://github.com/owner/repo [ref] | [id=]/local/path [ref]
+        api.MapPost("/capabilities", async (CapabilityService caps, CreateCapabilityRequest request, CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                return Results.BadRequest(new { error = "a name is required" });
+            }
+
+            var (sources, errors) = SourceParser.Parse((request.Repositories ?? "").Split('\n'));
+            if (errors.Count > 0)
+            {
+                return Results.BadRequest(new { error = "some repositories could not be read", lines = errors });
+            }
+
+            try
+            {
+                var created = await caps.Store.AddAsync(request.Name, request.Description, sources, ct);
+                return Results.Created($"/api/capabilities/{created.Id}", await caps.CheckAsync(created.Id, ct));
+            }
+            catch (CapabilityConflictException e)
+            {
+                return Results.Conflict(new { error = e.Message });
+            }
+        });
+
+        // "Check together": acquire every source read-only and lock each to one exact commit.
+        api.MapPost("/capabilities/{id}/check", async (CapabilityService caps, string id, CancellationToken ct) =>
+            caps.Store.Find(id) is null ? Results.NotFound(new { error = $"no capability '{id}'" }) : Results.Ok(await caps.CheckAsync(id, ct)));
+
+        api.MapDelete("/capabilities/{id}", async (CapabilityService caps, string id, CancellationToken ct) =>
+            await caps.Store.RemoveAsync(id, ct) ? Results.NoContent() : Results.NotFound(new { error = $"no capability '{id}'" }));
 
         api.MapGet("/evaluation", () =>
             evaluationReport is not null && File.Exists(evaluationReport)

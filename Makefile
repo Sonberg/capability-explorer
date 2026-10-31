@@ -8,7 +8,7 @@ NODE    := $(SANDBOX) node
 OFFLINE := $(SANDBOX) --offline
 
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
-        restore build test-ts test-contracts test-evaluation test-explorer test-store evaluate evaluate-golden explore clean
+        restore ui build test-ts test-contracts test-evaluation test-explorer test-store evaluate evaluate-golden explore clean
 
 help:
 	@echo "make ci              everything CI runs: fixture compile checks + all tests"
@@ -17,7 +17,8 @@ help:
 	@echo "make fixtures-lock   rebuild fixture repos and rewrite revisions.lock.json (after editing fixtures/src)"
 	@echo "make golden          regenerate fixtures/expected from fixtures/golden/facts"
 	@echo "make fixtures-compile  check every fixture revision compiles (or fails) as intended"
-	@echo "make explore [ARTIFACTS=dir] [EVALUATION=report.json] [PORT=5080]  browse the model at http://127.0.0.1:5080"
+	@echo "make explore [ARTIFACTS=dir] [EVALUATION=report.json] [CAPABILITIES=file] [SOURCES=/abs/repo,...] [PORT=5080]"
+	@echo "     browse the model at http://127.0.0.1:5080"
 	@echo "     optional LLM: INTERPRETATION=foundry FOUNDRY_ENDPOINT=... FOUNDRY_DEPLOYMENT=... (key via SANDBOX_PASS_ENV=CE_FOUNDRY_API_KEY)"
 	@echo "                   INTERPRETATION=recorded RECORDINGS=dir  replays stored responses, no network model"
 	@echo "make evaluate ACTUAL=out/ [REPO=id,id]  score extractor output against fixtures/expected (report: out/evaluation.json)"
@@ -49,7 +50,13 @@ restore:
 	$(DOTNET) sh -c 'cd platform && dotnet restore --locked-mode CapabilityExplorer.slnx'
 	$(NODE) sh -c 'cd extractors/ts && npm ci'
 
-build: restore
+# Explorer UI: React + Tailwind (Vite). Dependencies are installed with network, the build runs offline.
+UI := platform/src/CapabilityExplorer.Explorer/client
+ui:
+	$(NODE) sh -c 'cd $(UI) && npm ci'
+	$(OFFLINE) node sh -c 'cd $(UI) && npm run -s build'
+
+build: restore ui
 	$(OFFLINE) dotnet sh -c 'cd platform && dotnet build --no-restore -nologo CapabilityExplorer.slnx'
 
 test-ts: restore
@@ -76,15 +83,19 @@ evaluate: fixtures build
 	  $(if $(REPO),--repository $(REPO))
 
 test-explorer: fixtures build
-	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Explorer.Tests && dotnet test --no-build tests/CapabilityExplorer.Interpretation.Tests'
+	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Explorer.Tests && dotnet test --no-build tests/CapabilityExplorer.Interpretation.Tests && dotnet test --no-build tests/CapabilityExplorer.Capabilities.Tests'
 
 # Read-only UI over artifacts. The container publishes the port on 127.0.0.1 only.
 ARTIFACTS ?= fixtures/expected
+CAPABILITIES ?= capabilities.json
 PORT ?= 5080
+# Local repositories outside this checkout: SOURCES=/abs/path,/abs/other (mounted read-only).
+explore: export SANDBOX_SOURCES = $(SOURCES)
 explore: fixtures build
 	@echo "Capability Explorer: http://127.0.0.1:$(PORT)"
 	$(SANDBOX) --port $(PORT) dotnet dotnet platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll \
 	  --artifacts $(ARTIFACTS) --repos fixtures/.repos $(if $(EVALUATION),--evaluation $(EVALUATION)) \
+	  --capabilities $(CAPABILITIES) --workspace .sandbox-cache/sources \
 	  $(if $(INTERPRETATION),--interpretation:provider $(INTERPRETATION) --interpretation:cacheDirectory .sandbox-cache/interpretations) \
 	  $(if $(FOUNDRY_ENDPOINT),--interpretation:endpoint $(FOUNDRY_ENDPOINT)) \
 	  $(if $(FOUNDRY_DEPLOYMENT),--interpretation:deployment $(FOUNDRY_DEPLOYMENT)) \
@@ -96,5 +107,5 @@ test-store: build
 	$(SANDBOX) --docker dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Store.Tests'
 
 clean:
-	rm -rf fixtures/.repos fixtures/.work extractors/ts/node_modules
+	rm -rf fixtures/.repos fixtures/.work extractors/ts/node_modules $(UI)/node_modules platform/src/CapabilityExplorer.Explorer/wwwroot
 	find platform -type d \( -name bin -o -name obj \) -prune -exec rm -rf {} +

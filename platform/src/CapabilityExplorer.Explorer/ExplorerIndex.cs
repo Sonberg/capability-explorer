@@ -103,13 +103,30 @@ public sealed class ExplorerIndex
     /// A view is one chosen revision per repository, written "repo:rev,repo:rev". Repositories not named use
     /// the default. This is a selected combination of code revisions, not a deployment manifest.
     /// </summary>
-    public ViewIndex View(string? spec)
+    public ViewIndex View(string? spec, ViewScope? scope = null)
     {
         var selection = new Dictionary<string, string>(DefaultSelection, StringComparer.Ordinal);
+        if (scope is not null)
+        {
+            foreach (var repo in selection.Keys.Where(r => !scope.Repositories.Contains(r)).ToList())
+            {
+                selection.Remove(repo);
+            }
+
+            // A checked capability starts from its locked revisions where those were analysed.
+            foreach (var (repo, sha) in scope.Preferred)
+            {
+                if (FindRevision(repo, sha) is { } locked)
+                {
+                    selection[repo] = locked.CommitSha;
+                }
+            }
+        }
+
         foreach (var part in (spec ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             var colon = part.IndexOf(':', StringComparison.Ordinal);
-            if (colon <= 0)
+            if (colon <= 0 || (scope is not null && !scope.Repositories.Contains(part[..colon])))
             {
                 continue;
             }
@@ -120,7 +137,7 @@ public sealed class ExplorerIndex
             }
         }
 
-        var key = string.Join(",", selection.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => $"{kv.Key}:{kv.Value}"));
+        var key = $"{scope?.Id ?? "*"}|" + string.Join(",", selection.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => $"{kv.Key}:{kv.Value}"));
         return _views.GetOrAdd(key, _ => new ViewIndex(this, selection));
     }
 
@@ -131,6 +148,9 @@ public sealed class ExplorerIndex
 }
 
 public sealed record Occurrence<T>(LoadedArtifact Artifact, T Record);
+
+/// <summary>Restricts a view to the repositories of one capability, preferring its locked revisions.</summary>
+public sealed record ViewScope(string Id, IReadOnlySet<string> Repositories, IReadOnlyDictionary<string, string> Preferred);
 
 public sealed class ViewIndex
 {

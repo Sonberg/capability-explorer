@@ -6,6 +6,7 @@
   <ItemGroup>
     <ProjectReference Include="../CapabilityExplorer.Contracts/CapabilityExplorer.Contracts.csproj" />
     <ProjectReference Include="../CapabilityExplorer.Interpretation/CapabilityExplorer.Interpretation.csproj" />
+    <ProjectReference Include="../CapabilityExplorer.Capabilities/CapabilityExplorer.Capabilities.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Update="wwwroot/**" CopyToOutputDirectory="PreserveNewest" />

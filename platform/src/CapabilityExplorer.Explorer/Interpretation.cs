@@ -18,7 +18,7 @@ public sealed record ComparisonDto(
     IReadOnlyList<string> Agreements,
     IReadOnlyList<string> UnknownOnBoth);
 
-public sealed record ExplainRequest(string A, string B, string? View);
+public sealed record ExplainRequest(string A, string B, string? View, string? Cap = null);
 
 public static class Comparisons
 {

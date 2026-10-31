@@ -4,12 +4,21 @@ using System.Diagnostics;
 namespace CapabilityExplorer.Explorer;
 
 /// <summary>Read-only access to git objects of the analysed repositories. Never checks out or runs code.</summary>
-public sealed class GitSource(string repositoriesDirectory)
+public sealed class GitSource(Func<string, string?> locate)
 {
+    /// <summary>Repositories found as &lt;directory&gt;/&lt;id&gt; (the fixture layout).</summary>
+    public GitSource(string repositoriesDirectory)
+        : this(id => IsSafeSegment(id) ? Path.Combine(repositoriesDirectory, id) : null)
+    {
+    }
+
     private readonly ConcurrentDictionary<(string, string, string), string?> _files = new();
 
-    public bool HasRepository(string repositoryId) =>
-        IsSafeSegment(repositoryId) && Directory.Exists(Path.Combine(repositoriesDirectory, repositoryId, ".git"));
+    public bool HasRepository(string repositoryId) => Locate(repositoryId) is not null;
+
+    /// <summary>A git directory (working copy or bare) for the repository, or null.</summary>
+    private string? Locate(string repositoryId) =>
+        locate(repositoryId) is { } dir && (Directory.Exists(Path.Combine(dir, ".git")) || File.Exists(Path.Combine(dir, "HEAD"))) ? dir : null;
 
     public string? ReadFile(string repositoryId, string commitSha, string path) =>
         _files.GetOrAdd((repositoryId, commitSha, path), key =>
@@ -36,18 +45,18 @@ public sealed class GitSource(string repositoriesDirectory)
         return ok ? output.Trim() : null;
     }
 
-    private static bool IsSafeSegment(string s) => s.Length > 0 && !s.Contains('/', StringComparison.Ordinal) && !s.Contains('\\', StringComparison.Ordinal) && s != "." && s != "..";
+    internal static bool IsSafeSegment(string s) => s.Length > 0 && !s.Contains('/', StringComparison.Ordinal) && !s.Contains('\\', StringComparison.Ordinal) && s != "." && s != "..";
 
     private (bool Ok, string Output) Git(string repositoryId, params string[] args)
     {
-        if (!HasRepository(repositoryId))
+        if (Locate(repositoryId) is not { } directory)
         {
             return (false, "");
         }
 
         var start = new ProcessStartInfo("git") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
         start.ArgumentList.Add("-C");
-        start.ArgumentList.Add(Path.Combine(repositoriesDirectory, repositoryId));
+        start.ArgumentList.Add(directory);
         foreach (var a in args)
         {
             start.ArgumentList.Add(a);

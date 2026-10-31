@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <!-- xUnit1051 asks for TestContext cancellation tokens everywhere; not worth the noise here. CA2007: no sync context in tests. -->
+    <NoWarn>$(NoWarn);xUnit1051;CA2007;CA1001;CA1852;CA1062;CA1861;CA1711;CA2100</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/CapabilityExplorer.Capabilities/CapabilityExplorer.Capabilities.csproj" />
+
+    <Compile Include="../Shared/Fixtures.cs" Link="Shared/Fixtures.cs" />
+  </ItemGroup>
+</Project>

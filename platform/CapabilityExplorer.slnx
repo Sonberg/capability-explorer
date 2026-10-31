@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/CapabilityExplorer.Capabilities/CapabilityExplorer.Capabilities.csproj" />
     <Project Path="src/CapabilityExplorer.Cli/CapabilityExplorer.Cli.csproj" />
     <Project Path="src/CapabilityExplorer.Contracts/CapabilityExplorer.Contracts.csproj" />
     <Project Path="src/CapabilityExplorer.Evaluation/CapabilityExplorer.Evaluation.csproj" />
@@ -8,6 +9,7 @@
     <Project Path="src/CapabilityExplorer.Store/CapabilityExplorer.Store.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/CapabilityExplorer.Capabilities.Tests/CapabilityExplorer.Capabilities.Tests.csproj" />
     <Project Path="tests/CapabilityExplorer.Contracts.Tests/CapabilityExplorer.Contracts.Tests.csproj" />
     <Project Path="tests/CapabilityExplorer.Evaluation.Tests/CapabilityExplorer.Evaluation.Tests.csproj" />
     <Project Path="tests/CapabilityExplorer.Explorer.Tests/CapabilityExplorer.Explorer.Tests.csproj" />

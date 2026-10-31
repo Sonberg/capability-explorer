@@ -174,11 +174,14 @@ public sealed class ExplorerApiTests(ExplorerFactory factory) : IClassFixture<Ex
         Assert.Contains("<title>Capability Explorer</title>", index, StringComparison.Ordinal);
         Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync(new Uri("/api/evaluation", UriKind.Relative))).StatusCode);
 
-        // The UI is hand-written, dependency-free files: anything large means a broken edit or a bundled library.
-        foreach (var asset in new[] { "app.css", "app.js", "ui.js", "ir.js" })
+        // The UI is a built React bundle: index.html references hashed assets that must be served, within sane size.
+        var assets = System.Text.RegularExpressions.Regex.Matches(index, "(?:src|href)=\"(/assets/[^\"]+)\"").Select(m => m.Groups[1].Value).ToList();
+        Assert.Contains(assets, a => a.EndsWith(".js", StringComparison.Ordinal));
+        Assert.Contains(assets, a => a.EndsWith(".css", StringComparison.Ordinal));
+        foreach (var asset in assets)
         {
-            var bytes = await _client.GetByteArrayAsync(new Uri($"/{asset}", UriKind.Relative));
-            Assert.InRange(bytes.Length, 1_000, 64_000);
+            var bytes = await _client.GetByteArrayAsync(new Uri(asset, UriKind.Relative));
+            Assert.InRange(bytes.Length, 1_000, 600_000);
         }
     }
 }

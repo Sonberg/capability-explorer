@@ -1,0 +1,268 @@
+// Types mirror the explorer's JSON (platform/src/CapabilityExplorer.Explorer). Only what the UI reads is typed.
+
+export type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
+export type Props = Record<string, Json>;
+
+export interface Revision {
+  repositoryId: string;
+  commitSha: string;
+  tags: string[];
+  subject?: string;
+  commitTime?: string;
+  label: string;
+}
+
+export interface CapabilitySummary {
+  id: string;
+  name: string;
+  repositories: string[];
+}
+
+export interface Meta {
+  capabilities: CapabilitySummary[];
+  interpretation: { enabled: boolean; provider: string; model?: string };
+  revisions: Revision[];
+  defaultView: Record<string, string>;
+  artifacts: number;
+  problems: string[];
+  hasSource: boolean;
+  hasEvaluation: boolean;
+  nodeKinds: string[];
+}
+
+export interface Evidence {
+  id: string;
+  repositoryId: string;
+  commitSha: string;
+  path: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+}
+
+export interface NodeDto {
+  key: string;
+  kind: string;
+  name: string;
+  signature?: string;
+  generated: boolean;
+  props?: Props;
+  repositoryId: string;
+  commitSha: string;
+  unit: string;
+  evidence: Evidence[];
+}
+
+export interface SymbolRef {
+  key: string;
+  name: string;
+  kind?: string;
+  declared: boolean;
+  repositoryId?: string;
+}
+
+export interface Edge {
+  relation: string;
+  from: SymbolRef;
+  to?: SymbolRef;
+  derivation: string;
+  resolution: "resolved" | "static-target" | "candidate" | "unresolved";
+  unresolvedReason?: string;
+  rule?: string;
+  props?: Props;
+  repositoryId: string;
+  commitSha: string;
+  evidence: Evidence[];
+}
+
+export interface Attribute {
+  status: "known" | "partial" | "unknown";
+  value?: Json;
+  detail?: Props;
+}
+
+export type Expr = { op: string } & Record<string, Json>;
+
+export interface Calculation {
+  key: string;
+  name: string;
+  repositoryId: string;
+  commitSha: string;
+  unit: string;
+  language: string;
+  output: { type: string };
+  inputs: { ref: string; type: string; origin?: string }[];
+  expr: Expr;
+  attributes: Record<string, Attribute>;
+  irHash?: string;
+  includes: string[];
+  evidence: Evidence[];
+  attributeEvidence: Record<string, Evidence[]>;
+}
+
+export interface HistoryEntry {
+  commitSha: string;
+  label: string;
+  subject?: string;
+  state: "present" | "absent" | "notObserved" | "notAnalysed";
+}
+
+export interface SymbolDetail {
+  node: NodeDto;
+  outgoing: Edge[];
+  incoming: Edge[];
+  calculation?: Calculation;
+  history: HistoryEntry[];
+}
+
+export interface SearchHit {
+  key: string;
+  name: string;
+  kind: string;
+  repositoryId: string;
+  unit: string;
+  generated: boolean;
+  hasCalculation: boolean;
+}
+
+export interface Integrations {
+  services: { service: NodeDto; endpoints: { endpoint: NodeDto; handlers: SymbolRef[] }[] }[];
+  http: { request: Edge; candidates: SymbolRef[]; match: "bound" | "route" | "none" | "dynamic"; note: string }[];
+  channels: ResourceGroup[];
+  data: ResourceGroup[];
+}
+
+export interface ResourceGroup {
+  name: string;
+  kind: string;
+  note?: string;
+  keys: { key: string; bound: boolean; edges: Edge[]; declaration?: NodeDto }[];
+}
+
+export interface AttributeValue {
+  status: string;
+  value?: string;
+  detail?: Props;
+}
+
+export interface Comparison {
+  left: { key: string; name: string; repositoryId: string; outputType: string };
+  right: { key: string; name: string; repositoryId: string; outputType: string };
+  sameExpression: boolean;
+  differences: { id: string; attribute: string; kind: "ValueDiffers" | "DetailDiffers" | "KnownOnOneSide"; left?: AttributeValue; right?: AttributeValue }[];
+  agreements: string[];
+  unknownOnBoth: string[];
+}
+
+export interface Proposal {
+  status: "proposed" | "rejected";
+  derivation: string;
+  reviewStatus: string;
+  model: string;
+  promptVersion: string;
+  inputHash: string;
+  summary?: string;
+  points: { differenceId: string; text: string }[];
+  problems: string[];
+  cached: boolean;
+}
+
+export interface ChangeReport {
+  repositoryId: string;
+  from: Revision;
+  to: Revision;
+  addedUnits: string[];
+  removedUnits: string[];
+  units: {
+    unit: string;
+    unitPath: string;
+    fromStatus: string;
+    toStatus: string;
+    added: NodeDto[];
+    removed: NodeDto[];
+    notObserved: NodeDto[];
+    continuity: { from: NodeDto; to: NodeDto; reasons: string[]; ambiguous: boolean }[];
+    calculations: { fromKey: string; toKey: string; name: string; logicChanged: boolean; attributes: { name: string; from?: string; to?: string }[]; possibleConsumers: SymbolRef[] }[];
+    edges: { relation: string; from: string; to?: string; resolution: string; change: string }[];
+    inputUnchanged: boolean;
+  }[];
+}
+
+export interface ArtifactSummary {
+  id: number;
+  label: string;
+  repositoryId: string;
+  commitSha: string;
+  revision: string;
+  unit: string;
+  unitPath: string;
+  language: string;
+  extractor: string;
+  status: "full" | "partial";
+  counts: { node: number; edge: number; calculation: number };
+  coverage: { filesTotal: number; filesAnalyzed: number; incompletePaths?: string[] };
+  diagnostics: { severity: string; code: string; message: string }[];
+}
+
+export interface RepositoryStatus {
+  id: string;
+  location: string;
+  kind: "github" | "local";
+  ref: string;
+  available: boolean;
+  lockedSha?: string;
+  lockedSubject?: string;
+  lockedAt?: string;
+  error?: string;
+  analysed: boolean;
+  analysedRevisions: string[];
+}
+
+export interface CapabilityStatus {
+  id: string;
+  name: string;
+  description?: string;
+  checkedAt?: string;
+  repositories: RepositoryStatus[];
+  analysed: number;
+}
+
+export interface Ratio {
+  hit: number;
+  total: number;
+  value: number;
+}
+
+export interface EvaluationReport {
+  passed: boolean;
+  thresholdFailures: string[];
+  totals: Record<string, Ratio>;
+  artifacts: {
+    label: string;
+    status: string;
+    actualExtractor?: string;
+    metrics: Record<string, Ratio>;
+    findings: { kind: string; subject: string; detail: string }[];
+    problems: string[];
+  }[];
+}
+
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number, readonly body: unknown) {
+    super(message);
+  }
+}
+
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, { ...init, headers: { accept: "application/json", ...(init?.body ? { "content-type": "application/json" } : {}), ...init?.headers } });
+  const text = await res.text();
+  const body: unknown = text ? JSON.parse(text) : undefined;
+  if (!res.ok) {
+    const message = (body as { error?: string } | undefined)?.error ?? `${res.status} ${res.statusText}`;
+    throw new ApiError(message, res.status, body);
+  }
+  return body as T;
+}
+
+export const shortSha = (sha?: string) => (sha ? sha.slice(0, 12) : "");
