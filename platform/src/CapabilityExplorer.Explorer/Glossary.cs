@@ -30,8 +30,13 @@ public static class Glossary
         var artifacts = view.Artifacts.OrderBy(a => a.RepositoryId, StringComparer.Ordinal)
             .ThenBy(a => a.CommitSha, StringComparer.Ordinal)
             .ThenBy(a => a.Artifact.Header.Unit.Path, StringComparer.Ordinal).ToList();
-        var declarations = artifacts.SelectMany(a => a.Artifact.Nodes.Select(n => new Occurrence<NodeRecord>(a, n)))
-            .Where(o => Eligible(o.Record)).ToLookup(o => (o.Artifact.RepositoryId, o.Artifact.CommitSha, o.Record.SymbolKey));
+        var nodes = artifacts.SelectMany(a => a.Artifact.Nodes.Select(n => new Occurrence<NodeRecord>(a, n)))
+            .Where(o => Eligible(o.Record)).ToList();
+        var declarations = nodes.ToLookup(o => (o.Artifact.RepositoryId, o.Artifact.CommitSha, o.Record.SymbolKey));
+        var localDeclarations = nodes.ToLookup(o =>
+            (o.Artifact.RepositoryId, o.Artifact.CommitSha, o.Artifact.Artifact.Header.Unit.Path, o.Record.SymbolKey));
+        var visitedLocalInputs = new HashSet<(string, string, string, string)>();
+        var visitedFallbackInputs = new HashSet<(string, string, string)>();
 
         foreach (var artifact in artifacts)
         {
@@ -64,9 +69,17 @@ public static class Glossary
                         continue;
                     }
 
-                    var resolved = declarations[(artifact.RepositoryId, artifact.CommitSha, origin)].ToList();
-                    var local = resolved.Where(o => o.Artifact.Artifact.Header.Unit.Path == artifact.Artifact.Header.Unit.Path).ToList();
-                    foreach (var declaration in local.Count > 0 ? local : resolved)
+                    var localKey = (artifact.RepositoryId, artifact.CommitSha, artifact.Artifact.Header.Unit.Path, origin);
+                    var fallbackKey = (artifact.RepositoryId, artifact.CommitSha, origin);
+                    var local = localDeclarations[localKey];
+                    var useLocal = local.Any();
+                    if (useLocal ? !visitedLocalInputs.Add(localKey) : !visitedFallbackInputs.Add(fallbackKey))
+                    {
+                        continue;
+                    }
+
+                    // Repeated consumers must not repeatedly walk every declaration in other units.
+                    foreach (var declaration in useLocal ? local : declarations[fallbackKey])
                     {
                         // Input.type describes the operand (possibly a collection), not the origin declaration.
                         Add(declaration.Artifact, declaration.Record, "input",
