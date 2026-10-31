@@ -27,6 +27,7 @@ cat > "$scratch/bin/docker" <<'MOCK'
 #!/usr/bin/env bash
 set -eu
 case "$1" in
+  context) echo unix:///test/docker.sock ;;
   info) exit "${ACT_TEST_DOCKER_FAIL:-0}" ;;
   image) exit "${ACT_TEST_IMAGE_FAIL:-0}" ;;
   *) exit 92 ;;

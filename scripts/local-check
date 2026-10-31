@@ -63,6 +63,12 @@ patch="${BASH_REMATCH[3]}"
 # GHSA-xmgr-9pqc-h5vw was fixed in act 0.2.86.
 (( 10#$major > 0 || 10#$minor > 2 || (10#$minor == 2 && 10#$patch >= 86) )) ||
   fail 'nektos/act 0.2.86 or newer is required; update the nektos/gh-act extension'
+# act does not consistently resolve the Docker CLI active context on macOS.
+if [[ -z "${DOCKER_HOST:-}" ]]; then
+  DOCKER_HOST="$(docker context inspect --format '{{.Endpoints.docker.Host}}')" || fail 'cannot resolve active Docker context'
+  export DOCKER_HOST
+fi
+[[ "$DOCKER_HOST" == unix:///* ]] || fail 'local CI requires a local Unix Docker socket'
 docker info >/dev/null 2>&1 || fail 'Docker daemon is not available'
 runner='catthehacker/ubuntu:act-24.04@sha256:c58e2b364da03b0c804c7d660f2ecbedf2f221a382b9baa0b344b0144780ff43'
 docker image inspect "$runner" >/dev/null 2>&1 || fail "pull the local runner image first: docker pull $runner"
@@ -78,7 +84,7 @@ echo "local-check: running complete CI for $head ($version)"
   gh act pull_request -W .github/workflows/ci.yml -j ci --bind \
     -P "ubuntu-24.04=$runner" --pull=false \
     --env-file /dev/null --secret-file /dev/null --var-file /dev/null --input-file /dev/null \
-    --secret GITHUB_TOKEN= --no-cache-server
+    --secret GITHUB_TOKEN= --no-cache-server --container-daemon-socket /var/run/docker.sock
 )
 [[ "$(git rev-parse --verify HEAD)" == "$head" ]] || fail 'HEAD changed during CI; rerun against the intended commit'
 clean || fail 'working tree changed during CI; commit or stash changes and rerun'
