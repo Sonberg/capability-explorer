@@ -99,7 +99,10 @@ Before starting the runner, the wrapper fetches `origin/main` and requires it to
 be an ancestor of the checked-out HEAD. Fetch failure or an unintegrated main
 blocks the run. It fetches again after CI; a changed main invalidates the run.
 The success receipt records both source HEAD and main. `make pr-check` repeats the
-fresh-main check and validates that receipt immediately before PR creation/update.
+fresh-main check and validates that receipt before PR creation, base changes or
+review handoff. Code pushes are gated by the hook; discussion comments need no CI.
+See [MADR-0005](0005-pr-lifecycle-and-conflict-prevention.md) for the complete
+sequence and human merge authority.
 Integrate changes explicitly and rerun CI; guards never rewrite branch history.
 An update arriving after the final check still requires hosted mergeability/CI.
 

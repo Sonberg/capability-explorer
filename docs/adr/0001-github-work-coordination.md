@@ -70,7 +70,10 @@ merges, rebases, or resolves conflicts automatically. After integration, commit
 and run the full gate against that clean source. Do not create a PR from an old
 branch just because its earlier checks passed.
 
-Immediately before creating or updating a PR, run `make pr-check`. It refreshes
+Before PR creation, base changes or review handoff, run `make pr-check`. Code
+updates are gated by the installed pre-push hook; discussion-only comments do not
+require CI. See [MADR-0005](0005-pr-lifecycle-and-conflict-prevention.md) for the
+full sequence, merge authority, conflicts and dependency retargeting. The command refreshes
 main and checks the local CI receipt against both HEAD and that main SHA. If main
 advanced, integrate it and rerun the gate. Record both SHAs in the handoff. GitHub
 can change after a check, so this is not an atomic remote merge guarantee; hosted
