@@ -1,9 +1,13 @@
 # Handoff: remaining work
 
-Status: SQL/local-CI package merged via PR #5 as `98be7a4`. Issue #3's earlier
-unpushed handoff is superseded. PRs #8/#9/#7 are merged as fd2bd30/80cc6b9/b1f0bdb.
-The operator reports informing the owner for post-merge validation; that validation
-is not yet confirmed. Start new work from freshly fetched main. Environment/IaC binding remains open.
+Status: reconciliation package prepared for `stage-1-contract-and-fixtures`.
+The sole future work/alignment/PR target is that branch; main must remain intact.
+#5/#7/#8 landed on main; #9 landed only on `feat/main-aligned-delivery` after #8.
+This package includes both histories and corrected #10 lifecycle documentation.
+Do not call stage reconciled until the owner actually merges this package.
+The operator reports notifying the owner; subsequent validation is unconfirmed.
+See [reconciliation and source SHAs](plans/stage-branch-reconciliation.md).
+Environment/IaC binding remains open.
 Shared terminology: [ubiquitous language](ubiquitous-language.md),
 [MADR-0002](adr/0002-ubiquitous-language.md). Issue #6 tracks mapping defects;
 those fixes are separate from synthetic test coverage.
@@ -35,9 +39,9 @@ Ground rules that apply to all work:
 ## Local checks before pushing
 
 Install the repository hook with `make install-git-hooks`; run `make local-check`
-for the full project gate. Fetch/integrate `origin/main` first; local-check enforces
-that alignment and rejects changes to main during CI. Run `make pr-check` immediately
-before PR creation, base changes or review handoff; if main advanced, integrate and rerun. See [MADR-0003](adr/0003-local-ci-before-push.md).
+for the full project gate. Fetch/integrate `origin/stage-1-contract-and-fixtures` first; local-check enforces
+that alignment and rejects changes to stage-1-contract-and-fixtures during CI. Run `make pr-check` immediately
+before PR creation, base changes or review handoff; if stage-1-contract-and-fixtures advanced, integrate and rerun. See [MADR-0003](adr/0003-local-ci-before-push.md).
 The local hook is installed in this clone; other contributors must install it.
 The tracked `out/evaluation.json` is a historical missing-actual report, not current
 acceptance evidence. Current reports are `.sandbox-cache/extracted/{cs,ts,sql}/evaluation.json`.

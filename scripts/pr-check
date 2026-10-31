@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Verify the full local gate still covers the exact source and current main.
+# Verify the full local gate still covers the exact source and current stage target.
 set -euo pipefail
 fail() { echo "pr-check: $*" >&2; exit 1; }
 [[ $# -eq 0 ]] || fail 'usage: scripts/pr-check'
 root="$(git rev-parse --show-toplevel)" || fail 'run inside a Git checkout'
 cd "$root"
+[[ "$(git symbolic-ref --quiet --short HEAD || true)" != main ]] ||
+  fail 'work on a feature branch targeting stage-1-contract-and-fixtures, not main'
 clean() {
   local state
   state="$(git status --porcelain --untracked-files=all)" || return 1
@@ -19,11 +21,12 @@ trap 'rmdir "$lock" 2>/dev/null || true' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 head="$(git rev-parse --verify HEAD)"
-base="$(scripts/check-main-alignment)"
+base="$(scripts/check-target-alignment)"
 receipt=.sandbox-cache/local-ci/last-success.txt
 [[ -f "$receipt" ]] || fail 'no successful local CI receipt; run the full local gate'
 evidence="$(cat "$receipt")"
+[[ "$(printf '%s\n' "$evidence" | sed -n 's/^target=//p')" == stage-1-contract-and-fixtures ]] || fail 'receipt target does not match stage-1-contract-and-fixtures; rerun the full local gate'
 [[ "$(printf '%s\n' "$evidence" | sed -n 's/^head=//p')" == "$head" ]] || fail 'receipt does not match HEAD; rerun the full local gate'
-[[ "$(printf '%s\n' "$evidence" | sed -n 's/^main=//p')" == "$base" ]] || fail 'main changed since CI; integrate it and rerun the full local gate'
+[[ "$(printf '%s\n' "$evidence" | sed -n 's/^base=//p')" == "$base" ]] || fail 'target branch changed since CI; integrate it and rerun the full local gate'
 [[ "$(git rev-parse --verify HEAD)" == "$head" ]] && clean || fail 'source changed during PR preparation'
-echo "pr-check: verified HEAD $head against main $base"
+echo "pr-check: verified HEAD $head against stage-1-contract-and-fixtures $base"

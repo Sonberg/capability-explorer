@@ -9,15 +9,21 @@
 ## Context and problem statement
 
 Several contributors and agents can prepare correct changes against different
-versions of main. Individually green PRs can conflict when combined, duplicate
+versions of stage-1-contract-and-fixtures. Individually green PRs can conflict when combined, duplicate
 work, or invalidate review context when their base changes. New contributors
 need a repeatable delivery process rather than session-specific instructions.
 
-PRs #7, #8 and #9 demonstrated an independent feature alongside a dependent pair:
-#9 depended on #8. All are now merged. The operator reports making these merges
-and informing the owner for subsequent validation; that validation has not been
-independently confirmed here. This human-performed exception does not grant an
-agent future merge authority or establish that merging is itself approval.
+The operator clarified on 2026-11-01 that all future work, alignment and PRs
+must target `stage-1-contract-and-fixtures`. This supersedes the earlier instruction
+to align against main; main is not the delivery target and must remain intact.
+
+Historical destinations matter: #5/#7/#8 merged into main. #9 merged into
+`feat/main-aligned-delivery` after #8, so #9's changes did not reach main through
+that merge. #10 proposed the earlier main-based lifecycle. The reconciliation
+package preserves those commits on a feature branch targeting stage, without
+reverting or rewriting main. See [the reconciliation record](../plans/stage-branch-reconciliation.md).
+The operator reports informing the owner for subsequent validation; that validation
+is not independently confirmed. A human merge does not grant agents merge authority.
 
 ## Decision drivers
 
@@ -30,7 +36,7 @@ agent future merge authority or establish that merging is itself approval.
 ## Considered options
 
 1. Independent long-lived branches, refreshing only when GitHub reports conflict.
-2. Explicit ownership/dependencies, regular main integration, exact-source checks,
+2. Explicit ownership/dependencies, regular stage-1-contract-and-fixtures integration, exact-source checks,
    and human-controlled review and merge.
 3. Agents automatically rebase, force-push and merge whenever checks pass.
 
@@ -42,6 +48,18 @@ Repository-wide adoption requires explicit owner/contributor review recorded
 here; committing or merging the document alone must not be called acceptance.
 
 ### Authority and responsibilities
+
+**Delivery target: `stage-1-contract-and-fixtures`, exclusively.** Start isolated
+feature branches from its freshly fetched state, integrate that target before CI,
+and explicitly pass `--base stage-1-contract-and-fixtures` when creating PRs.
+Do not automatically import later main changes. Any future target-policy change
+requires an explicit operator decision; old checkpoints cannot override this one.
+
+Preserve main: no pushes, PR merges, reverts, resets, force pushes or branch deletion
+against main. The local pre-push hook blocks all outgoing `refs/heads/main` updates,
+including deletions. CI/PR checks reject a checkout of main; hosted PR CI rejects
+other bases. These are guardrails, not server-side branch protection, and can be
+bypassed by a user who disables hooks or ignores checks.
 
 The default is owner review before the owner merges. Agents may implement,
 independently review, reconcile conflicts, and update authorized feature branches;
@@ -63,7 +81,7 @@ that overlaps a worker claim is sequenced or explicitly handed over first.
 
 1. Read README, HANDOFF, MADR-0001 and this ADR. Use your own authorized GitHub
    account; Tigon32 is the configured account for this operator, not a shared login.
-2. Fetch main, inspect open PRs and issue claims, then create a clean isolated
+2. Fetch stage-1-contract-and-fixtures, inspect open PRs and issue claims, then create a clean isolated
    branch/worktree from the fetched base. Record base SHA, exact scope, dependency
    PRs, integration owner and checks in the issue before editing.
 3. Freeze shared interfaces before parallel work. Prefer focused new modules and
@@ -71,7 +89,7 @@ that overlaps a worker claim is sequenced or explicitly handed over first.
 4. Commit logical changes and run focused tests as implementation evolves. Explain
    behavior, compatibility and tests in the review guide; worker commits normally
    integrate into one cohesive package PR rather than one public PR per agent.
-5. Reconcile main and dependency branches before full CI and before requesting
+5. Reconcile stage-1-contract-and-fixtures and dependency branches before full CI and before requesting
    review. Follow the validation sequence below. Pushes/PRs still require the
    operator's authorization; this workflow does not grant release authority.
 6. Request human review with exact source/base evidence, dependencies, known limits
@@ -79,27 +97,29 @@ that overlaps a worker claim is sequenced or explicitly handed over first.
    describe what changed; do not silently dismiss or resolve another reviewer's
    concern. Release implementation claims explicitly at handoff.
 
-### Main alignment and validation sequence
+### Target-branch alignment and validation sequence
 
 Run from a clean feature worktree; preserve unrelated contributor changes.
 
 ```sh
-git fetch origin main
-git merge origin/main
+git fetch origin stage-1-contract-and-fixtures
+git merge origin/stage-1-contract-and-fixtures
 # Resolve any conflicts semantically, test them, then commit the resolution.
 # Once the intended source is committed and clean:
 git push -u origin <feature-branch>  # installed hook runs full local CI
 make pr-check
-# Only then create the PR, change its base, or hand the updated PR back for review.
+# Only then create a PR with the explicit target:
+gh pr create --base stage-1-contract-and-fixtures
+# Or hand the existing stage-targeted PR back for review.
 ```
 
-`local-check` fetches main and requires it in HEAD before CI, fetches again afterward,
-and records exact HEAD/main on success. Code pushes to existing PRs are gated by
+`local-check` fetches stage-1-contract-and-fixtures and requires it in HEAD before CI, fetches again afterward,
+and records exact HEAD/target-name/target-SHA on success. Code pushes to existing PRs are gated by
 that same pre-push hook; `make pr-check` then verifies the receipt before review
 handoff. It also runs immediately before PR creation or base/metadata changes
 that affect review. Routine issue/PR discussion comments do not require a CI run.
 
-If main advances or source changes, integrate and repeat validation. Never reuse
+If stage-1-contract-and-fixtures advances or source changes, integrate and repeat validation. Never reuse
 a receipt from another HEAD/base, skip hooks, weaken a gate, or run local-check
 and then immediately push unchanged HEAD just to duplicate the same full gate.
 Manual `make local-check` is available when no push is intended. Contributors
@@ -107,13 +127,13 @@ must install the hook in their own clone; tracked documentation cannot do that.
 
 Remote CI and mergeability must be checked separately against the latest PR head
 and base. A local text merge simulation does not prove the combined code builds.
-A main update after the last check can still occur; these controls reduce conflicts
+A stage-1-contract-and-fixtures update after the last check can still occur; these controls reduce conflicts
 but are not an atomic remote merge lock. Before the human merge, recheck the actual
 target state and refresh the branch if the evidence has become stale.
 
 ### Dependencies and bounded PR queues
 
-Prefer independent PRs against main. Use one integration PR per coherent package,
+Prefer independent PRs against stage-1-contract-and-fixtures. Use one integration PR per coherent package,
 with logical reviewable commits. Do not create more overlapping public PRs while
 an earlier owner review is unresolved; independent local work may continue.
 
@@ -125,14 +145,14 @@ parent's overlapping files from a child without an acknowledged handoff.
 
 After the parent is merged by a human:
 
-1. Fetch main and the parent/child states. Record the actual merge SHA and method
+1. Fetch stage-1-contract-and-fixtures and the parent/child states. Record the actual merge SHA and method
    if known; never infer ancestry from similar commit messages.
-2. Integrate current main into the child without rewriting its published history.
+2. Integrate current stage-1-contract-and-fixtures into the child without rewriting its published history.
    A squash/rebase merge may contain the same content under different ancestry:
    inspect the net diff and resolve duplicate/conflicting content intentionally.
    Do not blindly cherry-pick the parent again or assume it can be dropped safely.
 3. Run focused integration checks, commit, and push through full local CI. Run
-   `make pr-check`, retarget to main when appropriate, and inspect Files changed
+   `make pr-check`, retarget to stage-1-contract-and-fixtures when appropriate, and inspect Files changed
    for leaked parent changes or missing child changes. Do not assume automatic
    GitHub retargeting produces the intended review diff.
 4. Explain the old/new base and resolution to reviewers, then verify hosted checks
@@ -157,10 +177,10 @@ full local gate before publishing the new commit. Explain the resolution in the 
 Use this compact PR handoff (fill with real observations, not desired results):
 
 ```text
-Source HEAD / verified main / target base:
+Source HEAD / verified target SHA / target branch (stage-1-contract-and-fixtures):
 Depends on: none | PR number + dependency SHA + merge order
 Changed behavior and reviewer guide:
-Local checks: command, exit status, receipt HEAD/main
+Local checks: command, exit status, receipt HEAD/target-name/target-SHA
 Hosted checks: current head/base, observed status
 Conflict/base updates: none | old/new base and semantic resolution
 Not tested / unresolved review or validation:
@@ -170,7 +190,7 @@ Merge authority: repository owner; auto-merge disabled
 
 After a human merge, record its actual SHA and outstanding owner validation, release
 remaining claims, and refresh dependent branches/HANDOFF. Plan the next package
-from current main and current issues rather than the previous feature branch.
+from current stage-1-contract-and-fixtures and current issues rather than the previous feature branch.
 Do not start another implementation merely because an old checkpoint says next.
 Do not automatically delete worktrees or branches at handoff.
 
@@ -186,8 +206,8 @@ and bounded public queues keep that limit visible rather than bypassing it.
 ## Validation and adoption
 
 Review the workflow against an independent PR, a dependent PR, a parent squash
-merge, a main update during CI, and a human-performed merge exception. Existing
-local CI harness tests cover stale main, failed refreshes, changed source and
+merge, a stage-1-contract-and-fixtures update during CI, and a human-performed merge exception. Existing
+local CI harness tests cover stale stage-1-contract-and-fixtures, failed refreshes, changed source and
 receipt identity; no automated test can prove a human review occurred.
 
 Owner/contributor adoption: pending. Record the explicit review decision and date

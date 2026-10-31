@@ -17,7 +17,11 @@ Shared terminology: [ubiquitous language](docs/ubiquitous-language.md).
 
 Start with [HANDOFF](docs/HANDOFF.md) and the
 [PR lifecycle and conflict-prevention decision](docs/adr/0005-pr-lifecycle-and-conflict-prevention.md).
-Claim scope before editing, use an isolated branch/worktree, and keep main current.
+**All work and PRs target `stage-1-contract-and-fixtures`. Preserve main.**
+Claim scope before editing and use an isolated feature branch/worktree based on
+freshly fetched `origin/stage-1-contract-and-fixtures`. Integrate that target
+before CI; create PRs explicitly with `gh pr create --base stage-1-contract-and-fixtures`.
+Do not push, merge, revert or rewrite main.
 One integration owner coordinates shared files and dependent PRs. The default is
 owner review and merge; agents do not merge PRs or enable auto-merge. Run
 `make pr-check` after the required pre-push gate and before creating a PR or

@@ -9,6 +9,7 @@ check=0
 while read -r local_ref local_sha remote_ref remote_sha extra || [[ -n "$local_ref" ]]; do
   [[ -n "$local_ref" && -n "$local_sha" && -n "$remote_ref" && -n "$remote_sha" && -z "$extra" ]] || fail 'malformed outgoing ref description'
   [[ "$local_sha" =~ ^[0-9a-fA-F]+$ && "$remote_sha" =~ ^[0-9a-fA-F]+$ ]] || fail 'invalid outgoing object ID'
+  [[ "$remote_ref" != refs/heads/main ]] || fail 'updates to main are prohibited; use a feature branch and a PR targeting stage-1-contract-and-fixtures'
   [[ "$local_sha" =~ ^0+$ ]] && continue
   [[ -n "$head" ]] || head="$(git rev-parse --verify HEAD)"
   commit="$(git rev-parse --verify "${local_sha}^{commit}")" || fail "$local_ref does not point to a commit"
