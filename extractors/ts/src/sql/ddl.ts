@@ -1,4 +1,5 @@
 import { isIdent, isKw, isP, tokenize, upper, type Dialect, type Tok } from "./lexer.ts";
+import type { SqlDataType, SqlParameter } from "./calculation-types.ts";
 
 /** A source range in one file (absolute offsets). */
 export interface Range { path: string; start: number; end: number }
@@ -12,6 +13,9 @@ export interface RoutineDef {
   volatility?: string;
   at: Range;
   params: Set<string>;
+  /** Typed declarations for calculation analysis; params retains graph lookup compatibility. */
+  parameterTypes?: SqlParameter[];
+  returnType?: SqlDataType;
   /** Tokens of the body to analyse for reads and writes. */
   body: Tok[];
   path: string;
