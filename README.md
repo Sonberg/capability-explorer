@@ -13,6 +13,16 @@ C#, TypeScript/JavaScript and the supported SQL routine calculations are extract
 
 Shared terminology: [ubiquitous language](docs/ubiquitous-language.md).
 
+## Contributing and PR updates
+
+Start with [HANDOFF](docs/HANDOFF.md) and the
+[PR lifecycle and conflict-prevention decision](docs/adr/0005-pr-lifecycle-and-conflict-prevention.md).
+Claim scope before editing, use an isolated branch/worktree, and keep main current.
+One integration owner coordinates shared files and dependent PRs. The default is
+owner review and merge; agents do not merge PRs or enable auto-merge. Run
+`make pr-check` after the required pre-push gate and before creating a PR or
+handing updated code back for review. See the MADR for conflicts and retargeting.
+
 ## Before pushing
 
 Install Docker and GitHub CLI, then run `gh extension install nektos/gh-act --pin v0.2.94`.
