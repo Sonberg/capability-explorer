@@ -83,3 +83,17 @@ After implementationb6c3688 integration as710ac7d, `make test-extractors` passed
 P100/100, iteration1: closure40/identity40/failures20. Brain closeout returned
 sparc/CARD/sparc-card; no new runtime primitive needed. No paid provider calls;
 native spend unknown. Broad framework/duplicate-assembly semantics untested.
+
+
+Architecture gate: only9 added/2 removed extractor lines. The typed Roslyn
+CompilationReference/Compilation APIs already exist in the dependency; reference
+identity dedup is materialized before creating the compilation. PE predicate,
+missing/cycle guard, direct dependency edge emission and all public DTOs remain
+unchanged. Focused17/17 tests and build0 warnings/errors verify integration.
+Independent Sol-high reviewer inspected finalb6c3688 and tests and found no
+blockers. A100/100, iteration1: contract40/isolation40/compatibility20. Brain
+closeout: sparc/CARD/sparc-card. No added dependency/service/model or paid routing.
+Review limit: exported artifacts filter compiler diagnostics to source locations;
+public tests do not directly observe all assembly-level diagnostics or reference
+multiplicity. Internal identity dedup is verified by source review, not claimed
+as runtime introspection. Duplicate assembly names/aliases remain out of scope.
