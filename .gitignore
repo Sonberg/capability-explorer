@@ -1,0 +1,12 @@
+# Sandbox caches (NuGet packages, npm cache) — see scripts/sandbox
+.sandbox-cache/
+
+# Built from fixtures/src by scripts/build-fixtures.sh
+fixtures/.repos/
+fixtures/.work/
+
+bin/
+obj/
+node_modules/
+*.trx
+TestResults/

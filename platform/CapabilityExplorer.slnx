@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CapabilityExplorer.Cli/CapabilityExplorer.Cli.csproj" />
+    <Project Path="src/CapabilityExplorer.Contracts/CapabilityExplorer.Contracts.csproj" />
+    <Project Path="src/CapabilityExplorer.Store/CapabilityExplorer.Store.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CapabilityExplorer.Contracts.Tests/CapabilityExplorer.Contracts.Tests.csproj" />
+    <Project Path="tests/CapabilityExplorer.Store.Tests/CapabilityExplorer.Store.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,14 @@
+{
+  "api-cs": {
+    "v1-base": "e961575c9f854f151a411684c2390bbf5357cdd4",
+    "v2-rename": "ec4d0af3590362d861e022836e2dafd9b5cdacff",
+    "v3-filter": "29571e3528e537313f938a1fedae43aaeb4dbef9"
+  },
+  "worker-cs": {
+    "v1-base": "d9a6b7e1740388e3111cfa476ef3d78bff352b3e",
+    "v2-broken": "b884b04321a12d82c23f8575c94c1980de349ce9"
+  },
+  "web-ts": {
+    "v1-base": "4f254bb0209550bfe8fd40459ae4136b1d37ebe4"
+  }
+}

@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# Runs a command inside a disposable container. All builds, installs and tests go through here;
+# nothing is restored, installed or compiled on the host.
+#
+#   scripts/sandbox [options] <profile> <command...>
+#
+# Profiles:
+#   dotnet   .NET SDK image (also has git)
+#   node     Node.js image (also has git)
+#
+# Options:
+#   --offline   no network at all (--network none). Use for steps that must not fetch anything.
+#   --docker    mount the Docker socket so Testcontainers can start Postgres.
+#               This grants the container control of the host Docker daemon. Only test targets use it;
+#               analysis/extraction steps must never get it.
+#
+# Hardening applied to every run:
+#   - runs as the invoking host uid:gid, never root
+#   - read-only root filesystem, all capabilities dropped, no-new-privileges
+#   - only the repository is mounted (at /work); caches live in /work/.sandbox-cache
+#   - environment is an explicit allowlist: no host variables or credentials leak in
+#   - npm lifecycle scripts are disabled (npm_config_ignore_scripts=true)
+#
+# Environment knobs (host side):
+#   SANDBOX_EXTRA_CA_FILE  extra CA bundle to trust (e.g. a TLS-intercepting egress proxy)
+#   SANDBOX_NETWORK        docker network to use when not --offline (default: bridge)
+#   SANDBOX_DOTNET_IMAGE / SANDBOX_NODE_IMAGE   override images
+set -euo pipefail
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+offline=0
+docker_sock=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --offline) offline=1; shift ;;
+    --docker) docker_sock=1; shift ;;
+    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+    *) break ;;
+  esac
+done
+[[ $# -ge 2 ]] || { echo "usage: scripts/sandbox [--offline] [--docker] <dotnet|node> <command...>" >&2; exit 2; }
+profile="$1"; shift
+
+case "$profile" in
+  dotnet) image="${SANDBOX_DOTNET_IMAGE:-mcr.microsoft.com/dotnet/sdk:10.0}" ;;
+  node)   image="${SANDBOX_NODE_IMAGE:-node:22-bookworm}" ;;
+  *) echo "unknown profile: $profile" >&2; exit 2 ;;
+esac
+
+cache="$root/.sandbox-cache"
+mkdir -p "$cache/nuget" "$cache/nuget-http" "$cache/npm"
+
+args=(
+  run --rm
+  --user "$(id -u):$(id -g)"
+  --read-only
+  --tmpfs /tmp:rw,exec,nosuid,size=4g
+  --cap-drop ALL
+  --security-opt no-new-privileges
+  --pids-limit 4096
+  -v "$root:/work"
+  -w /work
+  -e HOME=/tmp/home
+  -e CI=1
+  -e DOTNET_CLI_TELEMETRY_OPTOUT=1
+  -e DOTNET_NOLOGO=1
+  -e DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
+  -e DOTNET_CLI_HOME=/tmp/home
+  -e NUGET_PACKAGES=/work/.sandbox-cache/nuget
+  -e NUGET_HTTP_CACHE_PATH=/work/.sandbox-cache/nuget-http
+  -e NUGET_XMLDOC_MODE=skip
+  -e npm_config_cache=/work/.sandbox-cache/npm
+  -e npm_config_ignore_scripts=true
+  -e npm_config_fund=false
+  -e npm_config_audit=false
+  -e npm_config_update_notifier=false
+  # Repository is mounted from the host; owner may differ from the container user.
+  -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*'
+)
+[[ -t 0 && -t 1 ]] && args+=(-it)
+
+if [[ $offline -eq 1 ]]; then
+  args+=(--network none)
+else
+  args+=(--network "${SANDBOX_NETWORK:-bridge}")
+fi
+
+if [[ -n "${SANDBOX_EXTRA_CA_FILE:-}" ]]; then
+  [[ -f "$SANDBOX_EXTRA_CA_FILE" ]] || { echo "SANDBOX_EXTRA_CA_FILE not found: $SANDBOX_EXTRA_CA_FILE" >&2; exit 2; }
+  args+=(-v "$SANDBOX_EXTRA_CA_FILE:/etc/sandbox/extra-ca.crt:ro" -e NODE_EXTRA_CA_CERTS=/etc/sandbox/extra-ca.crt)
+fi
+
+if [[ $docker_sock -eq 1 ]]; then
+  sock=/var/run/docker.sock
+  [[ -S $sock ]] || { echo "--docker: $sock not found (is the Docker daemon running?)" >&2; exit 2; }
+  args+=(
+    -v "$sock:$sock"
+    --group-add "$(stat -c %g "$sock")"
+    # Testcontainers publishes container ports on the host; reach them via the host gateway.
+    --add-host host.docker.internal:host-gateway
+    -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal
+    -e DOCKER_HOST="unix://$sock"
+  )
+fi
+
+# Entry: build a combined CA bundle without root (system roots + extra CA), then exec the command.
+entry='set -e
+mkdir -p "$HOME"
+if [ -f /etc/sandbox/extra-ca.crt ]; then
+  cat /etc/ssl/certs/ca-certificates.crt /etc/sandbox/extra-ca.crt > /tmp/ca-bundle.pem
+  export SSL_CERT_FILE=/tmp/ca-bundle.pem
+fi
+exec "$@"'
+
+exec docker "${args[@]}" "$image" sh -c "$entry" sandbox "$@"

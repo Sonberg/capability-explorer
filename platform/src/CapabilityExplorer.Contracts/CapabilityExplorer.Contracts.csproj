@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="JsonSchema.Net" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The schema at the repository root is the single source of truth; embed it, never copy it. -->
+    <EmbeddedResource Include="../../../schema/v1/record.schema.json" LogicalName="ce.v1.record.schema.json" />
+    <EmbeddedResource Include="../../../schema/v1/relations.json" LogicalName="ce.v1.relations.json" />
+  </ItemGroup>
+</Project>
