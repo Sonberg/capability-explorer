@@ -152,8 +152,8 @@ Each step runs in its own sandbox and gets only what it needs:
 | Step | Sandbox | What happens |
 |---|---|---|
 | 1 export | network, GitHub token, local repositories mounted read-only | Checks the capability again, so each ref is locked to its current commit (`LOCKED=1` keeps the last check). Then it writes each locked tree to `.sandbox-cache/analyze/<id>/src/`. Only regular files are written: symlinks and files over 8 MB are skipped. A blob-less clone fetches the blobs it needs in one batch. |
-| 2 packages | network, no token, no local mounts | Downloads the NuGet packages that the projects reference, plus their dependencies, from nuget.org into `.sandbox-cache/analyze-packages`. They are unpacked as data only: nuspec plus `ref/`/`lib/` assemblies. There is no restore and no MSBuild evaluation. `PACKAGES=0` skips this step. |
-| 3 extract | `--offline` | Runs `ce-cs extract` and `ce-ts extract` over each tree. The output for each revision is swapped into `.sandbox-cache/artifacts/<repo>/<commit>/` only once every extractor has finished. |
+| 2 packages | network, no GitHub token, no local mounts | Resolves one exact version set per project (declared versions, ranges at their lower bound, floating ones to the newest stable, then nuspec dependencies) and writes it as `.sandbox-cache/analyze/<id>/locks/<repo>.json`. It downloads those packages into `.sandbox-cache/analyze-packages`, unpacked as data only: nuspec plus `ref/`/`lib/` assemblies. There is no restore and no MSBuild evaluation. Feeds come from the repository's `nuget.config` (https only; nuget.org unless `<clear />`). Credentials for private feeds are `%VAR%` references in that file, resolved from the variables named in `NUGET_PASS_ENV=VAR1,VAR2`; only this step receives them, they go only to their own feed's host, and they are never printed or stored. `PACKAGES=0` skips this step (no packages are used). |
+| 3 extract | `--offline` | Runs `ce-cs extract` (with only the locked package versions) and `ce-ts extract` over each tree. The output for each revision is swapped into `.sandbox-cache/artifacts/<repo>/<commit>/` only once every extractor has finished. |
 
 The analysed code is parsed and bound, never restored, built or executed. `make explore` loads
 `fixtures/expected` and `.sandbox-cache/artifacts`. For the same repository, commit and unit, the
@@ -183,7 +183,7 @@ capability files and reloads when they change, and the UI refetches what it show
 
 - Calculations (the IR and its attributes) are not extracted yet. They are scored but not gated.
 - SQL projects (`.sqlproj`, migrations) are not extracted yet.
-- Edges into package code depend on the package versions the shared download folder holds.
+- Package versions are locked per analysis: the same commit and lock give byte-identical artifacts whatever the shared download folder holds. `header.configHash` covers the resolved set. Floating versions (`1.*`) are resolved when the lock is written, so re-running the packages step later can pick a newer one and then yields a different `configHash`. Without `--lock` (as in `make evaluate-cs`) `ce-cs` falls back to the folder's contents; the hash records what it used.
 
 `make evaluate-cs` and `make evaluate-ts` run each extractor over every fixture revision. They score it
 against the golden units of its own languages using `fixtures/evaluation.extractors.json`. Graph

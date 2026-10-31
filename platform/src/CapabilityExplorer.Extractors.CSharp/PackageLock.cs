@@ -13,6 +13,8 @@ public sealed class PackageLock
 {
     public const int CurrentVersion = 1;
 
+    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
+
     private readonly SortedDictionary<string, IReadOnlyList<LockedPackage>> _projects = new(StringComparer.Ordinal);
 
     public IReadOnlyDictionary<string, IReadOnlyList<LockedPackage>> Projects => _projects;
@@ -36,7 +38,7 @@ public sealed class PackageLock
                 kv => kv.Value.Select(p => new SortedDictionary<string, string>(StringComparer.Ordinal) { ["id"] = p.Id, ["version"] = p.Version }).ToList(),
                 StringComparer.Ordinal),
         };
-        return JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true }) + "\n";
+        return JsonSerializer.Serialize(doc, Indented) + "\n";
     }
 
     public static PackageLock Parse(string json)
