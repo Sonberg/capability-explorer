@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Print freshly fetched origin/main only when checked-out HEAD contains it.
+set -euo pipefail
+fail() { echo "main-alignment: $*" >&2; exit 1; }
+[[ $# -eq 0 ]] || fail 'usage: scripts/check-main-alignment'
+root="$(git rev-parse --show-toplevel)" || fail 'run inside a Git checkout'
+cd "$root"
+# Remote-tracking refs are shared by linked worktrees. Bind this check to its
+# own fetch rather than a concurrent worktree's update of origin/main.
+temp="$(mktemp -d "${TMPDIR:-/tmp}/ce-main-ref.XXXXXX")"
+ref="refs/ce-main-check/${temp##*/}"
+cleanup() { git update-ref -d "$ref" >/dev/null 2>&1 || true; rmdir "$temp" 2>/dev/null || true; }
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+git fetch --no-tags --no-write-fetch-head origin '+refs/heads/main:refs/remotes/origin/main' "refs/heads/main:$ref" >&2 ||
+  fail 'cannot refresh origin/main; no stale-base fallback is permitted'
+base="$(git rev-parse --verify "${ref}^{commit}")" || fail 'origin/main is missing'
+git merge-base --is-ancestor "$base" HEAD ||
+  fail "HEAD does not contain origin/main ($base); integrate main, resolve conflicts, commit and rerun"
+printf '%s\n' "$base"

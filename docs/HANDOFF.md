@@ -1,6 +1,11 @@
 # Handoff: remaining work
 
-Status: integration work package based on `stage-1-contract-and-fixtures`, including upstream `7fd2a2f`. SQL calculation implementation and focused gates are complete; full project CI passed locally through act at `7dfa349`; see [build evidence](plans/sql-build-evidence.md) for executed gates and current limitations. Environment/IaC files as a binding source remain open. Shared terminology and governance: [ubiquitous language](ubiquitous-language.md), [MADR-0002](adr/0002-ubiquitous-language.md).
+Status: SQL/local-CI package merged via PR #5 as `98be7a4`. Issue #3's earlier
+unpushed handoff is superseded. Glossary first slice is in PR #7; check its current
+review status before overlapping it. Environment/IaC binding remains open.
+Shared terminology: [ubiquitous language](ubiquitous-language.md),
+[MADR-0002](adr/0002-ubiquitous-language.md). Issue #6 tracks mapping defects;
+those fixes are separate from synthetic test coverage.
 
 ## What exists
 
@@ -27,7 +32,9 @@ Ground rules that apply to all work:
 ## Local checks before pushing
 
 Install the repository hook with `make install-git-hooks`; run `make local-check`
-for the full project gate. See [MADR-0003](adr/0003-local-ci-before-push.md).
+for the full project gate. Fetch/integrate `origin/main` first; local-check enforces
+that alignment and rejects changes to main during CI. Run `make pr-check` immediately
+before PR creation/update; if main advanced, integrate and rerun. See [MADR-0003](adr/0003-local-ci-before-push.md).
 The local hook is installed in this clone; other contributors must install it.
 The tracked `out/evaluation.json` is a historical missing-actual report, not current
 acceptance evidence. Current reports are `.sandbox-cache/extracted/{cs,ts,sql}/evaluation.json`.
@@ -115,7 +122,7 @@ Implemented in `Calculations.cs`, `CalculationAttributes.cs`, `CalculationIr.cs`
 
 ## Smaller follow-ups
 
-- C# extractor unit tests on synthetic projects. Today only the golden gate covers it; TS has synthetic tests.
+- C# synthetic package and calculation tests now cover locked packages, explicit division IR, unsupported-loop graph retention and generated-source exclusion. Broader synthetic graph/route coverage remains open; issue #6 fixes are separate.
 - `scripts/extract-fixtures.sh` re-parses the lock file with sed. A `ce` subcommand would be sturdier.
 - The explorer polls every 2 s. Fine locally, but worth making configurable.
 - The TypeScript 7 native compiler API: evaluate before upgrading beyond `typescript@5.9`.

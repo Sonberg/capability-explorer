@@ -28,6 +28,9 @@ trap 'exit 143' TERM
 # A failed or interrupted check must never leave a previous success looking current.
 rm -f "$receipt"
 
+# Fail before spending runner time when this source omits current main.
+base="$("$root/scripts/check-main-alignment")"
+
 command -v gh >/dev/null || fail 'install GitHub CLI and the nektos/gh-act extension'
 command -v docker >/dev/null || fail 'Docker is required'
 
@@ -89,10 +92,15 @@ echo "local-check: running complete CI for $head ($version)"
 [[ "$(git rev-parse --verify HEAD)" == "$head" ]] || fail 'HEAD changed during CI; rerun against the intended commit'
 clean || fail 'working tree changed during CI; commit or stash changes and rerun'
 
+latest_base="$("$root/scripts/check-main-alignment")"
+[[ "$latest_base" == "$base" ]] || fail 'main changed during CI; integrate it and rerun'
+[[ "$(git rev-parse --verify HEAD)" == "$head" ]] && clean || fail 'source changed during final alignment check'
+
 # Evidence only: this receipt is never reused to skip a later run. Package and
 # Docker caches reduce work without trusting an incomplete environment fingerprint.
 {
   echo "head=$head"
+  echo "main=$base"
   echo "runner=$version"
   echo "runner-image=$runner"
   echo "finished=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"

@@ -95,6 +95,14 @@ out and tested explicitly. Deletion-only updates introduce no source and need
 no build. The dispatcher uses the current checkout's tracked hook, not a temporary
 integration-worktree path. A missing tracked hook fails closed.
 
+Before starting the runner, the wrapper fetches `origin/main` and requires it to
+be an ancestor of the checked-out HEAD. Fetch failure or an unintegrated main
+blocks the run. It fetches again after CI; a changed main invalidates the run.
+The success receipt records both source HEAD and main. `make pr-check` repeats the
+fresh-main check and validates that receipt immediately before PR creation/update.
+Integrate changes explicitly and rerun CI; guards never rewrite branch history.
+An update arriving after the final check still requires hosted mergeability/CI.
+
 Each check runs the full gate; package/image/database caches are reused, but old
 success receipts do not bypass execution. The wrapper detects source changes
 during verification and serializes runs. A hook is cooperative local enforcement:
