@@ -270,6 +270,7 @@ for (const d of ["tsql", "postgresql"] as const) {
     ["unterminated comment", "SELECT 1 /* unfinished"],
     ["depth limit", `SELECT ${"(".repeat(100)}1${")".repeat(100)}`],
     ["token limit", `SELECT ${Array.from({ length: 2500 }, () => "1").join(" + ")}`],
+    ["numeric literal length limit", `SELECT ${"9".repeat(2000)}`],
   ];
   for (const [name, body] of negatives) test(`${d}: rejects ${name} with evidence and preserves graph`, () => {
     const input = files(d, body!, "", name === "unterminated comment" ? "integer" : "numeric");
