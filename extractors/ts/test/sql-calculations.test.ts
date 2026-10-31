@@ -204,6 +204,18 @@ for (const d of ["tsql", "postgresql"] as const) {
     assert.notEqual(c.attributes.nullHandling!.value, "notApplicable");
   });
 
+  test(`${d}: nullable parameters prevent a NOT NULL column from proving a nonnullable aggregate value`, () => {
+    const c = calculation(run(files(d, `SELECT SUM(e.${q("Quantity")} + ${x}) FROM ${table} e`, `${x} int`, "bigint")));
+    assert.notEqual(c.attributes.nullHandling!.value, "notApplicable");
+    assert.notEqual(c.attributes.nullHandling!.value, "nullAsZero");
+  });
+
+  test(`${d}: outer coalescing changes zero-denominator behavior`, () => {
+    const c = calculation(run(files(d, `SELECT COALESCE(1 / NULLIF(${x}, 0), 0)`, `${x} int`, "integer")));
+    assert.ok(expressions(c.expr).some((e) => e.op === "coalesce"));
+    assert.notEqual(c.attributes.zeroDenominator!.value, "returnsNull", "the caller observes zero after coalescing, not the inner division's NULL");
+  });
+
   test(`${d}: filter attributes preserve grouping and additional bounds`, () => {
     const quantity = `e.${q("Quantity")}`;
     const filtered = (predicate: string) => calculation(run(files(d,
@@ -291,6 +303,21 @@ test("narrow integer declarations reject conversions and arithmetic whose overfl
   const tsql = files("tsql", "SELECT 1");
   tsql["db/functions/calculate.sql"] = "CREATE FUNCTION dbo.Calculate() RETURNS smallint AS BEGIN RETURN 32768; END;\nGO\n";
   rejected(run(tsql));
+});
+
+test("T-SQL decimal and numeric defaults cannot discard precision and scale conversion", () => {
+  for (const type of ["decimal", "numeric"]) {
+    rejected(run(files("tsql", `SELECT CAST(1.25 AS ${type})`)));
+    const input = files("tsql", "SELECT 1");
+    input["db/functions/calculate.sql"] = `CREATE FUNCTION dbo.Calculate() RETURNS ${type} AS BEGIN RETURN 1.25; END;\nGO\n`;
+    rejected(run(input));
+  }
+});
+
+test("PostgreSQL NULLIF comparison promotion cannot silently become integer division", () => {
+  // The numeric second argument selects numeric equality and promotes NULLIF's
+  // first argument; representing the division as int32 would truncate 3.5.
+  rejected(run(files("postgresql", "SELECT 7 / NULLIF(2, 0.0)", "", "integer")));
 });
 
 test("procedural and dynamic bodies preserve ordinary graph and dynamic coverage", () => {
