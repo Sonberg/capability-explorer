@@ -106,3 +106,11 @@ compilation succeeded, 37 tests passed, 0 failed, 0 skipped. Grade 100/100
 `468008a`; no new parser behavior is claimed. Log: `/private/tmp/ce-sql-interface-gates.log`.
 Brain closeout found thin adjacent scope-enforcement documentation
 `ruflo/v3/docs/releases/v3.32.33.md`; no applicable dependency change.
+
+Architecture gate: the same combined invocation also completed `golden-check`
+with all 18 artifacts current and locked revisions unchanged after the explicitly
+approved unknown-currency correction. Grade 100/100 (typed cross-module skeleton
+50, schema/golden compatibility 50). Reused this single run for adjacent gates
+because the source was unchanged; only evidence and language documentation were
+added afterward. Architecture brain closeout rechecked queen/worker coordination;
+Ruflo remains a ledger and native isolated workers perform implementation.
