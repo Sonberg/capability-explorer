@@ -131,7 +131,6 @@ public static class Architecture
     private static ArchitectureGraph Repository(ViewIndex view, string repo)
     {
         var b = new Builder(view);
-        b.Node(new ArchNode($"repo:{repo}", "boundary", repo, "this repository", null, null, repo, null, []));
         foreach (var a in view.Artifacts.Where(a => a.RepositoryId == repo))
         {
             foreach (var n in a.Artifact.Nodes)

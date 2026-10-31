@@ -9,6 +9,8 @@
     "build": "tsc --noEmit && vite build"
   },
   "dependencies": {
+    "@dagrejs/dagre": "3.1.1",
+    "@xyflow/react": "12.12.0",
     "react": "19.1.10",
     "react-dom": "19.1.10"
   },

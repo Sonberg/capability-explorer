@@ -1,6 +1,7 @@
 import type { Meta } from "./api";
 import { ErrorBox, Loading } from "./components/ui";
 import { href, SelectionProvider, useApi, useRoute, useSelection } from "./state";
+import { lazy, Suspense } from "react";
 import { Artifacts } from "./views/Artifacts";
 import { Calculations } from "./views/Calculations";
 import { Capabilities } from "./views/Capabilities";
@@ -9,8 +10,12 @@ import { Evaluation } from "./views/Evaluation";
 import { Explore } from "./views/Explore";
 import { Integrations } from "./views/Integrations";
 
+// The canvas pulls in React Flow and dagre; load it only when opened.
+const ArchitectureView = lazy(() => import("./views/Architecture").then((m) => ({ default: m.ArchitectureView })));
+
 const VIEWS = [
   ["explore", "Explore"],
+  ["architecture", "Architecture"],
   ["integrations", "Integrations"],
   ["calculations", "Calculations"],
   ["changes", "Changes"],
@@ -70,6 +75,12 @@ function Shell() {
 
 function Routed({ path, params }: { path: string; params: URLSearchParams }) {
   switch (path) {
+    case "architecture":
+      return (
+        <Suspense fallback={<Loading what="Loading canvas" />}>
+          <ArchitectureView params={params} />
+        </Suspense>
+      );
     case "integrations":
       return <Integrations />;
     case "calculations":

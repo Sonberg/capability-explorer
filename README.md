@@ -52,6 +52,15 @@ running explorer. Everything runs in the sandbox and publishes on `127.0.0.1` on
   (formula and attributes, each with evidence), outgoing and incoming edges with resolution and
   derivation, and whether the key exists in each loaded revision (present, absent, or *not observed*
   when that analysis was partial).
+- **Architecture**: a pan/zoom canvas in three levels of abstraction.
+  - *System*: repositories, data stores and channels.
+  - *Components*: types, modules and SQL objects of one repository, grouped by unit.
+  - *Code*: the members of one component and everything they touch, including external APIs and
+    unresolved targets.
+
+  Double-click to drill down; breadcrumbs go back up. Line style shows certainty: proven, static
+  target, unbound, candidate or unresolved. Clicking a connection lists the underlying facts with
+  their evidence. Edge kinds can be toggled.
 - **Integrations**: services and endpoints; HTTP calls with their candidate endpoint (a route match is
   labelled a candidate while the base URL is unbound); channels and tables grouped by name with every
   distinct key kept apart.
