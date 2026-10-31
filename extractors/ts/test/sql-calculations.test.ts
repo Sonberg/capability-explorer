@@ -220,11 +220,12 @@ for (const d of ["tsql", "postgresql"] as const) {
     ["multiple statements", "SELECT 1; SELECT 2"],
     ["malformed number", "SELECT 1.2.3"],
     ["unterminated literal", "SELECT 'unfinished"],
+    ["unterminated comment", "SELECT 1 /* unfinished"],
     ["depth limit", `SELECT ${"(".repeat(100)}1${")".repeat(100)}`],
     ["token limit", `SELECT ${Array.from({ length: 2500 }, () => "1").join(" + ")}`],
   ];
   for (const [name, body] of negatives) test(`${d}: rejects ${name} with evidence and preserves graph`, () => {
-    const input = files(d, body!);
+    const input = files(d, body!, "", name === "unterminated comment" ? "integer" : "numeric");
     if (d === "tsql" && name === "multiple statements") {
       // Both RETURN statements belong to this routine; a statement following an
       // inline table-valued declaration would instead be an unrelated batch item.
