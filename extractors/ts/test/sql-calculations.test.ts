@@ -254,6 +254,16 @@ test("PostgreSQL date_trunc DISTINCT uses session-sensitive weeks and half-open 
   assert.match(String(c.attributes.period!.detail!.bounds), /half-open/);
 });
 
+test("narrow integer declarations reject conversions and arithmetic whose overflow is not represented", () => {
+  rejected(run(files("postgresql", "SELECT 32768", "", "smallint")));
+  // PostgreSQL smallint multiplication can overflow before the wider RETURN
+  // conversion; replacing its operand type with int32 would change behavior.
+  rejected(run(files("postgresql", "SELECT p_x * p_x", "p_x smallint", "integer")));
+  const tsql = files("tsql", "SELECT 1");
+  tsql["db/functions/calculate.sql"] = "CREATE FUNCTION dbo.Calculate() RETURNS smallint AS BEGIN RETURN 32768; END;\nGO\n";
+  rejected(run(tsql));
+});
+
 test("procedural and dynamic bodies preserve ordinary graph and dynamic coverage", () => {
   for (const [d, source] of [
     ["tsql", "CREATE FUNCTION dbo.Calculate(@x int) RETURNS int AS BEGIN DECLARE @y int = @x; RETURN @y + 1; END;"],
