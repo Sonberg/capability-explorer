@@ -100,7 +100,7 @@ refs | config/git-hooks/pre-push origin ignored > "$scratch/output" 2>&1
 contains 'pull_request' "$ACT_TEST_LOG"
 contains '.github/workflows/ci.yml' "$ACT_TEST_LOG"
 event="$(sed -n '/^--eventpath$/ { n; p; }' "$ACT_TEST_LOG")"
-contains '{"pull_request":{"base":{"ref":"stage-1-contract-and-fixtures"}}}' "$event"
+contains '{"action":"synchronize","pull_request":{"base":{"ref":"stage-1-contract-and-fixtures"}}}' "$event"
 contains '--bind' "$ACT_TEST_LOG"
 contains 'ubuntu-24.04=catthehacker/ubuntu:act-24.04' "$ACT_TEST_LOG"
 contains '--pull=false' "$ACT_TEST_LOG"
