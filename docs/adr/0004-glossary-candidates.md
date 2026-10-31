@@ -9,8 +9,10 @@
 
 The Explorer observes names, types and calculations across repositories. Similar
 names are useful navigation aids but do not establish a shared business concept.
-The project's engineering glossary and the product's domain candidates serve
-different purposes. Issue #4's original all-weekly-average grouping would require
+The project's engineering glossary defines ubiquitous language for developing
+capability-explorer itself. The product's Glossary tab presents candidate domain
+vocabulary from the repositories being analyzed. These are separate systems and
+audiences; neither silently populates or redefines the other. Issue #4's original all-weekly-average grouping would require
 semantic inference beyond deterministic normalization.
 
 ## Decision drivers
