@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using CapabilityExplorer.Explorer;
 using Xunit;
 
@@ -8,13 +9,18 @@ namespace CapabilityExplorer.Tests;
 
 public sealed class GlossaryApiTests(ExplorerFactory factory) : IClassFixture<ExplorerFactory>
 {
+    internal static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter() },
+    };
+
     private readonly HttpClient _client = factory.CreateClient();
 
     private async Task<List<GlossaryCandidate>> Get(string query = "")
     {
         var response = await _client.GetAsync(new Uri("/api/glossary" + query, UriKind.Relative));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        return (await response.Content.ReadFromJsonAsync<List<GlossaryCandidate>>())!;
+        return (await response.Content.ReadFromJsonAsync<List<GlossaryCandidate>>(JsonOptions))!;
     }
 
     [Fact]
@@ -100,14 +106,14 @@ public sealed class GlossaryCapabilityApiTests(CapabilityExplorerFactory factory
         var client = factory.CreateClient();
         var check = await client.PostAsync(new Uri("/api/capabilities/demand-pricing/check", UriKind.Relative), null);
         Assert.Equal(HttpStatusCode.OK, check.StatusCode);
-        var candidates = (await client.GetFromJsonAsync<List<GlossaryCandidate>>("/api/glossary?cap=demand-pricing"))!;
+        var candidates = (await client.GetFromJsonAsync<List<GlossaryCandidate>>("/api/glossary?cap=demand-pricing", GlossaryApiTests.JsonOptions))!;
         Assert.NotEmpty(candidates);
         var occurrences = candidates.SelectMany(c => c.Occurrences).ToList();
         Assert.All(occurrences, o => Assert.Contains(o.RepositoryId, new[] { "forecast-cs", "pricing-node" }));
         Assert.Contains(occurrences, o => o.RepositoryId == "forecast-cs");
         Assert.All(occurrences.Where(o => o.RepositoryId == "forecast-cs"), o => Assert.Equal(Fixtures.Lock["forecast-cs"]["v1-base"], o.CommitSha));
         Assert.All(occurrences, o => Assert.Contains("demand-pricing", o.Capabilities));
-        var overridden = (await client.GetFromJsonAsync<List<GlossaryCandidate>>("/api/glossary?cap=demand-pricing&view=forecast-cs:v2-contract,api-cs:v1-base"))!;
+        var overridden = (await client.GetFromJsonAsync<List<GlossaryCandidate>>("/api/glossary?cap=demand-pricing&view=forecast-cs:v2-contract,api-cs:v1-base", GlossaryApiTests.JsonOptions))!;
         var selected = overridden.SelectMany(c => c.Occurrences).ToList();
         Assert.DoesNotContain(selected, o => o.RepositoryId == "api-cs");
         Assert.All(selected.Where(o => o.RepositoryId == "forecast-cs"), o => Assert.Equal(Fixtures.Lock["forecast-cs"]["v2-contract"], o.CommitSha));
