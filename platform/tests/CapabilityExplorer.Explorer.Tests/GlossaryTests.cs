@@ -122,8 +122,8 @@ public sealed class GlossaryTests
         Assert.False(candidate.DerivationDiffers);
         Assert.False(candidate.ExpressionDiffers);
         var calculations = records.Where(r => (string?)r["kind"] == "calculation").ToList();
-        calculations[0]["attributes"] = JsonNode.Parse("""{"rounding":{"status":"known","value":"halfEven"}}""");
-        calculations[1]["attributes"] = JsonNode.Parse("""{"rounding":{"status":"unknown"}}""");
+        calculations[0]["attributes"]!["rounding"] = JsonNode.Parse("""{"status":"known","value":"halfEven"}""");
+        calculations[1]["attributes"]!["rounding"] = JsonNode.Parse("""{"status":"unknown"}""");
         calculations[1].AsObject().Remove("irHash");
         candidate = Assert.Single(Glossary.Build(Load(records).View(null)));
         Assert.Equal(DifferenceKind.KnownOnOneSide, Assert.Single(Assert.Single(candidate.Comparisons).Differences).Kind);
@@ -137,8 +137,8 @@ public sealed class GlossaryTests
     {
         var records = Records(2);
         var calculations = records.Where(r => (string?)r["kind"] == "calculation").ToList();
-        calculations[0]["attributes"] = JsonNode.Parse("""{"rounding":{"status":"known","value":"halfEven"}}""");
-        calculations[1]["attributes"] = JsonNode.Parse("""{"rounding":{"status":"known","value":"truncate"}}""");
+        calculations[0]["attributes"]!["rounding"] = JsonNode.Parse("""{"status":"known","value":"halfEven"}""");
+        calculations[1]["attributes"]!["rounding"] = JsonNode.Parse("""{"status":"known","value":"truncate"}""");
         calculations[1]["irHash"] = new string('b', 64);
         var candidate = Assert.Single(Glossary.Build(Load(records).View(null)));
         Assert.True(candidate.DerivationDiffers);
@@ -245,10 +245,20 @@ public sealed class GlossaryTests
                 ["schema"] = "ce.v1", ["kind"] = "calculation", ["id"] = $"c:calc{i}", ["symbolKey"] = key,
                 ["output"] = JsonNode.Parse("""{"type":"decimal","unit":{"status":"unknown"}}"""),
                 ["inputs"] = new JsonArray(), ["expr"] = JsonNode.Parse("""{"op":"lit","type":"decimal","value":1}"""),
-                ["attributes"] = new JsonObject(), ["irHash"] = new string('a', 64), ["evidence"] = new JsonArray("ev:source"),
+                ["attributes"] = UnknownAttributes(), ["irHash"] = new string('a', 64), ["evidence"] = new JsonArray("ev:source"),
             });
         }
         return records;
+    }
+
+    private static JsonObject UnknownAttributes()
+    {
+        var attributes = new JsonObject();
+        foreach (var name in new[] { "aggregation", "timeBucket", "denominatorSource", "rounding", "numericType", "nullHandling", "zeroDenominator", "currency" })
+        {
+            attributes[name] = new JsonObject { ["status"] = "unknown" };
+        }
+        return attributes;
     }
 
     private static ExplorerIndex Load(params List<JsonObject>[] artifacts)
