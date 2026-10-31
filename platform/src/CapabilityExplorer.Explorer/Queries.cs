@@ -153,7 +153,7 @@ public static class Queries
 
     /// <summary>
     /// Services, endpoints and the resources that connect repositories. Cross-repo HTTP matches are
-    /// <em>candidates</em> by normalised route only: the client's base URL is unbound until stage 3.
+    /// <em>candidates</em> by normalised route only: the client's base URL is unbound unless the service map (bindings.json) names it.
     /// </summary>
     public static Integrations Integrations(ViewIndex view)
     {
@@ -175,6 +175,15 @@ public static class Queries
             if (e.Record.To is null)
             {
                 return new HttpLink(dto, [], "dynamic", "target not statically known");
+            }
+
+            if (view.BoundFor(e) is { } bound)
+            {
+                var hint = bound.Binding.Hint["@unbound:".Length..];
+                var why = $"service map: {hint} → {bound.Binding.Target}{(bound.Binding.Note is null ? "" : $" ({bound.Binding.Note})")}";
+                return bound.Status == CapabilityExplorer.Binding.BindingStatus.Bound
+                    ? new HttpLink(dto, [Map.Ref(view, bound.Edge.To!)], "binding", why)
+                    : new HttpLink(dto, [Map.Ref(view, bound.Edge.To!)], "broken", $"{why}; the bound endpoint is not declared in the selected revision");
             }
 
             if (view.Node(e.Record.To) is not null)

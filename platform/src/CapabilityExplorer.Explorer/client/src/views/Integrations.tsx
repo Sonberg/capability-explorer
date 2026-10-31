@@ -4,7 +4,7 @@ import { ResolutionPill, SymbolLink } from "../components/symbols";
 import { Card, ErrorBox, H1, H2, Key, Loading, Mono, Muted, Note, Pill, Table, type Tone } from "../components/ui";
 import { revisionLabel, symbolHref, useApi, useSelection } from "../state";
 
-const matchTone: Record<string, Tone> = { bound: "ok", route: "warn", none: "bad", dynamic: "neutral" };
+const matchTone: Record<string, Tone> = { bound: "ok", binding: "ok", broken: "bad", route: "warn", none: "bad", dynamic: "neutral" };
 
 export function Integrations() {
   const { meta, scope } = useSelection();

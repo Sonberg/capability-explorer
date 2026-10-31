@@ -99,7 +99,7 @@ public sealed partial class ExplorerState(ExplorerOptions options, ILogger<Explo
             }
         }
 
-        foreach (var file in new[] { options.CapabilitiesFile, Path.Combine(options.Workspace, "snapshots.json") })
+        foreach (var file in new[] { options.CapabilitiesFile, Path.Combine(options.Workspace, "snapshots.json"), options.BindingsFile ?? "" }.Where(f => f.Length > 0))
         {
             var info = new FileInfo(file);
             parts.Add(info.Exists ? $"{file}|{info.Length}|{info.LastWriteTimeUtc.Ticks}" : $"{file}|-");

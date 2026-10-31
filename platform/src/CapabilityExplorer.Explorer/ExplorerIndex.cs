@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using CapabilityExplorer.Binding;
 using CapabilityExplorer.Contracts;
 
 namespace CapabilityExplorer.Explorer;
@@ -32,8 +33,9 @@ public sealed class ExplorerIndex
 {
     private readonly ConcurrentDictionary<string, ViewIndex> _views = new(StringComparer.Ordinal);
 
-    private ExplorerIndex(IReadOnlyList<LoadedArtifact> artifacts, IReadOnlyList<RevisionInfo> revisions, IReadOnlyList<string> problems, GitSource? git)
+    private ExplorerIndex(IReadOnlyList<LoadedArtifact> artifacts, IReadOnlyList<RevisionInfo> revisions, IReadOnlyList<string> problems, GitSource? git, BindingFile bindings)
     {
+        Bindings = bindings;
         Artifacts = artifacts;
         Revisions = revisions;
         Problems = problems;
@@ -55,15 +57,23 @@ public sealed class ExplorerIndex
 
     public GitSource? Git { get; }
 
+    /// <summary>The human-maintained service map. Empty when none is configured; binding is then a no-op.</summary>
+    public BindingFile Bindings { get; }
+
     /// <summary>Newest revision per repository (by commit time when git is available).</summary>
     public IReadOnlyDictionary<string, string> DefaultSelection { get; }
 
-    public static ExplorerIndex Load(IEnumerable<string> directories, GitSource? git)
+    public static ExplorerIndex Load(IEnumerable<string> directories, GitSource? git, BindingFile? bindings = null, string? bindingsProblem = null)
     {
         // One artifact per (repository, commit, unit): a later directory replaces an earlier one, so analysed
         // output listed after the golden set takes its place instead of doubling every node.
         var byUnit = new Dictionary<(string, string, string), (string Label, Artifact Artifact)>();
         var problems = new List<string>();
+        if (bindingsProblem is not null)
+        {
+            problems.Add(bindingsProblem);
+        }
+
         foreach (var directory in directories.Where(Directory.Exists))
         {
             foreach (var file in Directory.EnumerateFiles(directory, "*.jsonl", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
@@ -111,7 +121,7 @@ public sealed class ExplorerIndex
             .ThenBy(r => r.CommitTime ?? DateTimeOffset.MinValue)
             .ThenBy(r => r.Label, StringComparer.Ordinal)
             .ToList();
-        return new ExplorerIndex(artifacts, revisions, problems, git);
+        return new ExplorerIndex(artifacts, revisions, problems, git, bindings ?? BindingFile.Empty);
     }
 
     public RevisionInfo? FindRevision(string repositoryId, string revision) =>
@@ -185,6 +195,10 @@ public sealed class ViewIndex
         Edges = edges;
         Outgoing = edges.ToLookup(e => e.Record.From, StringComparer.Ordinal);
         Incoming = edges.Where(e => e.Record.To is not null).ToLookup(e => e.Record.To!, StringComparer.Ordinal);
+        // Binding runs on the selected revisions only: a route that exists in one revision and not in another is
+        // bound in one view and broken in the other. The extractor edges above are untouched.
+        Bound = Binder.Bind(Artifacts.Select(a => (new LoadedFrom(a.RepositoryId, a.CommitSha, a.Artifact.Header.Unit.Path, a), a.Artifact)), index.Bindings);
+        BoundByOriginal = Bound.Edges.ToLookup(b => (((LoadedArtifact)b.Artifact.Handle!).Id, b.Original.Id));
         Calculations = Artifacts.SelectMany(a => a.Artifact.Calculations.Select(c => new Occurrence<CalculationRecord>(a, c)))
             .GroupBy(c => c.Record.SymbolKey, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
@@ -203,6 +217,14 @@ public sealed class ViewIndex
     public ILookup<string, Occurrence<EdgeRecord>> Outgoing { get; }
 
     public ILookup<string, Occurrence<EdgeRecord>> Incoming { get; }
+
+    /// <summary>New human-derived edges from the service map (bound or broken). Never mixed into <see cref="Edges"/>.</summary>
+    public BindingResult Bound { get; }
+
+    private ILookup<(int ArtifactId, string EdgeId), BoundEdge> BoundByOriginal { get; }
+
+    /// <summary>The binding derived from one extractor edge, if the service map names its unbound hint.</summary>
+    public BoundEdge? BoundFor(Occurrence<EdgeRecord> edge) => BoundByOriginal[(edge.Artifact.Id, edge.Record.Id)].FirstOrDefault();
 
     public IReadOnlyDictionary<string, Occurrence<CalculationRecord>> Calculations { get; }
 

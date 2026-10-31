@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Snapshot-level binding of @unbound hints. Reads artifacts, never changes them. -->
+  <ItemGroup>
+    <ProjectReference Include="../CapabilityExplorer.Contracts/CapabilityExplorer.Contracts.csproj" />
+  </ItemGroup>
+</Project>

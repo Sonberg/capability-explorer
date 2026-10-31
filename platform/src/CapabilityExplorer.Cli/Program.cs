@@ -1,3 +1,4 @@
+using CapabilityExplorer.Binding;
 using CapabilityExplorer.Capabilities;
 using CapabilityExplorer.Contracts;
 using CapabilityExplorer.Evaluation;
@@ -7,7 +8,7 @@ using Npgsql;
 // ce validate <artifact.jsonl...>
 // ce verify-evidence --repo <git dir> <artifact.jsonl...>
 // ce migrate [--connection <npgsql connection string>]
-// ce import  [--connection <npgsql connection string>] <artifact.jsonl...>
+// ce import  [--connection <npgsql connection string>] [--bindings <bindings.json>] <artifact.jsonl...>
 // ce evaluate --expected <dir> --actual <dir> [--config <evaluation.json>] [--repos <dir>] [--repository <id[,id]>] [--language <csharp,typescript,...>] [--json <report.json>]
 // ce export --capability <id> [--capabilities capabilities.json] [--workspace .sandbox-cache/sources] --out <dir>
 // The connection string defaults to the CE_DATABASE environment variable.
@@ -16,7 +17,7 @@ const string Usage = """
       ce validate <artifact.jsonl...>
       ce verify-evidence --repo <git dir> <artifact.jsonl...>
       ce migrate [--connection <connection string>]
-      ce import [--connection <connection string>] <artifact.jsonl...>
+      ce import [--connection <connection string>] [--bindings <bindings.json>] <artifact.jsonl...>  (--bindings also saves the bound edges)
       ce export --capability <id> --out <dir> [--capabilities <file>] [--workspace <dir>] [--locked 1]  (1 = use the last check instead of re-checking)
       ce evaluate --expected <dir> --actual <dir> [--config <evaluation.json>] [--repos <dir>] [--repository <id[,id]>] [--language <csharp,typescript,...>] [--json <report.json>] [--max-findings <n>]
     """;
@@ -93,20 +94,45 @@ switch (command)
 
     case "import":
     {
+        // Parse the bindings first: a bad file must fail before anything is written.
+        BindingFile? bindings;
+        try
+        {
+            bindings = options.TryGetValue("bindings", out var bindingsPath) ? BindingFile.Load(bindingsPath) : null;
+        }
+        catch (Exception e) when (e is FormatException or IOException)
+        {
+            Console.Error.WriteLine($"bindings: {e.Message}");
+            return 2;
+        }
+
         await using var db = OpenDatabase();
         var importer = new ArtifactImporter(db);
         var failed = 0;
+        var stored = new List<(long ArtifactId, Artifact Artifact)>();
         foreach (var file in files)
         {
             try
             {
-                var result = await importer.ImportAsync(await File.ReadAllTextAsync(file));
+                var text = await File.ReadAllTextAsync(file);
+                var result = await importer.ImportAsync(text);
                 Console.WriteLine($"{(result.Outcome == ImportOutcome.Imported ? "imported " : "unchanged")} {file} (artifact {result.ArtifactId})");
+                stored.Add((result.ArtifactId, ArtifactValidator.Validate(text).Artifact!));
             }
             catch (Exception e) when (e is InvalidArtifactException or ArtifactConflictException)
             {
                 failed++;
                 Console.WriteLine($"FAIL      {file}: {e.Message}");
+            }
+        }
+
+        if (bindings is not null && stored.Count > 0)
+        {
+            var saved = await new BindingStore(db).SaveAsync(stored, bindings);
+            Console.WriteLine($"bindings  {(saved.Created ? "saved" : "unchanged")} snapshot {saved.SnapshotId[..12]}: {saved.BoundEdges} bound, {saved.BrokenEdges} broken");
+            foreach (var unused in saved.UnusedBindings)
+            {
+                Console.WriteLine($"          unused binding {unused.Hint} (no analysed edge uses it)");
             }
         }
 

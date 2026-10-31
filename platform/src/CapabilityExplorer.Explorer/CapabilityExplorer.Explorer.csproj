@@ -7,6 +7,7 @@
     <ProjectReference Include="../CapabilityExplorer.Contracts/CapabilityExplorer.Contracts.csproj" />
     <ProjectReference Include="../CapabilityExplorer.Interpretation/CapabilityExplorer.Interpretation.csproj" />
     <ProjectReference Include="../CapabilityExplorer.Capabilities/CapabilityExplorer.Capabilities.csproj" />
+    <ProjectReference Include="../CapabilityExplorer.Binding/CapabilityExplorer.Binding.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Update="wwwroot/**" CopyToOutputDirectory="PreserveNewest" />

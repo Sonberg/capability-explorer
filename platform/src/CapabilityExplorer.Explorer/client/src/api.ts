@@ -131,7 +131,7 @@ export interface SearchHit {
 
 export interface Integrations {
   services: { service: NodeDto; endpoints: { endpoint: NodeDto; handlers: SymbolRef[] }[] }[];
-  http: { request: Edge; candidates: SymbolRef[]; match: "bound" | "route" | "none" | "dynamic"; note: string }[];
+  http: { request: Edge; candidates: SymbolRef[]; match: "bound" | "binding" | "broken" | "route" | "none" | "dynamic"; note: string }[];
   channels: ResourceGroup[];
   data: ResourceGroup[];
 }
