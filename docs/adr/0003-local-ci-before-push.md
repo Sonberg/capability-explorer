@@ -127,3 +127,22 @@ Adopt the hook in each clone and review this ADR through the contributor workflo
 * [act runner differences](https://nektosact.com/usage/runners.html)
 * [CVE-2026-34041 advisory](https://github.com/advisories/GHSA-xmgr-9pqc-h5vw): affected through 0.2.85, patched in 0.2.86
 * [Trivy v0.76.1 filesystem CLI](https://github.com/aquasecurity/trivy/blob/v0.76.1/docs/guide/references/configuration/cli/trivy_filesystem.md)
+
+
+### CI resource budget
+
+Use one job with no matrix or model service. Cancel superseded runs on the same
+PR/ref, keeping the complete gate on the latest commit. Pre-pull only the two
+build images and the exact pgvector version used by Store tests; plain PostgreSQL
+is not needed. Testcontainers retains its cleanup helper. Ollama is development
+only and is never started by CI.
+
+Cache only NuGet/npm downloads, the Trivy database and verified auditor binaries;
+do not cache generated artifacts, local success receipts or Docker image tarballs.
+Separate hosted package caches by OS/architecture. Local Docker layers are reused.
+The observed unused plain PostgreSQL image was about 416 MB unpacked, not a
+measured network saving. Node's Debian image supplies Bash/Git for offline fixture
+work; slim/Alpine substitutions require measured compatibility before adoption.
+Build/database image tags remain mutable; only the local runner and scanner are
+digest-pinned. No claim of globally optimal image size or identical tag bytes is
+made. These limits are distinct from deterministic application output tests.
