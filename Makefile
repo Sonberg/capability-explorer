@@ -8,7 +8,7 @@ NODE    := $(SANDBOX) node
 OFFLINE := $(SANDBOX) --offline
 
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
-        restore build test-ts test-contracts test-evaluation test-store evaluate evaluate-golden clean
+        restore build test-ts test-contracts test-evaluation test-explorer test-store evaluate evaluate-golden explore clean
 
 help:
 	@echo "make ci              everything CI runs: fixture compile checks + all tests"
@@ -17,11 +17,12 @@ help:
 	@echo "make fixtures-lock   rebuild fixture repos and rewrite revisions.lock.json (after editing fixtures/src)"
 	@echo "make golden          regenerate fixtures/expected from fixtures/golden/facts"
 	@echo "make fixtures-compile  check every fixture revision compiles (or fails) as intended"
+	@echo "make explore [ARTIFACTS=dir] [EVALUATION=report.json] [PORT=5080]  browse the model at http://127.0.0.1:5080"
 	@echo "make evaluate ACTUAL=out/ [REPO=id,id]  score extractor output against fixtures/expected (report: out/evaluation.json)"
 
 ci: fixtures-compile test
 
-test: golden-check test-ts test-contracts test-evaluation evaluate-golden test-store
+test: golden-check test-ts test-contracts test-evaluation evaluate-golden test-explorer test-store
 
 fixtures:
 	$(OFFLINE) node scripts/build-fixtures.sh
@@ -71,6 +72,17 @@ evaluate: fixtures build
 	$(OFFLINE) dotnet $(CE) evaluate --expected fixtures/expected --actual $(ACTUAL) \
 	  --config fixtures/evaluation.json --repos fixtures/.repos --json $(ACTUAL)/evaluation.json \
 	  $(if $(REPO),--repository $(REPO))
+
+test-explorer: fixtures build
+	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Explorer.Tests'
+
+# Read-only UI over artifacts. The container publishes the port on 127.0.0.1 only.
+ARTIFACTS ?= fixtures/expected
+PORT ?= 5080
+explore: fixtures build
+	@echo "Capability Explorer: http://127.0.0.1:$(PORT)"
+	$(SANDBOX) --port $(PORT) dotnet dotnet platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll \
+	  --artifacts $(ARTIFACTS) --repos fixtures/.repos $(if $(EVALUATION),--evaluation $(EVALUATION))
 
 # Needs the Docker socket so Testcontainers can start PostgreSQL (see scripts/sandbox --docker).
 test-store: build

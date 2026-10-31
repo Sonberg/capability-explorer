@@ -14,7 +14,7 @@ and an idempotent PostgreSQL importer.
 |---|---|
 | `schema/v1/` | `record.schema.json` (JSON Schema, the source of truth), `relations.json`, [rules](schema/README.md) |
 | `fixtures/` | Five fixture repos (C#, TypeScript/JavaScript, T-SQL, PostgreSQL) built deterministically from overlays, plus golden artifacts. See [fixtures/README.md](fixtures/README.md). |
-| `platform/` | .NET 10: `Contracts` (validator, evidence verifier), `Evaluation` (scoring against golden), `Store` (migrations, importer), `Cli` (`ce`), tests |
+| `platform/` | .NET 10: `Contracts` (validator, evidence verifier), `Evaluation` (scoring against golden), `Store` (migrations, importer), `Cli` (`ce`), `Explorer` (read-only UI), tests |
 | `extractors/ts/` | Node/TypeScript package. Stage 1 contains only the contract validator (ajv against the same schema). |
 | `scripts/sandbox` | Runs every build, install and test in a disposable container |
 
@@ -30,6 +30,36 @@ make fixtures-compile   # every fixture revision compiles (or fails) as intended
 ```
 
 Behind a TLS-intercepting proxy, run `export SANDBOX_EXTRA_CA_FILE=/path/to/ca.pem` first.
+
+### Exploring the model
+
+```sh
+make explore                                   # golden fixtures → http://127.0.0.1:5080
+make explore ARTIFACTS=out/ EVALUATION=out/evaluation.json   # extractor output + its score
+```
+
+The explorer is a read-only ASP.NET Core server, with a dependency-free HTML/JS UI, over a directory of
+artifacts. It runs in the sandbox and publishes on `127.0.0.1` only.
+
+- **Revisions bar**: pick one revision per repository. Every view shows that combination, which is
+  labelled as a selection of code revisions, not a deployment.
+- **Explore**: search symbols; open one to see its exact source span at that revision, its calculation
+  (formula and attributes, each with evidence), outgoing and incoming edges with resolution and
+  derivation, and whether the key exists in each loaded revision (present, absent, or *not observed*
+  when that analysis was partial).
+- **Integrations**: services and endpoints; HTTP calls with their candidate endpoint (a route match is
+  labelled a candidate while the base URL is unbound); channels and tables grouped by name with every
+  distinct key kept apart.
+- **Calculations**: all implementations side by side. Values that differ from the most common value in
+  a column are highlighted. `unknown` is shown as unknown, never filled in.
+- **Changes**: diff two revisions of a repository. You get continuity candidates with reasons (rename,
+  move), logic and attribute changes with possible static consumers, added and removed symbols, and
+  *not observed* instead of removed for partial analyses.
+- **Artifacts** and **Evaluation**: coverage, diagnostics and rejected files, plus the `ce evaluate`
+  report when one is loaded.
+
+Source is read with `git show` from `fixtures/.repos`, and only for files an artifact cites. All
+repository content is rendered as text, never as markup.
 
 ### Validating extractor output
 
@@ -90,6 +120,8 @@ golden set against itself and runs in CI as a self-check of the scorer.
   attributes claim.
 - `EvaluatorTests`: starting from a perfect "extractor" (golden = actual), each test breaks one thing
   and checks that the scorer reports exactly that finding and moves exactly that metric.
+- `ExplorerApiTests`: the explorer API surfaces the planted scenarios (renames, contract breaks, partial
+  analyses, same-named channels) and refuses to serve uncited files.
 - `extractors/ts` tests: the same golden files validate against the same schema in TypeScript.
 
 ## Next (stage 2)
