@@ -12,7 +12,8 @@ Status at handoff: branch `stage-1-contract-and-fixtures`. `make ci` is green.
 | Scorer | `platform/src/CapabilityExplorer.Evaluation`, `ce evaluate` | Measures recall, accuracy, evidence, precision on exhaustive categories, calculations, attributes, irHash and coverage. Can be limited with `--repository` and `--language`. |
 | C# extractor | `platform/src/CapabilityExplorer.Extractors.CSharp` (`ce-cs`) | 100% on graph metrics and on calculations (`Calculations*.cs`, gated by `fixtures/evaluation.csharp.json`). |
 | TS/JS extractor | `extractors/ts/src/extract` (`ce-ts extract`) | 100% on graph metrics and on calculations (`calculations.ts`; gated in `fixtures/evaluation.extractors.ts.json`). |
-| Analyse pipeline | `scripts/analyze`, `make analyze CAPABILITY=<id>` | Three sandboxed steps: export → packages → offline extract, written to `.sandbox-cache/artifacts`. |
+| SQL extractor | `extractors/ts/src/sql` (`ce-ts extract-sql`) | 100% on graph metrics for all 5 SQL golden artifacts (`make evaluate-sql`). **No calculations.** |
+| Analyse pipeline | `scripts/analyze`, `make analyze CAPABILITY=<id>` | Three sandboxed steps: export → packages → offline extract (C#, TS/JS, SQL), written to `.sandbox-cache/artifacts`. |
 | Explorer | `platform/src/CapabilityExplorer.Explorer` (+ React client) | Live reload. Capabilities, architecture canvas, optional LLM layer. |
 | Store | `platform/src/CapabilityExplorer.Store` | Migrations and an idempotent importer, tested with Testcontainers. Not yet fed by `make analyze`. |
 
@@ -59,20 +60,22 @@ Implemented in `Calculations.cs`, `CalculationAttributes.cs`, `CalculationIr.cs`
 - **Where:** `extractors/ts/src/extract/` (new `calculations.ts`). `builder.ts` hard-codes `calculation: 0`.
 - **Done when:** `make evaluate-ts` passes with the calculation metrics gated at 1.0.
 
-### 3. SQL extractor
+### 3. SQL extractor: graph done, calculations remain
 
-- **Goal:** extract the SQL units, which have no extractor yet:
-  - `api-cs` SalesDb: a T-SQL `.sqlproj`, 3 golden artifacts, unit `SalesDb`.
-  - `pricing-node` `db/`: PostgreSQL migrations, 2 golden artifacts, unit `pricing-db`.
-- **Nodes and edges:** `Project`, `Table`, `Column`, `View`, `Routine`, `DECLARES`, `READS`, `WRITES`, plus the
-  routine calculations (`pricing.weekly_revenue`).
-- **Keys:** `sql|@unbound:<repo>/<unit>:dbproject=<name>|schema.object[#column]` and `sql|@builtin:<dialect>|FN`.
-  See `fixtures/golden/facts/api-cs.mjs` (database section) and `pricing-node.mjs` (`database()`).
-- **Approach:** a parser that runs no code and needs no database. For example a .NET project using
-  `Microsoft.SqlServer.TransactSql.ScriptDom` for T-SQL, and a PostgreSQL grammar such as `pgsql-parser`/libpg_query
-  WASM in Node, or a careful hand parser. It must work offline.
-- **Wire up:** `scripts/analyze` step 3, plus a `make evaluate-sql` gate with `--language sql`.
-- **Done when:** all 5 SQL golden artifacts pass the graph thresholds. Calculations come second.
+- **Done:** `ce-ts extract-sql` (`extractors/ts/src/sql/`: `lexer`, `ddl`, `refs`, `project`, `extractor`) is a
+  dependency-free hand parser for T-SQL and PostgreSQL. It runs offline, needs no database and executes nothing.
+  `make evaluate-sql` passes the graph thresholds at 1.0 for all 5 golden artifacts, and `scripts/analyze` step 3
+  runs it. Unit tests: `extractors/ts/test/sql.test.ts`.
+- **Fixture gap:** the `api-cs` fixture has no `.sqlproj` (the golden unit `SalesDb` is just `database/`), and
+  `pricing-db` has no project file either. With a `.sqlproj` the extractor takes the name from it; without
+  one it infers the name (connection-string database for T-SQL, `<package>-db` for PostgreSQL) and says so in an
+  info diagnostic. Adding a `.sqlproj` to the fixture would be cleaner but changes every locked revision.
+- **Remaining:** routine calculations (`dbo.fnWeeklySalesAverage`, `pricing.weekly_revenue`): IR, `irHash` and
+  attributes, like workstreams 1 and 2. `ArtifactBuilder.toJsonl` still writes `calculation: 0`. The token
+  scanner in `refs.ts` already resolves aliases and scopes, but a calculation needs a real expression parser.
+  Then gate the SQL calculation metrics in `evaluation.extractors.json`.
+- **Known gaps:** no `CREATE TRIGGER`, `SYNONYM` or cross-database references (they are `unresolved`); DML in
+  `INSERT … ON CONFLICT` and `MERGE` is covered by simple rules only.
 
 ### 4. Deterministic package resolution + private feeds (C#)
 

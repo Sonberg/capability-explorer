@@ -9,7 +9,7 @@ OFFLINE := $(SANDBOX) --offline
 
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
         restore ui build test-ts test-contracts test-evaluation test-explorer test-store evaluate evaluate-golden \
-        extract-cs evaluate-cs extract-ts evaluate-ts analyze explore clean
+        extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze explore clean
 
 help:
 	@echo "make ci              everything CI runs: fixture compile checks + all tests"
@@ -28,10 +28,11 @@ help:
 	@echo "     GITHUB_AUTH=auto|git|none  LOCKED=1 (analyse the last check)  PACKAGES=0 (skip nuget.org downloads)"
 	@echo "make evaluate-cs     run the C# extractor over every fixture revision and gate it on the csharp golden units"
 	@echo "make evaluate-ts     same for the TypeScript/JavaScript extractor"
+	@echo "make evaluate-sql    same for the SQL extractor (T-SQL projects, PostgreSQL migrations)"
 
 ci: fixtures-compile test
 
-test: golden-check test-ts test-contracts test-evaluation evaluate-golden evaluate-cs evaluate-ts test-explorer test-store
+test: golden-check test-ts test-contracts test-evaluation evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
 
 fixtures:
 	$(OFFLINE) node scripts/build-fixtures.sh
@@ -106,6 +107,15 @@ extract-ts: fixtures restore
 evaluate-ts: extract-ts build
 	$(OFFLINE) dotnet $(CE) evaluate --expected fixtures/expected --actual $(EXTRACTED)/ts \
 	  --config fixtures/evaluation.extractors.ts.json --repos fixtures/.repos --language typescript,javascript --json $(EXTRACTED)/ts/evaluation.json
+
+# SQL extractor (T-SQL database projects and PostgreSQL migrations): read as text, no database, nothing executed.
+extract-sql: fixtures restore
+	rm -rf $(EXTRACTED)/sql
+	$(OFFLINE) node bash scripts/extract-fixtures.sh sql $(EXTRACTED)/sql
+
+evaluate-sql: extract-sql build
+	$(OFFLINE) dotnet $(CE) evaluate --expected fixtures/expected --actual $(EXTRACTED)/sql \
+	  --config fixtures/evaluation.extractors.json --repos fixtures/.repos --language sql --json $(EXTRACTED)/sql/evaluation.json
 
 test-explorer: fixtures build
 	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Explorer.Tests && dotnet test --no-build tests/CapabilityExplorer.Interpretation.Tests && dotnet test --no-build tests/CapabilityExplorer.Capabilities.Tests'

@@ -9,6 +9,7 @@
 #   2 packages  network to nuget.org only for downloads; no token, no local repositories mounted
 #   3 extract   --offline: the analysed code is parsed, never restored, built or executed
 #
+# Step 3 runs the C# (Roslyn), TypeScript/JavaScript and SQL extractors.
 # Knobs: GITHUB_AUTH=auto|git|none (see scripts/github-token), LOCKED=1 analyses the last check instead of
 # re-checking the refs, PACKAGES=0 skips the nuget.org download (fewer resolved symbols, fully offline after 1).
 set -euo pipefail
@@ -37,7 +38,7 @@ if [[ "${PACKAGES:-1}" != 0 ]]; then
   SANDBOX_PASS_ENV="" SANDBOX_SOURCES="" scripts/sandbox dotnet dotnet "$cs" fetch-packages --source "$work/src" --packages "$packages"
 fi
 
-echo "== 3/3 extract (offline)"
+echo "== 3/3 extract (offline: C#, TypeScript/JavaScript, SQL)"
 # Fresh output per revision, swapped in only when every extractor finished, so the explorer never sees half a set.
 staging="$work/out"
 rm -rf "$staging"; mkdir -p "$staging"
@@ -55,6 +56,15 @@ if [[ -f "$ts" ]] && grep -q '"extract"' "$ts"; then
     while IFS=$'"'"'\t'"'"' read -r repo sha path; do
       node "$1" extract --source "$2/$path" --repository "$repo" --commit "$sha" --out "$3/$repo/$sha" </dev/null | sed "s#^#  $repo  ts  #"
     done < "$2/manifest.tsv"' _ "$ts" "$work" "$staging" "$packages"
+fi
+
+if [[ -f "$ts" ]] && grep -q '"extract-sql"' "$ts"; then
+  # T-SQL database projects and PostgreSQL migrations: read as text, no database, nothing executed.
+  SANDBOX_PASS_ENV="" SANDBOX_SOURCES="" scripts/sandbox --offline node bash -c '
+    set -euo pipefail
+    while IFS=$'"'"'\t'"'"' read -r repo sha path; do
+      node "$1" extract-sql --source "$2/$path" --repository "$repo" --commit "$sha" --out "$3/$repo/$sha" </dev/null | sed "s#^#  $repo  sql  #"
+    done < "$2/manifest.tsv"' _ "$ts" "$work" "$staging"
 fi
 
 count=0

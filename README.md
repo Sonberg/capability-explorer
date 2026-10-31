@@ -5,10 +5,11 @@ several codebases (C#, TypeScript/JavaScript, SQL). Every claim is traceable to 
 source span.
 
 **Status: stage 2 (extractors).** A C# extractor (Roslyn) and a TypeScript/JavaScript extractor
-(TypeScript compiler API) produce the ce.v1 contract. Both are gated in CI against a reference fixture
+(TypeScript compiler API) produce the ce.v1 contract, and a SQL extractor reads T-SQL projects and PostgreSQL
+migrations as text. Both are gated in CI against a reference fixture
 set with known answers, and `make analyze` runs them over the repositories of a capability. Also
 present: validators on both stacks, an idempotent PostgreSQL importer and the explorer UI.
-C# and TypeScript/JavaScript calculations are extracted and gated; SQL projects are not done yet.
+C# and TypeScript/JavaScript calculations are extracted and gated; SQL routine calculations are not done yet.
 
 ## Layout
 
@@ -153,7 +154,7 @@ Each step runs in its own sandbox and gets only what it needs:
 |---|---|---|
 | 1 export | network, GitHub token, local repositories mounted read-only | Checks the capability again, so each ref is locked to its current commit (`LOCKED=1` keeps the last check). Then it writes each locked tree to `.sandbox-cache/analyze/<id>/src/`. Only regular files are written: symlinks and files over 8 MB are skipped. A blob-less clone fetches the blobs it needs in one batch. |
 | 2 packages | network, no token, no local mounts | Downloads the NuGet packages that the projects reference, plus their dependencies, from nuget.org into `.sandbox-cache/analyze-packages`. They are unpacked as data only: nuspec plus `ref/`/`lib/` assemblies. There is no restore and no MSBuild evaluation. `PACKAGES=0` skips this step. |
-| 3 extract | `--offline` | Runs `ce-cs extract` and `ce-ts extract` over each tree. The output for each revision is swapped into `.sandbox-cache/artifacts/<repo>/<commit>/` only once every extractor has finished. |
+| 3 extract | `--offline` | Runs `ce-cs extract`, `ce-ts extract` and `ce-ts extract-sql` over each tree. The output for each revision is swapped into `.sandbox-cache/artifacts/<repo>/<commit>/` only once every extractor has finished. |
 
 The analysed code is parsed and bound, never restored, built or executed. `make explore` loads
 `fixtures/expected` and `.sandbox-cache/artifacts`. For the same repository, commit and unit, the
@@ -186,17 +187,35 @@ capability files and reloads when they change, and the UI refetches what it show
   OpenAPI clients, `pg` SQL, Azure Service Bus (literal values in imported JSON config bind the
   channel), and handler maps behind dynamic dispatch (as `candidate` edges).
 
+**SQL (`ce-ts extract-sql`)**
+
+- A unit is a `.sqlproj` (T-SQL; with `Sdk=` every script below it, otherwise the `<Build Include>` list,
+  minus pre/post-deploy scripts), or else the folder above `migrations/`, `tables/`, `functions/`… that holds
+  loose `.sql` files. The dialect (T-SQL or PostgreSQL) is detected from the scripts.
+- Scripts are tokenised and read statically, in path order, so migrations apply in sequence (`ALTER TABLE …
+  ADD/DROP/RENAME COLUMN`, `DROP`, `CREATE OR REPLACE`). No database is needed and no script is ever run.
+- Nodes: `Project`, `Table`, `Column` (with type and nullability), `View`, `Routine`. Edges: `DECLARES`,
+  `READS` and `WRITES` (tables and columns, resolved through aliases, CTEs and subqueries) and `CALLS`
+  between routines of the unit. A reference to an undeclared object is an `unresolved` edge with
+  `missing-reference`.
+- Dynamic SQL (`EXEC (…)`, `sp_executesql`, `EXECUTE`) is reported as `SQL_DYNAMIC` and makes the unit
+  `partial`. Reads and writes are never guessed.
+- Without a `.sqlproj` nothing names the unit, so the name is inferred and an `SQL_UNIT_NAME_INFERRED`
+  info diagnostic says from what: the database in the repository's connection strings (T-SQL), or the
+  enclosing package name plus `-db` (PostgreSQL). The reference fixtures rely on this.
+
 **Known limits**
 
 - Calculations are extracted for C# and TypeScript/JavaScript, and gated at 100% (`fixtures/evaluation.csharp.json`, `fixtures/evaluation.extractors.ts.json`).
 - TS/JS calculations cover numeric functions that round (`Math.round/trunc/floor/ceil`, `toFixed`) or aggregate (`filter`/`map`/`reduce`, `new Set(..).size`, `for…of` sums). Other shapes yield a `CALCULATION_UNSUPPORTED` info diagnostic instead of an approximate IR.
-- SQL projects (`.sqlproj`, migrations) are not extracted yet.
+- SQL routine calculations (`fnWeeklySalesAverage`, `pricing.weekly_revenue`) are not extracted yet; the SQL gate covers the graph only.
 - Edges into package code depend on the package versions the shared download folder holds.
 
-`make evaluate-cs` and `make evaluate-ts` run each extractor over every fixture revision. They score it
-against the golden units of its own languages using `fixtures/evaluation.csharp.json` (C#) and
-`fixtures/evaluation.extractors.ts.json` (TS/JS). Graph recall, edge accuracy, evidence and precision are held at
-100%, and so are calculation recall, attribute accuracy and `irHash` match. Both targets run in `make test`.
+`make evaluate-cs`, `make evaluate-ts` and `make evaluate-sql` run each extractor over every fixture revision. They
+score it against the golden units of its own languages using `fixtures/evaluation.csharp.json` (C#),
+`fixtures/evaluation.extractors.ts.json` (TS/JS) and `fixtures/evaluation.extractors.json` (SQL). Graph recall, edge
+accuracy, evidence and precision are held at 100%; for C# and TS/JS so are calculation recall, attribute accuracy and
+`irHash` match. All three targets run in `make test`.
 
 ### Validating extractor output
 
@@ -272,7 +291,6 @@ golden set against itself and runs in CI as a self-check of the scorer.
 
 ## Next
 
-- Calculation extraction (IR + attributes) for TypeScript, then SQL projects (T-SQL `.sqlproj`,
-  PostgreSQL migrations).
+- Calculation extraction for SQL routines.
 - Open decision: TypeScript 7 (native compiler) has a different programmatic API. The extractor pins
   `typescript@5.9` until that API is evaluated.
