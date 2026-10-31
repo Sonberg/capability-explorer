@@ -92,8 +92,20 @@ missing/cycle guard, direct dependency edge emission and all public DTOs remain
 unchanged. Focused17/17 tests and build0 warnings/errors verify integration.
 Independent Sol-high reviewer inspected finalb6c3688 and tests and found no
 blockers. A100/100, iteration1: contract40/isolation40/compatibility20. Brain
-closeout: sparc/CARD/sparc-card. No added dependency/service/model or paid routing.
+closeout: sparc/plugins/sparc/skills/sparc-resume/SKILL.md (thin methodology retrieval, no additional runtime recommendation). No added dependency/service/model or paid routing.
 Review limit: exported artifacts filter compiler diagnostics to source locations;
 public tests do not directly observe all assembly-level diagnostics or reference
 multiplicity. Internal identity dedup is verified by source review, not claimed
 as runtime introspection. Duplicate assembly names/aliases remain out of scope.
+
+
+Refinement: `make evaluate-cs` passed10/10 artifacts, nodes176/176, edges174/174,
+evidence350/350, calculations11/11, attributes112/112, hashes11/11, precision58/58,
+zero evidence errors, all unchanged thresholds passed. Log
+/private/tmp/ce-transitive-golden.log. The real CLI extraction path executes in
+this gate; no adjacent mock is substituted. All4 new public behavior tests passed
+within17/17 total; diamond output byte equality and exact direct dependencies are
+asserted. R100/100 iteration1: cases40/determinism30/boundaries30. No unresolved
+review blockers. Brain closeout: sparc/CARD/sparc-card; no additional primitive.
+No production Glufs reanalysis, dense-DAG benchmark, conditional/cyclic MSBuild
+expansion or assembly unification tested. No provider API spend; native cost unknown.
