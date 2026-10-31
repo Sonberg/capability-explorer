@@ -54,7 +54,7 @@ for (const dialect of ["tsql", "postgresql"] as const) {
   test(`${dialect}: cosmetic edits and routine rename preserve IR/hash, literal mutations change them`, () => {
     const get = (files: [string, string][], name: string) => {
       const result = extract(files);
-      const calculation = result.records.find((r) => r.kind === "calculation" && r.symbolKey?.endsWith(`|${dialect === "tsql" ? "dbo." : ""}${name}`));
+      const calculation = result.records.find((r) => r.kind === "calculation" && r.symbolKey?.endsWith(`|${dialect === "tsql" ? "dbo." : "public."}${name}`));
       assert.ok(calculation, `missing calculation ${name}`);
       assert.match(calculation.irHash!, /^[a-f0-9]{64}$/);
       return { calculation, header: result.records.find((r) => r.kind === "header")! };
