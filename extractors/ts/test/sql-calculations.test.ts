@@ -103,6 +103,16 @@ for (const d of ["tsql", "postgresql"] as const) {
     assert.equal((division.r as Expr).value, 2);
   });
 
+  test(`${d}: parameter declarations determine inputs even when references occur in reverse order`, () => {
+    const left = d === "tsql" ? "@left" : "p_left";
+    const right = d === "tsql" ? "@right" : "p_right";
+    const c = calculation(run(files(d, `SELECT ${right} - ${left}`, `${left} int, ${right} int`, "integer")));
+    assert.deepEqual(c.inputs.map(({ ref, type }) => ({ ref, type })), [{ ref: "$0", type: "int32" }, { ref: "$1", type: "int32" }]);
+    assert.equal(c.expr.o, "-");
+    assert.equal((c.expr.l as Expr).ref, "$1");
+    assert.equal((c.expr.r as Expr).ref, "$0");
+  });
+
   test(`${d}: quoted aliases, SUM, null-as-zero, filters and ROUND retain semantics`, () => {
     const row = q("entry");
     const amount = `${row}.${q("Amount")}`;
@@ -214,7 +224,13 @@ for (const d of ["tsql", "postgresql"] as const) {
     ["token limit", `SELECT ${Array.from({ length: 2500 }, () => "1").join(" + ")}`],
   ];
   for (const [name, body] of negatives) test(`${d}: rejects ${name} with evidence and preserves graph`, () => {
-    const records = run(files(d, body!));
+    const input = files(d, body!);
+    if (d === "tsql" && name === "multiple statements") {
+      // Both RETURN statements belong to this routine; a statement following an
+      // inline table-valued declaration would instead be an unrelated batch item.
+      input["db/functions/calculate.sql"] = "CREATE FUNCTION dbo.Calculate() RETURNS int AS BEGIN RETURN 1; RETURN 2; END;\nGO\n";
+    }
+    const records = run(input);
     rejected(records, ["join", "ambiguous column", "missing column", "unknown function", "unsupported boolean OR", "SUM DISTINCT"].includes(name!));
     assert.equal(records.at(-1)!.status, "full", "unsupported calculation alone does not mean incomplete graph coverage");
   });
