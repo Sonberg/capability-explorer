@@ -1,4 +1,3 @@
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -7,35 +6,30 @@ using Azure.Core;
 namespace CapabilityExplorer.Interpretation;
 
 /// <summary>
-/// Microsoft Foundry embeddings deployment through the OpenAI-compatible v1 endpoint (<c>{endpoint}/openai/v1/embeddings</c>).
-/// Same authentication as <see cref="FoundryChatModel"/>: an API key when supplied, otherwise an Entra ID token.
+/// Embeddings on an OpenAI-compatible API (<c>{base}/embeddings</c>): a local Ollama by default, or Microsoft Foundry.
+/// See <see cref="OpenAiApi"/> for URLs and auth.
 /// </summary>
-public sealed class FoundryEmbeddingModel
+public sealed class OpenAiEmbeddingModel
 {
-    private const string TokenScope = "https://cognitiveservices.azure.com/.default";
     private readonly HttpClient _http;
     private readonly Uri _url;
     private readonly string _deployment;
     private readonly string? _apiKey;
     private readonly TokenCredential? _credential;
+    private readonly string _provider;
 
-    public FoundryEmbeddingModel(HttpClient http, Uri endpoint, string deployment, string? apiKey, TokenCredential? credential)
+    public OpenAiEmbeddingModel(HttpClient http, Uri endpoint, string model, string? apiKey, TokenCredential? credential, string provider = "openai")
     {
-        ArgumentNullException.ThrowIfNull(endpoint);
-        if (apiKey is null && credential is null)
-        {
-            throw new ArgumentException("an API key or a token credential is required");
-        }
-
         _http = http;
-        _url = new Uri(endpoint.AbsoluteUri.TrimEnd('/') + "/openai/v1/embeddings");
-        _deployment = deployment;
+        _url = OpenAiApi.Url(endpoint, "embeddings");
+        _deployment = model;
         _apiKey = apiKey;
         _credential = credential;
+        _provider = provider;
     }
 
     /// <summary>Stored with every vector: vectors from different models are never compared.</summary>
-    public string Id => $"foundry:{_deployment}";
+    public string Id => $"{_provider}:{_deployment}";
 
     /// <summary>One vector per input, in input order.</summary>
     public async Task<float[][]> EmbedAsync(IReadOnlyList<string> inputs, CancellationToken cancellationToken = default)
@@ -43,15 +37,7 @@ public sealed class FoundryEmbeddingModel
         ArgumentNullException.ThrowIfNull(inputs);
         var body = new JsonObject { ["model"] = _deployment, ["input"] = new JsonArray(inputs.Select(i => (JsonNode)i).ToArray()) };
         using var message = new HttpRequestMessage(HttpMethod.Post, _url) { Content = JsonContent.Create(body) };
-        if (_apiKey is not null)
-        {
-            message.Headers.Add("api-key", _apiKey);
-        }
-        else
-        {
-            var token = await _credential!.GetTokenAsync(new TokenRequestContext([TokenScope]), cancellationToken);
-            message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
-        }
+        await OpenAiApi.AuthorizeAsync(message, _apiKey, _credential, cancellationToken);
 
         HttpResponseMessage response;
         try
@@ -60,7 +46,7 @@ public sealed class FoundryEmbeddingModel
         }
         catch (HttpRequestException e)
         {
-            throw new InterpretationUnavailableException($"Foundry request failed: {e.Message}", e);
+            throw new InterpretationUnavailableException($"model request failed: {e.Message}", e);
         }
 
         using (response)
@@ -68,7 +54,7 @@ public sealed class FoundryEmbeddingModel
             var text = await response.Content.ReadAsStringAsync(cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                throw new InterpretationUnavailableException($"Foundry returned {(int)response.StatusCode}: {Truncate(text)}");
+                throw new InterpretationUnavailableException($"model API returned {(int)response.StatusCode}: {Truncate(text)}");
             }
 
             try
@@ -80,11 +66,11 @@ public sealed class FoundryEmbeddingModel
                     vectors[item.GetProperty("index").GetInt32()] = item.GetProperty("embedding").EnumerateArray().Select(v => v.GetSingle()).ToArray();
                 }
 
-                return vectors.Any(v => v is null) ? throw new InterpretationUnavailableException("Foundry response is missing embeddings") : vectors;
+                return vectors.Any(v => v is null) ? throw new InterpretationUnavailableException("model response is missing embeddings") : vectors;
             }
             catch (Exception e) when (e is JsonException or KeyNotFoundException or IndexOutOfRangeException or InvalidOperationException)
             {
-                throw new InterpretationUnavailableException($"unexpected Foundry response shape: {Truncate(text)}", e);
+                throw new InterpretationUnavailableException($"unexpected model response shape: {Truncate(text)}", e);
             }
         }
     }

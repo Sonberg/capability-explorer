@@ -21,12 +21,12 @@ builder.Services.AddHostedService(_ => state);
 builder.Services.AddTransient(_ => state.Current.Index);
 builder.Services.AddTransient(_ => state.Current.Capabilities);
 
-// Optional intelligence layer: provider "none" unless configured (interpretation:provider = recorded | foundry)
-// or saved from the Settings page (foundrySettings). Similarity search also needs the database (CE_DATABASE).
+// Optional intelligence layer: provider "none" unless configured (interpretation:provider = recorded | openai | foundry)
+// or saved from the Settings page / `make ollama` (modelSettings). Similarity search also needs the database (CE_DATABASE).
 var interpretation = builder.Configuration.GetSection("interpretation").Get<InterpretationOptions>() ?? new InterpretationOptions();
 var database = builder.Configuration["database"] ?? Environment.GetEnvironmentVariable("CE_DATABASE");
 var dataSource = database is { Length: > 0 } ? NpgsqlDataSource.Create(database) : null;
-var intelligence = new Intelligence(interpretation, builder.Configuration["foundrySettings"] ?? FoundrySettings.DefaultPath, dataSource is null ? null : new EmbeddingStore(dataSource));
+var intelligence = new Intelligence(interpretation, builder.Configuration["modelSettings"] ?? ModelSettings.DefaultPath, dataSource is null ? null : new EmbeddingStore(dataSource));
 builder.Services.AddSingleton(intelligence);
 builder.Services.AddTransient(_ => intelligence.Layer);
 builder.Services.ConfigureHttpJsonOptions(o =>

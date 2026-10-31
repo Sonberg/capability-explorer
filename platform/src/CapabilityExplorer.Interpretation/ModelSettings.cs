@@ -3,17 +3,20 @@ using System.Text.Json;
 namespace CapabilityExplorer.Interpretation;
 
 /// <summary>
-/// Foundry connection saved from the explorer UI, shared with <c>ce embed</c>. Lives under the git-ignored
-/// .sandbox-cache and is readable by its owner only, because it may hold an API key.
+/// Model connection saved from the explorer's Settings page, shared with <c>ce embed</c>. Written by <c>make ollama</c>
+/// for a local Ollama. Lives under the git-ignored .sandbox-cache, readable by its owner only (it may hold an API key).
 /// </summary>
-public sealed record FoundrySettings(string? Endpoint, string? Deployment, string? EmbeddingDeployment, string? ApiKey)
+public sealed record ModelSettings(string? Endpoint, string? ChatModel, string? EmbeddingModel, string? ApiKey)
 {
-    public const string DefaultPath = ".sandbox-cache/foundry.json";
+    public const string DefaultPath = ".sandbox-cache/model.json";
+
+    /// <summary>Ollama on the host, as seen from the sandbox container (or from the host itself via localhost).</summary>
+    public const string OllamaEndpoint = "http://host.docker.internal:11434/v1";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    public static FoundrySettings? Load(string path) =>
-        File.Exists(path) ? JsonSerializer.Deserialize<FoundrySettings>(File.ReadAllText(path), Json) : null;
+    public static ModelSettings? Load(string path) =>
+        File.Exists(path) ? JsonSerializer.Deserialize<ModelSettings>(File.ReadAllText(path), Json) : null;
 
     public void Save(string path)
     {
@@ -32,10 +35,10 @@ public sealed record FoundrySettings(string? Endpoint, string? Deployment, strin
     /// <summary>Settings win over the configured provider; caches and recordings are kept.</summary>
     public InterpretationOptions ApplyTo(InterpretationOptions options) => options with
     {
-        Provider = Endpoint is { Length: > 0 } ? "foundry" : "none",
+        Provider = Endpoint is not { Length: > 0 } ? "none" : OpenAiApi.IsAzure(new Uri(Endpoint)) ? "foundry" : "openai",
         Endpoint = Endpoint,
-        Deployment = Deployment is { Length: > 0 } ? Deployment : null,
-        EmbeddingDeployment = EmbeddingDeployment is { Length: > 0 } ? EmbeddingDeployment : null,
+        Deployment = ChatModel is { Length: > 0 } ? ChatModel : null,
+        EmbeddingModel = EmbeddingModel is { Length: > 0 } ? EmbeddingModel : null,
         ApiKey = ApiKey,
     };
 }

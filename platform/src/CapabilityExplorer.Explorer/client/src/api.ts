@@ -24,7 +24,7 @@ export interface Meta {
   capabilities: CapabilitySummary[];
   githubAuth: { configured: boolean; source: string };
   interpretation: { enabled: boolean; provider: string; model?: string };
-  /** Vector search: needs the database (CE_DATABASE) and a Foundry embedding deployment. */
+  /** Vector search: needs the database (CE_DATABASE) and an embedding model (make ollama, or Settings). */
   similarity: { database: boolean; embeddings?: string };
   revisions: Revision[];
   defaultView: Record<string, string>;
@@ -142,12 +142,15 @@ export interface SimilarHit {
   score: number;
 }
 
-export interface FoundrySettings {
+export interface ModelSettings {
   source: "saved" | "configuration" | "none";
   settingsPath: string;
+  provider: string;
   endpoint?: string;
-  deployment?: string;
-  embeddingDeployment?: string;
+  chatModel?: string;
+  embeddingModel?: string;
+  /** Where `make ollama` serves, as the explorer reaches it. */
+  ollamaEndpoint: string;
   hasApiKey: boolean;
   apiKeySource: string;
   database: boolean;
@@ -156,7 +159,8 @@ export interface FoundrySettings {
 
 export interface Integrations {
   services: { service: NodeDto; endpoints: { endpoint: NodeDto; handlers: SymbolRef[] }[] }[];
-  http: { request: Edge; candidates: SymbolRef[]; match: "bound" | "binding" | "broken" | "route" | "none" | "dynamic"; note: string }[];
+  /** group: who it talks to (Fortnox, Klarna, …); base: the host, configuration name or client it goes through. */
+  http: { request: Edge; candidates: SymbolRef[]; match: "bound" | "binding" | "broken" | "route" | "none" | "dynamic"; note: string; base: string; group: string }[];
   channels: ResourceGroup[];
   data: ResourceGroup[];
 }

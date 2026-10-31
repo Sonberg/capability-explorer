@@ -10,7 +10,7 @@
 #               project into <work>/locks/<repo>.json; no GitHub token, no local repositories mounted
 #   3 extract   --offline: the analysed code is parsed, never restored, built or executed
 #   4 store     optional, only when CE_DATABASE (an Npgsql connection string) is set: migrate, import the artifacts, embed
-#               them for similarity search when Foundry is configured (Settings page or CE_FOUNDRY_*) and,
+#               them for similarity search when a model is configured (make ollama, Settings page or CE_MODEL_*) and,
 #               with BINDINGS=<file>, save the snapshot-level bindings. Only this step gets the connection string.
 #
 # Step 3 runs the C# (Roslyn), TypeScript/JavaScript and SQL extractors.
@@ -97,10 +97,10 @@ if [[ -n "${CE_DATABASE:-}" ]]; then
   echo "== 4/4 import into PostgreSQL (CE_DATABASE)"
   # The connection string is passed by name only, never on a command line. Network is needed to reach the database.
   # From the sandbox, a database on the host is reachable as host.docker.internal (or set SANDBOX_NETWORK=host).
-  # Then embeddings for similarity search, when Foundry is configured: CE_FOUNDRY_ENDPOINT (+ CE_FOUNDRY_EMBEDDING_DEPLOYMENT),
-  # or the settings saved from the explorer's Settings page. A failed embed does not undo the import.
-  embed=0; [[ -n "${CE_FOUNDRY_ENDPOINT:-}" || -f .sandbox-cache/foundry.json ]] && embed=1
-  SANDBOX_PASS_ENV="CE_DATABASE,CE_FOUNDRY_ENDPOINT,CE_FOUNDRY_EMBEDDING_DEPLOYMENT,CE_FOUNDRY_API_KEY" SANDBOX_SOURCES="" scripts/sandbox dotnet bash -c '
+  # Then embeddings for similarity search, when a model is configured: `make ollama` or the explorer's Settings page
+  # (.sandbox-cache/model.json), or CE_MODEL_ENDPOINT + CE_EMBEDDING_MODEL. A failed embed does not undo the import.
+  embed=0; [[ -n "${CE_MODEL_ENDPOINT:-}" || -f .sandbox-cache/model.json ]] && embed=1
+  SANDBOX_PASS_ENV="CE_DATABASE,CE_MODEL_ENDPOINT,CE_EMBEDDING_MODEL,CE_FOUNDRY_API_KEY" SANDBOX_SOURCES="" scripts/sandbox dotnet bash -c '
     set -euo pipefail
     ce="$1"; bindings="$2"; embed="$3"; shift 3
     dotnet "$ce" migrate

@@ -60,22 +60,49 @@ export function Integrations() {
       </div>
 
       <H2 className="mt-6">HTTP calls</H2>
-      <Table
-        columns={["Client", "Request", "Match", "Candidate endpoint", "Why"]}
-        rows={d.http.map((l) => [
-          <SymbolLink symbol={l.request.from} />,
-          l.request.to ? <Mono className="text-xs">{l.request.to.name}</Mono> : <span className="text-zinc-500">dynamic</span>,
-          <Pill tone={matchTone[l.match]}>{l.match}</Pill>,
-          l.candidates.length ? l.candidates.map((c) => <div key={c.key}><SymbolLink symbol={c} /></div>) : <span className="text-zinc-400">—</span>,
-          <span className="text-xs text-zinc-500">{l.note}</span>,
-        ])}
-      />
+      <Muted className="mb-2 text-xs">Grouped by who each request talks to: the domain of its host, or the namespace of a typed client (…Infrastructure.Klarna → Klarna). “Via” is the exact host, client or configuration name.</Muted>
+      <div className="space-y-2">
+        {[...d.http.reduce((m, l) => m.set(l.group, [...(m.get(l.group) ?? []), l]), new Map<string, Data["http"]>())].map(([base, links]) => (
+          <HttpGroup key={base} base={base} links={links} />
+        ))}
+      </div>
 
       <H2 className="mt-6">Messaging</H2>
       <div className="space-y-3">{d.channels.map((g) => <Resource key={g.name} group={g} />)}</div>
       <H2 className="mt-6">Data</H2>
       <div className="space-y-3">{d.data.map((g) => <Resource key={g.name} group={g} />)}</div>
     </div>
+  );
+}
+
+function HttpGroup({ base, links }: { base: string; links: Data["http"] }) {
+  const matched = links.filter((l) => l.candidates.length > 0).length;
+  const repos = [...new Set(links.map((l) => l.request.repositoryId))];
+  return (
+    <details open className="group rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-2.5">
+        <span className="text-zinc-400 transition-transform group-open:rotate-90" aria-hidden="true">›</span>
+        <span className="font-semibold">{base}</span>
+        <Pill>
+          {links.length} call{links.length === 1 ? "" : "s"}
+        </Pill>
+        {matched > 0 && <Pill tone="ok">{matched} matched</Pill>}
+        <span className="text-xs text-zinc-500">from {repos.join(", ")}</span>
+      </summary>
+      <div className="border-t border-zinc-200 dark:border-zinc-800 [&>div]:rounded-none [&>div]:border-0">
+        <Table
+          columns={["Client", "Via", "Request", "Match", "Candidate endpoint", "Why"]}
+          rows={links.map((l) => [
+            <SymbolLink symbol={l.request.from} />,
+            <Mono className="text-xs text-zinc-500">{l.base}</Mono>,
+            l.request.to ? <Mono className="text-xs">{l.request.to.name}</Mono> : <span className="text-zinc-500">dynamic</span>,
+            <Pill tone={matchTone[l.match]}>{l.match}</Pill>,
+            l.candidates.length ? l.candidates.map((c) => <div key={c.key}><SymbolLink symbol={c} /></div>) : <span className="text-zinc-400">—</span>,
+            <span className="text-xs text-zinc-500">{l.note}</span>,
+          ])}
+        />
+      </div>
+    </details>
   );
 }
 

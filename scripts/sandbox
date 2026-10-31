@@ -89,7 +89,8 @@ args=(
 if [[ $offline -eq 1 ]]; then
   args+=(--network none)
 else
-  args+=(--network "${SANDBOX_NETWORK:-bridge}")
+  # Services on the host (PostgreSQL, Ollama) are host.docker.internal, also on Linux where Docker does not add it.
+  args+=(--network "${SANDBOX_NETWORK:-bridge}" --add-host host.docker.internal:host-gateway)
 fi
 
 if [[ -n "$port" ]]; then

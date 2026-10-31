@@ -11,7 +11,7 @@ public sealed record InterpretationLayer(InterpretationOptions Options, Explanat
 }
 
 /// <summary>
-/// The model-backed features as currently configured. Foundry settings saved from the UI replace the layer
+/// The model-backed features as currently configured. Model settings saved from the UI replace the layer
 /// at runtime; handlers resolve <see cref="Layer"/> per request, so a save applies without a restart.
 /// </summary>
 public sealed partial class Intelligence
@@ -19,10 +19,10 @@ public sealed partial class Intelligence
     private readonly InterpretationOptions _configured;
     private volatile State _state;
 
-    private sealed record State(InterpretationLayer Layer, FoundryEmbeddingModel? Embeddings, FoundrySettings? Saved);
+    private sealed record State(InterpretationLayer Layer, OpenAiEmbeddingModel? Embeddings, ModelSettings? Saved);
 
     /// <param name="configured">From configuration; used while nothing is saved, or when it names a provider explicitly.</param>
-    /// <param name="settingsPath">Where the UI saves Foundry settings (shared with <c>ce embed</c>).</param>
+    /// <param name="settingsPath">Where the UI saves model settings (shared with <c>ce embed</c> and <c>make ollama</c>).</param>
     /// <param name="store">Similarity search; null without a database (CE_DATABASE).</param>
     public Intelligence(InterpretationOptions configured, string settingsPath, EmbeddingStore? store)
     {
@@ -31,7 +31,7 @@ public sealed partial class Intelligence
         Store = store;
         try
         {
-            _state = Build(configured.Enabled ? null : FoundrySettings.Load(settingsPath));
+            _state = Build(configured.Enabled ? null : ModelSettings.Load(settingsPath));
         }
         catch (Exception e) when (e is System.Text.Json.JsonException or InvalidOperationException or UriFormatException)
         {
@@ -50,35 +50,35 @@ public sealed partial class Intelligence
 
     public InterpretationLayer Layer => _state.Layer;
 
-    public FoundryEmbeddingModel? Embeddings => _state.Embeddings;
+    public OpenAiEmbeddingModel? Embeddings => _state.Embeddings;
 
-    public FoundrySettings? Saved => _state.Saved;
+    public ModelSettings? Saved => _state.Saved;
 
-    /// <summary>Validates, saves and applies. A blank API key keeps the saved one; Entra ID is used when none is saved.</summary>
-    public string? Save(FoundrySettingsRequest request)
+    /// <summary>Validates, saves and applies. A blank API key keeps the saved one.</summary>
+    public string? Save(ModelSettingsRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
         var endpoint = request.Endpoint?.Trim();
-        if (endpoint is { Length: > 0 } && !(Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps && uri.Query.Length == 0))
+        if (endpoint is { Length: > 0 } && !(Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) && IsAllowed(uri) && uri.Query.Length == 0))
         {
-            return "endpoint must be an https URL without a query, e.g. https://my-resource.services.ai.azure.com";
+            return "endpoint must be an https URL (http only for a local server such as localhost, host.docker.internal or a container name), without a query";
         }
 
-        foreach (var (name, value) in new[] { ("deployment", request.Deployment), ("embedding deployment", request.EmbeddingDeployment) })
+        foreach (var (name, value) in new[] { ("chat model", request.ChatModel), ("embedding model", request.EmbeddingModel) })
         {
-            if (value is { Length: > 0 } && !DeploymentName().IsMatch(value.Trim()))
+            if (value is { Length: > 0 } && !ModelName().IsMatch(value.Trim()))
             {
-                return $"{name} may contain letters, digits, '.', '_' and '-' only";
+                return $"{name} may contain letters, digits, '.', '_', ':', '/' and '-' only";
             }
         }
 
-        if (endpoint is { Length: > 0 } && string.IsNullOrWhiteSpace(request.Deployment) && string.IsNullOrWhiteSpace(request.EmbeddingDeployment))
+        if (endpoint is { Length: > 0 } && string.IsNullOrWhiteSpace(request.ChatModel) && string.IsNullOrWhiteSpace(request.EmbeddingModel))
         {
-            return "set a chat deployment, an embedding deployment, or both";
+            return "set a chat model, an embedding model, or both";
         }
 
         var apiKey = request.ClearApiKey ? null : request.ApiKey is { Length: > 0 } key ? key.Trim() : Saved?.ApiKey;
-        var settings = new FoundrySettings(endpoint is { Length: > 0 } ? endpoint : null, request.Deployment?.Trim(), request.EmbeddingDeployment?.Trim(), apiKey);
+        var settings = new ModelSettings(endpoint is { Length: > 0 } ? endpoint : null, request.ChatModel?.Trim(), request.EmbeddingModel?.Trim(), apiKey);
         State state;
         try
         {
@@ -95,18 +95,24 @@ public sealed partial class Intelligence
         return null;
     }
 
-    private State Build(FoundrySettings? saved)
+    /// <summary>https anywhere; plain http only to a local or same-network server (an API key must not cross the internet unencrypted).</summary>
+    private static bool IsAllowed(Uri uri) =>
+        uri.Scheme == Uri.UriSchemeHttps
+        || (uri.Scheme == Uri.UriSchemeHttp && (uri.IsLoopback || uri.Host == "host.docker.internal" || !uri.Host.Contains('.', StringComparison.Ordinal)));
+
+    private State Build(ModelSettings? saved)
     {
         var options = saved?.ApplyTo(_configured) ?? _configured;
         var explanations = options.CreateModel() is { } model ? new ExplanationService(model, options.CacheDirectory) : null;
         return new State(new InterpretationLayer(options, explanations), options.CreateEmbeddingModel(), saved);
     }
 
-    [GeneratedRegex("^[A-Za-z0-9._-]{1,64}$")]
-    private static partial Regex DeploymentName();
+    // Ollama names look like "qwen2.5:7b" or "library/nomic-embed-text"; Foundry deployments are plainer.
+    [GeneratedRegex("^[A-Za-z0-9._:/-]{1,100}$")]
+    private static partial Regex ModelName();
 }
 
-public sealed record FoundrySettingsRequest(string? Endpoint, string? Deployment, string? EmbeddingDeployment, string? ApiKey, bool ClearApiKey = false);
+public sealed record ModelSettingsRequest(string? Endpoint, string? ChatModel, string? EmbeddingModel, string? ApiKey, bool ClearApiKey = false);
 
 public sealed record SimilarHit(string Key, string Name, string Kind, string RepositoryId, string Unit, bool HasCalculation, double Score);
 
