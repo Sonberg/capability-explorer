@@ -1,6 +1,6 @@
 # Handoff: remaining work
 
-Status at handoff: branch `stage-1-contract-and-fixtures`. `make ci` is green.
+Status: branch `stage-1-contract-and-fixtures`, with workstreams 1–5 merged. `make ci` is green. Still open: SQL routine calculations (workstream 3) and environment/IaC files as a binding source (workstream 5).
 
 ## What exists
 
@@ -78,7 +78,7 @@ Implemented in `Calculations.cs`, `CalculationAttributes.cs`, `CalculationIr.cs`
 - **Known gaps:** no `CREATE TRIGGER`, `SYNONYM` or cross-database references (they are `unresolved`); DML in
   `INSERT … ON CONFLICT` and `MERGE` is covered by simple rules only.
 
-### 4. Deterministic package resolution + private feeds (C#)
+### 4. Deterministic package resolution + private feeds (C#) — DONE
 
 - **Problem:**
   - `ce-cs fetch-packages` and `PackageResolver` choose versions from whatever the shared
