@@ -193,6 +193,25 @@ function matching(t: Tok[], open: number): number {
   return t.length;
 }
 
+/** Comments are discarded by the permissive lexer; validate the gaps it skipped. */
+function unterminatedComment(text: string, dialect: Dialect, from = 0, to = text.length): boolean {
+  let previous = from;
+  const unclosedGap = (start: number, end: number) => {
+    let depth = 0;
+    for (let i = start; i < end; i++) {
+      if (depth === 0 && text.startsWith("--", i)) { while (i < end && text[i] !== "\n") i++; }
+      else if (text.startsWith("/*", i)) { depth++; i++; }
+      else if (depth > 0 && text.startsWith("*/", i)) { depth--; i++; }
+    }
+    return depth > 0;
+  };
+  for (const tok of tokenize(text, dialect, from, to)) {
+    if (unclosedGap(previous, tok.start)) return true;
+    previous = tok.end;
+  }
+  return unclosedGap(previous, to);
+}
+
 const skipIfNotExists = (t: Tok[], i: number) => (isKw(t[i], "IF") && isKw(t[i + 1], "NOT") && isKw(t[i + 2], "EXISTS") ? i + 3 : i);
 const skipIfExists = (t: Tok[], i: number) => (isKw(t[i], "IF") && isKw(t[i + 1], "EXISTS") ? i + 2 : i);
 
@@ -323,10 +342,12 @@ function createRoutine(cat: Catalog, t: Tok[], i: number, path: string, text: st
   const params = new Set<string>();
   const parameterTypes: SqlParameter[] = [];
   let signatureSafe = true;
+  let bodyRange: [number, number] | undefined;
   let j = n.next;
 
   if (isP(t[j], "(")) {
     const close = matching(t, j);
+    if (isP(t[close - 1], ",")) signatureSafe = false;
     for (const el of splitTopLevel(t, j + 1, close)) {
       let k = 0;
       while (isKw(el[k], "IN", "OUT", "INOUT", "VARIADIC")) {
@@ -337,7 +358,7 @@ function createRoutine(cat: Catalog, t: Tok[], i: number, path: string, text: st
       if (first && (first.kind === "var" || isIdent(first))) {
         params.add(first.value.toLowerCase());
         const type = parseSqlDataType(el.slice(k + 1), d);
-        if (type && (d !== "tsql" || first.kind === "var")) parameterTypes.push({ name: identValue(first, d), type, at: { start: first.start, end: el.at(-1)!.end } });
+        if (type && (d === "tsql" ? first.kind === "var" : isIdent(first))) parameterTypes.push({ name: identValue(first, d), type, at: { start: first.start, end: el.at(-1)!.end } });
         else signatureSafe = false;
       } else signatureSafe = false;
     }
@@ -349,7 +370,8 @@ function createRoutine(cat: Catalog, t: Tok[], i: number, path: string, text: st
       if (t[j]!.kind === "var" && !isKw(t[j - 1], "=")) params.add(t[j]!.value.toLowerCase());
       j++;
     }
-  }
+    signatureSafe = false;
+  } else signatureSafe = false;
 
   if (params.size !== parameterTypes.length) signatureSafe = false;
   const routine: RoutineDef = { kind: "Routine", name, at, params, parameterTypes, body: [], path };
@@ -385,11 +407,16 @@ function createRoutine(cat: Catalog, t: Tok[], i: number, path: string, text: st
       else if (isKw(tok, "AS") && (t[k + 1]?.kind === "dollar" || t[k + 1]?.kind === "string")) {
         const body = t[k + 1]!;
         if (body.kind === "dollar") {
+          bodyRange = body.inner!;
           routine.body = tokenize(text, d, body.inner![0], body.inner![1]);
           const delimiter = text.slice(body.start, body.inner![0]);
           if (text.slice(body.inner![1], body.end) !== delimiter) signatureSafe = false;
         }
-        else if (!body.value.includes("\\") && !body.text.includes("''")) routine.body = tokenize(text, d, body.start + 1, body.end - 1);
+        else if (!body.value.includes("\\") && !body.text.includes("''")) {
+          if (!body.text.endsWith("'") || body.text.length < 2) signatureSafe = false;
+          bodyRange = [body.start + 1, body.end - 1];
+          routine.body = tokenize(text, d, ...bodyRange);
+        }
         else routine.dynamic = "the body is a string literal with escapes";
       }
       if (isKw(tok, "BEGIN") && isKw(t[k + 1], "ATOMIC")) routine.body = t.slice(k + 2);
@@ -398,13 +425,22 @@ function createRoutine(cat: Catalog, t: Tok[], i: number, path: string, text: st
     if (isProc) routine.routineKind = "procedure";
     else routine.routineKind = language ? (language === "sql" ? "sql-function" : `${language}-function`) : "function";
     // Accept only the declaration options whose semantics are represented here.
+    const options = new Set<string>();
     for (let k = j; k < t.length; k++) {
       if (k === returnsAt) { k = returnEnd - 1; continue; }
-      if ((isKw(t[k], "LANGUAGE") && isKw(t[k + 1], "SQL")) || (isKw(t[k], "AS") && ["dollar", "string"].includes(t[k + 1]?.kind ?? ""))) { k++; continue; }
-      if (isKw(t[k], "STABLE", "IMMUTABLE", "VOLATILE")) continue;
+      if ((isKw(t[k], "LANGUAGE") && isKw(t[k + 1], "SQL")) || (isKw(t[k], "AS") && ["dollar", "string"].includes(t[k + 1]?.kind ?? ""))) {
+        const option = upper(t[k]);
+        if (options.has(option)) signatureSafe = false;
+        options.add(option); k++; continue;
+      }
+      if (isKw(t[k], "STABLE", "IMMUTABLE", "VOLATILE")) {
+        if (options.has("volatility")) signatureSafe = false;
+        options.add("volatility"); continue;
+      }
       signatureSafe = false;
     }
     if (!signatureSafe) routine.returnType = undefined;
   }
+  if (routine.returnType && (unterminatedComment(text, d) || (bodyRange && unterminatedComment(text, d, ...bodyRange)))) routine.returnType = undefined;
   cat.routines.set(lookupKey(d, name), routine);
 }

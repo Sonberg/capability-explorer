@@ -47,16 +47,18 @@ class Parser {
     return identValue(tok!, this.dialect);
   }
 
-  parse(): { expression: SqlExpression; query?: SqlCalculationQuery; at: SqlSpan } {
+  parse(inlineTable: boolean): { expression: SqlExpression; query?: SqlCalculationQuery; at: SqlSpan } {
     const start = this.current()?.start ?? this.fallback.start;
     let block = false;
     if (this.dialect === "tsql") {
       block = this.keyword("BEGIN");
+      if (block && inlineTable) this.fail("inline table returns cannot have a procedural block");
       this.expectKw("RETURN");
     }
     let query: SqlCalculationQuery | undefined;
     let expression: SqlExpression;
     if (this.keyword("SELECT")) {
+      if (this.dialect === "tsql" && !inlineTable) this.fail("scalar T-SQL returns require a scalar expression");
       expression = this.expression();
       if (this.keyword("AS")) this.namePart();
       else if (this.isAlias()) this.namePart();
@@ -74,6 +76,7 @@ class Parser {
       }
     } else {
       if (this.dialect !== "tsql") this.fail("expected a SQL SELECT body");
+      if (inlineTable) this.fail("inline table returns require SELECT");
       expression = this.expression();
     }
     // One statement terminator is allowed; extra statements and every trailing clause fail closed.
@@ -224,7 +227,7 @@ export function parseRoutineCalculation(
     if (catalog.dialect === "postgresql" && tok.kind === "string" && tok.value.includes("\\")) return unsupported("escaped PostgreSQL string semantics are unsupported", tok);
   }
   try {
-    const parsed = new Parser(routine.body, catalog.dialect, maxDepth, routine.at).parse();
+    const parsed = new Parser(routine.body, catalog.dialect, maxDepth, routine.at).parse(routine.routineKind === "inline-table-valued-function");
     return { status: "supported", calculation: { dialect: catalog.dialect, ...parsed, parameters: routine.parameterTypes, outputType: routine.returnType } };
   } catch (error) {
     if (error instanceof Unsupported) return unsupported(error.message, error.at);
