@@ -11,7 +11,7 @@ interface LineError {
 
 export function Capabilities() {
   const { meta, reloadMeta, setCapability, capability } = useSelection();
-  const list = useApi<CapabilityStatus[]>("/api/capabilities");
+  const list = useApi<CapabilityStatus[]>(`/api/capabilities?g=${meta.generation}`);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string>();
 
@@ -88,6 +88,7 @@ export function Capabilities() {
           </div>
           {c.description && <Muted className="mt-1">{c.description}</Muted>}
           <p className="my-2 text-xs text-zinc-500">{c.checkedAt ? `Last checked ${new Date(c.checkedAt).toLocaleString()}` : "Not checked yet."}</p>
+          {c.analysed < c.repositories.length && <AnalyseHint id={c.id} />}
           <Table
             columns={["Repository", "Source", "Ref", "Locked revision", "Analysis"]}
             rows={c.repositories.map((r) => [
@@ -117,7 +118,7 @@ export function Capabilities() {
               ) : (
                 <span className="text-xs">
                   <Pill tone="warn">not analysed</Pill>
-                  <span className="block text-zinc-500">{r.analysedRevisions.length ? `other revisions: ${r.analysedRevisions.join(", ")}` : "no artifacts yet — extractors run in stage 2"}</span>
+                  <span className="block text-zinc-500">{r.analysedRevisions.length ? `other revisions: ${r.analysedRevisions.join(", ")}` : "no artifacts for this repository yet"}</span>
                 </span>
               ),
             ])}
@@ -126,6 +127,24 @@ export function Capabilities() {
       ))}
       <NewCapability onCreated={(id) => { refresh(); setCapability(id); }} />
     </div>
+  );
+}
+
+/** Extraction runs outside the explorer, in offline sandboxes; the page refreshes by itself when it finishes. */
+function AnalyseHint({ id }: { id: string }) {
+  const command = `make analyze CAPABILITY=${id}`;
+  return (
+    <Note>
+      <span className="block">
+        To analyse the locked revisions, run in the repository root: <Mono className="select-all">{command}</Mono>
+        <button type="button" className="ml-2 text-blue-700 hover:underline dark:text-blue-300" onClick={() => void navigator.clipboard?.writeText(command)}>
+          copy
+        </button>
+      </span>
+      <span className="block text-zinc-500">
+        It checks each repository again (add LOCKED=1 to keep these revisions), extracts C# and TypeScript without building or running anything, and this page picks up the results automatically.
+      </span>
+    </Note>
   );
 }
 

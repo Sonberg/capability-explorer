@@ -1,7 +1,7 @@
-import type { Meta } from "./api";
+import { request, type Meta } from "./api";
 import { ErrorBox, Loading } from "./components/ui";
 import { href, SelectionProvider, useApi, useRoute, useSelection } from "./state";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Artifacts } from "./views/Artifacts";
 import { Calculations } from "./views/Calculations";
 import { Capabilities } from "./views/Capabilities";
@@ -26,6 +26,7 @@ const VIEWS = [
 
 export function App() {
   const meta = useApi<Meta>("/api/meta");
+  useLiveReload(meta.data?.generation, meta.reload);
   if (meta.error) return <main className="p-5"><ErrorBox message={meta.error} /></main>;
   if (!meta.data) return <main className="p-5"><Loading /></main>;
   return (
@@ -33,6 +34,21 @@ export function App() {
       <Shell />
     </SelectionProvider>
   );
+}
+
+/** Polls the server's load generation; when artifacts or capabilities changed on disk, metadata is refetched
+ * and, because every scoped request carries the generation, so is everything on screen. */
+function useLiveReload(generation: number | undefined, reload: () => void) {
+  useEffect(() => {
+    if (generation === undefined) return;
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      request<{ generation: number }>("/api/generation")
+        .then((g) => g.generation !== generation && reload())
+        .catch(() => undefined); // server restarting: keep showing what we have
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [generation, reload]);
 }
 
 function Shell() {

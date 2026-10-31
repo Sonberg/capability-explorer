@@ -45,18 +45,26 @@ public static class ExplorerApi
     {
         var api = app.MapGroup("/api");
 
-        api.MapGet("/meta", (ExplorerIndex index, InterpretationLayer interpretation, CapabilityService capabilities) => new
+        // Cheap poll target: the client reloads when the generation changes (artifacts or capabilities on disk changed).
+        api.MapGet("/generation", (ExplorerState state) => new { generation = state.Current.Generation });
+
+        api.MapGet("/meta", (ExplorerState state, InterpretationLayer interpretation) =>
         {
-            capabilities = capabilities.List().Select(c => new { c.Id, c.Name, repositories = c.Repositories.Select(r => r.Id) }),
-            githubAuth = new { configured = capabilities.Sync.Auth.Configured, source = capabilities.Sync.Auth.Source },
-            interpretation = new { enabled = interpretation.Enabled, provider = interpretation.Options.Provider, model = interpretation.Explanations?.ModelId },
-            revisions = index.Revisions,
-            defaultView = index.DefaultSelection,
-            artifacts = index.Artifacts.Count,
-            problems = index.Problems,
-            hasSource = index.Git is not null,
-            hasEvaluation = evaluationReport is not null && File.Exists(evaluationReport),
-            nodeKinds = index.Artifacts.SelectMany(a => a.Artifact.Nodes.Select(n => n.NodeKind)).Distinct().Order(StringComparer.Ordinal),
+            var (index, capabilities, generation) = state.Current;
+            return new
+            {
+                generation,
+                capabilities = capabilities.List().Select(c => new { c.Id, c.Name, repositories = c.Repositories.Select(r => r.Id) }),
+                githubAuth = new { configured = capabilities.Sync.Auth.Configured, source = capabilities.Sync.Auth.Source },
+                interpretation = new { enabled = interpretation.Enabled, provider = interpretation.Options.Provider, model = interpretation.Explanations?.ModelId },
+                revisions = index.Revisions,
+                defaultView = index.DefaultSelection,
+                artifacts = index.Artifacts.Count,
+                problems = index.Problems,
+                hasSource = index.Git is not null,
+                hasEvaluation = evaluationReport is not null && File.Exists(evaluationReport),
+                nodeKinds = index.Artifacts.SelectMany(a => a.Artifact.Nodes.Select(n => n.NodeKind)).Distinct().Order(StringComparer.Ordinal),
+            };
         });
 
         // Every view can be scoped to a capability (cap=<id>): only its repositories, starting from its locked revisions.

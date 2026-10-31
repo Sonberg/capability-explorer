@@ -5,7 +5,7 @@ import { useApi, useSelection } from "../state";
 
 export function Artifacts() {
   const { meta } = useSelection();
-  const { data: list, error } = useApi<ArtifactSummary[]>("/api/artifacts");
+  const { data: list, error } = useApi<ArtifactSummary[]>(`/api/artifacts?g=${meta.generation}`);
   if (error) return <ErrorBox message={error} />;
   if (!list) return <Loading />;
   return (

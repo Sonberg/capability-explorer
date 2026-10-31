@@ -7,5 +7,6 @@
     <ProjectReference Include="../CapabilityExplorer.Contracts/CapabilityExplorer.Contracts.csproj" />
     <ProjectReference Include="../CapabilityExplorer.Store/CapabilityExplorer.Store.csproj" />
     <ProjectReference Include="../CapabilityExplorer.Evaluation/CapabilityExplorer.Evaluation.csproj" />
+    <ProjectReference Include="../CapabilityExplorer.Capabilities/CapabilityExplorer.Capabilities.csproj" />
   </ItemGroup>
 </Project>

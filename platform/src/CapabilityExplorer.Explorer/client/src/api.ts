@@ -19,6 +19,8 @@ export interface CapabilitySummary {
 }
 
 export interface Meta {
+  /** Increases whenever the server reloaded artifacts or capabilities from disk. */
+  generation: number;
   capabilities: CapabilitySummary[];
   githubAuth: { configured: boolean; source: string };
   interpretation: { enabled: boolean; provider: string; model?: string };

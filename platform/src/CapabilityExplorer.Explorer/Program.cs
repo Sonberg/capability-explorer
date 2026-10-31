@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 using CapabilityExplorer.Explorer;
 using CapabilityExplorer.Interpretation;
 
-// ce-explorer --artifacts <dir>[,<dir>] [--repos <dir>] [--evaluation <report.json>] [--urls http://127.0.0.1:5080]
+// ce-explorer --artifacts <dir>[,<dir>] (later directories win for the same repository, commit and unit) [--repos <dir>] [--evaluation <report.json>] [--urls http://127.0.0.1:5080]
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
     Args = args,
@@ -12,9 +12,12 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 
 // --artifacts/--repos/--evaluation arrive through configuration (command line, environment or test host).
 var options = ExplorerOptions.From(builder.Configuration);
-var (index, capabilities) = options.Build();
-builder.Services.AddSingleton(index);
-builder.Services.AddSingleton(capabilities);
+// The index and capabilities are reloaded when their files change (see ExplorerState); handlers get the current load.
+var state = new ExplorerState(options);
+builder.Services.AddSingleton(state);
+builder.Services.AddHostedService(_ => state);
+builder.Services.AddTransient(_ => state.Current.Index);
+builder.Services.AddTransient(_ => state.Current.Capabilities);
 
 // Optional intelligence layer: provider "none" unless configured (interpretation:provider = recorded | foundry).
 var interpretation = builder.Configuration.GetSection("interpretation").Get<InterpretationOptions>() ?? new InterpretationOptions();

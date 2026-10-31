@@ -1,3 +1,4 @@
+using CapabilityExplorer.Capabilities;
 using CapabilityExplorer.Contracts;
 using CapabilityExplorer.Evaluation;
 using CapabilityExplorer.Store;
@@ -8,6 +9,7 @@ using Npgsql;
 // ce migrate [--connection <npgsql connection string>]
 // ce import  [--connection <npgsql connection string>] <artifact.jsonl...>
 // ce evaluate --expected <dir> --actual <dir> [--config <evaluation.json>] [--repos <dir>] [--repository <id[,id]>] [--language <csharp,typescript,...>] [--json <report.json>]
+// ce export --capability <id> [--capabilities capabilities.json] [--workspace .sandbox-cache/sources] --out <dir>
 // The connection string defaults to the CE_DATABASE environment variable.
 const string Usage = """
     usage:
@@ -15,6 +17,7 @@ const string Usage = """
       ce verify-evidence --repo <git dir> <artifact.jsonl...>
       ce migrate [--connection <connection string>]
       ce import [--connection <connection string>] <artifact.jsonl...>
+      ce export --capability <id> --out <dir> [--capabilities <file>] [--workspace <dir>] [--locked 1]  (1 = use the last check instead of re-checking)
       ce evaluate --expected <dir> --actual <dir> [--config <evaluation.json>] [--repos <dir>] [--repository <id[,id]>] [--language <csharp,typescript,...>] [--json <report.json>] [--max-findings <n>]
     """;
 
@@ -108,6 +111,61 @@ switch (command)
         }
 
         return failed == 0 ? 0 : 1;
+    }
+
+    case "export":
+    {
+        // Locks the capability's revisions (unless --locked) and writes each locked tree to <out>/src/<repo>,
+        // plus <out>/manifest.tsv (repo, commit, path) for the offline extractor runs that follow.
+        if (!options.TryGetValue("capability", out var capabilityId) || !options.TryGetValue("out", out var exportDir))
+        {
+            Console.Error.WriteLine(Usage);
+            return 2;
+        }
+
+        var workspace = options.GetValueOrDefault("workspace") ?? ".sandbox-cache/sources";
+        using var store = CapabilityStore.Open(options.GetValueOrDefault("capabilities") ?? "capabilities.json", Path.Combine(workspace, "snapshots.json"));
+        if (store.Find(capabilityId) is not { } capability)
+        {
+            Console.Error.WriteLine($"no capability '{capabilityId}'. Known: {string.Join(", ", store.Capabilities.Select(c => c.Id))}");
+            return 2;
+        }
+
+        var sync = new SourceSync(workspace, auth: GitHubAuth.FromEnvironment());
+        var snapshot = options.GetValueOrDefault("locked") is "1" or "true" && store.Snapshot(capability.Id) is { } existing ? existing : await sync.CheckAsync(capability);
+        await store.SaveSnapshotAsync(snapshot);
+        var src = Path.Combine(exportDir, "src");
+        if (Directory.Exists(src))
+        {
+            Directory.Delete(src, recursive: true);
+        }
+
+        var manifest = new List<string>();
+        foreach (var locked in snapshot.Repositories)
+        {
+            if (locked.CommitSha is null)
+            {
+                Console.WriteLine($"{locked.Id,-24} skipped: {locked.Error}");
+                continue;
+            }
+
+            var source = capability.Repositories.Single(r => r.Id == locked.Id);
+            var dest = Path.Combine(src, locked.Id);
+            try
+            {
+                var result = await sync.ExportAsync(source, locked.CommitSha, dest);
+                manifest.Add($"{locked.Id}\t{locked.CommitSha}\t{Path.GetRelativePath(exportDir, dest).Replace('\\', '/')}");
+                Console.WriteLine($"{locked.Id,-24} {locked.CommitSha[..12]} {result.Files} files{(result.Skipped > 0 ? $" ({result.Skipped} skipped: links/large)" : "")}  {locked.Subject}");
+            }
+            catch (Exception e) when (e is InvalidOperationException or IOException)
+            {
+                Console.WriteLine($"{locked.Id,-24} {locked.CommitSha[..12]} export failed: {e.Message}");
+            }
+        }
+
+        Directory.CreateDirectory(exportDir);
+        await File.WriteAllTextAsync(Path.Combine(exportDir, "manifest.tsv"), string.Concat(manifest.Select(m => m + "\n")));
+        return manifest.Count > 0 ? 0 : 1;
     }
 
     case "evaluate":

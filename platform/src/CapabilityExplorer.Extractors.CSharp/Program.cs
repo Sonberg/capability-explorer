@@ -1,12 +1,35 @@
 using CapabilityExplorer.Contracts;
 using CapabilityExplorer.Extractors.CSharp;
 
+// ce-cs fetch-packages --source <dir> --packages <folder>   (network: downloads referenced packages as data)
 // ce-cs extract --source <dir> --repository <id> --commit <sha> --out <dir> [--packages <nuget folder>]
 // Writes one ce.v1 artifact per .csproj. Every artifact is validated before it is written.
 string? Arg(string name)
 {
     var i = Array.IndexOf(args, $"--{name}");
     return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+}
+
+if (args.FirstOrDefault() == "fetch-packages")
+{
+    // Network step, run before the offline extract: pure downloads from nuget.org, no restore, no MSBuild.
+    if (Arg("source") is not { } fetchSource || Arg("packages") is not { } into)
+    {
+        Console.Error.WriteLine("usage: ce-cs fetch-packages --source <dir> --packages <folder>");
+        return 2;
+    }
+
+    var refs = ProjectModel.Discover(Path.GetFullPath(fetchSource)).SelectMany(m => m.Packages).ToList();
+    using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
+    http.DefaultRequestHeaders.UserAgent.ParseAdd("capability-explorer/0.1");
+    var fetched = await new PackageFetcher(Path.GetFullPath(into), http).FetchAsync(refs);
+    Console.WriteLine($"packages: {fetched.Fetched} downloaded, {fetched.Present} already present, {fetched.Failed.Count} unavailable");
+    foreach (var f in fetched.Failed)
+    {
+        Console.WriteLine($"  - {f}");
+    }
+
+    return 0;
 }
 
 if (args.FirstOrDefault() != "extract" || Arg("source") is not { } source || Arg("repository") is not { } repo || Arg("commit") is not { } commit || Arg("out") is not { } outDir)

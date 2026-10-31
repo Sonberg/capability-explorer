@@ -8,7 +8,9 @@ namespace CapabilityExplorer.Extractors.CSharp;
 /// </summary>
 public sealed class PackageResolver(string? packagesRoot)
 {
-    private static readonly string[] Frameworks = ["net10.0", "net9.0", "net8.0", "net7.0", "net6.0", "netstandard2.1", "netstandard2.0", "netcoreapp3.1"];
+    private static readonly string[] AssemblyFolders = ["ref", "lib"];
+
+    internal static readonly string[] Frameworks = ["net10.0", "net9.0", "net8.0", "net7.0", "net6.0", "netstandard2.1", "netstandard2.0", "netcoreapp3.1"];
 
     public (IReadOnlyList<string> Assemblies, IReadOnlyList<PackageRef> Missing) Resolve(IEnumerable<PackageRef> packages)
     {
@@ -51,8 +53,10 @@ public sealed class PackageResolver(string? packagesRoot)
         }
 
         var root = Path.Combine(dir, version);
-        var lib = Path.Combine(root, "lib");
-        if (Directory.Exists(lib) && Frameworks.Select(f => Path.Combine(lib, f)).FirstOrDefault(Directory.Exists) is { } tfm)
+        // Reference assemblies (ref/) describe the compile surface when a package ships them; lib/ otherwise.
+        var tfm = AssemblyFolders.Select(d => Path.Combine(root, d)).Where(Directory.Exists)
+            .SelectMany(d => Frameworks.Select(f => Path.Combine(d, f))).FirstOrDefault(Directory.Exists);
+        if (tfm is not null)
         {
             assemblies.AddRange(Directory.EnumerateFiles(tfm, "*.dll"));
         }
@@ -77,7 +81,7 @@ public sealed class PackageResolver(string? packagesRoot)
         return true;
     }
 
-    private static string? Normalise(string? tfm) => tfm?.ToLowerInvariant() switch
+    internal static string? Normalise(string? tfm) => tfm?.ToLowerInvariant() switch
     {
         null => null,
         var t when t.StartsWith(".netstandard", StringComparison.Ordinal) => "netstandard" + t[".netstandard".Length..],

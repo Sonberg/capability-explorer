@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Analyses one capability: locks its repositories' revisions, exports those trees, runs the extractors and
+# writes artifacts to .sandbox-cache/artifacts/<repo>/<commit>/, where a running `make explore` picks them up.
+#
+#   scripts/analyze <capability-id> [capabilities.json]
+#
+# Each step runs in its own sandbox with only what it needs:
+#   1 export    network (GitHub fetch) + GitHub token + read-only mounts of local repositories
+#   2 packages  network to nuget.org only for downloads; no token, no local repositories mounted
+#   3 extract   --offline: the analysed code is parsed, never restored, built or executed
+#
+# Knobs: GITHUB_AUTH=auto|git|none (see scripts/github-token), LOCKED=1 analyses the last check instead of
+# re-checking the refs, PACKAGES=0 skips the nuget.org download (fewer resolved symbols, fully offline after 1).
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+cap="${1:-}"; capabilities="${2:-capabilities.json}"
+[[ "$cap" =~ ^[a-z0-9][a-z0-9._-]{0,99}$ ]] || { echo "usage: make analyze CAPABILITY=<id>   (ids are in $capabilities)" >&2; exit 2; }
+
+work=".sandbox-cache/analyze/$cap"
+artifacts=".sandbox-cache/artifacts"
+packages=".sandbox-cache/analyze-packages"
+ce="platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll"
+cs="platform/src/CapabilityExplorer.Extractors.CSharp/bin/Debug/net10.0/ce-cs.dll"
+ts="extractors/ts/src/cli.ts"
+mkdir -p "$artifacts" "$packages"
+
+echo "== 1/3 export locked revisions of '$cap'"
+GITHUB_TOKEN="$(scripts/github-token "${GITHUB_AUTH:-auto}")" CE_HOST_HOME="$HOME" \
+SANDBOX_PASS_ENV="${SANDBOX_PASS_ENV:+$SANDBOX_PASS_ENV,}GITHUB_TOKEN,CE_HOST_HOME" \
+SANDBOX_SOURCES="$(scripts/capability-sources "$capabilities")" \
+  scripts/sandbox dotnet dotnet "$ce" export --capability "$cap" --capabilities "$capabilities" \
+    --workspace .sandbox-cache/sources --out "$work" ${LOCKED:+--locked 1}
+
+if [[ "${PACKAGES:-1}" != 0 ]]; then
+  echo "== 2/3 fetch referenced NuGet packages (data only: nuspec + reference assemblies)"
+  SANDBOX_PASS_ENV="" SANDBOX_SOURCES="" scripts/sandbox dotnet dotnet "$cs" fetch-packages --source "$work/src" --packages "$packages"
+fi
+
+echo "== 3/3 extract (offline)"
+# Fresh output per revision, swapped in only when every extractor finished, so the explorer never sees half a set.
+staging="$work/out"
+rm -rf "$staging"; mkdir -p "$staging"
+while IFS=$'\t' read -r repo sha path; do mkdir -p "$staging/$repo/$sha"; done < "$work/manifest.tsv"
+
+SANDBOX_PASS_ENV="" SANDBOX_SOURCES="" scripts/sandbox --offline dotnet bash -c '
+  set -euo pipefail
+  while IFS=$'"'"'\t'"'"' read -r repo sha path; do
+    dotnet "$1" extract --source "$2/$path" --repository "$repo" --commit "$sha" --out "$3/$repo/$sha" --packages "$4" </dev/null | sed "s#^#  $repo  cs  #"
+  done < "$2/manifest.tsv"' _ "$cs" "$work" "$staging" "$packages"
+
+if [[ -f "$ts" ]] && grep -q '"extract"' "$ts"; then
+  SANDBOX_PASS_ENV="" SANDBOX_SOURCES="" scripts/sandbox --offline node bash -c '
+    set -euo pipefail
+    while IFS=$'"'"'\t'"'"' read -r repo sha path; do
+      node "$1" extract --source "$2/$path" --repository "$repo" --commit "$sha" --out "$3/$repo/$sha" </dev/null | sed "s#^#  $repo  ts  #"
+    done < "$2/manifest.tsv"' _ "$ts" "$work" "$staging" "$packages"
+fi
+
+count=0
+while IFS=$'\t' read -r repo sha path; do
+  dest="$artifacts/$repo/$sha"
+  rm -rf "$dest.old"; [[ -d "$dest" ]] && mv "$dest" "$dest.old"
+  mkdir -p "$artifacts/$repo"; mv "$staging/$repo/$sha" "$dest"; rm -rf "$dest.old"
+  count=$((count + $(find "$dest" -name '*.jsonl' | wc -l)))
+done < "$work/manifest.tsv"
+rm -rf "$work/src" "$staging"
+
+echo "== $count artifact(s) in $artifacts — a running 'make explore' reloads them automatically"

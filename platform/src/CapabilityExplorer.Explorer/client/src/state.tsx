@@ -50,7 +50,8 @@ export function useApi<T>(path: string | null) {
       live = false;
     };
   }, [path, tick]);
-  return { ...state, reload: () => setTick((t) => t + 1) };
+  const reload = useCallback(() => setTick((t) => t + 1), []);
+  return { ...state, reload };
 }
 
 // ---------------------------------------------------------------- selection: capability + revisions
@@ -96,7 +97,8 @@ export function SelectionProvider({ meta, reloadMeta, children }: { meta: Meta; 
   const effective = known ? capability : "";
   const own = overrides[effective || "*"] ?? {};
   const spec = Object.entries(own).map(([r, s]) => `${r}:${s}`).join(",");
-  const scope = `view=${encodeURIComponent(spec)}${effective ? `&cap=${encodeURIComponent(effective)}` : ""}`;
+  // The load generation is part of every scoped request, so new artifacts on the server refetch every view.
+  const scope = `view=${encodeURIComponent(spec)}${effective ? `&cap=${encodeURIComponent(effective)}` : ""}&g=${meta.generation}`;
   const resolved = useApi<Record<string, string>>(`/api/view?${scope}`);
 
   const setCapability = useCallback((id: string) => {

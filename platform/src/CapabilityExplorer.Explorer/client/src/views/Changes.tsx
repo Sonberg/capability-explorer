@@ -14,7 +14,7 @@ export function Changes({ params }: { params: URLSearchParams }) {
   const fromSha = params.get("from") ?? revs[Math.max(0, toIndex - 1)]?.commitSha;
   const go = (r: string, f?: string, t?: string) => (window.location.hash = href("changes", { repo: r, from: f, to: t }));
   const ready = repo && fromSha && toSha && fromSha !== toSha;
-  const { data: d, error } = useApi<ChangeReport>(ready ? `/api/changes?repo=${encodeURIComponent(repo)}&from=${fromSha}&to=${toSha}` : null);
+  const { data: d, error } = useApi<ChangeReport>(ready ? `/api/changes?repo=${encodeURIComponent(repo)}&from=${fromSha}&to=${toSha}&g=${meta.generation}` : null);
 
   if (!repo) return <Muted>No repositories in scope.</Muted>;
   return (

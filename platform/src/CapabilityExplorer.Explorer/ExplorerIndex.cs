@@ -60,23 +60,42 @@ public sealed class ExplorerIndex
 
     public static ExplorerIndex Load(IEnumerable<string> directories, GitSource? git)
     {
-        var artifacts = new List<LoadedArtifact>();
+        // One artifact per (repository, commit, unit): a later directory replaces an earlier one, so analysed
+        // output listed after the golden set takes its place instead of doubling every node.
+        var byUnit = new Dictionary<(string, string, string), (string Label, Artifact Artifact)>();
         var problems = new List<string>();
-        foreach (var directory in directories)
+        foreach (var directory in directories.Where(Directory.Exists))
         {
             foreach (var file in Directory.EnumerateFiles(directory, "*.jsonl", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
             {
                 var label = Path.GetRelativePath(directory, file).Replace('\\', '/');
-                var report = ArtifactValidator.Validate(File.ReadAllText(file));
+                string text;
+                try
+                {
+                    text = File.ReadAllText(file);
+                }
+                catch (IOException)
+                {
+                    continue; // removed while listing (an analysis swapping its output in)
+                }
+
+                var report = ArtifactValidator.Validate(text);
                 if (report.IsValid)
                 {
-                    artifacts.Add(new LoadedArtifact(artifacts.Count, label, report.Artifact!));
+                    var h = report.Artifact!.Header;
+                    byUnit[(h.RepositoryId, h.CommitSha, h.Unit.Path)] = (label, report.Artifact!);
                 }
                 else
                 {
                     problems.Add($"{label}: {string.Join("; ", report.Problems.Take(3))}");
                 }
             }
+        }
+
+        var artifacts = new List<LoadedArtifact>();
+        foreach (var (label, artifact) in byUnit.Values.OrderBy(v => v.Label, StringComparer.Ordinal))
+        {
+            artifacts.Add(new LoadedArtifact(artifacts.Count, label, artifact));
         }
 
         var revisions = artifacts
