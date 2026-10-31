@@ -66,7 +66,7 @@ Rules:
   The module itself is `<module path>|(module)#namespace` (node kind `File`).
 - **Anonymous code** (lambdas, arrow functions, handlers passed inline) has no key of its own. Its
   facts are attributed to the nearest named container. Top-level TypeScript code is attributed to the
-  module node, and C# top-level statements to `M:Program.<Main>$(System.String[])`. Set
+  module node, and C# top-level statements to `M:Program.{Main}$(System.String[])` (Roslyn's documentation-comment ID for the synthesized entry point; doc IDs write `<>` as `{}`). Set
   `props.handler: "lambda"` where it matters.
 - **Generics**: a call on a constructed generic (`Repository<WeeklyHistory>.ListAsync`) targets the
   original definition (``M:…Repository`1.ListAsync(…)``). The type arguments go in
@@ -104,6 +104,24 @@ An edge to an unbound key has `resolution: "unresolved"` and `unresolvedReason: 
 Binding happens at snapshot level (stage 3), using environment and IaC configuration or a
 human-maintained service map. That binding produces new `rule`- or `human`-derived edges and never
 rewrites extractor output.
+
+The service map is `bindings.json`. Each entry replaces one whole `@unbound:` segment of a key with a
+concrete name:
+
+```json
+{ "version": 1, "bindings": [
+  { "hint": "@unbound:pricing-node/@fixture/pricing:env=FORECAST_API_URL",
+    "target": "forecast-cs/Forecast.Api", "note": "why a human believes this" } ] }
+```
+
+`http|@unbound:pricing-node/@fixture/pricing:env=FORECAST_API_URL|GET /api/forecasts/{}` then becomes
+`http|forecast-cs/Forecast.Api|GET /api/forecasts/{}`. The new edge has `derivation: "human"`,
+`rule: service-map 1`, the original edge's evidence, and a deterministic id. It is `resolved` when
+the bound endpoint is declared in the selected revisions. A `REQUESTS` edge whose bound endpoint does not
+exist (a renamed or moved route) is `unresolved` with reason `missing-reference` and is shown as **broken**.
+A binding is evaluated per snapshot, so the same map is bound in one revision selection and broken in another.
+Bindings are exact: the hint, including its repository/unit scope, must match, and a hint that no edge uses is
+reported as unused.
 
 When the value is literal in the repository (for example `config/default.json` names the Service Bus
 namespace), the extractor uses it directly and the edge is `resolved`. Same-named resources stay

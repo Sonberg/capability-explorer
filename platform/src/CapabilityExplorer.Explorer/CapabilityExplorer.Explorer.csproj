@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <AssemblyName>ce-explorer</AssemblyName>
+    <!-- Explorer serves JSON produced from repository content; keep it read-only and local. -->
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../CapabilityExplorer.Contracts/CapabilityExplorer.Contracts.csproj" />
+    <ProjectReference Include="../CapabilityExplorer.Interpretation/CapabilityExplorer.Interpretation.csproj" />
+    <ProjectReference Include="../CapabilityExplorer.Capabilities/CapabilityExplorer.Capabilities.csproj" />
+    <ProjectReference Include="../CapabilityExplorer.Binding/CapabilityExplorer.Binding.csproj" />
+    <ProjectReference Include="../CapabilityExplorer.Store/CapabilityExplorer.Store.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Update="wwwroot/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="CapabilityExplorer.Explorer.Tests" />
+  </ItemGroup>
+</Project>

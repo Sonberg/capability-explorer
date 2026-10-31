@@ -26,7 +26,7 @@ export const k = {
   service: key.svc(R, API),
   weeklyEndpoint: key.http(`${R}/${API}`, "GET", "/api/articles/{}/weekly-sales"),
   healthEndpoint: key.http(`${R}/${API}`, "GET", "/api/health"),
-  program: key.cs(R, API, "M:Program.<Main>$(System.String[])"),
+  program: key.cs(R, API, "M:Program.{Main}$(System.String[])"),
   controller: key.cs(R, API, "T:Sales.Api.Controllers.ArticlesController"),
   response: key.cs(R, API, "T:Sales.Api.Controllers.WeeklySalesResponse"),
   getWeeklySales: key.cs(R, API, "M:Sales.Api.Controllers.ArticlesController.GetWeeklySales(System.String,System.DateOnly,System.DateOnly,System.Threading.CancellationToken)"),
@@ -132,6 +132,8 @@ function api(repo, tag) {
   // Architecture (rule-derived)
   a.edge({ from: k.service, rel: "EXPOSES", to: k.weeklyEndpoint, derivation: "rule", rule: ROUTES, at: [ctl, '[HttpGet("{articleId}/weekly-sales")]'] });
   a.edge({ from: k.service, rel: "EXPOSES", to: k.healthEndpoint, derivation: "rule", rule: ROUTES, at: [program, 'app.MapGet("/api/health"'] });
+  // The health handler is a lambda: it is attributed to the nearest named container, the entry point.
+  a.edge({ from: k.program, rel: "HANDLES", to: k.healthEndpoint, derivation: "rule", rule: ROUTES, props: { handler: "lambda" }, at: [program, 'app.MapGet("/api/health", () => Results.Ok())'] });
   a.edge({ from: k.getWeeklySales, rel: "HANDLES", to: k.weeklyEndpoint, derivation: "rule", rule: ROUTES, at: [ctl, '[HttpGet("{articleId}/weekly-sales")]'] });
   a.edge({
     from: k.program, rel: "REGISTERS", to: k.calculator, derivation: "rule", rule: DI,

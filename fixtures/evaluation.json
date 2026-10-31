@@ -1,0 +1,29 @@
+{
+  "$comment": "Scoring rules for `ce evaluate`. Golden artifacts are a reference subset: recall is measured on everything they contain, precision only on the categories listed under scope, where every true fact is in the golden set. Thresholds apply to the totals across all artifacts; lower one only as a deliberate, reviewed decision.",
+  "scope": {
+    "exhaustiveRelations": [
+      { "relation": "EXPOSES" },
+      { "relation": "HANDLES" },
+      { "relation": "REQUESTS" },
+      { "relation": "PUBLISHES" },
+      { "relation": "CONSUMES" },
+      { "relation": "READS" },
+      { "relation": "WRITES" },
+      { "relation": "MAPS_TO", "fromKinds": ["Type"] }
+    ],
+    "exhaustiveNodeKinds": ["Endpoint", "Channel"]
+  },
+  "thresholds": {
+    "nodeRecall": 1.0,
+    "edgeRecall": 1.0,
+    "edgeAccuracy": 1.0,
+    "evidenceLocated": 1.0,
+    "calculationRecall": 1.0,
+    "attributeAccuracy": 1.0,
+    "irHashMatch": 1.0,
+    "precision": 1.0,
+    "coverage": 1.0,
+    "maxEvidenceErrors": 0,
+    "requireAllArtifacts": true
+  }
+}

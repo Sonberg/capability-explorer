@@ -1,0 +1,328 @@
+using CapabilityExplorer.Binding;
+using CapabilityExplorer.Capabilities;
+using CapabilityExplorer.Interpretation;
+using CapabilityExplorer.Store;
+
+namespace CapabilityExplorer.Explorer;
+
+public sealed record ExplorerOptions(
+    IReadOnlyList<string> ArtifactDirectories,
+    string? RepositoriesDirectory,
+    string? EvaluationReport,
+    string CapabilitiesFile,
+    string Workspace,
+    string? BindingsFile = null)
+{
+    public static ExplorerOptions From(IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        var artifacts = (configuration["artifacts"] ?? "fixtures/expected").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return new ExplorerOptions(
+            artifacts,
+            configuration["repos"],
+            configuration["evaluation"],
+            configuration["capabilities"] ?? "capabilities.json",
+            configuration["workspace"] ?? ".sandbox-cache/sources",
+            configuration["bindings"]);
+    }
+
+    /// <summary>Builds the index, resolving repository sources through capabilities first, then the repos directory.</summary>
+    public (ExplorerIndex Index, CapabilityService Capabilities) Build()
+    {
+        var store = CapabilityStore.Open(CapabilitiesFile, Path.Combine(Workspace, "snapshots.json"));
+        var auth = GitHubAuth.FromEnvironment();
+        var sync = new SourceSync(Workspace, auth: auth);
+        var git = new GitSource(id =>
+            store.FindRepository(id) is { } source ? sync.GitDirectory(source)
+            : RepositoriesDirectory is not null && GitSource.IsSafeSegment(id) ? Path.Combine(RepositoriesDirectory, id)
+            : null, auth);
+        BindingFile? bindings = null;
+        string? problem = null;
+        if (BindingsFile is not null)
+        {
+            try
+            {
+                bindings = BindingFile.Load(BindingsFile);
+            }
+            catch (Exception e) when (e is FormatException or IOException)
+            {
+                problem = $"{BindingsFile}: {e.Message}"; // shown in the UI, and nothing is bound
+            }
+        }
+
+        var index = ExplorerIndex.Load(ArtifactDirectories, git, bindings, problem);
+        return (index, new CapabilityService(store, sync, index));
+    }
+}
+
+public static class ExplorerApi
+{
+    private const int ContextLines = 4;
+
+    private static IResult SimilarityOff(Intelligence intelligence) => Results.Json(
+        new { error = intelligence.Store is null ? "similarity search needs the database (set CE_DATABASE)" : "no embedding model is configured (Settings, or make ollama)" },
+        statusCode: StatusCodes.Status409Conflict);
+
+    private static IResult DatabaseUnavailable(Npgsql.NpgsqlException e) => Results.Json(
+        new { error = e is Npgsql.PostgresException { SqlState: "42P01" } ? "no embeddings yet: run `ce embed` (or make analyze with a model configured)" : $"database: {e.Message}" },
+        statusCode: StatusCodes.Status503ServiceUnavailable);
+
+    private static List<SimilarHit> InView(ViewIndex view, IReadOnlyList<SimilarSymbol> hits, int limit) =>
+        hits.Select(h => (h, Node: view.Node(h.SymbolKey)))
+            .Where(x => x.Node is not null)
+            .Take(limit)
+            .Select(x => new SimilarHit(x.h.SymbolKey, x.Node!.Record.Name, x.Node.Record.NodeKind, x.Node.Artifact.RepositoryId,
+                x.Node.Artifact.Artifact.Header.Unit.Name, view.Calculations.ContainsKey(x.h.SymbolKey), Math.Round(x.h.Score, 3)))
+            .ToList();
+
+    private static object ModelStatus(Intelligence intelligence)
+    {
+        var o = intelligence.Layer.Options;
+        return new
+        {
+            source = intelligence.Saved is not null ? "saved" : o.Enabled ? "configuration" : "none",
+            settingsPath = intelligence.SettingsPath,
+            provider = o.Provider,
+            endpoint = o.Endpoint,
+            chatModel = o.Deployment,
+            embeddingModel = o.EmbeddingModel,
+            ollamaEndpoint = ModelSettings.OllamaEndpoint,
+            hasApiKey = intelligence.Saved?.ApiKey is { Length: > 0 } || Environment.GetEnvironmentVariable(o.ApiKeyVariable) is { Length: > 0 },
+            apiKeySource = intelligence.Saved?.ApiKey is { Length: > 0 } ? "saved" : Environment.GetEnvironmentVariable(o.ApiKeyVariable) is { Length: > 0 } ? o.ApiKeyVariable : "none",
+            database = intelligence.Store is not null,
+            problem = intelligence.Problem,
+        };
+    }
+
+    public static void MapExplorerApi(this IEndpointRouteBuilder app, string? evaluationReport)
+    {
+        var api = app.MapGroup("/api");
+
+        // Cheap poll target: the client reloads when the generation changes (artifacts or capabilities on disk changed).
+        api.MapGet("/generation", (ExplorerState state) => new { generation = state.Current.Generation });
+
+        api.MapGet("/meta", (ExplorerState state, InterpretationLayer interpretation, Intelligence intelligence) =>
+        {
+            var (index, capabilities, generation) = state.Current;
+            return new
+            {
+                generation,
+                capabilities = capabilities.List().Select(c => new { c.Id, c.Name, repositories = c.Repositories.Select(r => r.Id) }),
+                githubAuth = new { configured = capabilities.Sync.Auth.Configured, source = capabilities.Sync.Auth.Source },
+                interpretation = new { enabled = interpretation.Enabled, provider = interpretation.Options.Provider, model = interpretation.Explanations?.ModelId },
+                similarity = new { database = intelligence.Store is not null, embeddings = intelligence.Embeddings?.Id },
+                revisions = index.Revisions,
+                defaultView = index.DefaultSelection,
+                artifacts = index.Artifacts.Count,
+                problems = index.Problems,
+                hasSource = index.Git is not null,
+                hasEvaluation = evaluationReport is not null && File.Exists(evaluationReport),
+                nodeKinds = index.Artifacts.SelectMany(a => a.Artifact.Nodes.Select(n => n.NodeKind)).Distinct().Order(StringComparer.Ordinal),
+            };
+        });
+
+        // Every view can be scoped to a capability (cap=<id>): only its repositories, starting from its locked revisions.
+        api.MapGet("/view", (ExplorerIndex index, CapabilityService caps, string? view, string? cap) => index.View(view, caps.Scope(cap)).Selection);
+
+        api.MapGet("/search", (ExplorerIndex index, CapabilityService caps, string? q, string? kind, string? repo, string? view, string? cap) =>
+            Queries.Search(index.View(view, caps.Scope(cap)), q, kind, repo));
+
+        // Similarity (pgvector): stored vectors of the configured embedding model, limited to what the view shows.
+        api.MapGet("/similar", async (ExplorerIndex index, CapabilityService caps, Intelligence intelligence, string key, string? view, string? cap, int? k, CancellationToken ct) =>
+        {
+            if (intelligence.Store is not { } store || intelligence.Embeddings is not { } model)
+            {
+                return SimilarityOff(intelligence);
+            }
+
+            try
+            {
+                var hits = await store.SimilarAsync(key, model.Id, Math.Clamp(k ?? 10, 1, 50) * 3, ct);
+                return Results.Ok(InView(index.View(view, caps.Scope(cap)), hits, Math.Clamp(k ?? 10, 1, 50)));
+            }
+            catch (Npgsql.NpgsqlException e)
+            {
+                return DatabaseUnavailable(e);
+            }
+        });
+
+        api.MapGet("/search/semantic", async (ExplorerIndex index, CapabilityService caps, Intelligence intelligence, string q, string? view, string? cap, CancellationToken ct) =>
+        {
+            if (intelligence.Store is not { } store || intelligence.Embeddings is not { } model)
+            {
+                return SimilarityOff(intelligence);
+            }
+
+            if (q.Trim().Length is < 3 or > 500)
+            {
+                return Results.BadRequest(new { error = "the query must be 3 to 500 characters" });
+            }
+
+            try
+            {
+                var vector = (await model.EmbedAsync([q.Trim()], ct))[0];
+                return Results.Ok(InView(index.View(view, caps.Scope(cap)), await store.NearestAsync(vector, model.Id, 30, ct), 10));
+            }
+            catch (InterpretationUnavailableException e)
+            {
+                return Results.Json(new { error = e.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+            catch (Npgsql.NpgsqlException e)
+            {
+                return DatabaseUnavailable(e);
+            }
+        });
+
+        // Model connection (local Ollama or Foundry), editable from the Settings page. The API key is write-only: it is never sent back.
+        api.MapGet("/settings/model", (Intelligence intelligence) => ModelStatus(intelligence));
+
+        api.MapPut("/settings/model", (Intelligence intelligence, ModelSettingsRequest request) =>
+            intelligence.Save(request) is { } problem ? Results.BadRequest(new { error = problem }) : Results.Ok(ModelStatus(intelligence)));
+
+        // Round-trips one short text through the embedding model (the chat model is exercised by explanations).
+        api.MapPost("/settings/model/test", async (Intelligence intelligence, CancellationToken ct) =>
+        {
+            if (intelligence.Embeddings is not { } model)
+            {
+                return Results.Json(new { error = "no embedding model is configured" }, statusCode: StatusCodes.Status409Conflict);
+            }
+
+            try
+            {
+                var vector = (await model.EmbedAsync(["capability explorer connection test"], ct))[0];
+                return Results.Ok(new { model = model.Id, dimensions = vector.Length });
+            }
+            catch (InterpretationUnavailableException e)
+            {
+                return Results.Json(new { error = e.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        });
+
+        api.MapGet("/symbol", (ExplorerIndex index, CapabilityService caps, string key, string? view, string? cap) =>
+            Queries.Symbol(index.View(view, caps.Scope(cap)), key) is { } detail ? Results.Ok(detail) : Results.NotFound(new { error = $"{key} is not declared in the selected revisions" }));
+
+        api.MapGet("/calculations", (ExplorerIndex index, CapabilityService caps, string? view, string? cap) => Queries.Calculations(index.View(view, caps.Scope(cap))));
+
+        // Layered architecture canvas: level = landscape | system | repository | component. The landscape ignores cap.
+        api.MapGet("/architecture", (ExplorerIndex index, CapabilityService caps, string? level, string? focus, string? view, string? cap) =>
+        {
+            var capability = string.IsNullOrEmpty(cap) ? null : caps.Get(cap);
+            return Architecture.Build(index.View(view, caps.Scope(cap)), level ?? (capability is null ? "landscape" : "system"), focus, index.View(view), caps.List(), capability);
+        });
+
+        api.MapGet("/integrations", (ExplorerIndex index, CapabilityService caps, string? view, string? cap) => Queries.Integrations(index.View(view, caps.Scope(cap))));
+
+        api.MapGet("/changes", (ExplorerIndex index, string repo, string from, string to) =>
+            Changes.Compare(index, repo, from, to) is { } report ? Results.Ok(report) : Results.NotFound(new { error = "unknown repository or revision" }));
+
+        api.MapGet("/artifacts", (ExplorerIndex index) => Queries.Artifacts(index));
+
+        // Deterministic comparison: always available, no model involved.
+        api.MapGet("/compare", (ExplorerIndex index, CapabilityService caps, string a, string b, string? view, string? cap) =>
+            Comparisons.Compare(index.View(view, caps.Scope(cap)), a, b) is { } c
+                ? Results.Ok(Comparisons.ToDto(c))
+                : Results.NotFound(new { error = "both calculations must exist in the selected revisions" }));
+
+        // Optional: an AI-written explanation of the deterministic comparison. Off unless a provider is configured.
+        api.MapPost("/explanations", async (ExplorerIndex index, CapabilityService caps, InterpretationLayer interpretation, ExplainRequest request, CancellationToken ct) =>
+        {
+            if (interpretation.Explanations is not { } service)
+            {
+                return Results.Json(new { error = "LLM integration is disabled (interpretation:provider = none)", enabled = false }, statusCode: StatusCodes.Status409Conflict);
+            }
+
+            if (Comparisons.Compare(index.View(request.View, caps.Scope(request.Cap)), request.A, request.B) is not { } comparison)
+            {
+                return Results.NotFound(new { error = "both calculations must exist in the selected revisions" });
+            }
+
+            if (comparison.Differences.Count == 0)
+            {
+                return Results.UnprocessableEntity(new { error = "the calculations do not differ in any attribute; nothing to explain" });
+            }
+
+            try
+            {
+                return Results.Ok(await service.ExplainAsync(comparison, ct));
+            }
+            catch (InterpretationUnavailableException e)
+            {
+                return Results.Json(new { error = e.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        });
+
+        // Only files that an artifact cites, at that artifact's commit: the explorer is not a general file server.
+        api.MapGet("/source", (ExplorerIndex index, string repo, string commit, string path, int? start, int? end) =>
+        {
+            if (index.Git is null)
+            {
+                return Results.NotFound(new { error = "source not available: start the explorer with --repos" });
+            }
+
+            if (!index.IsCitedFile(repo, commit, path))
+            {
+                return Results.BadRequest(new { error = "only files cited by a loaded artifact can be shown" });
+            }
+
+            var text = index.Git.ReadFile(repo, commit, path);
+            if (text is null)
+            {
+                return Results.NotFound(new { error = $"{path} not found at {commit[..Math.Min(12, commit.Length)]}" });
+            }
+
+            var lines = text.Split('\n');
+            var s = Math.Clamp(start ?? 1, 1, lines.Length);
+            var e = Math.Clamp(end ?? s, s, lines.Length);
+            var from = start is null ? 1 : Math.Max(1, s - ContextLines);
+            var to = start is null ? lines.Length : Math.Min(lines.Length, e + ContextLines);
+            return Results.Ok(new
+            {
+                repo, commit, path, highlightStart = start is null ? (int?)null : s, highlightEnd = start is null ? (int?)null : e,
+                totalLines = lines.Length,
+                lines = Enumerable.Range(from, to - from + 1).Select(n => new { n, text = lines[n - 1] }),
+            });
+        });
+
+        api.MapGet("/capabilities", (CapabilityService caps) => caps.List());
+
+        api.MapGet("/capabilities/{id}", (CapabilityService caps, string id) =>
+            caps.Get(id) is { } c ? Results.Ok(c) : Results.NotFound(new { error = $"no capability '{id}'" }));
+
+        // Define a capability from one repository per line: [id=]https://github.com/owner/repo [ref] | [id=]/local/path [ref]
+        api.MapPost("/capabilities", async (CapabilityService caps, CreateCapabilityRequest request, CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                return Results.BadRequest(new { error = "a name is required" });
+            }
+
+            var (sources, errors) = SourceParser.Parse((request.Repositories ?? "").Split('\n'));
+            if (errors.Count > 0)
+            {
+                return Results.BadRequest(new { error = "some repositories could not be read", lines = errors });
+            }
+
+            try
+            {
+                var created = await caps.Store.AddAsync(request.Name, request.Description, sources, ct);
+                return Results.Created($"/api/capabilities/{created.Id}", await caps.CheckAsync(created.Id, ct));
+            }
+            catch (CapabilityConflictException e)
+            {
+                return Results.Conflict(new { error = e.Message });
+            }
+        });
+
+        // "Check together": acquire every source read-only and lock each to one exact commit.
+        api.MapPost("/capabilities/{id}/check", async (CapabilityService caps, string id, CancellationToken ct) =>
+            caps.Store.Find(id) is null ? Results.NotFound(new { error = $"no capability '{id}'" }) : Results.Ok(await caps.CheckAsync(id, ct)));
+
+        api.MapDelete("/capabilities/{id}", async (CapabilityService caps, string id, CancellationToken ct) =>
+            await caps.Store.RemoveAsync(id, ct) ? Results.NoContent() : Results.NotFound(new { error = $"no capability '{id}'" }));
+
+        api.MapGet("/evaluation", () =>
+            evaluationReport is not null && File.Exists(evaluationReport)
+                ? Results.Text(File.ReadAllText(evaluationReport), "application/json")
+                : Results.NotFound(new { error = "no evaluation report: start the explorer with --evaluation <report.json>" }));
+    }
+}

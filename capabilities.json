@@ -1,0 +1,72 @@
+{
+  "capabilities": [
+    {
+      "id": "weekly-sales",
+      "name": "Weekly sales",
+      "description": "Average weekly sales per article: web view, Sales API with SQL, and the nightly stats job.",
+      "repositories": [
+        {
+          "id": "api-cs",
+          "location": "fixtures/.repos/api-cs",
+          "kind": "local",
+          "ref": "HEAD"
+        },
+        {
+          "id": "worker-cs",
+          "location": "fixtures/.repos/worker-cs",
+          "kind": "local",
+          "ref": "HEAD"
+        },
+        {
+          "id": "web-ts",
+          "location": "fixtures/.repos/web-ts",
+          "kind": "local",
+          "ref": "HEAD"
+        }
+      ]
+    },
+    {
+      "id": "demand-pricing",
+      "name": "Demand pricing",
+      "description": "Forecasts from sales history and prices derived from forecast demand.",
+      "repositories": [
+        {
+          "id": "forecast-cs",
+          "location": "fixtures/.repos/forecast-cs",
+          "kind": "local",
+          "ref": "HEAD"
+        },
+        {
+          "id": "pricing-node",
+          "location": "fixtures/.repos/pricing-node",
+          "kind": "local",
+          "ref": "HEAD"
+        },
+        {
+          "id": "api-cs",
+          "location": "fixtures/.repos/api-cs",
+          "kind": "local",
+          "ref": "HEAD"
+        }
+      ]
+    },
+    {
+      "id": "glufs",
+      "name": "Glufs",
+      "repositories": [
+        {
+          "id": "glufs-checkout-api",
+          "location": "https://github.com/glufs/glufs-checkout-api",
+          "kind": "gitHub",
+          "ref": "HEAD"
+        },
+        {
+          "id": "glufs-web",
+          "location": "https://github.com/glufs/glufs-web",
+          "kind": "gitHub",
+          "ref": "HEAD"
+        }
+      ]
+    }
+  ]
+}

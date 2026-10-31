@@ -1,0 +1,1146 @@
+{
+  "artifacts": [
+    {
+      "label": "api-cs/v1-base/Sales.Api.jsonl",
+      "repositoryId": "api-cs",
+      "commitSha": "e961575c9f854f151a411684c2390bbf5357cdd4",
+      "unitPath": "src/Sales.Api/Sales.Api.csproj",
+      "status": "MissingActual",
+      "actualExtractor": null,
+      "metrics": {
+        "nodeRecall": {
+          "hit": 0,
+          "total": 18,
+          "value": 0
+        },
+        "edgeRecall": {
+          "hit": 0,
+          "total": 16,
+          "value": 0
+        },
+        "edgeAccuracy": {
+          "hit": 0,
+          "total": 16,
+          "value": 0
+        },
+        "evidenceLocated": {
+          "hit": 0,
+          "total": 34,
+          "value": 0
+        },
+        "calculationRecall": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "attributeAccuracy": {
+          "hit": 0,
+          "total": 10,
+          "value": 0
+        },
+        "irHashMatch": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "precision": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "coverage": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "evidenceErrors": 0
+      },
+      "findings": [],
+      "problems": [
+        "no actual artifact for api-cs@e961575c9f85 src/Sales.Api/Sales.Api.csproj"
+      ]
+    },
+    {
+      "label": "api-cs/v1-base/Sales.Domain.jsonl",
+      "repositoryId": "api-cs",
+      "commitSha": "e961575c9f854f151a411684c2390bbf5357cdd4",
+      "unitPath": "src/Sales.Domain/Sales.Domain.csproj",
+      "status": "MissingActual",
+      "actualExtractor": null,
+      "metrics": {
+        "nodeRecall": {
+          "hit": 0,
+          "total": 6,
+          "value": 0
+        },
+        "edgeRecall": {
+          "hit": 0,
+          "total": 8,
+          "value": 0
+        },
+        "edgeAccuracy": {
+          "hit": 0,
+          "total": 8,
+          "value": 0
+        },
+        "evidenceLocated": {
+          "hit": 0,
+          "total": 14,
+          "value": 0
+        },
+        "calculationRecall": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "attributeAccuracy": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "irHashMatch": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "precision": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "coverage": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "evidenceErrors": 0
+      },
+      "findings": [],
+      "problems": [
+        "no actual artifact for api-cs@e961575c9f85 src/Sales.Domain/Sales.Domain.csproj"
+      ]
+    },
+    {
+      "label": "api-cs/v1-base/SalesDb.jsonl",
+      "repositoryId": "api-cs",
+      "commitSha": "e961575c9f854f151a411684c2390bbf5357cdd4",
+      "unitPath": "database",
+      "status": "MissingActual",
+      "actualExtractor": null,
+      "metrics": {
+        "nodeRecall": {
+          "hit": 0,
+          "total": 8,
+          "value": 0
+        },
+        "edgeRecall": {
+          "hit": 0,
+          "total": 11,
+          "value": 0
+        },
+        "edgeAccuracy": {
+          "hit": 0,
+          "total": 11,
+          "value": 0
+        },
+        "evidenceLocated": {
+          "hit": 0,
+          "total": 19,
+          "value": 0
+        },
+        "calculationRecall": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "attributeAccuracy": {
+          "hit": 0,
+          "total": 10,
+          "value": 0
+        },
+        "irHashMatch": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "precision": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "coverage": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "evidenceErrors": 0
+      },
+      "findings": [],
+      "problems": [
+        "no actual artifact for api-cs@e961575c9f85 database"
+      ]
+    },
+    {
+      "label": "api-cs/v2-rename/Sales.Api.jsonl",
+      "repositoryId": "api-cs",
+      "commitSha": "ec4d0af3590362d861e022836e2dafd9b5cdacff",
+      "unitPath": "src/Sales.Api/Sales.Api.csproj",
+      "status": "MissingActual",
+      "actualExtractor": null,
+      "metrics": {
+        "nodeRecall": {
+          "hit": 0,
+          "total": 18,
+          "value": 0
+        },
+        "edgeRecall": {
+          "hit": 0,
+          "total": 16,
+          "value": 0
+        },
+        "edgeAccuracy": {
+          "hit": 0,
+          "total": 16,
+          "value": 0
+        },
+        "evidenceLocated": {
+          "hit": 0,
+          "total": 34,
+          "value": 0
+        },
+        "calculationRecall": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "attributeAccuracy": {
+          "hit": 0,
+          "total": 10,
+          "value": 0
+        },
+        "irHashMatch": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "precision": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "coverage": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "evidenceErrors": 0
+      },
+      "findings": [],
+      "problems": [
+        "no actual artifact for api-cs@ec4d0af35903 src/Sales.Api/Sales.Api.csproj"
+      ]
+    },
+    {
+      "label": "api-cs/v2-rename/Sales.Domain.jsonl",
+      "repositoryId": "api-cs",
+      "commitSha": "ec4d0af3590362d861e022836e2dafd9b5cdacff",
+      "unitPath": "src/Sales.Domain/Sales.Domain.csproj",
+      "status": "MissingActual",
+      "actualExtractor": null,
+      "metrics": {
+        "nodeRecall": {
+          "hit": 0,
+          "total": 6,
+          "value": 0
+        },
+        "edgeRecall": {
+          "hit": 0,
+          "total": 8,
+          "value": 0
+        },
+        "edgeAccuracy": {
+          "hit": 0,
+          "total": 8,
+          "value": 0
+        },
+        "evidenceLocated": {
+          "hit": 0,
+          "total": 14,
+          "value": 0
+        },
+        "calculationRecall": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "attributeAccuracy": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "irHashMatch": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "precision": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "coverage": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "evidenceErrors": 0
+      },
+      "findings": [],
+      "problems": [
+        "no actual artifact for api-cs@ec4d0af35903 src/Sales.Domain/Sales.Domain.csproj"
+      ]
+    },
+    {
+      "label": "api-cs/v2-rename/SalesDb.jsonl",
+      "repositoryId": "api-cs",
+      "commitSha": "ec4d0af3590362d861e022836e2dafd9b5cdacff",
+      "unitPath": "database",
+      "status": "MissingActual",
+      "actualExtractor": null,
+      "metrics": {
+        "nodeRecall": {
+          "hit": 0,
+          "total": 8,
+          "value": 0
+        },
+        "edgeRecall": {
+          "hit": 0,
+          "total": 11,
+          "value": 0
+        },
+        "edgeAccuracy": {
+          "hit": 0,
+          "total": 11,
+          "value": 0
+        },
+        "evidenceLocated": {
+          "hit": 0,
+          "total": 19,
+          "value": 0
+        },
+        "calculationRecall": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "attributeAccuracy": {
+          "hit": 0,
+          "total": 10,
+          "value": 0
+        },
+        "irHashMatch": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "precision": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "coverage": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "evidenceErrors": 0
+      },
+      "findings": [],
+      "problems": [
+        "no actual artifact for api-cs@ec4d0af35903 database"
+      ]
+    },
+    {
+      "label": "api-cs/v3-filter/Sales.Api.jsonl",
+      "repositoryId": "api-cs",
+      "commitSha": "29571e3528e537313f938a1fedae43aaeb4dbef9",
+      "unitPath": "src/Sales.Api/Sales.Api.csproj",
+      "status": "MissingActual",
+      "actualExtractor": null,
+      "metrics": {
+        "nodeRecall": {
+          "hit": 0,
+          "total": 18,
+          "value": 0
+        },
+        "edgeRecall": {
+          "hit": 0,
+          "total": 16,
+          "value": 0
+        },
+        "edgeAccuracy": {
+          "hit": 0,
+          "total": 16,
+          "value": 0
+        },
+        "evidenceLocated": {
+          "hit": 0,
+          "total": 34,
+          "value": 0
+        },
+        "calculationRecall": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "attributeAccuracy": {
+          "hit": 0,
+          "total": 10,
+          "value": 0
+        },
+        "irHashMatch": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "precision": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "coverage": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "evidenceErrors": 0
+      },
+      "findings": [],
+      "problems": [
+        "no actual artifact for api-cs@29571e3528e5 src/Sales.Api/Sales.Api.csproj"
+      ]
+    },
+    {
+      "label": "api-cs/v3-filter/Sales.Domain.jsonl",
+      "repositoryId": "api-cs",
+      "commitSha": "29571e3528e537313f938a1fedae43aaeb4dbef9",
+      "unitPath": "src/Sales.Domain/Sales.Domain.csproj",
+      "status": "MissingActual",
+      "actualExtractor": null,
+      "metrics": {
+        "nodeRecall": {
+          "hit": 0,
+          "total": 6,
+          "value": 0
+        },
+        "edgeRecall": {
+          "hit": 0,
+          "total": 8,
+          "value": 0
+        },
+        "edgeAccuracy": {
+          "hit": 0,
+          "total": 8,
+          "value": 0
+        },
+        "evidenceLocated": {
+          "hit": 0,
+          "total": 14,
+          "value": 0
+        },
+        "calculationRecall": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "attributeAccuracy": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "irHashMatch": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "precision": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "coverage": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "evidenceErrors": 0
+      },
+      "findings": [],
+      "problems": [
+        "no actual artifact for api-cs@29571e3528e5 src/Sales.Domain/Sales.Domain.csproj"
+      ]
+    },
+    {
+      "label": "api-cs/v3-filter/SalesDb.jsonl",
+      "repositoryId": "api-cs",
+      "commitSha": "29571e3528e537313f938a1fedae43aaeb4dbef9",
+      "unitPath": "database",
+      "status": "MissingActual",
+      "actualExtractor": null,
+      "metrics": {
+        "nodeRecall": {
+          "hit": 0,
+          "total": 8,
+          "value": 0
+        },
+        "edgeRecall": {
+          "hit": 0,
+          "total": 11,
+          "value": 0
+        },
+        "edgeAccuracy": {
+          "hit": 0,
+          "total": 11,
+          "value": 0
+        },
+        "evidenceLocated": {
+          "hit": 0,
+          "total": 19,
+          "value": 0
+        },
+        "calculationRecall": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "attributeAccuracy": {
+          "hit": 0,
+          "total": 10,
+          "value": 0
+        },
+        "irHashMatch": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "precision": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "coverage": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "evidenceErrors": 0
+      },
+      "findings": [],
+      "problems": [
+        "no actual artifact for api-cs@29571e3528e5 database"
+      ]
+    },
+    {
+      "label": "forecast-cs/v1-base/Forecast.Api.jsonl",
+      "repositoryId": "forecast-cs",
+      "commitSha": "8541d29510852bd273f919d264d3dfa5fcae6605",
+      "unitPath": "src/Forecast.Api/Forecast.Api.csproj",
+      "status": "MissingActual",
+      "actualExtractor": null,
+      "metrics": {
+        "nodeRecall": {
+          "hit": 0,
+          "total": 33,
+          "value": 0
+        },
+        "edgeRecall": {
+          "hit": 0,
+          "total": 34,
+          "value": 0
+        },
+        "edgeAccuracy": {
+          "hit": 0,
+          "total": 34,
+          "value": 0
+        },
+        "evidenceLocated": {
+          "hit": 0,
+          "total": 67,
+          "value": 0
+        },
+        "calculationRecall": {
+          "hit": 0,
+          "total": 3,
+          "value": 0
+        },
+        "attributeAccuracy": {
+          "hit": 0,
+          "total": 31,
+          "value": 0
+        },
+        "irHashMatch": {
+          "hit": 0,
+          "total": 3,
+          "value": 0
+        },
+        "precision": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "coverage": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "evidenceErrors": 0
+      },
+      "findings": [],
+      "problems": [
+        "no actual artifact for forecast-cs@8541d2951085 src/Forecast.Api/Forecast.Api.csproj"
+      ]
+    },
+    {
+      "label": "forecast-cs/v2-contract/Forecast.Api.jsonl",
+      "repositoryId": "forecast-cs",
+      "commitSha": "78bf6a26336545c017efe3aef2cfdb8a6bdb0f98",
+      "unitPath": "src/Forecast.Api/Forecast.Api.csproj",
+      "status": "MissingActual",
+      "actualExtractor": null,
+      "metrics": {
+        "nodeRecall": {
+          "hit": 0,
+          "total": 33,
+          "value": 0
+        },
+        "edgeRecall": {
+          "hit": 0,
+          "total": 34,
+          "value": 0
+        },
+        "edgeAccuracy": {
+          "hit": 0,
+          "total": 34,
+          "value": 0
+        },
+        "evidenceLocated": {
+          "hit": 0,
+          "total": 67,
+          "value": 0
+        },
+        "calculationRecall": {
+          "hit": 0,
+          "total": 3,
+          "value": 0
+        },
+        "attributeAccuracy": {
+          "hit": 0,
+          "total": 31,
+          "value": 0
+        },
+        "irHashMatch": {
+          "hit": 0,
+          "total": 3,
+          "value": 0
+        },
+        "precision": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "coverage": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "evidenceErrors": 0
+      },
+      "findings": [],
+      "problems": [
+        "no actual artifact for forecast-cs@78bf6a263365 src/Forecast.Api/Forecast.Api.csproj"
+      ]
+    },
+    {
+      "label": "pricing-node/v1-base/_fixture_pricing.jsonl",
+      "repositoryId": "pricing-node",
+      "commitSha": "8b7d01815e5a0a49707b81c339278bae0bd18307",
+      "unitPath": "tsconfig.json",
+      "status": "MissingActual",
+      "actualExtractor": null,
+      "metrics": {
+        "nodeRecall": {
+          "hit": 0,
+          "total": 23,
+          "value": 0
+        },
+        "edgeRecall": {
+          "hit": 0,
+          "total": 30,
+          "value": 0
+        },
+        "edgeAccuracy": {
+          "hit": 0,
+          "total": 30,
+          "value": 0
+        },
+        "evidenceLocated": {
+          "hit": 0,
+          "total": 53,
+          "value": 0
+        },
+        "calculationRecall": {
+          "hit": 0,
+          "total": 2,
+          "value": 0
+        },
+        "attributeAccuracy": {
+          "hit": 0,
+          "total": 19,
+          "value": 0
+        },
+        "irHashMatch": {
+          "hit": 0,
+          "total": 2,
+          "value": 0
+        },
+        "precision": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "coverage": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "evidenceErrors": 0
+      },
+      "findings": [],
+      "problems": [
+        "no actual artifact for pricing-node@8b7d01815e5a tsconfig.json"
+      ]
+    },
+    {
+      "label": "pricing-node/v1-base/pricing-db.jsonl",
+      "repositoryId": "pricing-node",
+      "commitSha": "8b7d01815e5a0a49707b81c339278bae0bd18307",
+      "unitPath": "db",
+      "status": "MissingActual",
+      "actualExtractor": null,
+      "metrics": {
+        "nodeRecall": {
+          "hit": 0,
+          "total": 10,
+          "value": 0
+        },
+        "edgeRecall": {
+          "hit": 0,
+          "total": 14,
+          "value": 0
+        },
+        "edgeAccuracy": {
+          "hit": 0,
+          "total": 14,
+          "value": 0
+        },
+        "evidenceLocated": {
+          "hit": 0,
+          "total": 24,
+          "value": 0
+        },
+        "calculationRecall": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "attributeAccuracy": {
+          "hit": 0,
+          "total": 11,
+          "value": 0
+        },
+        "irHashMatch": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "precision": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "coverage": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "evidenceErrors": 0
+      },
+      "findings": [],
+      "problems": [
+        "no actual artifact for pricing-node@8b7d01815e5a db"
+      ]
+    },
+    {
+      "label": "pricing-node/v2-move/_fixture_pricing.jsonl",
+      "repositoryId": "pricing-node",
+      "commitSha": "a0807a96e86264b9765e365721395176aafbe0ce",
+      "unitPath": "tsconfig.json",
+      "status": "MissingActual",
+      "actualExtractor": null,
+      "metrics": {
+        "nodeRecall": {
+          "hit": 0,
+          "total": 23,
+          "value": 0
+        },
+        "edgeRecall": {
+          "hit": 0,
+          "total": 30,
+          "value": 0
+        },
+        "edgeAccuracy": {
+          "hit": 0,
+          "total": 30,
+          "value": 0
+        },
+        "evidenceLocated": {
+          "hit": 0,
+          "total": 53,
+          "value": 0
+        },
+        "calculationRecall": {
+          "hit": 0,
+          "total": 2,
+          "value": 0
+        },
+        "attributeAccuracy": {
+          "hit": 0,
+          "total": 19,
+          "value": 0
+        },
+        "irHashMatch": {
+          "hit": 0,
+          "total": 2,
+          "value": 0
+        },
+        "precision": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "coverage": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "evidenceErrors": 0
+      },
+      "findings": [],
+      "problems": [
+        "no actual artifact for pricing-node@a0807a96e862 tsconfig.json"
+      ]
+    },
+    {
+      "label": "pricing-node/v2-move/pricing-db.jsonl",
+      "repositoryId": "pricing-node",
+      "commitSha": "a0807a96e86264b9765e365721395176aafbe0ce",
+      "unitPath": "db",
+      "status": "MissingActual",
+      "actualExtractor": null,
+      "metrics": {
+        "nodeRecall": {
+          "hit": 0,
+          "total": 10,
+          "value": 0
+        },
+        "edgeRecall": {
+          "hit": 0,
+          "total": 14,
+          "value": 0
+        },
+        "edgeAccuracy": {
+          "hit": 0,
+          "total": 14,
+          "value": 0
+        },
+        "evidenceLocated": {
+          "hit": 0,
+          "total": 24,
+          "value": 0
+        },
+        "calculationRecall": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "attributeAccuracy": {
+          "hit": 0,
+          "total": 11,
+          "value": 0
+        },
+        "irHashMatch": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "precision": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "coverage": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "evidenceErrors": 0
+      },
+      "findings": [],
+      "problems": [
+        "no actual artifact for pricing-node@a0807a96e862 db"
+      ]
+    },
+    {
+      "label": "web-ts/v1-base/_fixture_web.jsonl",
+      "repositoryId": "web-ts",
+      "commitSha": "4f254bb0209550bfe8fd40459ae4136b1d37ebe4",
+      "unitPath": "tsconfig.json",
+      "status": "MissingActual",
+      "actualExtractor": null,
+      "metrics": {
+        "nodeRecall": {
+          "hit": 0,
+          "total": 9,
+          "value": 0
+        },
+        "edgeRecall": {
+          "hit": 0,
+          "total": 8,
+          "value": 0
+        },
+        "edgeAccuracy": {
+          "hit": 0,
+          "total": 8,
+          "value": 0
+        },
+        "evidenceLocated": {
+          "hit": 0,
+          "total": 17,
+          "value": 0
+        },
+        "calculationRecall": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "attributeAccuracy": {
+          "hit": 0,
+          "total": 10,
+          "value": 0
+        },
+        "irHashMatch": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "precision": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "coverage": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "evidenceErrors": 0
+      },
+      "findings": [],
+      "problems": [
+        "no actual artifact for web-ts@4f254bb02095 tsconfig.json"
+      ]
+    },
+    {
+      "label": "worker-cs/v1-base/Sales.Worker.jsonl",
+      "repositoryId": "worker-cs",
+      "commitSha": "d9a6b7e1740388e3111cfa476ef3d78bff352b3e",
+      "unitPath": "src/Sales.Worker/Sales.Worker.csproj",
+      "status": "MissingActual",
+      "actualExtractor": null,
+      "metrics": {
+        "nodeRecall": {
+          "hit": 0,
+          "total": 18,
+          "value": 0
+        },
+        "edgeRecall": {
+          "hit": 0,
+          "total": 15,
+          "value": 0
+        },
+        "edgeAccuracy": {
+          "hit": 0,
+          "total": 15,
+          "value": 0
+        },
+        "evidenceLocated": {
+          "hit": 0,
+          "total": 33,
+          "value": 0
+        },
+        "calculationRecall": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "attributeAccuracy": {
+          "hit": 0,
+          "total": 10,
+          "value": 0
+        },
+        "irHashMatch": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "precision": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "coverage": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "evidenceErrors": 0
+      },
+      "findings": [],
+      "problems": [
+        "no actual artifact for worker-cs@d9a6b7e17403 src/Sales.Worker/Sales.Worker.csproj"
+      ]
+    },
+    {
+      "label": "worker-cs/v2-broken/Sales.Worker.jsonl",
+      "repositoryId": "worker-cs",
+      "commitSha": "b884b04321a12d82c23f8575c94c1980de349ce9",
+      "unitPath": "src/Sales.Worker/Sales.Worker.csproj",
+      "status": "MissingActual",
+      "actualExtractor": null,
+      "metrics": {
+        "nodeRecall": {
+          "hit": 0,
+          "total": 20,
+          "value": 0
+        },
+        "edgeRecall": {
+          "hit": 0,
+          "total": 16,
+          "value": 0
+        },
+        "edgeAccuracy": {
+          "hit": 0,
+          "total": 16,
+          "value": 0
+        },
+        "evidenceLocated": {
+          "hit": 0,
+          "total": 36,
+          "value": 0
+        },
+        "calculationRecall": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "attributeAccuracy": {
+          "hit": 0,
+          "total": 10,
+          "value": 0
+        },
+        "irHashMatch": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "precision": {
+          "hit": 0,
+          "total": 0,
+          "value": 1
+        },
+        "coverage": {
+          "hit": 0,
+          "total": 1,
+          "value": 0
+        },
+        "evidenceErrors": 0
+      },
+      "findings": [],
+      "problems": [
+        "no actual artifact for worker-cs@b884b04321a1 src/Sales.Worker/Sales.Worker.csproj"
+      ]
+    }
+  ],
+  "unpairedActual": [],
+  "invalidUnpairedActual": [],
+  "totals": {
+    "nodeRecall": {
+      "hit": 0,
+      "total": 275,
+      "value": 0
+    },
+    "edgeRecall": {
+      "hit": 0,
+      "total": 300,
+      "value": 0
+    },
+    "edgeAccuracy": {
+      "hit": 0,
+      "total": 300,
+      "value": 0
+    },
+    "evidenceLocated": {
+      "hit": 0,
+      "total": 575,
+      "value": 0
+    },
+    "calculationRecall": {
+      "hit": 0,
+      "total": 21,
+      "value": 0
+    },
+    "attributeAccuracy": {
+      "hit": 0,
+      "total": 212,
+      "value": 0
+    },
+    "irHashMatch": {
+      "hit": 0,
+      "total": 21,
+      "value": 0
+    },
+    "precision": {
+      "hit": 0,
+      "total": 0,
+      "value": 1
+    },
+    "coverage": {
+      "hit": 0,
+      "total": 18,
+      "value": 0
+    },
+    "evidenceErrors": 0
+  },
+  "thresholdFailures": [
+    "nodeRecall 0/275 (0.0%) is below 100.0%",
+    "edgeRecall 0/300 (0.0%) is below 100.0%",
+    "edgeAccuracy 0/300 (0.0%) is below 100.0%",
+    "evidenceLocated 0/575 (0.0%) is below 100.0%",
+    "calculationRecall 0/21 (0.0%) is below 100.0%",
+    "attributeAccuracy 0/212 (0.0%) is below 100.0%",
+    "irHashMatch 0/21 (0.0%) is below 100.0%",
+    "coverage 0/18 (0.0%) is below 100.0%",
+    "18 golden artifact(s) have no valid actual artifact"
+  ],
+  "passed": false
+}

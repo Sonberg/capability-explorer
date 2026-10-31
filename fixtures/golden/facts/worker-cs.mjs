@@ -11,7 +11,7 @@ const RECS = "System.Collections.Generic.IReadOnlyCollection{Sales.Worker.Calcul
 export const k = {
   proj: key.proj(R, "src/Sales.Worker/Sales.Worker.csproj"),
   service: key.svc(R, W),
-  program: key.cs(R, W, "M:Program.<Main>$(System.String[])"),
+  program: key.cs(R, W, "M:Program.{Main}$(System.String[])"),
   calculator: key.cs(R, W, "T:Sales.Worker.Calculations.ArticleStatsCalculator"),
   average: key.cs(R, W, `M:Sales.Worker.Calculations.ArticleStatsCalculator.AveragePerActiveWeek(${RECS})`),
   saleRecord: key.cs(R, W, "T:Sales.Worker.Calculations.SaleRecord"),
@@ -26,7 +26,9 @@ export const k = {
   message: key.cs(R, W, "T:Sales.Worker.Messaging.ArticleStatsUpdated"),
   job: key.cs(R, W, "T:Sales.Worker.Jobs.NightlyStatsJob"),
   execute: key.cs(R, W, "M:Sales.Worker.Jobs.NightlyStatsJob.ExecuteAsync(System.Threading.CancellationToken)"),
-  topic: key.chan("servicebus", key.unbound(R, W, "config", "ServiceBus:ConnectionString"), "topic/article-stats-updated"),
+  // A sender cannot tell a queue from a topic: CreateSender works for both. Only a processor with a
+  // subscription (forecast-cs) proves a topic.
+  topic: key.chan("servicebus", key.unbound(R, W, "config", "ServiceBus:ConnectionString"), "entity/article-stats-updated"),
   sales: key.sql(key.unbound(R, W, "conn", "Sales"), "dbo.Sales"),
   stats: key.sql(key.unbound(R, W, "conn", "Sales"), "dbo.ArticleStats"),
   mathRound3: key.csExt(RUNTIME, "M:System.Math.Round(System.Decimal,System.Int32,System.MidpointRounding)"),
@@ -69,7 +71,7 @@ export default function workerCs(repo, tag) {
   a.node({ key: k.execute, kind: "Method", name: "ExecuteAsync", at: [job, "protected override async Task ExecuteAsync(CancellationToken stoppingToken)"] });
   a.node({
     key: k.topic, kind: "Channel", name: "article-stats-updated",
-    props: { provider: "azure-servicebus", entityType: "topic", namespaceConfigKey: "ServiceBus:ConnectionString" },
+    props: { provider: "azure-servicebus", entityType: "queue-or-topic", namespaceConfigKey: "ServiceBus:ConnectionString" },
     at: [[pub, 'private const string TopicName = "article-stats-updated";'], [program, 'builder.Configuration["ServiceBus:ConnectionString"]']],
   });
 

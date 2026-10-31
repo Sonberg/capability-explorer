@@ -28,20 +28,23 @@ public sealed class ContractSchema
     public RelationCatalog Relations { get; }
 
     /// <summary>Validates one record. Returns an empty list when valid.</summary>
+    /// <remarks>
+    /// The top-level oneOf branches are mutually exclusive on the "kind" const, so validating against the record's
+    /// own kind definition is equivalent and avoids evaluating every branch. A cheap flag evaluation runs first;
+    /// detailed output is only produced for failures.
+    /// </remarks>
     public IReadOnlyList<string> Validate(JsonElement record)
     {
-        var options = new EvaluationOptions { OutputFormat = OutputFormat.List };
-        if (_record.Evaluate(record, options).IsValid)
-        {
-            return [];
-        }
-
-        // The top-level oneOf reports every branch; re-evaluate against the record's own kind for useful messages.
         var kind = record.ValueKind == JsonValueKind.Object && record.TryGetProperty("kind", out var k) && k.ValueKind == JsonValueKind.String
             ? k.GetString()
             : null;
         var target = kind is not null && _byKind.TryGetValue(kind, out var own) ? own : _record;
-        var results = target.Evaluate(record, options);
+        if (target.Evaluate(record, new EvaluationOptions { OutputFormat = OutputFormat.Flag }).IsValid)
+        {
+            return [];
+        }
+
+        var results = target.Evaluate(record, new EvaluationOptions { OutputFormat = OutputFormat.List });
         var messages = (results.Details ?? [])
             .Where(d => d.Errors is { Count: > 0 })
             .SelectMany(d => d.Errors!.Select(e => $"{(d.InstanceLocation.ToString() is { Length: > 0 } loc ? loc : "/")}: {e.Value}"))

@@ -1,0 +1,51 @@
+{
+  "$comment": "Gate for the C# extractor (`make evaluate-cs`), scored only on the golden units of its own language. Same scope as evaluation.extractors.json, plus the calculation metrics (calculationRecall, attributeAccuracy, irHashMatch), which are gated at 1.0 for csharp. Raise, never lower, without review.",
+  "scope": {
+    "exhaustiveRelations": [
+      {
+        "relation": "EXPOSES"
+      },
+      {
+        "relation": "HANDLES"
+      },
+      {
+        "relation": "REQUESTS"
+      },
+      {
+        "relation": "PUBLISHES"
+      },
+      {
+        "relation": "CONSUMES"
+      },
+      {
+        "relation": "READS"
+      },
+      {
+        "relation": "WRITES"
+      },
+      {
+        "relation": "MAPS_TO",
+        "fromKinds": [
+          "Type"
+        ]
+      }
+    ],
+    "exhaustiveNodeKinds": [
+      "Endpoint",
+      "Channel"
+    ]
+  },
+  "thresholds": {
+    "nodeRecall": 1.0,
+    "edgeRecall": 1.0,
+    "edgeAccuracy": 1.0,
+    "evidenceLocated": 1.0,
+    "precision": 1.0,
+    "coverage": 1.0,
+    "maxEvidenceErrors": 0,
+    "requireAllArtifacts": true,
+    "calculationRecall": 1.0,
+    "attributeAccuracy": 1.0,
+    "irHashMatch": 1.0
+  }
+}

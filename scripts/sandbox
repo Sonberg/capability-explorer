@@ -10,6 +10,7 @@
 #
 # Options:
 #   --offline   no network at all (--network none). Use for steps that must not fetch anything.
+#   --port N    publish container port N on the host's 127.0.0.1:N only (for the explorer UI).
 #   --docker    mount the Docker socket so Testcontainers can start Postgres.
 #               This grants the container control of the host Docker daemon. Only test targets use it;
 #               analysis/extraction steps must never get it.
@@ -24,21 +25,27 @@
 # Environment knobs (host side):
 #   SANDBOX_EXTRA_CA_FILE  extra CA bundle to trust (e.g. a TLS-intercepting egress proxy)
 #   SANDBOX_NETWORK        docker network to use when not --offline (default: bridge)
+#   SANDBOX_SOURCES        comma-separated absolute host paths (local repositories for capabilities) to mount
+#                          read-only at the same path inside the container.
+#   SANDBOX_PASS_ENV       comma-separated host variables to forward, e.g. CE_FOUNDRY_API_KEY.
+#                          Nothing is forwarded unless named here; ignored with --offline.
 #   SANDBOX_DOTNET_IMAGE / SANDBOX_NODE_IMAGE   override images
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 offline=0
 docker_sock=0
+port=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --offline) offline=1; shift ;;
     --docker) docker_sock=1; shift ;;
+    --port) port="$2"; shift 2 ;;
     -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     *) break ;;
   esac
 done
-[[ $# -ge 2 ]] || { echo "usage: scripts/sandbox [--offline] [--docker] <dotnet|node> <command...>" >&2; exit 2; }
+[[ $# -ge 2 ]] || { echo "usage: scripts/sandbox [--offline] [--docker] [--port N] <dotnet|node> <command...>" >&2; exit 2; }
 profile="$1"; shift
 
 case "$profile" in
@@ -82,7 +89,33 @@ args=(
 if [[ $offline -eq 1 ]]; then
   args+=(--network none)
 else
-  args+=(--network "${SANDBOX_NETWORK:-bridge}")
+  # Services on the host (PostgreSQL, Ollama) are host.docker.internal, also on Linux where Docker does not add it.
+  args+=(--network "${SANDBOX_NETWORK:-bridge}" --add-host host.docker.internal:host-gateway)
+fi
+
+if [[ -n "$port" ]]; then
+  [[ $offline -eq 0 ]] || { echo "--port cannot be combined with --offline" >&2; exit 2; }
+  [[ "$port" =~ ^[0-9]+$ ]] || { echo "--port needs a number" >&2; exit 2; }
+  args+=(-p "127.0.0.1:$port:$port" -e ASPNETCORE_URLS="http://0.0.0.0:$port")
+fi
+
+if [[ -n "${SANDBOX_SOURCES:-}" ]]; then
+  IFS=',' read -ra sources <<<"$SANDBOX_SOURCES"
+  mounted=","   # bash 3.2 compatible (macOS): no associative arrays
+  for src in "${sources[@]}"; do
+    [[ -z "$src" || "$mounted" == *",$src,"* ]] && continue
+    [[ "$src" == /* && -d "$src" ]] || { echo "SANDBOX_SOURCES: '$src' must be an existing absolute directory" >&2; exit 2; }
+    mounted+="$src,"
+    args+=(-v "$src:$src:ro")
+  done
+fi
+
+if [[ -n "${SANDBOX_PASS_ENV:-}" && $offline -eq 0 ]]; then
+  IFS=',' read -ra pass <<<"$SANDBOX_PASS_ENV"
+  for name in "${pass[@]}"; do
+    [[ "$name" =~ ^[A-Z_][A-Z0-9_]*$ ]] || { echo "SANDBOX_PASS_ENV: invalid variable name '$name'" >&2; exit 2; }
+    [[ -n "${!name:-}" ]] && args+=(-e "$name")
+  done
 fi
 
 if [[ -n "${SANDBOX_EXTRA_CA_FILE:-}" ]]; then
@@ -109,6 +142,7 @@ mkdir -p "$HOME"
 if [ -f /etc/sandbox/extra-ca.crt ]; then
   cat /etc/ssl/certs/ca-certificates.crt /etc/sandbox/extra-ca.crt > /tmp/ca-bundle.pem
   export SSL_CERT_FILE=/tmp/ca-bundle.pem
+  export GIT_SSL_CAINFO=/tmp/ca-bundle.pem
 fi
 exec "$@"'
 

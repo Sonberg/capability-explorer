@@ -1,0 +1,48 @@
+{
+  "$comment": "Graph gate for the extractors (`make evaluate-sql`, and the base for the per-language files evaluation.csharp.json and evaluation.extractors.ts.json, which also gate calculations), each scored only on the golden units of its own languages. Same scope as evaluation.json. Raise, never lower, without review.",
+  "scope": {
+    "exhaustiveRelations": [
+      {
+        "relation": "EXPOSES"
+      },
+      {
+        "relation": "HANDLES"
+      },
+      {
+        "relation": "REQUESTS"
+      },
+      {
+        "relation": "PUBLISHES"
+      },
+      {
+        "relation": "CONSUMES"
+      },
+      {
+        "relation": "READS"
+      },
+      {
+        "relation": "WRITES"
+      },
+      {
+        "relation": "MAPS_TO",
+        "fromKinds": [
+          "Type"
+        ]
+      }
+    ],
+    "exhaustiveNodeKinds": [
+      "Endpoint",
+      "Channel"
+    ]
+  },
+  "thresholds": {
+    "nodeRecall": 1.0,
+    "edgeRecall": 1.0,
+    "edgeAccuracy": 1.0,
+    "evidenceLocated": 1.0,
+    "precision": 1.0,
+    "coverage": 1.0,
+    "maxEvidenceErrors": 0,
+    "requireAllArtifacts": true
+  }
+}

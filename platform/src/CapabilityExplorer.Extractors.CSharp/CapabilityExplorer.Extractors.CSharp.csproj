@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- C# extractor: Roslyn over project sources and reference assemblies. It never restores or builds the
+       analysed code, so nothing from the analysed repository is executed. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>ce-cs</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../CapabilityExplorer.Contracts/CapabilityExplorer.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="CapabilityExplorer.Extractors.Tests" />
+  </ItemGroup>
+</Project>

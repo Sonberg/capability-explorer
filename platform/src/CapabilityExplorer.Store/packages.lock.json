@@ -43,6 +43,12 @@
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.0"
         }
       },
+      "capabilityexplorer.binding": {
+        "type": "Project",
+        "dependencies": {
+          "CapabilityExplorer.Contracts": "[1.0.0, )"
+        }
+      },
       "capabilityexplorer.contracts": {
         "type": "Project",
         "dependencies": {
