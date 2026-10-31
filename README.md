@@ -8,7 +8,7 @@ source span.
 (TypeScript compiler API) produce the ce.v1 contract. Both are gated in CI against a reference fixture
 set with known answers, and `make analyze` runs them over the repositories of a capability. Also
 present: validators on both stacks, an idempotent PostgreSQL importer and the explorer UI.
-Calculation extraction and SQL projects are not done yet.
+C# calculations are extracted and gated; TypeScript calculations and SQL projects are not done yet.
 
 ## Layout
 
@@ -168,6 +168,13 @@ capability files and reloads when they change, and the UI refetches what it show
 - Compiler errors make the affected files `partial`.
 - Rules: ASP.NET Core controllers and minimal APIs, DI (including keyed services and reflection),
   EF Core, Dapper, Azure Service Bus, typed `HttpClient`.
+- Calculations: a method that returns a number and contains an aggregate, an accumulation loop, rounding or a
+  division becomes a `calculation` record. The body is lowered with the semantic model: locals are inlined,
+  `Where/Select/Distinct` + `Sum/Average/Min/Max/Count` become one `agg`, a `foreach` that accumulates into a
+  local becomes a `fold`, `Math.Round` keeps its mode, and implicit numeric conversions become `conv`. The
+  attributes come from the IR and the syntax (never from names); what the code does not settle stays `unknown`.
+  A construct the IR cannot express (other statements, unresolved calls, non-constant statics) means no
+  calculation for that method, never an approximation.
 
 **TypeScript/JavaScript (`ce-ts`)**
 
@@ -181,13 +188,14 @@ capability files and reloads when they change, and the UI refetches what it show
 
 **Known limits**
 
-- Calculations (the IR and its attributes) are not extracted yet. They are scored but not gated.
+- TypeScript/JavaScript calculations (the IR and its attributes) are not extracted yet.
 - SQL projects (`.sqlproj`, migrations) are not extracted yet.
 - Edges into package code depend on the package versions the shared download folder holds.
 
 `make evaluate-cs` and `make evaluate-ts` run each extractor over every fixture revision. They score it
-against the golden units of its own languages using `fixtures/evaluation.extractors.json`. Graph
-recall, edge accuracy, evidence and precision are held at 100%. Both targets run in `make test`.
+against the golden units of its own languages using `fixtures/evaluation.csharp.json` and
+`fixtures/evaluation.extractors.json`. Graph recall, edge accuracy, evidence and precision are held at 100%;
+for C# so are calculation recall, attribute accuracy and `irHash` match. Both targets run in `make test`.
 
 ### Validating extractor output
 
@@ -263,7 +271,7 @@ golden set against itself and runs in CI as a self-check of the scorer.
 
 ## Next
 
-- Calculation extraction (IR + attributes) for C# and TypeScript, then SQL projects (T-SQL `.sqlproj`,
+- Calculation extraction (IR + attributes) for TypeScript, then SQL projects (T-SQL `.sqlproj`,
   PostgreSQL migrations).
 - Open decision: TypeScript 7 (native compiler) has a different programmatic API. The extractor pins
   `typescript@5.9` until that API is evaluated.

@@ -96,7 +96,7 @@ extract-cs: fixtures build fixtures-compile
 
 evaluate-cs: extract-cs
 	$(OFFLINE) dotnet $(CE) evaluate --expected fixtures/expected --actual $(EXTRACTED)/cs \
-	  --config fixtures/evaluation.extractors.json --repos fixtures/.repos --language csharp --json $(EXTRACTED)/cs/evaluation.json
+	  --config fixtures/evaluation.csharp.json --repos fixtures/.repos --language csharp --json $(EXTRACTED)/cs/evaluation.json
 
 # TypeScript/JavaScript extractor (compiler API; the analysed packages are never installed).
 extract-ts: fixtures restore
