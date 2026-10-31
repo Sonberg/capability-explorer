@@ -95,9 +95,12 @@ public static class ExplorerApi
 
         api.MapGet("/calculations", (ExplorerIndex index, CapabilityService caps, string? view, string? cap) => Queries.Calculations(index.View(view, caps.Scope(cap))));
 
-        // Layered architecture canvas: level = system | repository | component.
+        // Layered architecture canvas: level = landscape | system | repository | component. The landscape ignores cap.
         api.MapGet("/architecture", (ExplorerIndex index, CapabilityService caps, string? level, string? focus, string? view, string? cap) =>
-            Architecture.Build(index.View(view, caps.Scope(cap)), level ?? "system", focus));
+        {
+            var capability = string.IsNullOrEmpty(cap) ? null : caps.Get(cap);
+            return Architecture.Build(index.View(view, caps.Scope(cap)), level ?? (capability is null ? "landscape" : "system"), focus, index.View(view), caps.List(), capability);
+        });
 
         api.MapGet("/integrations", (ExplorerIndex index, CapabilityService caps, string? view, string? cap) => Queries.Integrations(index.View(view, caps.Scope(cap))));
 

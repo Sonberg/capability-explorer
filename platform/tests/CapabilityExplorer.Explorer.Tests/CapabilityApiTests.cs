@@ -89,6 +89,31 @@ public sealed class CapabilityApiTests(CapabilityExplorerFactory factory) : ICla
     }
 
     [Fact]
+    public async Task The_landscape_shows_every_capability_and_links_those_that_share_a_repository()
+    {
+        var created = await _client.PostAsJsonAsync("/api/capabilities", new { name = "Forecast ops", repositories = Fixtures.RepoDirectory("forecast-cs") });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        try
+        {
+            var g = await _client.GetFromJsonAsync<JsonElement>("/api/architecture?level=landscape&cap=demand-pricing");
+            var nodes = g.GetProperty("nodes").EnumerateArray().ToDictionary(n => n.GetProperty("id").GetString()!);
+            Assert.Contains("cap:demand-pricing", nodes.Keys);
+            Assert.Equal("system", nodes["cap:forecast-ops"].GetProperty("drill").GetProperty("level").GetString());
+            var shares = g.GetProperty("edges").EnumerateArray().Single(e => e.GetProperty("kind").GetString() == "shares");
+            Assert.Equal("shares forecast-cs", shares.GetProperty("label").GetString());
+
+            // One level down, the capability names the crumb above its repositories.
+            var system = await _client.GetFromJsonAsync<JsonElement>("/api/architecture?cap=demand-pricing");
+            Assert.Equal("system", system.GetProperty("level").GetString());
+            Assert.Equal(["Landscape", "Demand pricing"], system.GetProperty("breadcrumbs").EnumerateArray().Select(c => c.GetProperty("label").GetString()));
+        }
+        finally
+        {
+            await _client.DeleteAsync(new Uri("/api/capabilities/forecast-ops", UriKind.Relative));
+        }
+    }
+
+    [Fact]
     public async Task Bad_input_is_rejected_with_reasons()
     {
         var bad = await _client.PostAsJsonAsync("/api/capabilities", new { name = "Bad", repositories = "https://gitlab.com/a/b" });

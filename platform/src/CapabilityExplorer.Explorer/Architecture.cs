@@ -31,8 +31,8 @@ public sealed record Crumb(string Label, string Level, string? Focus);
 public sealed record ArchitectureGraph(string Level, string? Focus, string Title, IReadOnlyList<Crumb> Breadcrumbs, IReadOnlyList<ArchNode> Nodes, IReadOnlyList<ArchEdge> Edges, IReadOnlyList<string> Notes);
 
 /// <summary>
-/// Builds the canvas at three levels of abstraction from the facts in a view:
-/// system (repositories and shared resources), repository (components grouped by unit) and component
+/// Builds the canvas at four levels of abstraction from the facts in a view:
+/// landscape (capabilities), system (the repositories of one capability and shared resources), repository (components grouped by unit) and component
 /// (members and their direct neighbours). Nothing is drawn that the artifacts do not state, except
 /// cross-repository route matches and same-name resources, which are labelled candidates.
 /// </summary>
@@ -43,16 +43,72 @@ public static class Architecture
     private static readonly HashSet<string> DataRelations = ["READS", "WRITES", "MAPS_TO"];
     private static readonly HashSet<string> MessageRelations = ["PUBLISHES", "CONSUMES"];
 
-    public static ArchitectureGraph Build(ViewIndex view, string level, string? focus) => level switch
+    /// <param name="all">The unscoped view, used by the landscape (every capability).</param>
+    /// <param name="capability">The capability the view is scoped to, if any: it names the level above the repositories.</param>
+    public static ArchitectureGraph Build(ViewIndex view, string level, string? focus, ViewIndex all, IReadOnlyList<CapabilityStatus> capabilities, CapabilityStatus? capability)
     {
-        "repository" when focus is not null => Repository(view, focus),
-        "component" when focus is not null => Component(view, focus),
-        _ => System(view),
-    };
+        IReadOnlyList<Crumb> top = capability is null
+            ? [new Crumb("Landscape", "landscape", null), new Crumb("System", "system", null)]
+            : [new Crumb("Landscape", "landscape", null), new Crumb(capability.Name, "system", capability.Id)];
+        return level switch
+        {
+            "landscape" => Landscape(all, capabilities),
+            "repository" when focus is not null => Repository(view, focus, top),
+            "component" when focus is not null => Component(view, focus, top),
+            _ => System(view, top, capability?.Name ?? "System"),
+        };
+    }
+
+    // ------------------------------------------------------------------ landscape
+
+    /// <summary>
+    /// Capabilities as nodes. Lines are the system-level facts lifted to the capabilities that own each repository,
+    /// plus "shares" links between capabilities that list the same repository. Resources stay only where they join capabilities.
+    /// </summary>
+    private static ArchitectureGraph Landscape(ViewIndex view, IReadOnlyList<CapabilityStatus> capabilities)
+    {
+        var b = new Builder(view);
+        foreach (var c in capabilities)
+        {
+            b.Node(new ArchNode($"cap:{c.Id}", "capability", c.Name, c.Description, null, null, null, new Drill("system", c.Id),
+                [$"{c.Repositories.Count} repositor{(c.Repositories.Count == 1 ? "y" : "ies")}", $"{c.Analysed} analysed"]));
+        }
+
+        var owners = capabilities.SelectMany(c => c.Repositories.Select(r => (Repo: r.Id, Cap: $"cap:{c.Id}")))
+            .ToLookup(x => x.Repo, x => x.Cap, StringComparer.Ordinal);
+        SystemEdges(view, b, repo => owners[repo]);
+
+        for (var i = 0; i < capabilities.Count; i++)
+        {
+            for (var j = i + 1; j < capabilities.Count; j++)
+            {
+                var shared = capabilities[i].Repositories.Select(r => r.Id).Intersect(capabilities[j].Repositories.Select(r => r.Id), StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+                if (shared.Count > 0)
+                {
+                    b.Link($"cap:{capabilities[i].Id}", $"cap:{capabilities[j].Id}", "shares", $"shares {string.Join(", ", shared)}", "proven");
+                }
+            }
+        }
+
+        var graph = b.Graph("landscape", null, "Landscape", [new Crumb("Landscape", "landscape", null)],
+            ["Capabilities are linked where they share a repository, or where a repository of one calls, writes or reads something of another.", "Data stores and channels are shown only where they join two capabilities."]);
+
+        // A resource joins capabilities when at least two repositories, owned by at least two capabilities, touch it
+        // (one repository listed by two capabilities does not count). ponytail: linear scans; fine for tens of capabilities.
+        var byRepo = new Builder(view);
+        SystemEdges(view, byRepo, repo => [$"repo:{repo}"]);
+        var repoEdges = byRepo.Graph("system", null, "", [], []).Edges;
+        HashSet<string> Touching(IEnumerable<ArchEdge> edges, string id, string prefix) =>
+            edges.Where(e => e.From == id || e.To == id).Select(e => e.From == id ? e.To : e.From).Where(x => x.StartsWith(prefix, StringComparison.Ordinal)).ToHashSet(StringComparer.Ordinal);
+        var joins = graph.Nodes.Where(n => n.Category != "capability" && Touching(graph.Edges, n.Id, "cap:").Count >= 2 && Touching(repoEdges, n.Id, "repo:").Count >= 2)
+            .Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
+        bool Keep(string id) => id.StartsWith("cap:", StringComparison.Ordinal) || joins.Contains(id);
+        return graph with { Nodes = graph.Nodes.Where(n => Keep(n.Id)).ToList(), Edges = graph.Edges.Where(e => Keep(e.From) && Keep(e.To)).ToList() };
+    }
 
     // ------------------------------------------------------------------ system
 
-    private static ArchitectureGraph System(ViewIndex view)
+    private static ArchitectureGraph System(ViewIndex view, IReadOnlyList<Crumb> crumbs, string title)
     {
         var b = new Builder(view);
         foreach (var repo in view.Artifacts.Select(a => a.RepositoryId).Distinct().Order(StringComparer.Ordinal))
@@ -60,49 +116,59 @@ public static class Architecture
             b.Node(RepoNode(view, repo));
         }
 
+        SystemEdges(view, b, repo => [$"repo:{repo}"]);
+        b.SameNameLinks();
+        return b.Graph("system", null, title, crumbs,
+            ["Repositories are connected through candidate HTTP route matches until base URLs are bound.", "Resources with the same name but different keys are separate until a binding proves otherwise."]);
+    }
+
+    /// <summary>Repository-level facts: HTTP between repositories, data and messaging resources. <paramref name="owners"/> maps a repository to its canvas nodes.</summary>
+    private static void SystemEdges(ViewIndex view, Builder b, Func<string, IEnumerable<string>> owners)
+    {
         foreach (var e in view.Edges)
         {
-            var fromRepo = e.Artifact.RepositoryId;
             var r = e.Record;
-            if (r.Relation == "REQUESTS")
+            foreach (var from in owners(e.Artifact.RepositoryId))
             {
-                foreach (var (target, certainty, missing) in HttpTargets(view, e))
+                if (r.Relation == "REQUESTS")
                 {
-                    if (missing is not null)
+                    foreach (var (target, certainty, missing) in HttpTargets(view, e))
                     {
-                        var route = Route(missing);
-                        var id = $"broken:{missing}";
-                        b.Node(new ArchNode(id, "unmatched", route, $"bound to {missing.Split('|')[1]}, but no such endpoint", "Broken", null, null, null, ["broken"]));
-                        b.Edge($"repo:{fromRepo}", id, "http", route, "broken", e);
-                    }
-                    else if (target is null)
-                    {
-                        var route = r.To is null ? "dynamic request" : Route(r.To);
-                        b.Node(new ArchNode($"unmatched:{route}", "unmatched", route, "no endpoint in scope", "Unmatched", null, null, null, ["unmatched"]));
-                        b.Edge($"repo:{fromRepo}", $"unmatched:{route}", "http", route, "unresolved", e);
-                    }
-                    else
-                    {
-                        b.Edge($"repo:{fromRepo}", $"repo:{target.Artifact.RepositoryId}", "http", Route(target.Record.SymbolKey), certainty, e);
+                        if (missing is not null)
+                        {
+                            var route = Route(missing);
+                            var id = $"broken:{missing}";
+                            b.Node(new ArchNode(id, "unmatched", route, $"bound to {missing.Split('|')[1]}, but no such endpoint", "Broken", null, null, null, ["broken"]));
+                            b.Edge(from, id, "http", route, "broken", e);
+                        }
+                        else if (target is null)
+                        {
+                            var route = r.To is null ? "dynamic request" : Route(r.To);
+                            b.Node(new ArchNode($"unmatched:{route}", "unmatched", route, "no endpoint in scope", "Unmatched", null, null, null, ["unmatched"]));
+                            b.Edge(from, $"unmatched:{route}", "http", route, "unresolved", e);
+                        }
+                        else if (target.Artifact.RepositoryId != e.Artifact.RepositoryId)
+                        {
+                            foreach (var to in owners(target.Artifact.RepositoryId))
+                            {
+                                b.Edge(from, to, "http", Route(target.Record.SymbolKey), certainty, e);
+                            }
+                        }
                     }
                 }
-            }
-            else if (r.To is not null && (DataRelations.Contains(r.Relation) || MessageRelations.Contains(r.Relation)) && ResourceKey(r.To) is { } res)
-            {
-                b.Node(ResourceNode(view, res));
-                var consume = r.Relation is "CONSUMES" or "READS";
-                b.Edge(consume ? $"res:{res}" : $"repo:{fromRepo}", consume ? $"repo:{fromRepo}" : $"res:{res}", KindOf(r.Relation), r.Relation.ToLowerInvariant().Replace('_', ' '), null, e);
-            }
-            else if (r.Relation == "DECLARES" && r.To is not null && view.Node(r.From)?.Record.NodeKind == "Project" && view.Node(r.To)?.Record.NodeKind is "Table" or "View")
-            {
-                b.Node(ResourceNode(view, r.To));
-                b.Edge($"repo:{fromRepo}", $"res:{r.To}", "declares", "declares", null, e);
+                else if (r.To is not null && (DataRelations.Contains(r.Relation) || MessageRelations.Contains(r.Relation)) && ResourceKey(r.To) is { } res)
+                {
+                    b.Node(ResourceNode(view, res));
+                    var consume = r.Relation is "CONSUMES" or "READS";
+                    b.Edge(consume ? $"res:{res}" : from, consume ? from : $"res:{res}", KindOf(r.Relation), r.Relation.ToLowerInvariant().Replace('_', ' '), null, e);
+                }
+                else if (r.Relation == "DECLARES" && r.To is not null && view.Node(r.From)?.Record.NodeKind == "Project" && view.Node(r.To)?.Record.NodeKind is "Table" or "View")
+                {
+                    b.Node(ResourceNode(view, r.To));
+                    b.Edge(from, $"res:{r.To}", "declares", "declares", null, e);
+                }
             }
         }
-
-        b.SameNameLinks();
-        return b.Graph("system", null, "System", [new Crumb("System", "system", null)],
-            ["Repositories are connected through candidate HTTP route matches until base URLs are bound.", "Resources with the same name but different keys are separate until a binding proves otherwise."]);
     }
 
     private static ArchNode RepoNode(ViewIndex view, string repo)
@@ -136,7 +202,7 @@ public static class Architecture
 
     // ------------------------------------------------------------------ repository
 
-    private static ArchitectureGraph Repository(ViewIndex view, string repo)
+    private static ArchitectureGraph Repository(ViewIndex view, string repo, IReadOnlyList<Crumb> top)
     {
         var b = new Builder(view);
         foreach (var a in view.Artifacts.Where(a => a.RepositoryId == repo))
@@ -222,7 +288,7 @@ public static class Architecture
         }
 
         b.SameNameLinks();
-        return b.Graph("repository", repo, repo, [new Crumb("System", "system", null), new Crumb(repo, "repository", repo)],
+        return b.Graph("repository", repo, repo, [.. top, new Crumb(repo, "repository", repo)],
             ["Components are C# types, TypeScript modules and SQL objects, grouped by unit.", "Calls into external libraries are shown one level down."]);
     }
 
@@ -230,7 +296,7 @@ public static class Architecture
 
     // ------------------------------------------------------------------ component
 
-    private static ArchitectureGraph Component(ViewIndex view, string focus)
+    private static ArchitectureGraph Component(ViewIndex view, string focus, IReadOnlyList<Crumb> top)
     {
         var b = new Builder(view);
         var focusNode = view.Node(focus);
@@ -286,7 +352,7 @@ public static class Architecture
         }
 
         return b.Graph("component", focus, title,
-            [new Crumb("System", "system", null), new Crumb(repo, "repository", repo), new Crumb(title, "component", focus)],
+            [.. top, new Crumb(repo, "repository", repo), new Crumb(title, "component", focus)],
             ["Members of this component and everything they touch directly. Open a member to see its source and evidence."]);
     }
 
@@ -568,6 +634,10 @@ public static class Architecture
                 edge.Facts.Add(fact);
             }
         }
+
+        /// <summary>An edge backed by the definitions rather than by extracted facts.</summary>
+        public void Link(string from, string to, string kind, string label, string certainty) =>
+            _edges[$"{from}->{to}:{kind}"] = (from, to, kind, label, certainty, [], [label]);
 
         /// <summary>Dashed hint edges between resources that share a name but not a key.</summary>
         public void SameNameLinks()

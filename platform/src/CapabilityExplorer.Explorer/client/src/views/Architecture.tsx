@@ -11,6 +11,7 @@ import {
   useReactFlow,
   type Edge as FlowEdge,
   type Node as FlowNode,
+  type NodeChange,
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -58,7 +59,7 @@ interface ArchEdge {
 }
 
 interface Graph {
-  level: "system" | "repository" | "component";
+  level: "landscape" | "system" | "repository" | "component";
   focus?: string;
   title: string;
   breadcrumbs: { label: string; level: string; focus?: string }[];
@@ -70,6 +71,7 @@ interface Graph {
 // ---------------------------------------------------------------- styling
 
 const categoryStyle: Record<string, { box: string; strip: string; name: string }> = {
+  capability: { box: "border-indigo-400 dark:border-indigo-700", strip: "bg-indigo-600", name: "capability" },
   service: { box: "border-blue-300 dark:border-blue-800", strip: "bg-blue-500", name: "service" },
   application: { box: "border-sky-300 dark:border-sky-800", strip: "bg-sky-500", name: "application" },
   external: { box: "border-zinc-300 border-dashed dark:border-zinc-600", strip: "bg-zinc-400", name: "other system" },
@@ -94,6 +96,7 @@ const kindColor: Record<string, string> = {
   handles: "#10b981",
   declares: "#a1a1aa",
   sameName: "#fb7185",
+  shares: "#6366f1",
 };
 
 const kindLabel: Record<string, string> = {
@@ -106,6 +109,7 @@ const kindLabel: Record<string, string> = {
   handles: "handles endpoint",
   declares: "declares",
   sameName: "same name (unproven)",
+  shares: "shares repository",
 };
 
 const certaintyDash: Record<ArchEdge["certainty"], string | undefined> = {
@@ -255,9 +259,10 @@ const nodeTypes = { arch: ArchNodeView, group: GroupView };
 // ---------------------------------------------------------------- view
 
 export function ArchitectureView({ params }: { params: URLSearchParams }) {
+  const { capability } = useSelection();
   return (
     <ReactFlowProvider>
-      <Canvas level={params.get("level") ?? "system"} focus={params.get("focus") ?? undefined} />
+      <Canvas level={params.get("level") ?? (capability ? "system" : "landscape")} focus={params.get("focus") ?? undefined} />
     </ReactFlowProvider>
   );
 }
@@ -267,7 +272,7 @@ type Selected = { type: "node"; node: ArchNode } | { type: "edge"; edge: ArchEdg
 let rememberedHidden = new Set<string>(["declares"]);
 
 function Canvas({ level, focus }: { level: string; focus?: string }) {
-  const { scope } = useSelection();
+  const { scope, setCapability } = useSelection();
   const { data: graph, error, loading } = useApi<Graph>(`/api/architecture?level=${level}${focus ? `&focus=${encodeURIComponent(focus)}` : ""}&${scope}`);
   const [hidden, setHidden] = useState<Set<string>>(rememberedHidden);
   const [selected, setSelected] = useState<Selected>(null);
@@ -279,6 +284,14 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
   }, [hidden]);
 
   const laidOut = useMemo(() => (graph ? layout(graph, hidden) : { nodes: [], edges: [] }), [graph, hidden]);
+  // Dragged positions, kept until the next layout. ponytail: not persisted; store per level/focus if wanted.
+  const [moved, setMoved] = useState<Record<string, { x: number; y: number }>>({});
+  useEffect(() => setMoved({}), [laidOut]);
+  const onNodesChange = (changes: NodeChange[]) => {
+    const next: Record<string, { x: number; y: number }> = {};
+    for (const c of changes) if (c.type === "position" && c.position) next[c.id] = c.position;
+    if (Object.keys(next).length) setMoved((m) => ({ ...m, ...next }));
+  };
   // Refit only when the set of visible edge kinds changes. (fitView's identity is not stable across renders;
   // depending on it would refit on every selection and move nodes between the two clicks of a double-click.)
   const fitRef = useRef(fitView);
@@ -311,10 +324,10 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
     () =>
       laidOut.nodes.map((n) =>
         n.type === "arch"
-          ? { ...n, data: { ...(n.data as CanvasNodeData), selected: selected?.type === "node" && selected.node.id === n.id, dimmed: !!neighbours && !neighbours.has(n.id) } }
+          ? { ...n, position: moved[n.id] ?? n.position, data: { ...(n.data as CanvasNodeData), selected: selected?.type === "node" && selected.node.id === n.id, dimmed: !!neighbours && !neighbours.has(n.id) } }
           : n,
       ),
-    [laidOut, selected, neighbours],
+    [laidOut, selected, neighbours, moved],
   );
   const edges = useMemo(
     () =>
@@ -326,26 +339,38 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
   );
 
   const kinds = useMemo(() => [...new Set(graph?.edges.map((e) => e.kind) ?? [])].sort(), [graph]);
-  const drill = (n: ArchNode) => n.drill && (window.location.hash = href("architecture", { level: n.drill.level, focus: n.drill.focus }));
+  // Opening a capability selects it: the levels below are scoped by the selection, not by focus.
+  const open = (to: { level: string; focus?: string }) => {
+    if (to.level === "system" && to.focus) setCapability(to.focus);
+    window.location.hash = href("architecture", { level: to.level, focus: to.level === "system" ? undefined : to.focus });
+  };
+  const drill = (n: ArchNode) => n.drill && open(n.drill);
 
   return (
     <div className="flex h-[calc(100vh-150px)] min-h-[520px] flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
         <nav aria-label="Abstraction level" className="flex items-center gap-1 text-[13px]">
-          {(graph?.breadcrumbs ?? [{ label: "System", level: "system" }]).map((c, i, all) => (
+          {(graph?.breadcrumbs ?? [{ label: "Landscape", level: "landscape" }]).map((c, i, all) => (
             <span key={c.level} className="flex items-center gap-1">
               {i > 0 && <span className="text-zinc-400">›</span>}
               {i === all.length - 1 ? (
                 <span className="font-semibold">{c.label}</span>
               ) : (
-                <a href={href("architecture", { level: c.level, focus: c.focus })} className="text-blue-700 hover:underline dark:text-blue-300">
+                <a
+                  href={href("architecture", { level: c.level, focus: c.level === "system" ? undefined : c.focus })}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    open(c);
+                  }}
+                  className="text-blue-700 hover:underline dark:text-blue-300"
+                >
                   {c.label}
                 </a>
               )}
             </span>
           ))}
         </nav>
-        <Pill tone="info">{{ system: "1 · system", repository: "2 · components", component: "3 · code" }[level] ?? level}</Pill>
+        <Pill tone="info">{{ landscape: "1 · landscape", system: "2 · capability", repository: "3 · components", component: "4 · code" }[level] ?? level}</Pill>
         <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           {kinds.map((k) => (
             <label key={k} className="flex cursor-pointer items-center gap-1">
@@ -377,6 +402,7 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
             }}
             zoomOnDoubleClick={false}
             nodes={nodes}
+            onNodesChange={onNodesChange}
             edges={edges}
             nodeTypes={nodeTypes}
             colorMode="system"
@@ -443,7 +469,7 @@ function NodePanel({ node: n, onDrill, graph }: { node: ArchNode; onDrill: () =>
         {incoming} incoming · {outgoing} outgoing connection{outgoing === 1 ? "" : "s"}
       </div>
       <div className="flex flex-wrap gap-2 pt-1">
-        {n.drill && <Button onClick={onDrill}>Open {n.drill.level === "repository" ? "components" : "code"} →</Button>}
+        {n.drill && <Button onClick={onDrill}>Open {{ system: "capability", repository: "components" }[n.drill.level] ?? "code"} →</Button>}
         {n.symbolKey && n.category !== "datastore" && n.category !== "channel" && (
           <a href={symbolHref(n.symbolKey)} className="rounded-md border border-zinc-300 px-3 py-1.5 text-[13px] font-semibold hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800">
             Open in Explore
@@ -516,7 +542,8 @@ function Legend({ graph }: { graph?: Graph }) {
       <div>
         <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">Levels</div>
         <ol className="list-decimal space-y-0.5 pl-5 text-xs">
-          <li>System — repositories, data stores, channels</li>
+          <li>Landscape — every capability, linked where they share or call into each other</li>
+          <li>Capability — its apps, APIs and services, data stores, channels</li>
           <li>Components — types, modules and SQL objects of one repository</li>
           <li>Code — members of one component and what they touch</li>
         </ol>

@@ -55,6 +55,6 @@ public sealed class ArchitectureApiTests(ExplorerFactory factory) : IClassFixtur
         Assert.Contains("external", categories);
         Assert.Contains("unmatched", categories); // the reflection-based plugin path
         Assert.Contains(Edges(g), e => e.GetProperty("certainty").GetString() == "candidate"); // keyed DI
-        Assert.Equal(["System", "forecast-cs", "StrategyLoader"], g.GetProperty("breadcrumbs").EnumerateArray().Select(c => c.GetProperty("label").GetString()));
+        Assert.Equal(["Landscape", "System", "forecast-cs", "StrategyLoader"], g.GetProperty("breadcrumbs").EnumerateArray().Select(c => c.GetProperty("label").GetString()));
     }
 }
