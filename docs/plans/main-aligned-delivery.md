@@ -78,3 +78,11 @@ PR preflight (an unavoidable non-atomic race), every Git/OS version, production
 extractor mapping defects, or broader C# graph semantics. No paid provider calls;
 native worker monetary cost unknown. The existing hierarchical ledger is only
 coordination; native workers performed the observed work.
+
+
+Refinement gate: `make evaluate-cs` passed10/10 artifacts, nodes176/176,
+edges174/174, evidence350/350, calculations11/11, attributes112/112 and hashes11/11;
+all thresholds passed, zero evidence errors. R100/100 (iteration1), grounded in
+42 harness checks, 13 extractor tests, unchanged golden metrics and independent
+review. Log: /private/tmp/ce-aligned-evaluate-cs.log. Final full-CI and PR-preflight
+receipts belong to the immutable commit and will be linked from the issue/PR.
