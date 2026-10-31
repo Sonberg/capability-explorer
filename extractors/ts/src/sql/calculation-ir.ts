@@ -1,6 +1,9 @@
 import type { SqlDataType, SqlExpression, SqlRoutineCalculation } from "./calculation-types.ts";
 import { lookupKey, type Catalog, type ColumnDef, type TableDef } from "./ddl.ts";
 
+/** Conservative bound checked before numeric conversion or dialect type inference. */
+export const SQL_CALCULATION_MAX_NUMERIC_LITERAL_LENGTH = 1024;
+
 export type NumericType = "int32" | "bigint" | "decimal" | "numeric";
 export interface SqlIr { op: string; type?: NumericType; [key: string]: unknown }
 export interface TypedExpression { ir: SqlIr; type: string; nullable: boolean; column?: ColumnDef }
@@ -96,6 +99,7 @@ export class CalculationLowering {
   lower(node: SqlExpression, bind?: string, predicate = false): TypedExpression {
     if (node.kind === "number") {
       const v = node.value;
+      if (v.length > SQL_CALCULATION_MAX_NUMERIC_LITERAL_LENGTH) return fail("numeric literal exceeds supported length limit");
       if (/^\d+$/.test(v) && BigInt(v) <= 2147483647n) return this.result(node, lit(Number(v), "int32"), "int32");
       if (this.c.dialect === "postgresql" && /^\d+$/.test(v) && BigInt(v) <= 9223372036854775807n) return this.result(node, lit(v, "bigint"), "bigint");
       if (!/^\d+(?:\.\d*)?(?:[eE][+-]?\d+)?$/.test(v)) return fail("unsupported numeric literal");
