@@ -106,3 +106,30 @@ test("routes and SQL helpers", () => {
   assert.deepEqual(parseSql("SELECT a, b FROM s.t JOIN u ON u.id = t.id").map((s) => [s.table, s.write]), [["s.t", false], ["u", false]]);
   assert.deepEqual(parseSql("DELETE FROM s.t WHERE id = 1").map((s) => [s.table, s.write]), [["s.t", true]]);
 });
+
+interface CalcRec extends Rec { irHash?: string; expr?: unknown; attributes?: Record<string, { status: string; value?: string }> }
+
+test("calculations: rounding and aggregation become IR; unknowns stay unknown; unsupported code is a diagnostic", () => {
+  const calc = (body: string) => run({
+    "package.json": JSON.stringify({ name: "calc" }),
+    "tsconfig.json": tsconfig,
+    "src/c.ts": body,
+  })[0]!.records;
+  const [a] = calc("export function half(x: number): number { return Math.round(x * 100) / 100; }\n").filter((r) => r.kind === "calculation") as CalcRec[];
+  assert.equal(a!.attributes!.rounding!.value, "halfTowardPositiveInfinity");
+  assert.equal(a!.attributes!.currency!.status, "unknown");
+  assert.equal(a!.attributes!.zeroDenominator!.value, "notApplicable");
+  // Same logic under another name hashes the same; a changed constant changes the hash.
+  const renamed = calc("export function other(y: number): number { return Math.round(y * 100) / 100; }\n").find((r) => r.kind === "calculation") as CalcRec;
+  const changed = calc("export function half(x: number): number { return Math.round(x * 10) / 100; }\n").find((r) => r.kind === "calculation") as CalcRec;
+  assert.equal(renamed.irHash, a!.irHash);
+  assert.notEqual(changed.irHash, a!.irHash);
+  // An unguarded division is reported, not assumed safe.
+  const div = calc("export function avg(t: number, n: number): number { return Math.trunc(t / n); }\n").find((r) => r.kind === "calculation") as CalcRec;
+  assert.equal(div.attributes!.zeroDenominator!.value, "unguarded");
+  assert.equal(div.attributes!.denominatorSource!.value, "parameter");
+  // Loops the IR cannot express are never approximated.
+  const records = calc("export function bad(xs: number[]): number { let s = 0; while (s < 10) { s += xs.length; } return Math.round(s); }\n");
+  assert.equal(records.filter((r) => r.kind === "calculation").length, 0);
+  assert.ok(records.some((r) => r.kind === "diagnostic" && (r as { code?: string }).code === "CALCULATION_UNSUPPORTED"));
+});

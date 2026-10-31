@@ -8,7 +8,7 @@ source span.
 (TypeScript compiler API) produce the ce.v1 contract. Both are gated in CI against a reference fixture
 set with known answers, and `make analyze` runs them over the repositories of a capability. Also
 present: validators on both stacks, an idempotent PostgreSQL importer and the explorer UI.
-Calculation extraction and SQL projects are not done yet.
+TypeScript/JavaScript calculations are extracted; C# calculations and SQL projects are not done yet.
 
 ## Layout
 
@@ -181,12 +181,13 @@ capability files and reloads when they change, and the UI refetches what it show
 
 **Known limits**
 
-- Calculations (the IR and its attributes) are not extracted yet. They are scored but not gated.
+- Calculations (the IR and its attributes) are extracted for TypeScript/JavaScript only, and gated at 100% there (`fixtures/evaluation.extractors.ts.json`). C# calculations are not extracted yet.
+- TS/JS calculations cover numeric functions that round (`Math.round/trunc/floor/ceil`, `toFixed`) or aggregate (`filter`/`map`/`reduce`, `new Set(..).size`, `for…of` sums). Other shapes yield a `CALCULATION_UNSUPPORTED` info diagnostic instead of an approximate IR.
 - SQL projects (`.sqlproj`, migrations) are not extracted yet.
 - Edges into package code depend on the package versions the shared download folder holds.
 
 `make evaluate-cs` and `make evaluate-ts` run each extractor over every fixture revision. They score it
-against the golden units of its own languages using `fixtures/evaluation.extractors.json`. Graph
+against the golden units of its own languages using `fixtures/evaluation.extractors.json` (C#) and `fixtures/evaluation.extractors.ts.json` (TS/JS, which also gates calculation recall, attribute accuracy and irHash). Graph
 recall, edge accuracy, evidence and precision are held at 100%. Both targets run in `make test`.
 
 ### Validating extractor output

@@ -105,7 +105,7 @@ extract-ts: fixtures restore
 
 evaluate-ts: extract-ts build
 	$(OFFLINE) dotnet $(CE) evaluate --expected fixtures/expected --actual $(EXTRACTED)/ts \
-	  --config fixtures/evaluation.extractors.json --repos fixtures/.repos --language typescript,javascript --json $(EXTRACTED)/ts/evaluation.json
+	  --config fixtures/evaluation.extractors.ts.json --repos fixtures/.repos --language typescript,javascript --json $(EXTRACTED)/ts/evaluation.json
 
 test-explorer: fixtures build
 	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Explorer.Tests && dotnet test --no-build tests/CapabilityExplorer.Interpretation.Tests && dotnet test --no-build tests/CapabilityExplorer.Capabilities.Tests'

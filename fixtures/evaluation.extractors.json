@@ -1,5 +1,5 @@
 {
-  "$comment": "Gate for the extractors (`make evaluate-cs`, `make evaluate-ts`), each scored only on the golden units of its own languages. Same scope as evaluation.json; calculation metrics are not gated until calculation extraction exists. Raise, never lower, without review.",
+  "$comment": "Gate for the extractors (`make evaluate-cs`, `make evaluate-ts`), each scored only on the golden units of its own languages. Same scope as evaluation.json; calculation metrics are gated per extractor (TS: evaluation.extractors.ts.json; C# joins when its calculations land). Raise, never lower, without review.",
   "scope": {
     "exhaustiveRelations": [
       {

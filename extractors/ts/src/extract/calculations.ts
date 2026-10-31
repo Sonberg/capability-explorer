@@ -83,10 +83,20 @@ class Builder {
   private readonly paramNames = new Map<string, string>();
   private readonly paramNodes = new Map<string, ts.ParameterDeclaration>();
 
-  constructor(
-    private readonly ctx: Ctx, private readonly key: string, private readonly decl: ts.FunctionDeclaration | ts.VariableDeclaration,
-    private readonly fn: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression, private readonly params: ts.NodeArray<ts.ParameterDeclaration>, private readonly body: ts.Block,
-  ) {
+  private readonly ctx: Ctx;
+  private readonly key: string;
+  private readonly decl: ts.FunctionDeclaration | ts.VariableDeclaration;
+  private readonly fn: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression;
+  private readonly params: ts.NodeArray<ts.ParameterDeclaration>;
+  private readonly body: ts.Block;
+
+  constructor(ctx: Ctx, key: string, decl: ts.FunctionDeclaration | ts.VariableDeclaration, fn: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression, params: ts.NodeArray<ts.ParameterDeclaration>, body: ts.Block) {
+    this.ctx = ctx;
+    this.key = key;
+    this.decl = decl;
+    this.fn = fn;
+    this.params = params;
+    this.body = body;
     this.checker = ctx.checker;
   }
 
@@ -482,7 +492,15 @@ class Builder {
 
 /** The domain attributes, read off the IR. Evidence is the source of the IR node each one rests on. */
 class Attributes {
-  constructor(private readonly b: Builder, private readonly expr: Expr, private readonly doc: { unit: string; evidence: string } | undefined) {}
+  private readonly b: Builder;
+  private readonly expr: Expr;
+  private readonly doc: { unit: string; evidence: string } | undefined;
+
+  constructor(b: Builder, expr: Expr, doc: { unit: string; evidence: string } | undefined) {
+    this.b = b;
+    this.expr = expr;
+    this.doc = doc;
+  }
 
   private get ctx() { return this.b.context; }
   private header() { return [this.ctx.headerEv(this.b.decl_)]; }

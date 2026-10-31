@@ -11,7 +11,7 @@ Status at handoff: branch `stage-1-contract-and-fixtures`. `make ci` is green.
 | Validators | `platform/src/CapabilityExplorer.Contracts`, `extractors/ts/src/contracts` | Both stacks validate the same contract. |
 | Scorer | `platform/src/CapabilityExplorer.Evaluation`, `ce evaluate` | Measures recall, accuracy, evidence, precision on exhaustive categories, calculations, attributes, irHash and coverage. Can be limited with `--repository` and `--language`. |
 | C# extractor | `platform/src/CapabilityExplorer.Extractors.CSharp` (`ce-cs`) | 100% on graph metrics. **No calculations.** |
-| TS/JS extractor | `extractors/ts/src/extract` (`ce-ts extract`) | 100% on graph metrics. **No calculations.** |
+| TS/JS extractor | `extractors/ts/src/extract` (`ce-ts extract`) | 100% on graph metrics and on calculations (`calculations.ts`; gated in `fixtures/evaluation.extractors.ts.json`). |
 | Analyse pipeline | `scripts/analyze`, `make analyze CAPABILITY=<id>` | Three sandboxed steps: export → packages → offline extract, written to `.sandbox-cache/artifacts`. |
 | Explorer | `platform/src/CapabilityExplorer.Explorer` (+ React client) | Live reload. Capabilities, architecture canvas, optional LLM layer. |
 | Store | `platform/src/CapabilityExplorer.Store` | Migrations and an idempotent importer, tested with Testcontainers. Not yet fed by `make analyze`. |
@@ -45,7 +45,7 @@ to these minimal and rebase before merging.
   gated at 1.0 for csharp. Add these thresholds to a csharp-specific config, or to
   `evaluation.extractors.json` once TS is done too.
 
-### 2. TypeScript/JavaScript calculation extraction
+### 2. TypeScript/JavaScript calculation extraction — DONE
 
 - **Goal:** the same as workstream 1 for `web-ts` (`averagePerActiveWeek`) and `pricing-node`
   (`priceForDemand`, `weeklyRevenueSek`). Watch for:
