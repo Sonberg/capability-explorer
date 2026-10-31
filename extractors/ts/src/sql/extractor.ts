@@ -6,11 +6,12 @@ import { applyStatement, lookupKey, newCatalog, splitStatements, type Catalog, t
 import { LineIndex, tokenize } from "./lexer.ts";
 import { discoverSqlUnits, type SqlUnit } from "./project.ts";
 import { analyzeBody } from "./refs.ts";
+import { emitRoutineCalculation } from "./calculations.ts";
 
-export const SQL_EXTRACTOR: ToolRef = { name: "sql-parser", version: "0.1.0" };
+export const SQL_EXTRACTOR: ToolRef = { name: "sql-parser", version: "0.2.0" };
 const RULES: Record<SqlUnit["dialect"], ToolRef> = {
-  tsql: { name: "tsql.objects", version: "1" },
-  postgresql: { name: "postgres.objects", version: "1" },
+  tsql: { name: "tsql.objects", version: "2" },
+  postgresql: { name: "postgres.objects", version: "2" },
 };
 
 export interface SqlExtractOptions { source: string; repository: string; commit: string }
@@ -127,6 +128,14 @@ function extractUnit(root: string, unit: SqlUnit, options: SqlExtractOptions): S
         from, rel: u.rel, derivation: "rule", rule, resolution: "unresolved", reason: "missing-reference",
         props: { target: u.name }, evidence: [evAt(routine.path, u.at.start, u.at.end)],
       });
+    }
+  }
+
+  // Calculation rejection does not weaken graph observations. Dynamic bodies
+  // already carry SQL_DYNAMIC and partial coverage; never lower them.
+  for (const [k, routine] of cat.routines) {
+    if (!routine.dynamic && !analyses.get(k)?.dynamic) {
+      emitRoutineCalculation(cat, routine, b, key, ev);
     }
   }
 

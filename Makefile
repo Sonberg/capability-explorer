@@ -9,9 +9,12 @@ OFFLINE := $(SANDBOX) --offline
 
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
         restore ui build test-ts test-contracts test-evaluation test-extractors test-explorer test-store evaluate evaluate-golden \
-        extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze analyze-worker explore ollama postgres dev dev-data dev-down clean
+        extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze analyze-worker explore ollama postgres dev dev-data dev-down clean local-check install-git-hooks actions-audit test-local-ci security-check
 
 help:
+	@echo "make local-check     run the full GitHub CI workflow locally through nektos/gh-act before pushing"
+	@echo "make install-git-hooks  install this repository pre-push gate (preserves existing hooks)"
+	@echo "make actions-audit   audit workflow dependencies with Wayne Ashley Berry gh-act (separate tool)"
 	@echo "make dev             local environment: PostgreSQL (pgvector) + Ollama, import + embed the artifacts, then explore"
 	@echo "     PG_PORT=5433 OLLAMA_CHAT=none (skip the chat model) and every explore option; make dev-down stops the containers"
 	@echo "make dev-data        only the import + embed step of make dev (e.g. while the explorer runs)"
@@ -40,9 +43,24 @@ help:
 	@echo "make evaluate-ts     same for the TypeScript/JavaScript extractor"
 	@echo "make evaluate-sql    same for the SQL extractor (T-SQL projects, PostgreSQL migrations)"
 
-ci: fixtures-compile test
+local-check:
+	scripts/local-check
 
-test: golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
+install-git-hooks:
+	scripts/install-git-hooks
+
+actions-audit:
+	scripts/actions-audit audit
+
+test-local-ci:
+	$(OFFLINE) node bash tests/local-ci.test.sh
+
+security-check:
+	scripts/security-check
+
+ci: security-check fixtures-compile test
+
+test: test-local-ci golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
 
 fixtures:
 	$(OFFLINE) node scripts/build-fixtures.sh
