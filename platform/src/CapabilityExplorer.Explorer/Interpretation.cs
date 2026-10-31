@@ -48,6 +48,9 @@ public sealed partial class Intelligence
 
     public EmbeddingStore? Store { get; }
 
+    /// <summary>The database behind <see cref="Store"/>, for importing artifacts (Rebuild intelligence).</summary>
+    public Npgsql.NpgsqlDataSource? DataSource { get; init; }
+
     public InterpretationLayer Layer => _state.Layer;
 
     public OpenAiEmbeddingModel? Embeddings => _state.Embeddings;

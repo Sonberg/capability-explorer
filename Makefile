@@ -9,7 +9,7 @@ OFFLINE := $(SANDBOX) --offline
 
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
         restore ui build test-ts test-contracts test-evaluation test-extractors test-explorer test-store evaluate evaluate-golden \
-        extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze explore ollama postgres dev dev-data dev-down clean local-check install-git-hooks actions-audit test-local-ci security-check
+        extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze analyze-worker explore ollama postgres dev dev-data dev-down clean local-check install-git-hooks actions-audit test-local-ci security-check
 
 help:
 	@echo "make local-check     run the full GitHub CI workflow locally through nektos/gh-act before pushing"
@@ -18,6 +18,7 @@ help:
 	@echo "make dev             local environment: PostgreSQL (pgvector) + Ollama, import + embed the artifacts, then explore"
 	@echo "     PG_PORT=5433 OLLAMA_CHAT=none (skip the chat model) and every explore option; make dev-down stops the containers"
 	@echo "make dev-data        only the import + embed step of make dev (e.g. while the explorer runs)"
+	@echo "make analyze-worker  runs the explorer's Analyze code requests on the host (make dev starts one; CE_DATABASE='...' to store)"
 	@echo "make ci              everything CI runs: fixture compile checks + all tests"
 	@echo "make test            golden check + TS tests + .NET contract tests + store tests (Testcontainers)"
 	@echo "make fixtures        rebuild fixture git repos (fixtures/.repos) and verify revisions.lock.json"
@@ -224,8 +225,14 @@ postgres:
 # Everything for local development. Imports what explore shows ($(ARTIFACTS)) and embeds it (unchanged artifacts and
 # symbols are skipped, so a second run is quick), then runs the explorer with the database. Analyse more with
 # make analyze CAPABILITY=<id> CE_DATABASE='...' (printed above) while it runs; the explorer reloads by itself.
+# The explorer's Analyze code button queues a request that the analyze worker, started next to it, runs on the host.
 dev: dev-data
-	$(MAKE) --no-print-directory explore CE_DATABASE='$(DEV_DATABASE)'
+	@CE_DATABASE='$(DEV_DATABASE)' GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) scripts/analyze-worker $(CAPABILITIES) </dev/null & \
+	  trap "kill $$! 2>/dev/null" EXIT; \
+	  $(MAKE) --no-print-directory explore CE_DATABASE='$(DEV_DATABASE)'
+
+analyze-worker: build
+	GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) scripts/analyze-worker $(CAPABILITIES)
 
 dev-data: build postgres ollama
 	@mkdir -p .sandbox-cache && find $(subst $(comma), ,$(ARTIFACTS)) -name '*.jsonl' 2>/dev/null | sort > .sandbox-cache/dev-artifacts.txt

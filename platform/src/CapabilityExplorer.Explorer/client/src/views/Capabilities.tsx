@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import { ApiError, request, shortSha, type CapabilityStatus } from "../api";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { ApiError, request, shortSha, type AnalysisJob, type CapabilityStatus, type RebuildResult } from "../api";
 import { Button, Card, ErrorBox, H1, H2, inputClass, Loading, Mono, Muted, Note, Pill, Table } from "../components/ui";
 import { useApi, useSelection } from "../state";
 
@@ -14,17 +14,66 @@ export function Capabilities() {
   const list = useApi<CapabilityStatus[]>(`/api/capabilities?g=${meta.generation}`);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string>();
+  const [rebuilt, setRebuilt] = useState<{ id: string; result: RebuildResult }>();
+  const intelligenceOff = !meta.similarity.database
+    ? "Needs the database: start with make dev (or CE_DATABASE)"
+    : !meta.similarity.embeddings
+      ? "Needs an embedding model: make ollama or the Settings page"
+      : undefined;
 
-  const refresh = () => {
-    list.reload();
+  const reloadList = list.reload;
+  const refresh = useCallback(() => {
+    reloadList();
     reloadMeta();
-  };
+  }, [reloadList, reloadMeta]);
 
-  const check = async (id: string) => {
-    setBusy(id);
+  // "Analyze code" runs on the host (scripts/analyze-worker, started by make dev): queue it, then follow it.
+  const [jobs, setJobs] = useState<Record<string, AnalysisJob>>({});
+  const follow = useCallback((id: string) => request<AnalysisJob>(`/api/capabilities/${encodeURIComponent(id)}/analyze`).then((job) => {
+    setJobs((s) => ({ ...s, [id]: job }));
+    return job;
+  }), []);
+  const ids = list.data?.map((c) => c.id).join("\n") ?? "";
+  useEffect(() => {
+    for (const id of ids.split("\n").filter(Boolean)) void follow(id).catch(() => undefined);
+  }, [ids, follow]);
+  const active = Object.keys(jobs).filter((id) => isActive(jobs[id])).join("\n");
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setInterval(() => {
+      for (const id of active.split("\n")) {
+        void follow(id).then((job) => !isActive(job) && refresh(), () => undefined);
+      }
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [active, follow, refresh]);
+
+  const analyze = async (id: string) => {
     setActionError(undefined);
     try {
-      await request(`/api/capabilities/${encodeURIComponent(id)}/check`, { method: "POST" });
+      const job = await request<AnalysisJob>(`/api/capabilities/${encodeURIComponent(id)}/analyze`, { method: "POST" });
+      setJobs((s) => ({ ...s, [id]: job }));
+    } catch (e) {
+      setActionError((e as Error).message);
+    }
+  };
+
+  const stop = async (id: string) => {
+    setActionError(undefined);
+    try {
+      const job = await request<AnalysisJob>(`/api/capabilities/${encodeURIComponent(id)}/analyze`, { method: "DELETE" });
+      setJobs((s) => ({ ...s, [id]: job }));
+    } catch (e) {
+      setActionError((e as Error).message);
+    }
+  };
+
+  const rebuild = async (id: string) => {
+    setBusy(id);
+    setActionError(undefined);
+    setRebuilt(undefined);
+    try {
+      setRebuilt({ id, result: await request<RebuildResult>(`/api/capabilities/${encodeURIComponent(id)}/rebuild`, { method: "POST" }) });
       refresh();
     } catch (e) {
       setActionError((e as Error).message);
@@ -78,8 +127,17 @@ export function Capabilities() {
               <Button variant="secondary" onClick={() => setCapability(c.id)} disabled={capability === c.id}>
                 {capability === c.id ? "Selected" : "Select"}
               </Button>
-              <Button onClick={() => check(c.id)} disabled={busy !== null}>
-                {busy === c.id ? "Checking…" : "Check now"}
+              {isActive(jobs[c.id]) ? (
+                <Button variant="danger" onClick={() => stop(c.id)} disabled={jobs[c.id]?.state === "stopping"}>
+                  {jobs[c.id]?.state === "queued" ? "Queued · Stop" : jobs[c.id]?.state === "stopping" ? "Stopping…" : "Analyzing · Stop"}
+                </Button>
+              ) : (
+                <Button onClick={() => analyze(c.id)} disabled={busy !== null}>
+                  Analyze code
+                </Button>
+              )}
+              <Button variant="secondary" onClick={() => rebuild(c.id)} disabled={busy !== null || intelligenceOff !== undefined} title={intelligenceOff}>
+                {busy === c.id ? "Rebuilding…" : "Rebuild intelligence"}
               </Button>
               <Button variant="danger" onClick={() => remove(c)}>
                 Remove
@@ -88,6 +146,15 @@ export function Capabilities() {
           </div>
           {c.description && <Muted className="mt-1">{c.description}</Muted>}
           <p className="my-2 text-xs text-zinc-500">{c.checkedAt ? `Last checked ${new Date(c.checkedAt).toLocaleString()}` : "Not checked yet."}</p>
+          <AnalysisProgress job={jobs[c.id]} />
+          {rebuilt?.id === c.id && (
+            <Note>
+              Imported {rebuilt.result.imported} artifact(s) ({rebuilt.result.unchanged} unchanged), embedded {rebuilt.result.embedded} symbol(s) with <Mono>{rebuilt.result.model}</Mono>.
+              {rebuilt.result.failed.map((f) => (
+                <span key={f} className="block text-red-700 dark:text-red-300">{f}</span>
+              ))}
+            </Note>
+          )}
           {c.analysed < c.repositories.length && <AnalyseHint id={c.id} />}
           <Table
             columns={["Repository", "Source", "Ref", "Locked revision", "Analysis"]}
@@ -126,6 +193,24 @@ export function Capabilities() {
         </Card>
       ))}
       <NewCapability onCreated={(id) => { refresh(); setCapability(id); }} />
+    </div>
+  );
+}
+
+const isActive = (job?: AnalysisJob) => job?.state === "queued" || job?.state === "running" || job?.state === "stopping";
+
+function AnalysisProgress({ job }: { job?: AnalysisJob }) {
+  if (!job || (!isActive(job) && job.state !== "failed" && job.state !== "stopped")) return null;
+  return (
+    <div className="my-2">
+      {job.state === "queued" && (
+        <Note>
+          Waiting for the analyze worker on the host: <Mono>make dev</Mono> starts one, or run <Mono className="select-all">make analyze-worker</Mono>.
+        </Note>
+      )}
+      {job.state === "stopped" && <Note>Analysis stopped. Artifacts from earlier runs are unchanged.</Note>}
+      {job.state === "failed" && <ErrorBox message="Analysis failed. The last lines of its log are below." />}
+      {job.log && <pre className="mt-2 max-h-64 overflow-auto rounded-md bg-zinc-100 p-2 text-xs dark:bg-zinc-900">{job.log}</pre>}
     </div>
   );
 }

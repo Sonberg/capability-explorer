@@ -16,6 +16,7 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 var options = ExplorerOptions.From(builder.Configuration);
 // The index and capabilities are reloaded when their files change (see ExplorerState); handlers get the current load.
 var state = new ExplorerState(options);
+builder.Services.AddSingleton(options);
 builder.Services.AddSingleton(state);
 builder.Services.AddHostedService(_ => state);
 builder.Services.AddTransient(_ => state.Current.Index);
@@ -26,7 +27,7 @@ builder.Services.AddTransient(_ => state.Current.Capabilities);
 var interpretation = builder.Configuration.GetSection("interpretation").Get<InterpretationOptions>() ?? new InterpretationOptions();
 var database = builder.Configuration["database"] ?? Environment.GetEnvironmentVariable("CE_DATABASE");
 var dataSource = database is { Length: > 0 } ? NpgsqlDataSource.Create(database) : null;
-var intelligence = new Intelligence(interpretation, builder.Configuration["modelSettings"] ?? ModelSettings.DefaultPath, dataSource is null ? null : new EmbeddingStore(dataSource));
+var intelligence = new Intelligence(interpretation, builder.Configuration["modelSettings"] ?? ModelSettings.DefaultPath, dataSource is null ? null : new EmbeddingStore(dataSource)) { DataSource = dataSource };
 builder.Services.AddSingleton(intelligence);
 builder.Services.AddTransient(_ => intelligence.Layer);
 builder.Services.ConfigureHttpJsonOptions(o =>

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import ts from "typescript";
 import type { ToolRef } from "../contracts/records.ts";
-import { ArtifactBuilder, sha256 } from "./builder.ts";
+import { ArtifactBuilder, BUILD, sha256 } from "./builder.ts";
 import { calls, HANDLER_MAP } from "./calls.ts";
 import { calculations } from "./calculations.ts";
 import { Ctx } from "./context.ts";
@@ -87,7 +87,7 @@ export function extract(options: ExtractOptions): UnitResult[] {
 
     const language = ctx.files.some((f) => /\.(m|c)?tsx?$/.test(f.fileName)) ? "typescript" : "javascript";
     const inputs = [...owned].sort().map((f) => `${posix(f.slice(root.length + 1))}\0${sha256(readFileSync(f, "utf8"))}\n`).join("");
-    const configHash = sha256(JSON.stringify(Object.keys(unit.options).sort().map((k) => [k, unit.options[k]])));
+    const configHash = sha256(`build=${BUILD}|typescript=${ts.version}|` + JSON.stringify(Object.keys(unit.options).sort().map((k) => [k, unit.options[k]])));
     const ordered = [...rules].sort((a, b2) => a.name.localeCompare(b2.name));
     const unitPath = ctx.rel(unit.configFile);
     results.push({ unitPath, unitName: unit.packageName, language, jsonl: b.toJsonl({ path: unitPath, name: unit.packageName }, language, ordered, configHash, sha256(inputs), owned.size) });
