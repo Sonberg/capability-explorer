@@ -218,6 +218,28 @@ public sealed class GlossaryTests
         Assert.All(quantity.Occurrences, o => Assert.NotEmpty(o.Evidence));
     }
 
+    [Fact]
+    public void Conflicting_calculation_records_for_one_symbol_do_not_choose_an_arbitrary_output_or_comparison()
+    {
+        var records = Records(2);
+        var original = records.First(r => (string?)r["kind"] == "calculation");
+        var conflict = (JsonObject)original.DeepClone();
+        conflict["id"] = "c:conflict";
+        conflict["output"]!["type"] = "int32";
+        conflict["irHash"] = new string('b', 64);
+        records.Add(conflict);
+        var forward = Glossary.Build(Load(records).View(null));
+        var backward = Glossary.Build(Load(records.AsEnumerable().Reverse().ToList()).View(null));
+        Assert.Equal(Serialize(forward), Serialize(backward));
+        var candidate = Assert.Single(forward);
+        var ambiguousKey = (string)original["symbolKey"]!;
+        Assert.All(candidate.Occurrences.Where(o => o.Key == ambiguousKey), o => Assert.Null(o.Type));
+        Assert.Empty(candidate.Comparisons);
+        Assert.False(candidate.TypeDiffers);
+        Assert.False(candidate.DerivationDiffers);
+        Assert.False(candidate.ExpressionDiffers);
+    }
+
     private static byte[] Serialize(IReadOnlyList<GlossaryCandidate> candidates) =>
         JsonSerializer.SerializeToUtf8Bytes(candidates, new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
