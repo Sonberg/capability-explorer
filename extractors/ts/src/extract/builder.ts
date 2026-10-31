@@ -29,6 +29,16 @@ export function spanText(text: string, s: Span): string {
   return parts.join("\n");
 }
 
+/** Sorted keys, no whitespace: the form `irHash` is computed over. */
+export function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const o = value as Record<string, unknown>;
+    return `{${Object.keys(o).filter((k) => o[k] !== undefined).sort().map((k) => `${JSON.stringify(k)}:${canonicalJson(o[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
 const clean = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 
 /**
@@ -40,6 +50,7 @@ export class ArtifactBuilder {
   private readonly nodes = new Map<string, Record<string, unknown> & { evidence: string[] }>();
   private readonly edges = new Map<string, Record<string, unknown>>();
   private readonly diagnostics = new Map<string, Record<string, unknown>>();
+  private readonly calculations = new Map<string, Record<string, unknown>>();
   private readonly incomplete = new Set<string>();
 
   readonly repositoryId: string;
@@ -108,6 +119,15 @@ export class ArtifactBuilder {
     }));
   }
 
+  /** A calculation of an already declared symbol. `irHash` is the sha256 of the canonical JSON of `expr`. */
+  calculation(c: { symbolKey: string; includes?: string[]; output: Record<string, unknown>; inputs: Record<string, unknown>[]; expr: unknown; attributes: Record<string, unknown>; evidence: string[] }) {
+    const id = `c:${short(c.symbolKey)}`;
+    this.calculations.set(id, clean({
+      schema: "ce.v1", kind: "calculation", id, symbolKey: c.symbolKey, includes: c.includes?.length ? c.includes : undefined,
+      output: c.output, inputs: c.inputs, expr: c.expr, attributes: c.attributes, irHash: sha256(canonicalJson(c.expr)), evidence: c.evidence,
+    }));
+  }
+
   diagnostic(severity: "error" | "warning" | "info", code: string, message: string, path?: string, affectsCoverage = false, evidence?: string) {
     const id = `d:${short(`${code}|${path ?? ""}|${message}`)}`;
     this.diagnostics.set(id, clean({
@@ -123,7 +143,15 @@ export class ArtifactBuilder {
   toJsonl(unit: { path: string; name: string }, language: "typescript" | "javascript", rules: ToolRef[], configHash: string, inputHash: string, filesTotal: number): string {
     // Edges from symbols this artifact does not declare are dropped (a rule matched code the extractor skipped).
     const edges = [...this.edges.values()].filter((e) => this.nodes.has(e.from as string));
+    const calculations = [...this.calculations.values()].filter((c) => this.nodes.has(c.symbolKey as string));
+    const attributeEvidence = (a: unknown): string[] => (a && typeof a === "object" ? ((a as { evidence?: string[] }).evidence ?? []) : []);
     const used = new Set<string>([
+      ...calculations.flatMap((c) => [
+        ...(c.evidence as string[]),
+        ...Object.values(c.attributes as Record<string, unknown>).flatMap(attributeEvidence),
+        ...attributeEvidence((c.output as { unit?: unknown }).unit),
+        ...(c.inputs as { unit?: unknown }[]).flatMap((i) => attributeEvidence(i.unit)),
+      ]),
       ...[...this.nodes.values()].flatMap((n) => n.evidence),
       ...edges.flatMap((e) => e.evidence as string[]),
       ...[...this.diagnostics.values()].flatMap((d) => (d.evidence as string[] | undefined) ?? []),
@@ -136,7 +164,7 @@ export class ArtifactBuilder {
     });
     const complete = {
       schema: "ce.v1", kind: "complete", status: partial ? "partial" : "full",
-      counts: { node: this.nodes.size, edge: edges.length, evidence: evidence.length, calculation: 0, diagnostic: this.diagnostics.size },
+      counts: { node: this.nodes.size, edge: edges.length, evidence: evidence.length, calculation: calculations.length, diagnostic: this.diagnostics.size },
       coverage: clean({
         filesTotal,
         filesAnalyzed: filesTotal - this.incomplete.size,
@@ -145,7 +173,7 @@ export class ArtifactBuilder {
       }),
     };
     const byId = (a: Record<string, unknown>, b: Record<string, unknown>) => ((a.id as string) < (b.id as string) ? -1 : (a.id as string) > (b.id as string) ? 1 : 0);
-    const body = [...evidence.sort(byId), ...[...this.nodes.values()].sort(byId), ...edges.sort(byId), ...[...this.diagnostics.values()].sort(byId)];
+    const body = [...evidence.sort(byId), ...[...this.nodes.values()].sort(byId), ...edges.sort(byId), ...calculations.sort(byId), ...[...this.diagnostics.values()].sort(byId)];
     return [header, ...body, complete].map((r) => JSON.stringify(r)).join("\n") + "\n";
   }
 }
