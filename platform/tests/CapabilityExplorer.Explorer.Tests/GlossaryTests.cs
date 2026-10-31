@@ -84,7 +84,7 @@ public sealed class GlossaryTests
         var generated = Node("n:generated", "cs|worker-cs|Sales.Worker|T:GeneratedInvoice", "GeneratedInvoice", "Type");
         generated["generated"] = true;
         records.Add(generated);
-        var external = Node("n:external", "cs|@ext|Library|T:ExternalInvoice", "ExternalInvoice", "Type");
+        var external = Node("n:external", "cs|worker-cs|Sales.Worker|T:ExternalInvoice", "ExternalInvoice", "Type");
         external["props"] = new JsonObject { ["external"] = true };
         records.Add(external);
         records.Add(Node("n:endpoint", "http|worker-cs/Sales.Worker|GET /invoices/{invoiceId}", "GET /invoices/{invoiceId}", "Endpoint"));
