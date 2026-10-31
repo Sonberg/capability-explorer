@@ -206,6 +206,17 @@ public static class ExplorerApi
 
         api.MapGet("/calculations", (ExplorerIndex index, CapabilityService caps, string? view, string? cap) => Queries.Calculations(index.View(view, caps.Scope(cap))));
 
+        api.MapGet("/glossary", (ExplorerIndex index, CapabilityService caps, string? view, string? cap) =>
+        {
+            var membership = caps.Store.Capabilities
+                .SelectMany(c => c.Repositories.Select(r => (Repository: r.Id, Capability: c.Id)))
+                .GroupBy(x => x.Repository, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key,
+                    g => (IReadOnlyList<string>)g.Select(x => x.Capability).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList(),
+                    StringComparer.Ordinal);
+            return Glossary.Build(index.View(view, caps.Scope(cap)), membership);
+        });
+
         // Layered architecture canvas: level = landscape | system | repository | component. The landscape ignores cap.
         api.MapGet("/architecture", (ExplorerIndex index, CapabilityService caps, string? level, string? focus, string? view, string? cap) =>
         {

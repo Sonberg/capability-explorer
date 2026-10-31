@@ -120,6 +120,16 @@ Implemented in `Calculations.cs`, `CalculationAttributes.cs`, `CalculationIr.cs`
 - Remaining: environment/IaC files as a second binding source (Kubernetes/compose/appsettings), a UI to edit the map,
   and reading analyses from the database in the explorer (it still reads artifact files).
 
+## Glossary: issue #4 first slice
+
+Read-only deterministic candidates and the Glossary tab are implemented in the
+stacked glossary workstream. Names group only by explicit normalization; calendar
+and active qualifiers remain distinct. Source occurrences retain revision/unit/record
+identity, unknowns remain unknown, and comparison completeness is explicit.
+See [MADR-0004](adr/0004-glossary-candidates.md) and
+[build evidence](plans/glossary-build-evidence.md). Flow tracing, persistent reviewed
+terms/same-value links, and LLM proposals remain separate unimplemented layers.
+
 ## Smaller follow-ups
 
 - C# synthetic package and calculation tests now cover locked packages, explicit division IR, unsupported-loop graph retention and generated-source exclusion. Broader synthetic graph/route coverage remains open; issue #6 fixes are separate.

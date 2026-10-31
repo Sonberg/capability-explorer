@@ -49,6 +49,9 @@ validation. Domain knowledge that code does not establish stays unknown.
 | Calculation attribute | An evidence-qualified property with known, partial or unknown status. Unknown is not a default value to fill from names. |
 | Calculation IR | Language-neutral expression structure preserving constants, numeric types, operators and operand order. Not algebraic-equivalence normalization. |
 | irHash | SHA-256 of canonical JSON of the expression. Equal hashes identify equal serialized IR, not equal full artifact bytes or universally equivalent runtime behavior. |
+| Term candidate | Read-only grouping by an exact normalized explicit name. It is navigation assistance, not a reviewed shared concept or assertion that values are interchangeable. |
+| Glossary occurrence | One source observation identified by repository, revision, unit, symbol and role; calculation observations also retain a stable record discriminator. |
+| Comparison completeness | Whether every possible calculation pair in a candidate was compared. A bounded partial comparison cannot establish absence of differences. |
 | Interpretation proposal | An optional model-produced explanation or conceptual suggestion, separate from immutable extracted facts and validated against permitted input. |
 | Review | Human judgment attached separately to a fact/proposal; it does not silently rewrite original observations. |
 | Golden artifact | A curated expected artifact used for evaluation. It is a reviewed oracle, not infallible truth or output to regenerate to hide an implementation defect. |
