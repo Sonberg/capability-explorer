@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Run the complete GitHub CI job locally against a clean, exact HEAD.
+set -euo pipefail
+
+fail() { echo "local-check: $*" >&2; exit 1; }
+[[ $# -eq 0 ]] || fail 'usage: scripts/local-check (no extra act flags are accepted)'
+root="$(git rev-parse --show-toplevel)" || fail 'run inside a Git checkout'
+cd "$root"
+[[ -f .github/workflows/ci.yml ]] || fail '.github/workflows/ci.yml is missing'
+head="$(git rev-parse --verify HEAD)"
+[[ -z "${LOCAL_CI_EXPECTED_HEAD:-}" || "$head" == "$LOCAL_CI_EXPECTED_HEAD" ]] || fail 'HEAD changed after outgoing refs were validated'
+clean() {
+  local state
+  state="$(git status --porcelain --untracked-files=all)" || return 1
+  [[ -z "$state" ]]
+}
+clean || fail 'commit or stash tracked changes and untracked files before checking HEAD'
+
+cache="$root/.sandbox-cache/local-ci"
+mkdir -p "$cache"
+lock="$cache/run.lock"
+mkdir "$lock" 2>/dev/null || fail "another check holds $lock; remove it only after confirming that check has stopped"
+receipt="$cache/last-success.txt"
+cleanup() { rmdir "$lock" 2>/dev/null || true; }
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+# A failed or interrupted check must never leave a previous success looking current.
+rm -f "$receipt"
+
+command -v gh >/dev/null || fail 'install GitHub CLI and the nektos/gh-act extension'
+command -v docker >/dev/null || fail 'Docker is required'
+
+# act reads user and project actrc files before command-line arguments. Only
+# literal platform mappings are allowed: flags such as --dryrun or --secret
+# would otherwise bypass this gate or silently forward credentials.
+check_actrc() {
+  local file="$1" line
+  [[ ! -e "$file" ]] && return 0
+  [[ -f "$file" && -r "$file" ]] || fail "cannot inspect act configuration: $file"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ ^[[:space:]]*$ || "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" =~ ^[[:space:]]*(-P[[:space:]]+|--platform([[:space:]]+|=))[A-Za-z0-9._-]+=[A-Za-z0-9._/:@-]+[[:space:]]*$ ]] ||
+      fail "unsupported flag in $file; local CI permits only literal platform mappings in actrc"
+  done < "$file"
+}
+check_actrc "$HOME/.actrc"
+check_actrc "$root/.actrc"
+if [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
+  [[ "$XDG_CONFIG_HOME" == /* ]] || fail 'XDG_CONFIG_HOME must be absolute so act configuration can be checked'
+  check_actrc "$XDG_CONFIG_HOME/act/actrc"
+elif [[ "$(uname -s)" == Darwin ]]; then
+  check_actrc "$HOME/Library/Application Support/act/actrc"
+else
+  check_actrc "$HOME/.config/act/actrc"
+fi
+
+version="$(gh act --version)" || fail 'install the nektos/gh-act runner (the Wayne extension is a workflow auditor)'
+[[ "$version" =~ ^act[[:space:]]version[[:space:]]([0-9]+)\.([0-9]+)\.([0-9]+)(\+[A-Za-z0-9._+-]+)?$ ]] || fail 'gh act is not a released nektos/act workflow runner'
+major="${BASH_REMATCH[1]}"
+minor="${BASH_REMATCH[2]}"
+patch="${BASH_REMATCH[3]}"
+# GHSA-xmgr-9pqc-h5vw was fixed in act 0.2.86.
+(( 10#$major > 0 || 10#$minor > 2 || (10#$minor == 2 && 10#$patch >= 86) )) ||
+  fail 'nektos/act 0.2.86 or newer is required; update the nektos/gh-act extension'
+docker info >/dev/null 2>&1 || fail 'Docker daemon is not available'
+runner='catthehacker/ubuntu:act-24.04@sha256:c58e2b364da03b0c804c7d660f2ecbedf2f221a382b9baa0b344b0144780ff43'
+docker image inspect "$runner" >/dev/null 2>&1 || fail "pull the local runner image first: docker pull $runner"
+
+# No arguments are forwarded, and dotenv/secret/variable/input files are disabled.
+# Explicitly empty GITHUB_TOKEN also disables act's automatic gh-auth token lookup.
+echo "local-check: running complete CI for $head ($version)"
+(
+  unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
+  gh act pull_request -W .github/workflows/ci.yml -j ci --bind \
+    -P "ubuntu-24.04=$runner" --pull=false \
+    --env-file /dev/null --secret-file /dev/null --var-file /dev/null --input-file /dev/null \
+    --secret GITHUB_TOKEN= --no-cache-server
+)
+[[ "$(git rev-parse --verify HEAD)" == "$head" ]] || fail 'HEAD changed during CI; rerun against the intended commit'
+clean || fail 'working tree changed during CI; commit or stash changes and rerun'
+
+# Evidence only: this receipt is never reused to skip a later run. Package and
+# Docker caches reduce work without trusting an incomplete environment fingerprint.
+{
+  echo "head=$head"
+  echo "runner=$version"
+  echo "runner-image=$runner"
+  echo "finished=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  echo 'gate=.github/workflows/ci.yml:ci (make ci)'
+  echo 'reusable=false'
+} > "$receipt"
+echo "local-check: complete CI passed for $head"

@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Install a repository-local dispatcher shared by this repository's worktrees.
+set -euo pipefail
+fail() { echo "install-git-hooks: $*" >&2; exit 1; }
+[[ $# -eq 0 ]] || fail 'usage: scripts/install-git-hooks'
+root="$(git rev-parse --show-toplevel)" || fail 'run inside a working checkout'
+cd "$root"
+if custom="$(git config --get core.hooksPath)"; then
+  fail "core.hooksPath is already configured ($custom); preserve it and arrange an explicit dispatcher to config/git-hooks/pre-push"
+fi
+common="$(git rev-parse --git-common-dir)"
+common="$(cd "$common" && pwd)"
+mkdir -p "$common/hooks"
+hook="$common/hooks/pre-push"
+tmp="$(mktemp "$common/hooks/.local-ci-hook.XXXXXX")"
+trap 'rm -f "$tmp"' EXIT
+cat > "$tmp" <<'HOOK'
+#!/usr/bin/env bash
+# capability-explorer managed local CI dispatcher v1
+set -euo pipefail
+root="$(git rev-parse --show-toplevel)" || { echo 'pre-push: no working checkout is available' >&2; exit 1; }
+hook="$root/config/git-hooks/pre-push"
+[[ -x "$hook" ]] || { echo 'pre-push: tracked config/git-hooks/pre-push is missing or not executable; push blocked' >&2; exit 1; }
+exec "$hook" "$@"
+HOOK
+if [[ -e "$hook" || -L "$hook" ]]; then
+  [[ -f "$hook" && ! -L "$hook" ]] && cmp -s "$tmp" "$hook" ||
+    fail "existing $hook was preserved; integrate its behavior explicitly before installing local CI"
+else
+  # Hard-link creation fails if another installer creates a hook concurrently.
+  ln "$tmp" "$hook" || fail "could not install $hook without replacing an existing hook"
+fi
+chmod +x "$hook"
+echo "Installed repository-local pre-push dispatcher: $hook"
