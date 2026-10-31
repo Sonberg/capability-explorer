@@ -175,12 +175,18 @@ for (const d of ["tsql", "postgresql"] as const) {
     }
   });
 
-  test(`${d}: bigint multiplication reports throwing overflow, never silent wrapping`, () => {
+  test(`${d}: bigint multiplication preserves its type and proven overflow behavior`, () => {
     const c = calculation(run(files(d, `SELECT SUM(e.${q("AmountOre")} * e.${q("Quantity")}) FROM ${table} e`)));
     const multiplication = expressions(c.expr).find((e) => e.op === "bin" && e.o === "*")!;
     assert.equal(multiplication.type, "bigint");
-    assert.equal(c.attributes.overflow!.value, "throws");
-    assert.ok(c.attributes.overflow!.evidence!.length);
+    if (d === "postgresql") {
+      assert.equal(c.attributes.overflow!.value, "throws");
+      assert.ok(c.attributes.overflow!.evidence!.length);
+    } else {
+      // T-SQL behavior also depends on session SET options absent from this
+      // routine's source; the expression's integer type does not prove them.
+      assert.deepEqual(c.attributes.overflow, { status: "unknown" });
+    }
     assert.equal(c.attributes.nullHandling!.value, "notApplicable", "all referenced columns are declared NOT NULL");
   });
 
@@ -318,6 +324,10 @@ test("PostgreSQL NULLIF comparison promotion cannot silently become integer divi
   // The numeric second argument selects numeric equality and promotes NULLIF's
   // first argument; representing the division as int32 would truncate 3.5.
   rejected(run(files("postgresql", "SELECT 7 / NULLIF(2, 0.0)", "", "integer")));
+});
+
+test("T-SQL string ISNULL cannot ignore replacement truncation to the first argument's length", () => {
+  rejected(run(files("tsql", "SELECT SUM(e.[Quantity]) FROM dbo.[Ledger] e WHERE ISNULL(@s, 'abc') = 'abc'", "@s varchar(1)")), true);
 });
 
 test("procedural and dynamic bodies preserve ordinary graph and dynamic coverage", () => {
