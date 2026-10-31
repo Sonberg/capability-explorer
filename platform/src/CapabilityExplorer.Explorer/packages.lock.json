@@ -78,6 +78,12 @@
         "resolved": "4.5.0",
         "contentHash": "wLBKzFnDCxP12VL9ANydSYhk59fC4cvOr9ypYQLPnAj48NQIhqnjdD2yhP8yEKyBJEjERWS9DisKL7rX5eU25Q=="
       },
+      "capabilityexplorer.binding": {
+        "type": "Project",
+        "dependencies": {
+          "CapabilityExplorer.Contracts": "[1.0.0, )"
+        }
+      },
       "capabilityexplorer.capabilities": {
         "type": "Project"
       },

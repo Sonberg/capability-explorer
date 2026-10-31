@@ -163,7 +163,7 @@ public static class Architecture
                 // Callers from other repositories, by route candidate, give context at the boundary.
                 if (r.Relation == "REQUESTS")
                 {
-                    foreach (var (target, certainty) in HttpTargets(view, e).Where(t => t.Target?.Artifact.RepositoryId == repo))
+                    foreach (var (target, certainty, _) in HttpTargets(view, e).Where(t => t.Target?.Artifact.RepositoryId == repo))
                     {
                         b.Node(ExternalRepo(view, fromRepo));
                         b.Edge($"repo:{fromRepo}", $"ep:{target!.Record.SymbolKey}", "http", Route(target.Record.SymbolKey), certainty, e);
@@ -185,9 +185,14 @@ public static class Architecture
             }
             else if (r.Relation == "REQUESTS")
             {
-                foreach (var (target, certainty) in HttpTargets(view, e))
+                foreach (var (target, certainty, missing) in HttpTargets(view, e))
                 {
-                    if (target is null)
+                    if (missing is not null)
+                    {
+                        b.Node(new ArchNode($"broken:{missing}", "unmatched", Route(missing), $"bound to {missing.Split('|')[1]}, but no such endpoint", null, null, null, null, ["broken"]));
+                        b.Edge(from.Id, $"broken:{missing}", "http", Route(missing), "broken", e);
+                    }
+                    else if (target is null)
                     {
                         var route = r.To is null ? "dynamic request" : Route(r.To);
                         b.Node(new ArchNode($"unmatched:{route}", "unmatched", route, "no endpoint in scope", null, null, null, null, ["unmatched"]));

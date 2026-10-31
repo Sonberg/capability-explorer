@@ -538,6 +538,12 @@
           "xunit.v3.runner.common": "[3.2.2]"
         }
       },
+      "capabilityexplorer.binding": {
+        "type": "Project",
+        "dependencies": {
+          "CapabilityExplorer.Contracts": "[1.0.0, )"
+        }
+      },
       "capabilityexplorer.capabilities": {
         "type": "Project"
       },
@@ -556,6 +562,7 @@
       "ce-explorer": {
         "type": "Project",
         "dependencies": {
+          "CapabilityExplorer.Binding": "[1.0.0, )",
           "CapabilityExplorer.Capabilities": "[1.0.0, )",
           "CapabilityExplorer.Contracts": "[1.0.0, )",
           "CapabilityExplorer.Interpretation": "[1.0.0, )"
