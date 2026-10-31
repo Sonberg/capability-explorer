@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);xUnit1051;CA2007;CA1001;CA1852;CA1062;CA1861;CA1711;CA2100;CA1707;CA1307;CA1308;CA1305;CA1031</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/CapabilityExplorer.Extractors.CSharp/CapabilityExplorer.Extractors.CSharp.csproj" />
+  </ItemGroup>
+</Project>

@@ -6,11 +6,14 @@
 #
 # Each step runs in its own sandbox with only what it needs:
 #   1 export    network (GitHub fetch) + GitHub token + read-only mounts of local repositories
-#   2 packages  network to nuget.org only for downloads; no token, no local repositories mounted
+#   2 packages  network for package downloads only (feeds from nuget.config); resolves one exact version set per
+#               project into <work>/locks/<repo>.json; no GitHub token, no local repositories mounted
 #   3 extract   --offline: the analysed code is parsed, never restored, built or executed
 #
 # Knobs: GITHUB_AUTH=auto|git|none (see scripts/github-token), LOCKED=1 analyses the last check instead of
-# re-checking the refs, PACKAGES=0 skips the nuget.org download (fewer resolved symbols, fully offline after 1).
+# re-checking the refs, PACKAGES=0 skips the package download (fewer resolved symbols, fully offline after 1).
+# Private NuGet feeds: declare them in the repository's nuget.config with credentials as %VAR% references and
+# list the variable names in NUGET_PASS_ENV=VAR1,VAR2. Only step 2 receives them; they are never printed.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
@@ -22,6 +25,7 @@ artifacts=".sandbox-cache/artifacts"
 packages=".sandbox-cache/analyze-packages"
 ce="platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll"
 cs="platform/src/CapabilityExplorer.Extractors.CSharp/bin/Debug/net10.0/ce-cs.dll"
+locks="$work/locks"   # one lock per repository: <repo>.json, project paths relative to that repository
 ts="extractors/ts/src/cli.ts"
 mkdir -p "$artifacts" "$packages"
 
@@ -34,7 +38,14 @@ SANDBOX_SOURCES="$(scripts/capability-sources "$capabilities")" \
 
 if [[ "${PACKAGES:-1}" != 0 ]]; then
   echo "== 2/3 fetch referenced NuGet packages (data only: nuspec + reference assemblies)"
-  SANDBOX_PASS_ENV="" SANDBOX_SOURCES="" scripts/sandbox dotnet dotnet "$cs" fetch-packages --source "$work/src" --packages "$packages"
+  rm -rf "$locks"; mkdir -p "$locks"
+  SANDBOX_PASS_ENV="${NUGET_PASS_ENV:-}" SANDBOX_SOURCES="" scripts/sandbox dotnet bash -c '
+    set -euo pipefail
+    while IFS=$'"'"'\t'"'"' read -r repo sha path; do
+      dotnet "$1" fetch-packages --source "$2/$path" --packages "$3" --lock "$4/$repo.json" </dev/null | sed "s#^#  $repo  #"
+    done < "$2/manifest.tsv"' _ "$cs" "$work" "$packages" "$locks"
+else
+  rm -rf "$locks"
 fi
 
 echo "== 3/3 extract (offline)"
@@ -46,8 +57,8 @@ while IFS=$'\t' read -r repo sha path; do mkdir -p "$staging/$repo/$sha"; done <
 SANDBOX_PASS_ENV="" SANDBOX_SOURCES="" scripts/sandbox --offline dotnet bash -c '
   set -euo pipefail
   while IFS=$'"'"'\t'"'"' read -r repo sha path; do
-    dotnet "$1" extract --source "$2/$path" --repository "$repo" --commit "$sha" --out "$3/$repo/$sha" --packages "$4" </dev/null | sed "s#^#  $repo  cs  #"
-  done < "$2/manifest.tsv"' _ "$cs" "$work" "$staging" "$packages"
+    dotnet "$1" extract --source "$2/$path" --repository "$repo" --commit "$sha" --out "$3/$repo/$sha" ${5:+--packages "$4"} $([[ -f "$5/$repo.json" ]] && echo "--lock $5/$repo.json") </dev/null | sed "s#^#  $repo  cs  #"
+  done < "$2/manifest.tsv"' _ "$cs" "$work" "$staging" "$packages" "$( [[ -d "$locks" ]] && echo "$locks" )"
 
 if [[ -f "$ts" ]] && grep -q '"extract"' "$ts"; then
   SANDBOX_PASS_ENV="" SANDBOX_SOURCES="" scripts/sandbox --offline node bash -c '

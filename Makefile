@@ -8,7 +8,7 @@ NODE    := $(SANDBOX) node
 OFFLINE := $(SANDBOX) --offline
 
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
-        restore ui build test-ts test-contracts test-evaluation test-explorer test-store evaluate evaluate-golden \
+        restore ui build test-ts test-contracts test-evaluation test-extractors test-explorer test-store evaluate evaluate-golden \
         extract-cs evaluate-cs extract-ts evaluate-ts analyze explore clean
 
 help:
@@ -26,12 +26,13 @@ help:
 	@echo "make evaluate ACTUAL=out/ [REPO=id,id]  score extractor output against fixtures/expected (report: out/evaluation.json)"
 	@echo "make analyze CAPABILITY=id  check out, extract and store artifacts for one capability (picked up live by explore)"
 	@echo "     GITHUB_AUTH=auto|git|none  LOCKED=1 (analyse the last check)  PACKAGES=0 (skip nuget.org downloads)"
+	@echo "     private NuGet feeds: nuget.config in the repo, credentials via %VAR% + NUGET_PASS_ENV=VAR,VAR (only the packages step sees them)"
 	@echo "make evaluate-cs     run the C# extractor over every fixture revision and gate it on the csharp golden units"
 	@echo "make evaluate-ts     same for the TypeScript/JavaScript extractor"
 
 ci: fixtures-compile test
 
-test: golden-check test-ts test-contracts test-evaluation evaluate-golden evaluate-cs evaluate-ts test-explorer test-store
+test: golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts test-explorer test-store
 
 fixtures:
 	$(OFFLINE) node scripts/build-fixtures.sh
@@ -75,6 +76,9 @@ test-evaluation: fixtures build
 	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Evaluation.Tests'
 
 CE := dotnet platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll
+
+test-extractors: build
+	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Extractors.Tests'
 
 # Self-check of the scorer: the golden set scored against itself must pass every threshold.
 evaluate-golden: fixtures build
