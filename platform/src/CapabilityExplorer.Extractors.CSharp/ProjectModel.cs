@@ -24,6 +24,9 @@ public sealed record ProjectModel(
 {
     public bool IsWeb => Sdk.Contains("Web", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>&lt;CheckForOverflowUnderflow&gt;true: integer arithmetic throws instead of wrapping.</summary>
+    public bool CheckedArithmetic { get; init; }
+
     public bool IsWorker => Sdk.Contains("Worker", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Web, Worker and OutputType=Exe projects are executables (top-level statements need that).</summary>
@@ -90,6 +93,7 @@ public sealed record ProjectModel(
             projectRefs,
             sources)
         {
+            CheckedArithmetic = string.Equals(Prop("CheckForOverflowUnderflow"), "true", StringComparison.OrdinalIgnoreCase),
             IsExecutable = string.Equals(outputType, "Exe", StringComparison.OrdinalIgnoreCase) || string.Equals(outputType, "WinExe", StringComparison.OrdinalIgnoreCase)
                 || sdk.Contains("Web", StringComparison.OrdinalIgnoreCase) || sdk.Contains("Worker", StringComparison.OrdinalIgnoreCase),
         };

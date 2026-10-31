@@ -16,7 +16,7 @@ public sealed record UnitResult(string UnitPath, string UnitName, string Jsonl);
 /// </summary>
 public sealed class CSharpExtractor(ExtractorOptions options)
 {
-    public static readonly Tool Tool = new("roslyn", "0.1.0");
+    public static readonly Tool Tool = new("roslyn", "0.2.0");
 
     /// <summary>Errors that only mean "a source generator would have produced this".</summary>
     private static readonly HashSet<string> GeneratorDependent = ["CS8795", "CS8796", "CS8797"];
@@ -65,7 +65,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             }
 
             var compilation = CSharpCompilation.Create(p.AssemblyName, trees, references.DistinctBy(r => r.Display),
-                new CSharpCompilationOptions(p.IsExecutable ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: p.Nullable ? NullableContextOptions.Enable : NullableContextOptions.Disable));
+                new CSharpCompilationOptions(p.IsExecutable ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: p.Nullable ? NullableContextOptions.Enable : NullableContextOptions.Disable, checkOverflow: p.CheckedArithmetic));
             var unit = new Unit(p, compilation, missingPackages, missingProjects);
             compilations[p.FullPath] = unit;
             visiting.Remove(p.FullPath);
@@ -147,12 +147,35 @@ public sealed class CSharpExtractor(ExtractorOptions options)
                 b.Evidence(rel, first.Location.GetLineSpan(), group.First().Location.SourceTree!.GetText().ToString()));
         }
 
+        // Files by syntax tree, across the units of the repository (calculations follow calls into other projects).
+        var files = new Dictionary<SyntaxTree, SourceFile?>();
+        SourceFile? FileOf(SyntaxTree tree)
+        {
+            if (!files.TryGetValue(tree, out var known))
+            {
+                var owner = context.Units.FirstOrDefault(u => u.Compilation.ContainsSyntaxTree(tree));
+                known = owner is null || tree.FilePath == "<implicit-usings>"
+                    ? null
+                    : new SourceFile(Relative(tree.FilePath), tree.GetText().ToString(), tree, owner.Compilation.GetSemanticModel(tree));
+                files[tree] = known;
+            }
+
+            return known;
+        }
+
+        var calculations = new CalculationExtractor(b, keys, FileOf, () => context.Trees().Select(t => (t.Tree, t.Model)), p.CheckedArithmetic);
         foreach (var tree in unit.Compilation.SyntaxTrees.Where(t => t.FilePath != "<implicit-usings>"))
         {
-            var model = unit.Compilation.GetSemanticModel(tree);
-            var file = new SourceFile(Relative(tree.FilePath), tree.GetText().ToString(), tree, model);
+            var file = FileOf(tree)!;
             Declarations(b, keys, file, projectKey);
             Calls(b, keys, file);
+            foreach (var decl in tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>())
+            {
+                if (file.Model.GetDeclaredSymbol(decl) is IMethodSymbol method && b.HasNode(keys.Of(method)))
+                {
+                    calculations.Extract(file, decl, method);
+                }
+            }
         }
 
         var rules = new Rules(context, unit, b, keys, Relative);
@@ -264,7 +287,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
     }
 
     /// <summary>Where a declaration's header starts, skipping attributes.</summary>
-    private static int HeaderStart(SyntaxTokenList modifiers, SyntaxToken fallback) => modifiers.Count > 0 ? modifiers[0].SpanStart : fallback.SpanStart;
+    internal static int HeaderStart(SyntaxTokenList modifiers, SyntaxToken fallback) => modifiers.Count > 0 ? modifiers[0].SpanStart : fallback.SpanStart;
 
     /// <summary>Invocations, attributed to the nearest named member (lambdas and local functions fold into it).</summary>
     private static void Calls(ArtifactBuilder b, SymbolKeys keys, SourceFile file)

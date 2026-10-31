@@ -18,6 +18,7 @@ public sealed class ArtifactBuilder(string repositoryId, string commitSha, Tool 
     private readonly Dictionary<string, JsonObject> _evidence = new(StringComparer.Ordinal);
     private readonly Dictionary<string, JsonObject> _nodes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, JsonObject> _edges = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, JsonObject> _calculations = new(StringComparer.Ordinal);
     private readonly Dictionary<string, JsonObject> _diagnostics = new(StringComparer.Ordinal);
     private readonly HashSet<string> _incomplete = new(StringComparer.Ordinal);
 
@@ -137,6 +138,46 @@ public sealed class ArtifactBuilder(string repositoryId, string commitSha, Tool 
         _edges[id] = edge;
     }
 
+    /// <summary>A calculation record. Its evidence (and that of its attributes) is kept in the artifact.</summary>
+    public void Calculation(JsonObject calculation) => _calculations[calculation["id"]!.GetValue<string>()] = calculation;
+
+    private static IEnumerable<string> EvidenceRefs(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonObject o:
+                foreach (var (name, child) in o)
+                {
+                    if (name == "evidence" && child is JsonArray refs)
+                    {
+                        foreach (var r in refs)
+                        {
+                            yield return r!.GetValue<string>();
+                        }
+                    }
+                    else
+                    {
+                        foreach (var r in EvidenceRefs(child))
+                        {
+                            yield return r;
+                        }
+                    }
+                }
+
+                break;
+            case JsonArray a:
+                foreach (var child in a)
+                {
+                    foreach (var r in EvidenceRefs(child))
+                    {
+                        yield return r;
+                    }
+                }
+
+                break;
+        }
+    }
+
     public void Diagnostic(string severity, string code, string message, string? path, bool affectsCoverage, string? evidence = null)
     {
         var id = $"d:{Short($"{code}|{path ?? ""}|{message}")}";
@@ -171,6 +212,7 @@ public sealed class ArtifactBuilder(string repositoryId, string commitSha, Tool 
             .Concat(edges.SelectMany(e => e["evidence"]!.AsArray()))
             .Concat(_diagnostics.Values.SelectMany(d => d["evidence"]?.AsArray() ?? []))
             .Select(e => e!.GetValue<string>())
+            .Concat(_calculations.Values.SelectMany(c => EvidenceRefs(c)))
             .ToHashSet(StringComparer.Ordinal);
         var evidence = _evidence.Values.Where(e => used.Contains(e["id"]!.GetValue<string>())).ToList();
         var partial = _incomplete.Count > 0 || _diagnostics.Values.Any(d => d["affectsCoverage"] is not null);
@@ -197,12 +239,12 @@ public sealed class ArtifactBuilder(string repositoryId, string commitSha, Tool 
         var complete = new JsonObject
         {
             ["schema"] = "ce.v1", ["kind"] = "complete", ["status"] = partial ? "partial" : "full",
-            ["counts"] = new JsonObject { ["node"] = _nodes.Count, ["edge"] = edges.Count, ["evidence"] = evidence.Count, ["calculation"] = 0, ["diagnostic"] = _diagnostics.Count },
+            ["counts"] = new JsonObject { ["node"] = _nodes.Count, ["edge"] = edges.Count, ["evidence"] = evidence.Count, ["calculation"] = _calculations.Count, ["diagnostic"] = _diagnostics.Count },
             ["coverage"] = coverage,
         };
 
         static IEnumerable<JsonObject> ById(IEnumerable<JsonObject> xs) => xs.OrderBy(x => x["id"]!.GetValue<string>(), StringComparer.Ordinal);
-        var lines = new[] { header }.Concat(ById(evidence)).Concat(ById(_nodes.Values)).Concat(ById(edges)).Concat(ById(_diagnostics.Values)).Append(complete);
+        var lines = new[] { header }.Concat(ById(evidence)).Concat(ById(_nodes.Values)).Concat(ById(edges)).Concat(ById(_calculations.Values)).Concat(ById(_diagnostics.Values)).Append(complete);
         var options = new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
         return string.Join('\n', lines.Select(l => l.ToJsonString(options))) + "\n";
     }
