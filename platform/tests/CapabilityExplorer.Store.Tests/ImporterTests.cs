@@ -14,6 +14,9 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public NpgsqlDataSource DataSource { get; private set; } = null!;
 
+    /// <summary>Includes the password (NpgsqlDataSource.ConnectionString strips it).</summary>
+    public string ConnectionString => _container.GetConnectionString();
+
     public async ValueTask InitializeAsync()
     {
         await _container.StartAsync();

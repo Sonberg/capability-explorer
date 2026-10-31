@@ -18,7 +18,7 @@ export const k = {
   fetch: key.tsExt("typescript", "lib.dom.d.ts", "fetch"),
   mathRound: key.tsExt("typescript", "lib.es5.d.ts", "Math.round"),
   // Base URL comes from runtime configuration, so the target service is not bound yet.
-  weeklyEndpoint: key.http("@unbound:base=salesApiBaseUrl", "GET", "/api/articles/{}/weekly-sales"),
+  weeklyEndpoint: key.http(key.unbound(R, PKG, "base", "salesApiBaseUrl"), "GET", "/api/articles/{}/weekly-sales"),
 };
 
 export default function webTs(repo) {

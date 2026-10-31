@@ -10,5 +10,13 @@
   },
   "web-ts": {
     "v1-base": "4f254bb0209550bfe8fd40459ae4136b1d37ebe4"
+  },
+  "forecast-cs": {
+    "v1-base": "8541d29510852bd273f919d264d3dfa5fcae6605",
+    "v2-contract": "78bf6a26336545c017efe3aef2cfdb8a6bdb0f98"
+  },
+  "pricing-node": {
+    "v1-base": "8b7d01815e5a0a49707b81c339278bae0bd18307",
+    "v2-move": "a0807a96e86264b9765e365721395176aafbe0ce"
   }
 }

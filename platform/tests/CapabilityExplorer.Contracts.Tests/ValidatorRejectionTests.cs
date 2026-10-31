@@ -101,6 +101,24 @@ public sealed class ValidatorRejectionTests
     }
 
     [Fact]
+    public void Unbound_reference_scoped_to_another_repository_is_rejected()
+    {
+        var r = Records();
+        var edge = First(r, "edge", e => (string)e["relation"]! == "MAPS_TO");
+        edge["to"] = ((string)edge["to"]!).Replace("@unbound:api-cs/Sales.Api:", "@unbound:worker-cs/Sales.Worker:", StringComparison.Ordinal);
+        AssertRejected(r, "unbound reference scoped to 'worker-cs' cannot be produced by api-cs");
+    }
+
+    [Fact]
+    public void Unscoped_unbound_reference_is_rejected()
+    {
+        var r = Records();
+        var edge = First(r, "edge", e => (string)e["relation"]! == "MAPS_TO");
+        edge["to"] = "sql|@unbound:conn=Sales|dbo.Sales";
+        AssertRejected(r, "must have the form @unbound:<repo>/<unit>:<kind>=<value>");
+    }
+
+    [Fact]
     public void Edge_from_an_undeclared_symbol_is_rejected()
     {
         var r = Records();

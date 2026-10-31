@@ -1,26 +1,93 @@
 {
   "$comment": "Fixture repositories are built from fixtures/src/<repo>/<step> overlays into real git repos under fixtures/.repos. Author, committer and dates are fixed so commit SHAs are reproducible; see revisions.lock.json.",
-  "author": { "name": "Fixture Author", "email": "fixtures@capability-explorer.invalid" },
+  "author": {
+    "name": "Fixture Author",
+    "email": "fixtures@capability-explorer.invalid"
+  },
   "repositories": [
     {
       "id": "api-cs",
       "steps": [
-        { "dir": "01-base",   "tag": "v1-base",   "date": "2026-09-01T09:00:00+00:00", "message": "Sales API with calendar-week average" },
-        { "dir": "02-rename", "tag": "v2-rename", "date": "2026-09-08T09:00:00+00:00", "message": "Rename AveragePerCalendarWeek to CalendarWeekAverage and move file" },
-        { "dir": "03-filter", "tag": "v3-filter", "date": "2026-09-15T09:00:00+00:00", "message": "Exclude returns from weekly average" }
+        {
+          "dir": "01-base",
+          "tag": "v1-base",
+          "date": "2026-09-01T09:00:00+00:00",
+          "message": "Sales API with calendar-week average"
+        },
+        {
+          "dir": "02-rename",
+          "tag": "v2-rename",
+          "date": "2026-09-08T09:00:00+00:00",
+          "message": "Rename AveragePerCalendarWeek to CalendarWeekAverage and move file"
+        },
+        {
+          "dir": "03-filter",
+          "tag": "v3-filter",
+          "date": "2026-09-15T09:00:00+00:00",
+          "message": "Exclude returns from weekly average"
+        }
       ]
     },
     {
       "id": "worker-cs",
       "steps": [
-        { "dir": "01-base",   "tag": "v1-base",   "date": "2026-09-02T09:00:00+00:00", "message": "Nightly stats job with active-week average" },
-        { "dir": "02-broken", "tag": "v2-broken", "date": "2026-09-09T09:00:00+00:00", "message": "Add currency normalizer referencing missing Sales.Shared project" }
+        {
+          "dir": "01-base",
+          "tag": "v1-base",
+          "date": "2026-09-02T09:00:00+00:00",
+          "message": "Nightly stats job with active-week average"
+        },
+        {
+          "dir": "02-broken",
+          "tag": "v2-broken",
+          "date": "2026-09-09T09:00:00+00:00",
+          "message": "Add currency normalizer referencing missing Sales.Shared project"
+        }
       ]
     },
     {
       "id": "web-ts",
       "steps": [
-        { "dir": "01-base",   "tag": "v1-base",   "date": "2026-09-03T09:00:00+00:00", "message": "Article summary view" }
+        {
+          "dir": "01-base",
+          "tag": "v1-base",
+          "date": "2026-09-03T09:00:00+00:00",
+          "message": "Article summary view"
+        }
+      ]
+    },
+    {
+      "id": "forecast-cs",
+      "steps": [
+        {
+          "dir": "01-base",
+          "tag": "v1-base",
+          "date": "2026-09-04T09:00:00+00:00",
+          "message": "Forecast API with moving average and exponential smoothing"
+        },
+        {
+          "dir": "02-contract",
+          "tag": "v2-contract",
+          "date": "2026-09-11T09:00:00+00:00",
+          "message": "Version forecast routes under /api/v2 and raise smoothing alpha"
+        }
+      ]
+    },
+    {
+      "id": "pricing-node",
+      "steps": [
+        {
+          "dir": "01-base",
+          "tag": "v1-base",
+          "date": "2026-09-05T09:00:00+00:00",
+          "message": "Pricing service with demand-based prices and weekly revenue"
+        },
+        {
+          "dir": "02-move",
+          "tag": "v2-move",
+          "date": "2026-09-12T09:00:00+00:00",
+          "message": "Move priceForDemand to demand.ts behind a re-export"
+        }
       ]
     }
   ]

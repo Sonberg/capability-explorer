@@ -96,7 +96,7 @@ public sealed class FixtureScenarioTests
     {
         // file, symbol, denominatorSource, timeBucket, rounding, nullHandling
         { "api-cs/v1-base/Sales.Api.jsonl", CalendarV1, "period", "isoWeek", "halfEven", "nullAsZero" },
-        { "api-cs/v1-base/SalesDb.jsonl", "sql|@unbound:dbproject=SalesDb|dbo.fnWeeklySalesAverage", "period", "sevenDayFromPeriodStart", "halfAwayFromZero", "nullAsZero" },
+        { "api-cs/v1-base/SalesDb.jsonl", "sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.fnWeeklySalesAverage", "period", "sevenDayFromPeriodStart", "halfAwayFromZero", "nullAsZero" },
         { "worker-cs/v1-base/Sales.Worker.jsonl", "cs|worker-cs|Sales.Worker|M:Sales.Worker.Calculations.ArticleStatsCalculator.AveragePerActiveWeek(System.Collections.Generic.IReadOnlyCollection{Sales.Worker.Calculations.SaleRecord})", "data", "isoWeek", "halfAwayFromZero", "excluded" },
         { "web-ts/v1-base/_fixture_web.jsonl", "ts|web-ts|@fixture/web|src/sales/weeklyStats.ts|averagePerActiveWeek#value", "data", "isoWeek", "halfTowardPositiveInfinity", "excluded" },
     };
@@ -120,7 +120,7 @@ public sealed class FixtureScenarioTests
         var request = web.Edges.Single(e => e.Relation == "REQUESTS");
         Assert.Equal("unresolved", request.Resolution);
         Assert.Equal("configuration", request.UnresolvedReason);
-        Assert.StartsWith("http|@unbound:base=salesApiBaseUrl|GET /api/articles/{}/weekly-sales", request.To, StringComparison.Ordinal);
+        Assert.Equal("http|@unbound:web-ts/@fixture/web:base=salesApiBaseUrl|GET /api/articles/{}/weekly-sales", request.To);
 
         var api = A("api-cs/v1-base/Sales.Api.jsonl");
         Assert.Contains(api.Nodes, n => n.SymbolKey == "http|api-cs/Sales.Api|GET /api/articles/{}/weekly-sales");

@@ -20,6 +20,10 @@ public static class SymbolKey
         ["store"] = 3, // store|<provider>|<instance>[|<database>]
     };
 
+    /// <summary>@unbound:&lt;repo&gt;/&lt;unit&gt;:&lt;kind&gt;=&lt;value&gt; — a resource known only by a name local to one unit.</summary>
+    private static readonly System.Text.RegularExpressions.Regex UnboundSegment =
+        new(@"^@unbound:(?<repo>[a-z0-9][a-z0-9._-]*)/(?<unit>[^:]+):(?<kind>[a-z]+)=(?<value>.+)$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
     public static string Scheme(string key) => key[..Math.Max(0, key.IndexOf('|', StringComparison.Ordinal))];
 
     public static string[] Segments(string key) => key.Split('|');
@@ -43,6 +47,14 @@ public static class SymbolKey
             return "symbol key has an empty segment";
         }
 
+        foreach (var segment in segments.Where(s => s.StartsWith("@unbound", StringComparison.Ordinal)))
+        {
+            if (!UnboundSegment.IsMatch(segment))
+            {
+                return $"unbound reference '{segment}' must have the form @unbound:<repo>/<unit>:<kind>=<value>";
+            }
+        }
+
         if (segments[0] == "ts" && !segments[^1].Contains('#', StringComparison.Ordinal))
         {
             return "ts keys must end with #<meaning> (value, type or namespace)";
@@ -55,6 +67,10 @@ public static class SymbolKey
 
         return null;
     }
+
+    /// <summary>Repositories named by @unbound segments: their hints are only meaningful inside that repository.</summary>
+    public static IEnumerable<string> UnboundScopes(string key) =>
+        Segments(key).Select(s => UnboundSegment.Match(s)).Where(m => m.Success).Select(m => m.Groups["repo"].Value);
 
     /// <summary>The repository a code-level key belongs to, or null for keys whose ownership is not a repository.</summary>
     public static string? OwningRepository(string key) => Scheme(key) switch

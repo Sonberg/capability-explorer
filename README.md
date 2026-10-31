@@ -13,7 +13,7 @@ and an idempotent PostgreSQL importer.
 | Path | Stage 1 content |
 |---|---|
 | `schema/v1/` | `record.schema.json` (JSON Schema, the source of truth), `relations.json`, [rules](schema/README.md) |
-| `fixtures/` | Three fixture repos built deterministically from overlays, plus golden artifacts. See [fixtures/README.md](fixtures/README.md). |
+| `fixtures/` | Five fixture repos (C#, TypeScript/JavaScript, T-SQL, PostgreSQL) built deterministically from overlays, plus golden artifacts. See [fixtures/README.md](fixtures/README.md). |
 | `platform/` | .NET 10: `Contracts` (validator, evidence verifier), `Store` (migrations, importer), `Cli` (`ce`), tests |
 | `extractors/ts/` | Node/TypeScript package. Stage 1 contains only the contract validator (ajv against the same schema). |
 | `scripts/sandbox` | Runs every build, install and test in a disposable container |
@@ -59,6 +59,8 @@ Behind a TLS-intercepting proxy, run `export SANDBOX_EXTRA_CA_FILE=/path/to/ca.p
   unbound resources) are present in the golden facts.
 - `ImporterTests` (Testcontainers): imports are atomic, idempotent, safe under concurrent duplicates,
   and reject a changed artifact under the same analysis key.
+- `FixtureSqlTests` (Testcontainers): the PostgreSQL fixture SQL runs and behaves as its golden
+  attributes claim.
 - `extractors/ts` tests: the same golden files validate against the same schema in TypeScript.
 
 ## Next (stage 2)

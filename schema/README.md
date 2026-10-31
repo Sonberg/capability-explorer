@@ -49,8 +49,8 @@ Segments are separated by `|`. The first segment is the scheme.
 | `proj` | `proj\|<repo>\|<unit path>` | `proj\|api-cs\|src/Sales.Api/Sales.Api.csproj` |
 | `svc` | `svc\|<repo>\|<service name>` | `svc\|api-cs\|Sales.Api` |
 | `http` | `http\|<service ref>\|<METHOD> <normalised route>` | `http\|api-cs/Sales.Api\|GET /api/articles/{}/weekly-sales` |
-| `sql` | `sql\|<store ref>\|<schema>.<object>[#column]` | `sql\|@unbound:conn=Sales\|dbo.Sales` |
-| `chan` | `chan\|<provider>\|<namespace ref>\|<entity>` | `chan\|servicebus\|@unbound:config=ServiceBus:ConnectionString\|topic/article-stats-updated` |
+| `sql` | `sql\|<store ref>\|<schema>.<object>[#column]` | `sql\|@unbound:api-cs/Sales.Api:conn=Sales\|dbo.Sales` |
+| `chan` | `chan\|<provider>\|<namespace ref>\|<entity>` | `chan\|servicebus\|sb-pricing.servicebus.windows.net\|queue/article-stats-updated` |
 | `store` | `store\|<provider>\|<instance>[\|<database>]` | `store\|mssql\|sql-sales\|SalesDb` |
 
 Rules:
@@ -60,9 +60,19 @@ Rules:
   the compiler sees: reference assemblies for framework types (`System.Runtime`, not
   `System.Private.CoreLib`).
 - **TypeScript**: the module path is relative to the package root. The declaration path is the chain
-  of containers joined with `.`. `#meaning` (`value`, `type`, `namespace`) separates merged
-  declarations that share a name. Overloads add `(sig:<8 hex>)` before `#` only when more than one
-  declaration exists.
+  of containers joined with `.` (`SalesApi.getWeeklySales`). `#meaning` (`value`, `type`, `namespace`)
+  separates merged declarations that share a name. Overloads are **one** symbol with several
+  declarations: list the signatures in `props.overloads` and give one evidence span per declaration.
+  The module itself is `<module path>|(module)#namespace` (node kind `File`).
+- **Anonymous code** (lambdas, arrow functions, handlers passed inline) has no key of its own. Its
+  facts are attributed to the nearest named container. Top-level TypeScript code is attributed to the
+  module node, and C# top-level statements to `M:Program.<Main>$(System.String[])`. Set
+  `props.handler: "lambda"` where it matters.
+- **Generics**: a call on a constructed generic (`Repository<WeeklyHistory>.ListAsync`) targets the
+  original definition (``M:…Repository`1.ListAsync(…)``). The type arguments go in
+  `props.typeArguments`. Rules that depend on them (EF table per entity) name them in
+  `props.typeArgument`.
+- **Partial types** are one symbol, with evidence in every file that declares part of it.
 - **External symbols** use `@ext` as the repository: `cs|@ext|System.Runtime|M:System.Math.Round(System.Decimal,System.Int32)`
   and `ts|@ext|typescript|lib.es5.d.ts|Math.round#value`.
 - **SQL built-ins**: `sql|@builtin:<dialect>|<FUNCTION>`.
@@ -73,19 +83,32 @@ Rules:
 
 ### Unbound resources
 
-Extractors often know the *logical* name of a resource (a connection-string name, a base-URL variable)
-but not the physical resource. They say so explicitly:
+Extractors often know only a *logical* name for a resource (a connection-string name, a config key, an
+environment variable, a base-URL variable), not the physical resource. They say so explicitly, scoped
+to the unit that reads the name:
 
 ```
-@unbound:<hint kind>=<value>      e.g. @unbound:conn=Sales, @unbound:base=salesApiBaseUrl, @unbound:dbproject=SalesDb
+@unbound:<repo>/<unit>:<hint kind>=<value>
+  @unbound:api-cs/Sales.Api:conn=Sales
+  @unbound:forecast-cs/Forecast.Api:config=ServiceBus:ConnectionString
+  @unbound:pricing-node/@fixture/pricing:env=FORECAST_API_URL
+  @unbound:api-cs/SalesDb:dbproject=SalesDb
 ```
+
+The scope is required. `worker-cs` and `forecast-cs` both read a config key called
+`ServiceBus:ConnectionString`, and nothing in the code proves it holds the same namespace in both. An
+unscoped hint would give both repositories the identical channel key. The validator rejects unscoped
+hints, and hints scoped to a repository other than the one producing the artifact.
 
 An edge to an unbound key has `resolution: "unresolved"` and `unresolvedReason: "configuration"`.
 Binding happens at snapshot level (stage 3), using environment and IaC configuration or a
 human-maintained service map. That binding produces new `rule`- or `human`-derived edges and never
-rewrites extractor output. Two keys with the same table name but different hints
-(`@unbound:conn=Sales` vs `@unbound:dbproject=SalesDb`) are **different resources** until a binding
-says otherwise.
+rewrites extractor output.
+
+When the value is literal in the repository (for example `config/default.json` names the Service Bus
+namespace), the extractor uses it directly and the edge is `resolved`. Same-named resources stay
+distinct unless their full keys match: `topic/article-stats-updated` in an unbound namespace and
+`queue/article-stats-updated` in `sb-pricing` are three different channels across the fixtures.
 
 ## Evidence
 
@@ -138,10 +161,14 @@ Consumers must treat a symbol that is missing from a partial artifact as **not o
 - Rounding is explicit, with unambiguous mode names: `halfEven` (.NET default), `halfAwayFromZero`
   (T-SQL `ROUND`, `MidpointRounding.AwayFromZero`), `halfTowardPositiveInfinity` (JS `Math.round`).
 - Calls keep their target symbol (`call.target`, `round.target`).
+- Loops that are not a plain filtered sum/count become `fold` (`over`, `bind`, `acc`, `init`, `step`,
+  optional `skip`), as in exponential smoothing. Dictionary or array lookups are `index`. Anything the
+  IR cannot express faithfully is `opaque` with a reason; it is never approximated.
 - `cmp` keeps JavaScript strictness (`===`/`!==` vs `==`/`!=`).
 
 `attributes` is a fixed set: aggregation, timeBucket, period, denominatorSource, filters, rounding,
-numericType, nullHandling, zeroDenominator and currency. Each attribute is `known` (with value and
+numericType, nullHandling, zeroDenominator and currency, plus `overflow` where it is relevant (`wraps`
+for an unchecked C# loop, `throws` for PostgreSQL bigint arithmetic). Each attribute is `known` (with value and
 evidence), `partial` or `unknown`. **Unknown means no evidence. It is never filled in from naming.**
 
 `irHash` is the sha256 of the canonical JSON (sorted keys) of `expr`. It is identical across a pure

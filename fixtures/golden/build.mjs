@@ -9,12 +9,14 @@ import { FixtureRepo } from "./lib.mjs";
 import apiCs from "./facts/api-cs.mjs";
 import workerCs from "./facts/worker-cs.mjs";
 import webTs from "./facts/web-ts.mjs";
+import forecastCs from "./facts/forecast-cs.mjs";
+import pricingNode from "./facts/pricing-node.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const lock = JSON.parse(readFileSync(join(root, "fixtures/revisions.lock.json"), "utf8"));
 const outDir = join(root, "fixtures/expected");
 const check = process.argv.includes("--check");
-const facts = { "api-cs": apiCs, "worker-cs": workerCs, "web-ts": webTs };
+const facts = { "api-cs": apiCs, "worker-cs": workerCs, "web-ts": webTs, "forecast-cs": forecastCs, "pricing-node": pricingNode };
 
 const generated = new Map();
 for (const [repoId, tags] of Object.entries(lock)) {

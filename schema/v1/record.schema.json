@@ -26,7 +26,7 @@
       "type": "string", "pattern": "^[a-z]+:[A-Za-z0-9._-]{1,128}$"
     },
     "symbolKey": {
-      "description": "Global symbol identity within a revision. Grammar: <scheme>|<segment>|... See schema/README.md.",
+      "description": "Global symbol identity within a revision. Grammar: <scheme>|<segment>|... Unbound resource references use a segment @unbound:<repo>/<unit>:<kind>=<value>. See schema/README.md.",
       "type": "string",
       "pattern": "^(cs|ts|sql|http|svc|chan|store|proj)\\|[^|\\s]+(\\|[^|\\n]+)+$",
       "maxLength": 2048
@@ -322,6 +322,28 @@
         },
         {
           "properties": {
+            "op": { "const": "fold" },
+            "over": { "$ref": "#/$defs/expr" },
+            "bind": { "description": "Placeholder for the current element inside step.", "type": "string", "pattern": "^\\$[0-9]+$" },
+            "acc": { "description": "Placeholder for the accumulator inside step.", "type": "string", "pattern": "^\\$[0-9]+$" },
+            "init": { "$ref": "#/$defs/expr" },
+            "step": { "$ref": "#/$defs/expr" },
+            "skip": { "description": "Leading elements not visited (e.g. the first element seeds init).", "type": "integer", "minimum": 0 },
+            "type": { "$ref": "#/$defs/numericType" }
+          },
+          "required": ["op", "over", "bind", "acc", "init", "step"], "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "index" },
+            "of": { "$ref": "#/$defs/expr" },
+            "key": { "$ref": "#/$defs/expr" },
+            "type": { "$ref": "#/$defs/numericType" }
+          },
+          "required": ["op", "of", "key"], "additionalProperties": false
+        },
+        {
+          "properties": {
             "op": { "const": "tuple" },
             "items": { "type": "array", "items": { "$ref": "#/$defs/expr" }, "minItems": 2 }
           },
@@ -389,7 +411,11 @@
             "numericType": { "$ref": "#/$defs/attribute" },
             "nullHandling": { "$ref": "#/$defs/attribute" },
             "zeroDenominator": { "$ref": "#/$defs/attribute" },
-            "currency": { "$ref": "#/$defs/attribute" }
+            "currency": { "$ref": "#/$defs/attribute" },
+            "overflow": {
+              "description": "Integer overflow behaviour where relevant: 'wraps', 'throws', 'notPossible'.",
+              "$ref": "#/$defs/attribute"
+            }
           }
         },
         "irHash": {

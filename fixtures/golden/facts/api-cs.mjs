@@ -39,15 +39,15 @@ export const k = {
   saleEntity: key.cs(R, API, "T:Sales.Api.Data.SaleEntity"),
   dbContext: key.cs(R, API, "T:Sales.Api.Data.SalesDbContext"),
   // EF/SQL objects as seen from the API: store bound only by connection-string name.
-  efSales: key.sql("@unbound:conn=Sales", "dbo.Sales"),
+  efSales: key.sql(key.unbound(R, API, "conn", "Sales"), "dbo.Sales"),
   // SQL objects as declared by the database project: store bound only by project name.
-  dbSales: key.sql("@unbound:dbproject=SalesDb", "dbo.Sales"),
-  dbSalesQuantity: key.sql("@unbound:dbproject=SalesDb", "dbo.Sales", "Quantity"),
-  dbSalesSoldOn: key.sql("@unbound:dbproject=SalesDb", "dbo.Sales", "SoldOn"),
-  dbSalesArticleId: key.sql("@unbound:dbproject=SalesDb", "dbo.Sales", "ArticleId"),
-  dbArticleStats: key.sql("@unbound:dbproject=SalesDb", "dbo.ArticleStats"),
-  dbArticleStatsAvg: key.sql("@unbound:dbproject=SalesDb", "dbo.ArticleStats", "AveragePerWeek"),
-  fnWeekly: key.sql("@unbound:dbproject=SalesDb", "dbo.fnWeeklySalesAverage"),
+  dbSales: key.sql(key.unbound(R, "SalesDb", "dbproject", "SalesDb"), "dbo.Sales"),
+  dbSalesQuantity: key.sql(key.unbound(R, "SalesDb", "dbproject", "SalesDb"), "dbo.Sales", "Quantity"),
+  dbSalesSoldOn: key.sql(key.unbound(R, "SalesDb", "dbproject", "SalesDb"), "dbo.Sales", "SoldOn"),
+  dbSalesArticleId: key.sql(key.unbound(R, "SalesDb", "dbproject", "SalesDb"), "dbo.Sales", "ArticleId"),
+  dbArticleStats: key.sql(key.unbound(R, "SalesDb", "dbproject", "SalesDb"), "dbo.ArticleStats"),
+  dbArticleStatsAvg: key.sql(key.unbound(R, "SalesDb", "dbproject", "SalesDb"), "dbo.ArticleStats", "AveragePerWeek"),
+  fnWeekly: key.sql(key.unbound(R, "SalesDb", "dbproject", "SalesDb"), "dbo.fnWeeklySalesAverage"),
 };
 
 const methodName = (tag) => (tag === "v1-base" ? "AveragePerCalendarWeek" : "CalendarWeekAverage");

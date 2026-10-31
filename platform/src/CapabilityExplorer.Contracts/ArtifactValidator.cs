@@ -172,7 +172,7 @@ public static class ArtifactValidator
                 problems.Add(new Problem(line, $"duplicate node symbolKey {node.SymbolKey}"));
             }
 
-            CheckKey(problems, line, node.SymbolKey);
+            CheckKey(problems, line, node.SymbolKey, header.RepositoryId);
             var owner = SymbolKey.OwningRepository(node.SymbolKey);
             if (owner is not null && owner != header.RepositoryId)
             {
@@ -228,10 +228,10 @@ public static class ArtifactValidator
         foreach (var (line, edge) in edges)
         {
             RequireEvidence(line, edge.Evidence, "edge", mandatory: true);
-            CheckKey(problems, line, edge.From);
+            CheckKey(problems, line, edge.From, header.RepositoryId);
             if (edge.To is not null)
             {
-                CheckKey(problems, line, edge.To);
+                CheckKey(problems, line, edge.To, header.RepositoryId);
             }
 
             if (!nodeKinds.TryGetValue(edge.From, out var fromKind))
@@ -333,11 +333,18 @@ public static class ArtifactValidator
             []);
     }
 
-    private static void CheckKey(List<Problem> problems, int line, string key)
+    private static void CheckKey(List<Problem> problems, int line, string key, string repositoryId)
     {
         if (SymbolKey.Check(key) is { } problem)
         {
             problems.Add(new Problem(line, $"{problem}: {key}"));
+        }
+
+        // A connection-string or config-key name means nothing outside the unit that reads it; two repos using
+        // the same name must not produce the same key.
+        foreach (var scope in SymbolKey.UnboundScopes(key).Where(s => s != repositoryId))
+        {
+            problems.Add(new Problem(line, $"unbound reference scoped to '{scope}' cannot be produced by {repositoryId}: {key}"));
         }
     }
 
@@ -353,6 +360,25 @@ public static class ArtifactValidator
             if (!scope.Contains(name))
             {
                 yield return name;
+            }
+
+            yield break;
+        }
+
+        if (op == "fold")
+        {
+            foreach (var name in new[] { "over", "init" })
+            {
+                foreach (var u in UnboundPlaceholders(expr.GetProperty(name), scope))
+                {
+                    yield return u;
+                }
+            }
+
+            var inner = new HashSet<string>(scope, StringComparer.Ordinal) { expr.GetProperty("bind").GetString()!, expr.GetProperty("acc").GetString()! };
+            foreach (var u in UnboundPlaceholders(expr.GetProperty("step"), inner))
+            {
+                yield return u;
             }
 
             yield break;

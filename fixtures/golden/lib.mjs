@@ -23,6 +23,8 @@ export const key = {
   sql: (storeRef, object, column) => `sql|${storeRef}|${object}${column ? `#${column}` : ""}`,
   sqlBuiltin: (dialect, fn) => `sql|@builtin:${dialect}|${fn}`,
   chan: (provider, nsRef, entity) => `chan|${provider}|${nsRef}|${entity}`,
+  // A resource known only by a name that is local to one unit (connection-string name, config key, env var).
+  unbound: (repo, unit, kind, value) => `@unbound:${repo}/${unit}:${kind}=${value}`,
 };
 
 // ---- IR helpers ----
@@ -43,6 +45,11 @@ export const ir = {
   }),
   call: (target, args, type) => (type ? { op: "call", target, args, type } : { op: "call", target, args }),
   tuple: (...items) => ({ op: "tuple", items }),
+  index: (of, k, type) => (type ? { op: "index", of, key: k, type } : { op: "index", of, key: k }),
+  fold: (over, { bind, acc, init, step, skip, type }) => ({
+    op: "fold", over, bind, acc, init, step, ...(skip ? { skip } : {}), ...(type ? { type } : {}),
+  }),
+  opaque: (reason) => ({ op: "opaque", reason }),
 };
 
 // ---- git access ----
@@ -158,10 +165,10 @@ export class Artifact {
   }
 
   calc({ key: symbolKey, includes, output, inputs, expr, attributes, at }) {
-    const attrs = {};
-    for (const [name, a] of Object.entries(attributes)) {
-      attrs[name] = clean({ status: a.status, value: a.value, detail: a.detail, evidence: a.at ? this.ev(a.at) : undefined });
-    }
+    const attr = (a) => clean({ status: a.status, value: a.value, detail: a.detail, evidence: a.at ? this.ev(a.at) : undefined });
+    const attrs = Object.fromEntries(Object.entries(attributes).map(([name, a]) => [name, attr(a)]));
+    output = output.unit ? { ...output, unit: attr(output.unit) } : output;
+    inputs = inputs.map((i) => (i.unit ? { ...i, unit: attr(i.unit) } : i));
     this.records.calculation.push(clean({
       schema: SCHEMA, kind: "calculation", id: `c:${short(symbolKey)}`, symbolKey, includes, output, inputs, expr,
       attributes: attrs, irHash: sha256(canonicalJson(expr)), evidence: this.ev(at),

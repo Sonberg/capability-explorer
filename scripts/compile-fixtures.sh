@@ -18,9 +18,13 @@ dotnet_cases=(
   "api-cs v3-filter Sales.sln ok"
   "worker-cs v1-base Sales.Worker.sln ok"
   "worker-cs v2-broken Sales.Worker.sln fail:CS0234.*'Shared'"
+  "forecast-cs v1-base Forecast.sln ok"
+  "forecast-cs v2-contract Forecast.sln ok"
 )
 node_cases=(
   "web-ts v1-base . ok"
+  "pricing-node v1-base . ok"
+  "pricing-node v2-move . ok"
 )
 
 checkout() {
