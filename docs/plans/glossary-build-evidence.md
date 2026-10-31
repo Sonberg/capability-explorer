@@ -30,3 +30,16 @@ Brain closeout: sparc/capability-cards.md#sparc; no added runtime dependency.
 The worktree ledger invocation refused a missing policy-anchor log. No policy was
 relaxed: using the existing canonical project ledger succeeded, swarm
 `swarm-1793482077261-gy7efz`, hierarchical/max4. Worker execution remains native.
+
+## Pseudocode
+
+Collection/identity/order/error paths and O(N log N)+bounded64-pair complexity are
+recorded in the contract. Executable normalizer and DTO tests integrated from
+worker commits ea826f5/c84338e. `make test-explorer` exited0: Explorer70,
+Interpretation28, Capabilities28 passed with zero skips; build0 warnings/errors.
+First run exposed test-only invariant globalization, corrected by enabling ICU
+cultures in Explorer.Tests only; production remains invariant. No test skipped.
+P rubric: acceptance40/40, deterministic order30/30, bounded/errors30/30;
+grade100/100, iteration2. Log /private/tmp/ce-glossary-p-2.log.
+Brain closeout: sparc/capability-cards.md#sparc; no additional dependency warranted.
+Full projection/UI behavior not yet tested. No paid provider routing; spend unknown.

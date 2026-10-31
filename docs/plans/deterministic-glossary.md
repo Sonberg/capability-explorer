@@ -91,3 +91,28 @@ The receipt comparison records that same run; it never bypasses a future pre-pus
 Running feature: make explore GITHUB_AUTH=none, then curl -fsS 'http://127.0.0.1:5080/api/glossary?cap=weekly-sales' and the demand-pricing equivalent. In a real browser, open the Glossary tab, change capabilities/revisions, search, inspect a candidate and follow evidence. Verify absence of model/database requirements. Use make dev only when the full dev environment is actually needed; the read-only feature must work without it. Capture concise observed evidence without starting paid models.
 
 Expected output: implemented feature and focused tests; the proposed candidate-semantics MADR; per-phase evidence/scores; actual routing/spend receipts or explicit unknown; one independently reviewed PR; current HANDOFF and exact-key checkpoint; explicit list of untested behavior. Keep all deferred #4 layers open.
+
+
+Implementation pseudocode (frozen before worker integration):
+
+1. Sort selected artifacts by repository/commit/unit path, then visit explicit
+   eligible declarations and raw calculation records. Resolve origin keys only
+   against declarations in the selected source snapshot; do not guess labels.
+2. Normalize names in O(name length), tokenize acronym/case/separator boundaries,
+   strip one terminal container suffix and preserve semantic qualifiers.
+3. Identify occurrences by a length-safe tuple (repo, commit, unit path, key, role),
+   not load-order artifact IDs. Sort evidence by exact source identity.
+4. Group exact normalized labels, then sort all output collections ordinally.
+5. Canonicalize supported explicit primitive aliases; missing type stays null.
+   A known/unknown pair is not a mismatch. Group only same-label calculations.
+6. Sort calculation occurrences; compute possible pair count using long arithmetic.
+   Enumerate at most64 pairs per candidate, report incompleteness, and canonicalize
+   comparison details/order/IDs. Hash inequality is reported separately.
+7. Project repository-capability membership from existing definitions. Apply
+   index.View(view, caps.Scope(cap)) before collection; never rewrite artifacts.
+
+Collection/sorting costs O(N log N) plus source JSON size. Pair work is bounded by
+64 per candidate, rather than enumerating all pairs and truncating afterward.
+Missing/unsupported metadata contributes no guessed observation. HTTP errors and
+invalid selections retain existing Explorer behavior. UI remounts on scope change
+so stale capability data cannot masquerade as current evidence.
