@@ -6,6 +6,8 @@ It consolidates the existing contract; it does not introduce a new schema or
 claim that every contributor has reviewed it. Changes in meaning require an ADR
 and the corresponding contract/test changes, rather than silently redefining a word.
 
+Governance: [MADR-0002: establish and govern a shared ubiquitous language](adr/0002-ubiquitous-language.md).
+
 ## Authority and usage
 
 The executable [ce.v1 schema](../schema/v1/record.schema.json),

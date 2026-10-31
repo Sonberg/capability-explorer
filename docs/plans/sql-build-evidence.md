@@ -76,3 +76,33 @@ Ruflo ledger registration does not itself prove native execution or learning.
 New SQL behavior, full integration suite, browser interactions, production
 publication, and end-to-end PR creation. Later phase evidence must replace these
 open implementation checks before completion can be claimed.
+
+## Pseudocode and architecture contract
+
+1. Lex existing source, preserving absolute spans; restrict the routine to a
+   single static SELECT with one optional catalog-resolved table and WHERE.
+2. Parse declared parameters/types and bounded expressions into the shared
+   discriminated AST. Pratt precedence parsing visits tokens linearly; token
+   count is bounded at 4096 and recursion at 64. Invalid grammar or limits return
+   an explicit unsupported result with a span, never a partial expression.
+3. Resolve parameter/column references against declarations. Lower recursively
+   into ce.v1 with deterministic input and aggregate binder order, preserving
+   numeric lexemes, operand order and dialect integer/numeric semantics.
+   Resolution is bounded by catalog size; do not execute source or query a DB.
+4. Derive only attributes justified by AST/types/nullability; all others unknown.
+   Associate known attributes and the calculation with exact source evidence.
+5. Emit through the existing builder only after the entire expression passes.
+   On rejection, emit a stable diagnostic and preserve ordinary graph facts.
+   Builder canonicalization computes IR hashes and final artifact ordering.
+
+The parser owns calculation-types.ts and exports supported/unsupported/not-candidate
+outcomes. Lowering depends on these types and existing catalog/builder APIs;
+the parser never imports lowering. Extractor calls lowering. No new dependencies
+or circular imports are introduced. Shared manifests remain queen-owned.
+
+Pseudocode gate: `make test-ts golden-check` ran the required `test-ts` target:
+compilation succeeded, 37 tests passed, 0 failed, 0 skipped. Grade 100/100
+(compilation 50, unchanged existing tests 50). The integrated skeleton is
+`468008a`; no new parser behavior is claimed. Log: `/private/tmp/ce-sql-interface-gates.log`.
+Brain closeout found thin adjacent scope-enforcement documentation
+`ruflo/v3/docs/releases/v3.32.33.md`; no applicable dependency change.
