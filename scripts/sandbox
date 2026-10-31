@@ -27,6 +27,7 @@
 #   SANDBOX_NETWORK        docker network to use when not --offline (default: bridge)
 #   SANDBOX_SOURCES        comma-separated absolute host paths (local repositories for capabilities) to mount
 #                          read-only at the same path inside the container.
+#   SANDBOX_LABEL          optional docker label (key=value) on the container, so a caller can find and stop it
 #   SANDBOX_PASS_ENV       comma-separated host variables to forward, e.g. CE_FOUNDRY_API_KEY.
 #                          Nothing is forwarded unless named here; ignored with --offline.
 #   SANDBOX_DOTNET_IMAGE / SANDBOX_NODE_IMAGE   override images
@@ -135,6 +136,9 @@ if [[ $docker_sock -eq 1 ]]; then
     -e DOCKER_HOST="unix://$sock"
   )
 fi
+
+# A label lets a caller find and stop its containers (scripts/analyze-worker: Stop in the explorer).
+[[ -n "${SANDBOX_LABEL:-}" ]] && args+=(--label "$SANDBOX_LABEL")
 
 # Entry: build a combined CA bundle without root (system roots + extra CA), then exec the command.
 entry='set -e

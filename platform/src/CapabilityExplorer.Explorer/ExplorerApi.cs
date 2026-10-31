@@ -1,5 +1,6 @@
 using CapabilityExplorer.Binding;
 using CapabilityExplorer.Capabilities;
+using CapabilityExplorer.Contracts;
 using CapabilityExplorer.Interpretation;
 using CapabilityExplorer.Store;
 
@@ -11,7 +12,8 @@ public sealed record ExplorerOptions(
     string? EvaluationReport,
     string CapabilitiesFile,
     string Workspace,
-    string? BindingsFile = null)
+    string? BindingsFile = null,
+    string RequestsDirectory = ".sandbox-cache/requests")
 {
     public static ExplorerOptions From(IConfiguration configuration)
     {
@@ -23,7 +25,8 @@ public sealed record ExplorerOptions(
             configuration["evaluation"],
             configuration["capabilities"] ?? "capabilities.json",
             configuration["workspace"] ?? ".sandbox-cache/sources",
-            configuration["bindings"]);
+            configuration["bindings"],
+            configuration["requests"] ?? ".sandbox-cache/requests");
     }
 
     /// <summary>Builds the index, resolving repository sources through capabilities first, then the repos directory.</summary>
@@ -327,6 +330,88 @@ public static class ExplorerApi
         // "Check together": acquire every source read-only and lock each to one exact commit.
         api.MapPost("/capabilities/{id}/check", async (CapabilityService caps, string id, CancellationToken ct) =>
             caps.Store.Find(id) is null ? Results.NotFound(new { error = $"no capability '{id}'" }) : Results.Ok(await caps.CheckAsync(id, ct)));
+
+        // "Rebuild intelligence": lock the revisions, import every loaded artifact into PostgreSQL (unchanged ones are
+        // skipped) and embed the symbols whose text changed.
+        // ponytail: imports all loaded artifacts, not only this capability's; scope it if that gets slow.
+        api.MapPost("/capabilities/{id}/rebuild", async (ExplorerIndex index, CapabilityService caps, Intelligence intelligence, string id, CancellationToken ct) =>
+        {
+            if (caps.Store.Find(id) is null)
+            {
+                return Results.NotFound(new { error = $"no capability '{id}'" });
+            }
+
+            if (intelligence.DataSource is not { } db || intelligence.Store is not { } store || intelligence.Embeddings is not { } model)
+            {
+                return SimilarityOff(intelligence);
+            }
+
+            await caps.CheckAsync(id, ct);
+            try
+            {
+                await Migrator.MigrateAsync(db, ct);
+                var importer = new ArtifactImporter(db);
+                var stored = new List<(long ArtifactId, Artifact Artifact)>();
+                var imported = 0;
+                var failed = new List<string>();
+                foreach (var a in index.Artifacts)
+                {
+                    try
+                    {
+                        var result = await importer.ImportAsync(a.Artifact, ct);
+                        stored.Add((result.ArtifactId, a.Artifact));
+                        imported += result.Outcome == ImportOutcome.Imported ? 1 : 0;
+                    }
+                    catch (Exception e) when (e is InvalidArtifactException or ArtifactConflictException)
+                    {
+                        failed.Add($"{a.RepositoryId}@{a.CommitSha[..Math.Min(12, a.CommitSha.Length)]} {a.Artifact.Header.Unit.Name}: {e.Message}");
+                    }
+                }
+
+                if (index.Bindings.Entries.Count > 0 && stored.Count > 0)
+                {
+                    await new BindingStore(db).SaveAsync(stored, index.Bindings, ct);
+                }
+
+                var embedded = await store.EmbedPendingAsync(model.Id, model.EmbedAsync, cancellationToken: ct);
+                return Results.Ok(new { imported, unchanged = stored.Count - imported, failed, embedded, model = model.Id });
+            }
+            catch (Npgsql.NpgsqlException e)
+            {
+                return DatabaseUnavailable(e);
+            }
+            catch (InterpretationUnavailableException e)
+            {
+                return Results.Json(new { error = e.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        });
+
+        // "Analyze code": extraction needs its own offline sandboxes, which the explorer cannot start. It queues a request
+        // file; scripts/analyze-worker on the host (make dev) runs scripts/analyze, which checks, extracts, imports and embeds.
+        api.MapPost("/capabilities/{id}/analyze", (CapabilityService caps, ExplorerOptions options, string id) =>
+        {
+            if (caps.Store.Find(id) is null)
+            {
+                return Results.NotFound(new { error = $"no capability '{id}'" });
+            }
+
+            var job = AnalysisJob.Read(options.RequestsDirectory, id);
+            if (job.State is "queued" or "running" or "stopping")
+            {
+                return Results.Conflict(new { error = $"an analysis of '{id}' is already {job.State}" });
+            }
+
+            AnalysisJob.Queue(options.RequestsDirectory, id);
+            return Results.Accepted($"/api/capabilities/{id}/analyze", AnalysisJob.Read(options.RequestsDirectory, id));
+        });
+
+        api.MapDelete("/capabilities/{id}/analyze", (CapabilityService caps, ExplorerOptions options, string id) =>
+            caps.Store.Find(id) is null ? Results.NotFound(new { error = $"no capability '{id}'" })
+            : AnalysisJob.Stop(options.RequestsDirectory, id) ? Results.Ok(AnalysisJob.Read(options.RequestsDirectory, id))
+            : Results.Conflict(new { error = $"no analysis of '{id}' is queued or running" }));
+
+        api.MapGet("/capabilities/{id}/analyze", (CapabilityService caps, ExplorerOptions options, string id) =>
+            caps.Store.Find(id) is null ? Results.NotFound(new { error = $"no capability '{id}'" }) : Results.Ok(AnalysisJob.Read(options.RequestsDirectory, id)));
 
         api.MapDelete("/capabilities/{id}", async (CapabilityService caps, string id, CancellationToken ct) =>
             await caps.Store.RemoveAsync(id, ct) ? Results.NoContent() : Results.NotFound(new { error = $"no capability '{id}'" }));
