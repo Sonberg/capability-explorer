@@ -8,9 +8,11 @@
 #   1 export    network (GitHub fetch) + GitHub token + read-only mounts of local repositories
 #   2 packages  network to nuget.org only for downloads; no token, no local repositories mounted
 #   3 extract   --offline: the analysed code is parsed, never restored, built or executed
+#   4 store     optional, only when CE_DATABASE (an Npgsql connection string) is set: migrate, import the artifacts and,
+#               with BINDINGS=<file>, save the snapshot-level bindings. Only this step gets the connection string.
 #
 # Knobs: GITHUB_AUTH=auto|git|none (see scripts/github-token), LOCKED=1 analyses the last check instead of
-# re-checking the refs, PACKAGES=0 skips the nuget.org download (fewer resolved symbols, fully offline after 1).
+# re-checking the refs, BINDINGS=bindings.json binds @unbound hints when storing, PACKAGES=0 skips the nuget.org download (fewer resolved symbols, fully offline after 1).
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
@@ -58,12 +60,27 @@ if [[ -f "$ts" ]] && grep -q '"extract"' "$ts"; then
 fi
 
 count=0
+imported=()
 while IFS=$'\t' read -r repo sha path; do
   dest="$artifacts/$repo/$sha"
   rm -rf "$dest.old"; [[ -d "$dest" ]] && mv "$dest" "$dest.old"
   mkdir -p "$artifacts/$repo"; mv "$staging/$repo/$sha" "$dest"; rm -rf "$dest.old"
   count=$((count + $(find "$dest" -name '*.jsonl' | wc -l)))
+  while IFS= read -r f; do imported+=("$f"); done < <(find "$dest" -name '*.jsonl' | sort)
 done < "$work/manifest.tsv"
 rm -rf "$work/src" "$staging"
+
+if [[ -n "${CE_DATABASE:-}" ]]; then
+  echo "== 4/4 import into PostgreSQL (CE_DATABASE)"
+  # The connection string is passed by name only, never on a command line. Network is needed to reach the database.
+  # From the sandbox, a database on the host is reachable as host.docker.internal (or set SANDBOX_NETWORK=host).
+  SANDBOX_PASS_ENV="CE_DATABASE" SANDBOX_SOURCES="" scripts/sandbox dotnet bash -c '
+    set -euo pipefail
+    ce="$1"; bindings="$2"; shift 2
+    dotnet "$ce" migrate
+    if [[ -n "$bindings" ]]; then dotnet "$ce" import --bindings "$bindings" "$@"; else dotnet "$ce" import "$@"; fi' _ "$ce" "${BINDINGS:-}" "${imported[@]}"
+else
+  echo "-- not storing: set CE_DATABASE=<Npgsql connection string> to import into PostgreSQL (BINDINGS=bindings.json to bind)"
+fi
 
 echo "== $count artifact(s) in $artifacts — a running 'make explore' reloads them automatically"

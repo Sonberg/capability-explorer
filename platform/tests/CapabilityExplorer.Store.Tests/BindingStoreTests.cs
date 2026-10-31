@@ -64,3 +64,63 @@ public sealed class BindingStoreTests(PostgresFixture db)
         Assert.NotEqual(first.SnapshotId, other.SnapshotId);
     }
 }
+
+/// <summary>The same command `scripts/analyze` runs for its optional store step, against a throwaway PostgreSQL.</summary>
+[Collection(DatabaseCollection.Name)]
+public sealed class ImportCommandTests(PostgresFixture db)
+{
+    private static string CeDll => Path.Combine(Fixtures.RepositoryRoot, "platform", "src", "CapabilityExplorer.Cli", "bin", "Debug", "net10.0", "ce.dll");
+
+    private static (int Exit, string Output) Ce(string connection, params string[] args)
+    {
+        Assert.True(File.Exists(CeDll), $"{CeDll} missing: run `make build` first");
+        var info = new System.Diagnostics.ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true };
+        info.ArgumentList.Add(CeDll);
+        foreach (var a in args)
+        {
+            info.ArgumentList.Add(a);
+        }
+
+        info.Environment["CE_DATABASE"] = connection; // by environment, never on the command line
+        using var p = System.Diagnostics.Process.Start(info)!;
+        var output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
+        p.WaitForExit();
+        return (p.ExitCode, output);
+    }
+
+    [Fact]
+    public async Task Import_with_bindings_stores_artifacts_and_the_bound_snapshot_and_repeats_as_a_no_op()
+    {
+        var files = new[] { "pricing-node/v1-base/_fixture_pricing.jsonl", "forecast-cs/v2-contract/Forecast.Api.jsonl" }
+            .Select(f => Path.Combine(Fixtures.ExpectedDirectory, f)).ToArray();
+        var bindings = Path.Combine(Fixtures.RepositoryRoot, "bindings.json");
+
+        var first = Ce(db.ConnectionString, ["import", "--bindings", bindings, .. files]);
+        Assert.True(first.Exit == 0, first.Output);
+        Assert.Contains("1 broken", first.Output, StringComparison.Ordinal);
+
+        var rows = await db.CountAsync("bound_edge");
+        var second = Ce(db.ConnectionString, ["import", "--bindings", bindings, .. files]);
+        Assert.True(second.Exit == 0, second.Output);
+        Assert.Contains("unchanged", second.Output, StringComparison.Ordinal);
+        Assert.Equal(rows, await db.CountAsync("bound_edge"));
+    }
+
+    [Fact]
+    public void A_bad_bindings_file_fails_before_anything_is_written()
+    {
+        var bad = Path.Combine(Path.GetTempPath(), $"bad-bindings-{Guid.NewGuid():N}.json");
+        File.WriteAllText(bad, """{"bindings":[{"hint":"nope","target":"x"}]}""");
+        try
+        {
+            var before = Directory.EnumerateFiles(Path.Combine(Fixtures.ExpectedDirectory, "web-ts"), "*.jsonl", SearchOption.AllDirectories).First();
+            var result = Ce(db.ConnectionString, "import", "--bindings", bad, before);
+            Assert.Equal(2, result.Exit);
+            Assert.Contains("not an unbound hint", result.Output, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(bad);
+        }
+    }
+}

@@ -4,7 +4,7 @@ Extracts a versioned model of architecture, dependencies, business concepts and 
 several codebases (C#, TypeScript/JavaScript, SQL). Every claim is traceable to an exact revision and
 source span.
 
-**Status: stage 2 (extractors).** A C# extractor (Roslyn) and a TypeScript/JavaScript extractor
+**Status: stage 3 started (persistence and binding).** A C# extractor (Roslyn) and a TypeScript/JavaScript extractor
 (TypeScript compiler API) produce the ce.v1 contract. Both are gated in CI against a reference fixture
 set with known answers, and `make analyze` runs them over the repositories of a capability. Also
 present: validators on both stacks, an idempotent PostgreSQL importer and the explorer UI.
@@ -16,7 +16,7 @@ Calculation extraction and SQL projects are not done yet.
 |---|---|
 | `schema/v1/` | `record.schema.json` (JSON Schema, the source of truth), `relations.json`, [rules](schema/README.md) |
 | `fixtures/` | Five fixture repos (C#, TypeScript/JavaScript, T-SQL, PostgreSQL) built deterministically from overlays, plus golden artifacts. See [fixtures/README.md](fixtures/README.md). |
-| `platform/` | .NET 10: `Contracts` (validator, evidence verifier), `Evaluation` (scoring against golden), `Store` (migrations, importer), `Cli` (`ce`), `Extractors.CSharp` (`ce-cs`), `Capabilities` (repository sets and source acquisition), `Interpretation` (optional LLM), `Explorer` (API + React/Tailwind UI), tests |
+| `platform/` | .NET 10: `Contracts` (validator, evidence verifier), `Binding` (service-map binding of `@unbound` hints), `Evaluation` (scoring against golden), `Store` (migrations, importer), `Cli` (`ce`), `Extractors.CSharp` (`ce-cs`), `Capabilities` (repository sets and source acquisition), `Interpretation` (optional LLM), `Explorer` (API + React/Tailwind UI), tests |
 | `extractors/ts/` | Node/TypeScript package: the TypeScript/JavaScript extractor (`ce-ts extract`) and the contract validator (ajv against the same schema). |
 | `scripts/sandbox` | Runs every build, install and test in a disposable container |
 
@@ -184,10 +184,36 @@ capability files and reloads when they change, and the UI refetches what it show
 - Calculations (the IR and its attributes) are not extracted yet. They are scored but not gated.
 - SQL projects (`.sqlproj`, migrations) are not extracted yet.
 - Edges into package code depend on the package versions the shared download folder holds.
+- Only `@unbound` hints in edge targets are bound; environment/IaC files as a binding source are not read yet (service map only).
 
 `make evaluate-cs` and `make evaluate-ts` run each extractor over every fixture revision. They score it
 against the golden units of its own languages using `fixtures/evaluation.extractors.json`. Graph
 recall, edge accuracy, evidence and precision are held at 100%. Both targets run in `make test`.
+
+### Storing analyses and binding unbound resources
+
+Storing is optional and off unless `CE_DATABASE` (an Npgsql connection string) is set:
+
+```sh
+CE_DATABASE='Host=host.docker.internal;Database=ce;Username=ce;Password=...' make analyze CAPABILITY=weekly-sales
+```
+
+Step 4 of `make analyze` then runs migrations and imports every artifact it just wrote. The importer is
+idempotent, and only this step gets the connection string. Tests start their own PostgreSQL with
+Testcontainers; nothing else touches a database.
+
+`bindings.json` is a human-maintained service map from an `@unbound:` hint to a concrete service or store
+(format in [schema/README.md](schema/README.md#unbound-resources)). It is read by both consumers:
+
+- `make explore` reads it (`BINDINGS=other.json` to change it). A bound `REQUESTS` edge becomes a link from the
+  caller's repository to the endpoint, drawn as *bound*. If the endpoint is missing in the selected revisions
+  (the forecast-cs `v2-contract` route change) the link is *broken*. The extractor's own edge stays unresolved
+  and is listed as the underlying fact.
+- `make analyze … BINDINGS=bindings.json` with `CE_DATABASE` also saves a binding snapshot: new `bound_edge`
+  rows, keyed by a hash of the artifacts and the bindings file, pointing at the extractor edge they came from.
+  `ce import --bindings bindings.json <artifacts…>` does the same by hand.
+
+Binding adds `human`-derived edges beside the facts. `node`, `edge` and `artifact` rows are never changed.
 
 ### Validating extractor output
 
@@ -259,6 +285,7 @@ golden set against itself and runs in CI as a self-check of the scorer.
   repositories, and views scoped to a capability's locked revisions.
 - `extractors/ts` tests: the same golden files validate against the same schema in TypeScript. The
   extractor is also tested on synthetic projects: routers, clients, SQL, messaging and plain JavaScript.
+- `BinderTests` / `BindingApiTests` / `BindingStoreTests` / `ImportCommandTests`: binding the FORECAST_API_URL hint to forecast-cs (bound in `v1-base`, broken in `v2-contract`), extractor edges untouched, malformed maps rejected, snapshots idempotent in PostgreSQL, and `ce import --bindings` end to end.
 - `LiveReloadTests`: new artifacts on disk raise the explorer's generation and replace the same unit.
 
 ## Next
