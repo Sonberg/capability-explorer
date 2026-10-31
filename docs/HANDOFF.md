@@ -136,3 +136,14 @@ terms/same-value links, and LLM proposals remain separate unimplemented layers.
 - `scripts/extract-fixtures.sh` re-parses the lock file with sed. A `ce` subcommand would be sturdier.
 - The explorer polls every 2 s. Fine locally, but worth making configurable.
 - The TypeScript 7 native compiler API: evaluate before upgrading beyond `typescript@5.9`.
+
+
+## C# transitive project visibility (issue #6, defect 1)
+
+The transitive-reference workstream propagates cached compilation references
+through acyclic project graphs and deduplicates by compilation identity. Direct
+DEPENDS_ON edges still describe only declared references. Synthetic chain,
+diamond/repeat-byte, missing-project and unrelated-project controls pass; the
+C# golden gate remains unchanged. See [execution evidence](plans/transitive-project-references.md).
+This does not fix framework selection, package version conflicts, older framework
+fallback, conditional MSBuild references, or other issue #6 mapping gaps.

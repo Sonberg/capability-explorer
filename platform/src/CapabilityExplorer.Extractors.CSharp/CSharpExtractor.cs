@@ -61,7 +61,8 @@ public sealed class CSharpExtractor(ExtractorOptions options)
 
                 var dep = Build(target, visiting);
                 references.Add(dep.Compilation.ToMetadataReference());
-                references.AddRange(dep.Compilation.References.Where(x => x is PortableExecutableReference pe && packageAssemblies.All(a => a != pe.FilePath)));
+                references.AddRange(dep.Compilation.References.Where(x => x is CompilationReference
+                    || x is PortableExecutableReference pe && packageAssemblies.All(a => a != pe.FilePath)));
             }
 
             var parse = new CSharpParseOptions(LanguageVersion.Latest);
@@ -72,7 +73,13 @@ public sealed class CSharpExtractor(ExtractorOptions options)
                 trees.Add(CSharpSyntaxTree.ParseText(string.Concat(usings.Select(u => $"global using global::{u};\n")), parse, path: "<implicit-usings>"));
             }
 
-            var compilation = CSharpCompilation.Create(p.AssemblyName, trees, references.DistinctBy(r => r.Display),
+            // Compilation references can share a display name; cached compilation identity also deduplicates diamonds.
+            var referencedCompilations = new HashSet<Compilation>(ReferenceEqualityComparer.Instance);
+            var referenceDisplays = new HashSet<string?>(StringComparer.Ordinal);
+            var distinctReferences = references.Where(r => r is CompilationReference cr
+                ? referencedCompilations.Add(cr.Compilation)
+                : referenceDisplays.Add(r.Display)).ToList();
+            var compilation = CSharpCompilation.Create(p.AssemblyName, trees, distinctReferences,
                 new CSharpCompilationOptions(p.IsExecutable ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: p.Nullable ? NullableContextOptions.Enable : NullableContextOptions.Disable, checkOverflow: p.CheckedArithmetic));
             var unit = new Unit(p, compilation, missingPackages, missingProjects, resolution.Resolved);
             compilations[p.FullPath] = unit;
