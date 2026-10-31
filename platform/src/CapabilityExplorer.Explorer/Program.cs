@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CapabilityExplorer.Explorer;
+using CapabilityExplorer.Interpretation;
 
 // ce-explorer --artifacts <dir>[,<dir>] [--repos <dir>] [--evaluation <report.json>] [--urls http://127.0.0.1:5080]
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -12,6 +13,10 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 // --artifacts/--repos/--evaluation arrive through configuration (command line, environment or test host).
 var options = ExplorerOptions.From(builder.Configuration);
 builder.Services.AddSingleton(_ => options.Build());
+
+// Optional intelligence layer: provider "none" unless configured (interpretation:provider = recorded | foundry).
+var interpretation = builder.Configuration.GetSection("interpretation").Get<InterpretationOptions>() ?? new InterpretationOptions();
+builder.Services.AddSingleton(new InterpretationLayer(interpretation, interpretation.CreateModel() is { } model ? new ExplanationService(model, interpretation.CacheDirectory) : null));
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
     o.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;

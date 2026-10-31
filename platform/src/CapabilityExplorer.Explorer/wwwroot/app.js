@@ -237,6 +237,7 @@ function resourceGroup(g) {
 
 let calcFilter = "";
 let highlight = true;
+let compareKeys = [];
 
 async function calculations(params) {
   clear(main, h("div", { class: "card muted" }, "Loading…"));
@@ -262,8 +263,16 @@ async function calculations(params) {
       return [a, Object.fromEntries(ordered.slice(1).map((v, i) => [v, `v${i % 6}`]))];
     }));
     clear(holder, h("div", { class: "table-wrap matrix" }, h("table", {},
-      h("thead", {}, h("tr", {}, h("th", {}, "Calculation"), h("th", {}, "Repository"), ATTRIBUTES.map((a) => h("th", {}, a)))),
+      h("thead", {}, h("tr", {}, h("th", { title: "Pick two to compare" }, "Compare"), h("th", {}, "Calculation"), h("th", {}, "Repository"), ATTRIBUTES.map((a) => h("th", {}, a)))),
       h("tbody", {}, rows.map((c) => h("tr", { class: `clickable${c.key === selectedKey ? " selected" : ""}`, onclick: () => { location.hash = `#/calculations?key=${encodeURIComponent(c.key)}`; } },
+        h("td", { onclick: (e) => e.stopPropagation() }, h("input", {
+          type: "checkbox", "aria-label": `Compare ${c.name}`, checked: compareKeys.includes(c.key),
+          onchange: (e) => {
+            compareKeys = e.target.checked ? [...compareKeys, c.key].slice(-2) : compareKeys.filter((k) => k !== c.key);
+            draw();
+            drawComparison();
+          },
+        })),
         h("td", {}, h("div", { style: "font-weight:600" }, c.name), h("div", { class: "small muted" }, `${c.language} · ${c.output.type}`)),
         h("td", { class: "small" }, c.repositoryId, h("div", { class: "muted" }, c.unit)),
         ATTRIBUTES.map((a) => {
@@ -273,13 +282,23 @@ async function calculations(params) {
         })))))));
   };
   filter.addEventListener("input", draw);
+  const compareBox = h("div", {});
+  const drawComparison = () => {
+    compareKeys = compareKeys.filter((k) => all.some((c) => c.key === k));
+    if (compareKeys.length < 2) {
+      clear(compareBox, compareKeys.length === 1 ? h("div", { class: "note" }, "Pick one more calculation to compare.") : null);
+      return;
+    }
+    comparisonPanel(compareBox, compareKeys[0], compareKeys[1]);
+  };
 
   clear(main,
     h("h1", {}, "Calculations"),
     h("p", { class: "muted" }, "Each row is one implementation, kept separate even when they look like the same business concept. Differences are what the code says; “unknown” means there is no evidence, not that a default applies."),
     h("div", { class: "row", style: "margin-bottom:10px" }, h("div", { style: "flex:1;max-width:420px" }, filter), toggle, h("span", { class: "muted small" }, `${all.length} calculations in the selected revisions`)),
-    holder, detail);
+    holder, compareBox, detail);
   draw();
+  drawComparison();
   const selected = all.find((c) => c.key === selectedKey);
   if (selected) {
     clear(detail, h("div", { style: "margin-top:12px" },
@@ -287,6 +306,65 @@ async function calculations(params) {
       calculationCard(selected),
       h("div", { class: "card" }, h("h3", { style: "margin-top:0" }, "Source"), selected.evidence.map((ev) => sourceView(api, ev, { open: true }).el))));
     detail.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+function attrText(a) {
+  if (!a) return h("span", { class: "attr-val unknown" }, "—");
+  if (a.status === "unknown") return h("span", { class: "attr-val unknown" }, "unknown");
+  const detail = a.detail ? Object.entries(a.detail).filter(([, v]) => typeof v === "number").map(([k, v]) => `${k} ${v}`).join(", ") : "";
+  return h("span", {}, h("span", { class: `attr-val ${a.status}` }, String(a.value ?? a.status)), detail ? h("span", { class: "small muted" }, ` (${detail})`) : null, a.status === "partial" ? pill("partial", "warn") : null);
+}
+
+async function comparisonPanel(box, a, b) {
+  clear(box, h("div", { class: "card muted" }, "Comparing…"));
+  let c;
+  try {
+    c = await api(withView(`/api/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`));
+  } catch (e) {
+    clear(box, h("div", { class: "card error" }, e.message));
+    return;
+  }
+  const kindLabel = { ValueDiffers: "different value", DetailDiffers: "different parameter", KnownOnOneSide: "known on one side only" };
+  const explanation = h("div", {});
+  const ai = meta.interpretation;
+  clear(box, h("div", { class: "card", style: "margin-top:12px" },
+    h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Comparison"),
+      pill("deterministic", "ok", "Computed from the extracted attributes; no model involved"),
+      c.sameExpression ? pill("same normalised expression", "info") : null),
+    h("p", { class: "small muted" },
+      h("a", { href: symbolHref(c.left.key) }, `${c.left.name}`), ` (${c.left.repositoryId}, ${c.left.outputType}) vs `,
+      h("a", { href: symbolHref(c.right.key) }, `${c.right.name}`), ` (${c.right.repositoryId}, ${c.right.outputType})`),
+    c.differences.length
+      ? table(["", "Attribute", c.left.name, c.right.name, "Kind"], c.differences.map((d) => [h("span", { class: "mono small muted" }, d.id), d.attribute, attrText(d.left), attrText(d.right), h("span", { class: "small muted" }, kindLabel[d.kind] ?? d.kind)]))
+      : h("p", {}, "No attribute differs."),
+    c.agreements.length ? h("p", { class: "small muted" }, "Same on both: ", c.agreements.join(", ")) : null,
+    c.unknownOnBoth.length ? h("p", { class: "small muted" }, "Unknown on both (no evidence either side): ", c.unknownOnBoth.join(", ")) : null,
+    c.differences.length === 0 ? null : ai.enabled
+      ? h("div", { class: "row", style: "margin-top:8px" },
+          h("button", { class: "button", onclick: () => explain(explanation, a, b) }, "Explain differences"),
+          h("span", { class: "small muted" }, `Optional AI proposal via ${ai.model}. Only the attribute table above is sent.`))
+      : h("p", { class: "small muted" }, "LLM integration is off — this comparison is complete without it. Configure ", h("span", { class: "mono" }, "interpretation:provider"), " to get written explanations."),
+    explanation));
+}
+
+async function explain(box, a, b) {
+  clear(box, h("p", { class: "muted small" }, "Asking the model…"));
+  try {
+    const res = await fetch("/api/explanations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ a, b, view: viewSpec() }) });
+    const p = await res.json();
+    if (!res.ok) throw new Error(p.error ?? res.statusText);
+    if (p.status !== "proposed") {
+      clear(box, h("div", { class: "note" }, h("strong", {}, "The model's answer was rejected and is not shown. "), p.problems.join("; ")));
+      return;
+    }
+    clear(box, h("div", { class: "proposal" },
+      h("div", { class: "row" }, pill("AI proposal", "warn"), pill(p.reviewStatus), h("span", { class: "small muted" }, `${p.model} · ${p.promptVersion}${p.cached ? " · cached" : ""}`)),
+      h("p", {}, p.summary),
+      h("ul", {}, p.points.map((pt) => h("li", {}, h("span", { class: "mono small muted" }, `${pt.differenceId} `), pt.text))),
+      h("div", { class: "small muted" }, `Input ${p.inputHash.slice(0, 12)} — explains only the differences listed above; it does not change any extracted fact.`)));
+  } catch (e) {
+    clear(box, h("div", { class: "note error" }, e.message));
   }
 }
 

@@ -1,6 +1,8 @@
 # Intelligence layer on Microsoft Foundry (proposal)
 
-Status: proposal for stage 6 ("Domän och granskning"). Nothing in this repository calls a model yet.
+Status: the first task (difference explanations) is implemented in
+`platform/src/CapabilityExplorer.Interpretation` and is **optional**: the default provider is `none`, and
+the platform works fully without it. Concept proposals and links remain a proposal for stage 6.
 
 ## Why Foundry fits
 

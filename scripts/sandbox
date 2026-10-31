@@ -25,6 +25,8 @@
 # Environment knobs (host side):
 #   SANDBOX_EXTRA_CA_FILE  extra CA bundle to trust (e.g. a TLS-intercepting egress proxy)
 #   SANDBOX_NETWORK        docker network to use when not --offline (default: bridge)
+#   SANDBOX_PASS_ENV       comma-separated host variables to forward, e.g. CE_FOUNDRY_API_KEY.
+#                          Nothing is forwarded unless named here; ignored with --offline.
 #   SANDBOX_DOTNET_IMAGE / SANDBOX_NODE_IMAGE   override images
 set -euo pipefail
 
@@ -92,6 +94,14 @@ if [[ -n "$port" ]]; then
   [[ $offline -eq 0 ]] || { echo "--port cannot be combined with --offline" >&2; exit 2; }
   [[ "$port" =~ ^[0-9]+$ ]] || { echo "--port needs a number" >&2; exit 2; }
   args+=(-p "127.0.0.1:$port:$port" -e ASPNETCORE_URLS="http://0.0.0.0:$port")
+fi
+
+if [[ -n "${SANDBOX_PASS_ENV:-}" && $offline -eq 0 ]]; then
+  IFS=',' read -ra pass <<<"$SANDBOX_PASS_ENV"
+  for name in "${pass[@]}"; do
+    [[ "$name" =~ ^[A-Z_][A-Z0-9_]*$ ]] || { echo "SANDBOX_PASS_ENV: invalid variable name '$name'" >&2; exit 2; }
+    [[ -n "${!name:-}" ]] && args+=(-e "$name")
+  done
 fi
 
 if [[ -n "${SANDBOX_EXTRA_CA_FILE:-}" ]]; then

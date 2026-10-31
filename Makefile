@@ -18,6 +18,8 @@ help:
 	@echo "make golden          regenerate fixtures/expected from fixtures/golden/facts"
 	@echo "make fixtures-compile  check every fixture revision compiles (or fails) as intended"
 	@echo "make explore [ARTIFACTS=dir] [EVALUATION=report.json] [PORT=5080]  browse the model at http://127.0.0.1:5080"
+	@echo "     optional LLM: INTERPRETATION=foundry FOUNDRY_ENDPOINT=... FOUNDRY_DEPLOYMENT=... (key via SANDBOX_PASS_ENV=CE_FOUNDRY_API_KEY)"
+	@echo "                   INTERPRETATION=recorded RECORDINGS=dir  replays stored responses, no network model"
 	@echo "make evaluate ACTUAL=out/ [REPO=id,id]  score extractor output against fixtures/expected (report: out/evaluation.json)"
 
 ci: fixtures-compile test
@@ -74,7 +76,7 @@ evaluate: fixtures build
 	  $(if $(REPO),--repository $(REPO))
 
 test-explorer: fixtures build
-	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Explorer.Tests'
+	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Explorer.Tests && dotnet test --no-build tests/CapabilityExplorer.Interpretation.Tests'
 
 # Read-only UI over artifacts. The container publishes the port on 127.0.0.1 only.
 ARTIFACTS ?= fixtures/expected
@@ -82,7 +84,12 @@ PORT ?= 5080
 explore: fixtures build
 	@echo "Capability Explorer: http://127.0.0.1:$(PORT)"
 	$(SANDBOX) --port $(PORT) dotnet dotnet platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll \
-	  --artifacts $(ARTIFACTS) --repos fixtures/.repos $(if $(EVALUATION),--evaluation $(EVALUATION))
+	  --artifacts $(ARTIFACTS) --repos fixtures/.repos $(if $(EVALUATION),--evaluation $(EVALUATION)) \
+	  $(if $(INTERPRETATION),--interpretation:provider $(INTERPRETATION) --interpretation:cacheDirectory .sandbox-cache/interpretations) \
+	  $(if $(FOUNDRY_ENDPOINT),--interpretation:endpoint $(FOUNDRY_ENDPOINT)) \
+	  $(if $(FOUNDRY_DEPLOYMENT),--interpretation:deployment $(FOUNDRY_DEPLOYMENT)) \
+	  $(if $(RECORDINGS),--interpretation:recordings $(RECORDINGS)) \
+	  $(if $(RECORD_TO),--interpretation:recordTo $(RECORD_TO))
 
 # Needs the Docker socket so Testcontainers can start PostgreSQL (see scripts/sandbox --docker).
 test-store: build

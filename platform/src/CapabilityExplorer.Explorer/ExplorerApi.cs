@@ -1,3 +1,5 @@
+using CapabilityExplorer.Interpretation;
+
 namespace CapabilityExplorer.Explorer;
 
 public sealed record ExplorerOptions(IReadOnlyList<string> ArtifactDirectories, string? RepositoriesDirectory, string? EvaluationReport)
@@ -21,8 +23,9 @@ public static class ExplorerApi
     {
         var api = app.MapGroup("/api");
 
-        api.MapGet("/meta", (ExplorerIndex index) => new
+        api.MapGet("/meta", (ExplorerIndex index, InterpretationLayer interpretation) => new
         {
+            interpretation = new { enabled = interpretation.Enabled, provider = interpretation.Options.Provider, model = interpretation.Explanations?.ModelId },
             revisions = index.Revisions,
             defaultView = index.DefaultSelection,
             artifacts = index.Artifacts.Count,
@@ -46,6 +49,40 @@ public static class ExplorerApi
             Changes.Compare(index, repo, from, to) is { } report ? Results.Ok(report) : Results.NotFound(new { error = "unknown repository or revision" }));
 
         api.MapGet("/artifacts", (ExplorerIndex index) => Queries.Artifacts(index));
+
+        // Deterministic comparison: always available, no model involved.
+        api.MapGet("/compare", (ExplorerIndex index, string a, string b, string? view) =>
+            Comparisons.Compare(index.View(view), a, b) is { } c
+                ? Results.Ok(Comparisons.ToDto(c))
+                : Results.NotFound(new { error = "both calculations must exist in the selected revisions" }));
+
+        // Optional: an AI-written explanation of the deterministic comparison. Off unless a provider is configured.
+        api.MapPost("/explanations", async (ExplorerIndex index, InterpretationLayer interpretation, ExplainRequest request, CancellationToken ct) =>
+        {
+            if (interpretation.Explanations is not { } service)
+            {
+                return Results.Json(new { error = "LLM integration is disabled (interpretation:provider = none)", enabled = false }, statusCode: StatusCodes.Status409Conflict);
+            }
+
+            if (Comparisons.Compare(index.View(request.View), request.A, request.B) is not { } comparison)
+            {
+                return Results.NotFound(new { error = "both calculations must exist in the selected revisions" });
+            }
+
+            if (comparison.Differences.Count == 0)
+            {
+                return Results.UnprocessableEntity(new { error = "the calculations do not differ in any attribute; nothing to explain" });
+            }
+
+            try
+            {
+                return Results.Ok(await service.ExplainAsync(comparison, ct));
+            }
+            catch (InterpretationUnavailableException e)
+            {
+                return Results.Json(new { error = e.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        });
 
         // Only files that an artifact cites, at that artifact's commit: the explorer is not a general file server.
         api.MapGet("/source", (ExplorerIndex index, string repo, string commit, string path, int? start, int? end) =>

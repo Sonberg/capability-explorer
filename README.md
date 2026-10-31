@@ -51,12 +51,32 @@ artifacts. It runs in the sandbox and publishes on `127.0.0.1` only.
   labelled a candidate while the base URL is unbound); channels and tables grouped by name with every
   distinct key kept apart.
 - **Calculations**: all implementations side by side. Values that differ from the most common value in
-  a column are highlighted. `unknown` is shown as unknown, never filled in.
+  a column are highlighted. `unknown` is shown as unknown, never filled in. Tick two rows for a
+  deterministic attribute-by-attribute comparison.
 - **Changes**: diff two revisions of a repository. You get continuity candidates with reasons (rename,
   move), logic and attribute changes with possible static consumers, added and removed symbols, and
   *not observed* instead of removed for partial analyses.
 - **Artifacts** and **Evaluation**: coverage, diagnostics and rejected files, plus the `ce evaluate`
   report when one is loaded.
+
+#### Optional LLM explanations
+
+The intelligence layer is **off by default** (`interpretation:provider = none`). Everything above,
+including comparisons, works without it, and nothing is sent anywhere. When it is enabled, the
+comparison panel gets an *Explain differences* button. The model receives only the deterministic
+attribute table, never source or file paths. Its answer must cite those differences or it is
+rejected. The result is shown as an unreviewed AI proposal.
+
+```sh
+# Microsoft Foundry (OpenAI-compatible v1 endpoint). The key is read from CE_FOUNDRY_API_KEY;
+# without a key, Entra ID (DefaultAzureCredential) is used.
+SANDBOX_PASS_ENV=CE_FOUNDRY_API_KEY make explore INTERPRETATION=foundry \
+  FOUNDRY_ENDPOINT=https://<resource>.services.ai.azure.com FOUNDRY_DEPLOYMENT=<deployment> [RECORD_TO=recordings/]
+# Replay stored responses (no live model), as the tests do:
+make explore INTERPRETATION=recorded RECORDINGS=recordings/
+```
+
+See [docs/intelligence-layer.md](docs/intelligence-layer.md).
 
 Source is read with `git show` from `fixtures/.repos`, and only for files an artifact cites. All
 repository content is rendered as text, never as markup.
@@ -122,6 +142,10 @@ golden set against itself and runs in CI as a self-check of the scorer.
   and checks that the scorer reports exactly that finding and moves exactly that metric.
 - `ExplorerApiTests`: the explorer API surfaces the planted scenarios (renames, contract breaks, partial
   analyses, same-named channels) and refuses to serve uncited files.
+- `InterpretationTests` / `InterpretationApiTests`: the deterministic comparer on the planted variants,
+  the layer off by default (409, everything else works), and on with a recorded provider. Invalid model
+  output is rejected, responses are cached by input hash, and the Foundry client is tested against a fake
+  HTTP endpoint. No test calls a live model.
 - `extractors/ts` tests: the same golden files validate against the same schema in TypeScript.
 
 ## Next (stage 2)

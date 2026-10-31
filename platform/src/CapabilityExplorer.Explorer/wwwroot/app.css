@@ -177,3 +177,9 @@ tr.selected td { background: var(--accent-soft); }
 .diff-from { color: var(--bad); text-decoration: line-through; }
 .diff-to { color: var(--ok); }
 details > summary { cursor: pointer; }
+
+.button { border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 6px; padding: 6px 14px; cursor: pointer; font-weight: 600; }
+.button:hover { filter: brightness(1.08); }
+@media (prefers-color-scheme: dark) { .button { color: #10131c; } }
+.proposal { margin-top: 12px; border: 1px dashed var(--warn); border-radius: var(--radius); padding: 10px 14px; background: var(--warn-soft); }
+.proposal ul { margin: 6px 0; padding-left: 18px; }
