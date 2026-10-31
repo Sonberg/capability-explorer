@@ -62,3 +62,29 @@ re-review found no remaining blockers. All88 tests execute these assertions.
 Brain closeout: sparc/capability-cards.md#sparc; no additional runtime dependency.
 Browser behavior and full cross-project CI remain pending. No provider API spend
 invoked; native worker monetary cost unavailable, no numeric savings claimed.
+
+## Refinement
+
+User-requested conflict resolution for PR #5 reconciled upstream924b32b (analysis
+job cancellation). PR #5 merge66571bc preserves analyze-worker and all local-CI
+Makefile targets; glossary branch incorporated it cleanly as2149b51.
+Post-merge `make explore GITHUB_AUTH=none` built the UI/solution successfully, then
+focused no-build sandbox tests passed Explorer89, Interpretation28, Capabilities28,
+zero failures/skips. Log /private/tmp/ce-glossary-r-tests.log.
+
+A real Chrome156 browser via CDP exercised the running localhost5080 feature:
+weekly-sales scope31 candidates; search narrows average labels; active-week detail
+opens actual exact-revision source; api-cs v1 switches to a distinct calendar-week
+candidate; demand-pricing scope54 candidates with no stale previous source panel;
+search-empty and empty capability states; unknown types; simulated network failure
+and recovery. Metadata:18 artifacts, problems[], interpretation disabled, no
+similarity database. Browser result log /private/tmp/ce-glossary-browser-results.json;
+screenshot /private/tmp/ce-glossary-browser.png. The network failure was simulated
+in the browser fetch boundary, not an asserted production outage.
+
+R rubric: acceptance40/40, determinism20/20, failure/boundaries20/20, interactive
+UI20/20; grade100/100, iteration1. Independent review blockers resolved and
+re-reviewed before this gate. Brain closeout: sparc/capability-cards.md#sparc.
+Not tested: every browser/device, concurrent live artifact mutations, or performance
+at production-scale datasets. No paid API calls; dollar spend/savings unknown.
+Full cross-project CI on the final glossary commit remains the completion gate.
