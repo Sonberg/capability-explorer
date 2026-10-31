@@ -1,4 +1,4 @@
-Active authorized Brain Build: issue #6 defect 1, transitive C# project visibility. This follows PR #8, now independently verified as mergeable with hosted CI SUCCESS. Fresh main remains98be7a4. PR #8 is still open: begin implementation from main after it lands so the required alignment guards are present; do not merge it automatically. Revisit #3, HANDOFF and all active claims before starting.
+Active authorized Brain Build: issue #6 defect 1, transitive C# project visibility. This follows PR #8, now independently verified as mergeable with hosted CI SUCCESS. Fresh main remains98be7a4. The operator explicitly authorized current main plus PR #8 as a dependency while it remains open; do not merge it automatically. Revisit #3, HANDOFF and all active claims before starting.
 
 ## GOAL
 
@@ -6,7 +6,7 @@ Active authorized Brain Build: issue #6 defect 1, transitive C# project visibili
 
 ## ASSUMPTIONS
 
-- <repository>Sonberg/capability-explorer</repository>; Tigon32; fresh origin/main only. Integrate required pending work after it lands; do not silently stack on an outdated branch.
+- <repository>Sonberg/capability-explorer</repository>; Tigon32; fresh origin/main plus explicitly authorized PR #8 c6b85a6. Refresh main at integration and before CI/PR; do not silently omit newer commits.
 - Scope is issue #6 defect 1 only. Historical Glufs diagnostic counts are not a reproduced benchmark.
 - Preserve portable/package assembly resolution, framework selection, fixtures, locks, schema and thresholds. No package-version unification, older-framework fallback, Next.js rules, URL normalization or bindings.
 - Existing cached compilation, missing-reference and cycle behavior remains. Conditional ProjectReference, ReferenceOutputAssembly, DisableTransitiveProjectReferences and full MSBuild evaluation are separate work.
@@ -70,3 +70,16 @@ can be O(V squared) in dense DAGs. No new global scan or package resolution.
 Cycles/missing references follow existing guard. Direct declared DEPENDS_ON
 emission remains untouched. Tests must show actual pre-fix failure, then passing
 chain/diamond/negative controls and repeat byte equality after integration.
+
+
+Pseudocode gate: the frozen closure/identity/error contract above covers all
+acceptance cases and bounds dense-DAG storage. Pre-fix test commitc7c8130 produced
+15 passed/2 expected failed/0 skipped, build0 warnings/errors: chain/diamond
+reported COMPILER_CS0012 and missing resolved calls, while negative controls
+passed. Log /private/tmp/ce-transitive-tests-prefix.log (sha256
+f1cd0648f0012cdace20951f5a838e042e4068b2e71b6caa1ed68783d05d925b).
+After implementationb6c3688 integration as710ac7d, `make test-extractors` passed
+17/17 with0 skips and build0 warnings/errors; log /private/tmp/ce-transitive-fixed.log.
+P100/100, iteration1: closure40/identity40/failures20. Brain closeout returned
+sparc/CARD/sparc-card; no new runtime primitive needed. No paid provider calls;
+native spend unknown. Broad framework/duplicate-assembly semantics untested.
