@@ -13,6 +13,27 @@ C#, TypeScript/JavaScript and the supported SQL routine calculations are extract
 
 Shared terminology: [ubiquitous language](docs/ubiquitous-language.md).
 
+## Before pushing
+
+Install Docker and GitHub CLI, then run `gh extension install nektos/gh-act --pin v0.2.94`.
+Download the pinned local runner once:
+
+```sh
+docker pull catthehacker/ubuntu:act-24.04@sha256:c58e2b364da03b0c804c7d660f2ecbedf2f221a382b9baa0b344b0144780ff43
+```
+
+Run `make install-git-hooks` once in each clone. `make local-check` executes the full
+GitHub CI job locally: action advisory audit, Trivy High/Critical dependency scan
+(including dev dependencies), fixture compilation, all tests and golden gates.
+The pre-push hook requires a clean checkout of the outgoing commit and blocks on
+failure. Package, image and vulnerability database downloads are cached locally.
+
+Wayne Ashley Berry's `gh-act` is a dependency auditor, so it is invoked separately
+by `scripts/actions-audit` using the host GitHub login before act starts, to avoid replacing the Nektos runner's `gh act` command.
+`make actions-audit` and `make security-check` run those focused checks. This setup
+applies project-wide; see [MADR-0003](docs/adr/0003-local-ci-before-push.md) for the
+policy, limits, pinned tools and hook installation behavior. Hosted CI remains required.
+
 ## Layout
 
 | Path | Content |

@@ -47,6 +47,8 @@ new_repo() {
   repo="$scratch/repo-$count"
   mkdir -p "$repo/scripts" "$repo/config/git-hooks" "$repo/.github/workflows"
   cp "$source_root/scripts/local-check" "$source_root/scripts/install-git-hooks" "$repo/scripts/"
+  printf '#!/bin/sh\nexit "${ACT_TEST_AUDIT_FAIL:-0}"\n' > "$repo/scripts/actions-audit"
+  chmod +x "$repo/scripts/actions-audit"
   cp "$source_root/config/git-hooks/pre-push" "$repo/config/git-hooks/"
   printf '.sandbox-cache/\n' > "$repo/.gitignore"
   echo 'name: fixture' > "$repo/.github/workflows/ci.yml"
@@ -59,13 +61,19 @@ new_repo() {
   git add .
   git commit -qm initial
   rm -f "$ACT_TEST_LOG" "$ACT_TEST_ENV_LOG"
-  unset ACT_TEST_FAIL ACT_TEST_CHANGE ACT_TEST_CHANGE_HEAD ACT_TEST_VERSION ACT_TEST_DOCKER_FAIL ACT_TEST_IMAGE_FAIL
+  unset ACT_TEST_AUDIT_FAIL ACT_TEST_FAIL ACT_TEST_CHANGE ACT_TEST_CHANGE_HEAD ACT_TEST_VERSION ACT_TEST_DOCKER_FAIL ACT_TEST_IMAGE_FAIL
   unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
   unset LOCAL_CI_EXPECTED_HEAD
   zero=0000000000000000000000000000000000000000
   head="$(git rev-parse HEAD)"
 }
 refs() { printf 'refs/heads/main %s refs/heads/main %s\n' "$head" "$zero"; }
+
+new_repo
+export ACT_TEST_AUDIT_FAIL=19
+expect_failure scripts/local-check
+not_run
+pass 'failed host action advisory audit blocks runner'
 
 new_repo
 export GH_TOKEN=fixture-token GITHUB_TOKEN=fixture-token GH_ENTERPRISE_TOKEN=fixture-token GITHUB_ENTERPRISE_TOKEN=fixture-token

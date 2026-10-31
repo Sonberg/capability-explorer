@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Wayne Ashley Berry's dependency auditor, isolated from nektos' `gh act` runner.
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+[[ $# -le 1 && "${1:-audit}" == audit ]] || { echo 'usage: scripts/actions-audit [audit]' >&2; exit 2; }
+version=2.7.0
+case "$(uname -s)/$(uname -m)" in
+  Darwin/arm64) platform=darwin-arm64; digest=1408cc91462f9dead6f69a80e6fe8e4f37efa09484c24b75ef9a433e87428c80 ;;
+  Darwin/x86_64) platform=darwin-amd64; digest=f270f8590db69a9adcfb9e98914500c7eff7e09bf0cac6bdc762cce74ac8ae25 ;;
+  Linux/aarch64|Linux/arm64) platform=linux-arm64; digest=9aaaeb39c1d40b064c3108e4a5e27ae0b7d2383535b0f87076ff6b21a1c63112 ;;
+  Linux/x86_64) platform=linux-amd64; digest=4691f3cdf5b66a853f9903ac4c283ae119a4392d58bed56853d9678d38c227ff ;;
+  *) echo 'Actions auditor supports macOS/Linux on arm64/amd64' >&2; exit 2 ;;
+esac
+checksum() {
+  if command -v sha256sum >/dev/null; then sha256sum "$1" | awk '{print $1}';
+  else shasum -a 256 "$1" | awk '{print $1}'; fi
+}
+cache="$root/.sandbox-cache/tools"
+mkdir -p "$cache"
+binary="$cache/actions-audit-$version-$platform"
+if [[ ! -f "$binary" ]]; then
+  temporary="$(mktemp "$cache/actions-audit-download.XXXXXX")"
+  trap 'rm -f "$temporary"' EXIT
+  curl --fail --location --silent --show-error \
+    "https://github.com/wayneashleyberry/gh-act/releases/download/v$version/$platform" -o "$temporary"
+  [[ "$(checksum "$temporary")" == "$digest" ]] || { echo 'Actions auditor download checksum mismatch' >&2; exit 1; }
+  chmod +x "$temporary"
+  mv "$temporary" "$binary"
+  trap - EXIT
+fi
+[[ "$(checksum "$binary")" == "$digest" ]] || { echo 'Cached actions auditor checksum mismatch' >&2; exit 1; }
+cd "$root"
+printf 'Auditing workflow dependencies with wayneashleyberry/gh-act v%s (%s)\n' "$version" "$platform"
+exec "$binary" audit --exit-code --min-severity high --no-md
