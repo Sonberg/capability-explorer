@@ -282,3 +282,68 @@ public sealed class FoundryChatModelTests
         Assert.Contains(message, e.Message, StringComparison.Ordinal);
     }
 }
+
+public sealed class FoundryEmbeddingModelTests
+{
+    private sealed class Handler(string body) : HttpMessageHandler
+    {
+        public HttpRequestMessage? Request { get; private set; }
+
+        public string? RequestBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Request = request;
+            RequestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+        }
+    }
+
+    [Fact]
+    public async Task Posts_a_batch_to_the_v1_embeddings_endpoint_and_returns_vectors_in_input_order()
+    {
+        // The service may answer out of order; "index" says which input each vector belongs to.
+        var handler = new Handler("""{"data":[{"index":1,"embedding":[0.5,0.25]},{"index":0,"embedding":[1,0]}]}""");
+        using var http = new HttpClient(handler);
+        var model = new FoundryEmbeddingModel(http, new Uri("https://res.services.ai.azure.com/"), "emb", "k3y", null);
+
+        var vectors = await model.EmbedAsync(["first", "second"]);
+
+        Assert.Equal("https://res.services.ai.azure.com/openai/v1/embeddings", handler.Request!.RequestUri!.ToString());
+        Assert.Equal("k3y", handler.Request.Headers.GetValues("api-key").Single());
+        using var body = JsonDocument.Parse(handler.RequestBody!);
+        Assert.Equal("emb", body.RootElement.GetProperty("model").GetString());
+        Assert.Equal(["first", "second"], body.RootElement.GetProperty("input").EnumerateArray().Select(i => i.GetString()));
+        Assert.Equal([[1f, 0f], [0.5f, 0.25f]], vectors);
+        Assert.Equal("foundry:emb", model.Id);
+    }
+
+    [Fact]
+    public async Task A_missing_vector_is_unavailable_not_a_crash()
+    {
+        using var http = new HttpClient(new Handler("""{"data":[{"index":0,"embedding":[1]}]}"""));
+        var model = new FoundryEmbeddingModel(http, new Uri("https://res.services.ai.azure.com"), "emb", "k", null);
+        await Assert.ThrowsAsync<InterpretationUnavailableException>(() => model.EmbedAsync(["a", "b"]));
+    }
+}
+
+public sealed class FoundrySettingsTests
+{
+    [Fact]
+    public void Saved_settings_round_trip_owner_only_and_switch_the_provider_on()
+    {
+        var path = Path.Combine(Directory.CreateTempSubdirectory("ce-settings").FullName, "nested", "foundry.json");
+        new FoundrySettings("https://res.services.ai.azure.com", "", "emb", "secret").Save(path);
+
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
+        }
+
+        var options = FoundrySettings.Load(path)!.ApplyTo(new InterpretationOptions { CacheDirectory = "cache" });
+        Assert.Equal(("foundry", null, "emb", "secret", "cache"), (options.Provider, options.Deployment, options.EmbeddingDeployment, options.ApiKey, options.CacheDirectory));
+        Assert.Null(options.CreateModel()); // embeddings only: no chat deployment
+        Assert.Equal("foundry:emb", options.CreateEmbeddingModel()!.Id);
+        Assert.Null(FoundrySettings.Load(path + ".missing"));
+    }
+}

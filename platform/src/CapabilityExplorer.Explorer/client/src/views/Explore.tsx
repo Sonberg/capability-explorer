@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { shortSha, type Calculation, type Edge, type SearchHit, type SymbolDetail } from "../api";
+import { shortSha, type Calculation, type Edge, type SearchHit, type SimilarHit, type SymbolDetail } from "../api";
 import { Formula, shortTarget } from "../components/formula";
 import { EvidenceLinks, SourceView } from "../components/source";
 import { KindPill, ResolutionPill, SymbolLink } from "../components/symbols";
@@ -150,9 +150,38 @@ function Symbol({ symbolKey }: { symbolKey: string }) {
         ))}
       </Card>
       {d.calculation && <CalculationCard calculation={d.calculation} />}
+      {meta.similarity.database && meta.similarity.embeddings && <Similar symbolKey={symbolKey} />}
       <EdgeTable title="Outgoing" edges={d.outgoing} side="to" />
       <EdgeTable title="Incoming" edges={d.incoming} side="from" />
     </div>
+  );
+}
+
+/** Nearest symbols by embedding (pgvector), within the selected revisions. */
+function Similar({ symbolKey }: { symbolKey: string }) {
+  const { scope } = useSelection();
+  const { data, error } = useApi<SimilarHit[]>(`/api/similar?key=${encodeURIComponent(symbolKey)}&k=8&${scope}`);
+  return (
+    <Card>
+      <H2>Similar functionality</H2>
+      {error && <Muted className="text-xs">{error}</Muted>}
+      {!data && !error && <Muted>Loading…</Muted>}
+      {data?.length === 0 && <Muted>Not embedded yet, or nothing similar in the selected revisions.</Muted>}
+      {data && data.length > 0 && (
+        <Table
+          columns={["Symbol", "Repository", "Similarity"]}
+          rows={data.map((h) => [
+            <span className="inline-flex flex-wrap items-center gap-1.5">
+              <a href={symbolHref(h.key)} className="font-medium">{h.name}</a>
+              <KindPill kind={h.kind} />
+              {h.hasCalculation && <Pill tone="info">calculation</Pill>}
+            </span>,
+            h.repositoryId,
+            <Mono className="text-xs">{h.score.toFixed(2)}</Mono>,
+          ])}
+        />
+      )}
+    </Card>
   );
 }
 

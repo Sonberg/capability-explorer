@@ -21,13 +21,16 @@ help:
 	@echo "make explore [ARTIFACTS=dir] [EVALUATION=report.json] [CAPABILITIES=file] [SOURCES=/abs/repo,...] [PORT=5080]"
 	@echo "     browse the model at http://127.0.0.1:5080"
 	@echo "     private GitHub repos: GITHUB_TOKEN, or 'gh auth login'; GITHUB_AUTH=git also tries the git credential helper"
-	@echo "     optional LLM: INTERPRETATION=foundry FOUNDRY_ENDPOINT=... FOUNDRY_DEPLOYMENT=... (key via SANDBOX_PASS_ENV=CE_FOUNDRY_API_KEY)"
+	@echo "     optional LLM: Settings page (gear icon), or INTERPRETATION=foundry FOUNDRY_ENDPOINT=... FOUNDRY_DEPLOYMENT=... (key: CE_FOUNDRY_API_KEY)"
+	@echo "     Cmd/Ctrl+K: command menu; with CE_DATABASE and an embedding deployment also similar functionality (vector search)"
 	@echo "                   INTERPRETATION=recorded RECORDINGS=dir  replays stored responses, no network model"
 	@echo "make evaluate ACTUAL=out/ [REPO=id,id]  score extractor output against fixtures/expected (report: out/evaluation.json)"
 	@echo "make analyze CAPABILITY=id  check out, extract and store artifacts for one capability (picked up live by explore)"
 	@echo "     GITHUB_AUTH=auto|git|none  LOCKED=1 (analyse the last check)  PACKAGES=0 (skip nuget.org downloads)"
 	@echo "     private NuGet feeds: nuget.config in the repo, credentials via %VAR% + NUGET_PASS_ENV=VAR,VAR (only the packages step sees them)"
 	@echo "     CE_DATABASE='Host=...;Database=...;...' also imports into PostgreSQL (off otherwise); BINDINGS=bindings.json binds @unbound hints"
+	@echo "     with CE_DATABASE and Foundry (explorer Settings page, or CE_FOUNDRY_ENDPOINT + CE_FOUNDRY_EMBEDDING_DEPLOYMENT) it also embeds for similarity search"
+	@echo "     PostgreSQL needs pgvector: docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=ce pgvector/pgvector:pg17"
 	@echo "make evaluate-cs     run the C# extractor over every fixture revision and gate it on the csharp golden units"
 	@echo "make evaluate-ts     same for the TypeScript/JavaScript extractor"
 	@echo "make evaluate-sql    same for the SQL extractor (T-SQL projects, PostgreSQL migrations)"
@@ -147,7 +150,7 @@ explore: fixtures build
 	@# Local capability repositories (absolute or ~/ paths in $(CAPABILITIES)) are mounted read-only, and the
 	@# host's home is forwarded so ~ means the same thing inside the container.
 	GITHUB_TOKEN="$$(scripts/github-token $(GITHUB_AUTH))" CE_HOST_HOME="$$HOME" \
-	SANDBOX_PASS_ENV="$${SANDBOX_PASS_ENV:+$$SANDBOX_PASS_ENV,}GITHUB_TOKEN,CE_HOST_HOME" \
+	SANDBOX_PASS_ENV="$${SANDBOX_PASS_ENV:+$$SANDBOX_PASS_ENV,}GITHUB_TOKEN,CE_HOST_HOME,CE_DATABASE,CE_FOUNDRY_API_KEY" \
 	SANDBOX_SOURCES="$$(s="$(SOURCES)"; c="$$(scripts/capability-sources $(CAPABILITIES))"; echo "$${s}$${s:+$${c:+,}}$${c}")" \
 	$(SANDBOX) --port $(PORT) dotnet dotnet platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll \
 	  --artifacts $(ARTIFACTS) --repos fixtures/.repos $(if $(EVALUATION),--evaluation $(EVALUATION)) \

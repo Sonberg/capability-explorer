@@ -1,7 +1,8 @@
 import { request, type Meta } from "./api";
 import { ErrorBox, Loading } from "./components/ui";
 import { href, SelectionProvider, useApi, useRoute, useSelection } from "./state";
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { CommandPalette } from "./components/CommandPalette";
 import { Artifacts } from "./views/Artifacts";
 import { Calculations } from "./views/Calculations";
 import { Capabilities } from "./views/Capabilities";
@@ -9,6 +10,7 @@ import { Changes } from "./views/Changes";
 import { Evaluation } from "./views/Evaluation";
 import { Explore } from "./views/Explore";
 import { Integrations } from "./views/Integrations";
+import { Settings } from "./views/Settings";
 
 // The canvas pulls in React Flow and dagre; load it only when opened.
 const ArchitectureView = lazy(() => import("./views/Architecture").then((m) => ({ default: m.ArchitectureView })));
@@ -54,8 +56,11 @@ function useLiveReload(generation: number | undefined, reload: () => void) {
 function Shell() {
   const route = useRoute();
   const view = route.path;
+  const [palette, setPalette] = useState(false);
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform);
   return (
     <>
+      <CommandPalette open={palette} setOpen={setPalette} views={VIEWS} />
       <header className="sticky top-0 z-10 flex h-13 items-center gap-4 border-b border-zinc-200 bg-white px-3 sm:gap-6 sm:px-5 dark:border-zinc-800 dark:bg-zinc-900">
         <a href={href("explore")} className="flex shrink-0 items-center gap-2 font-bold text-zinc-900 hover:no-underline dark:text-zinc-100">
           <svg viewBox="0 0 24 24" aria-hidden="true" className="size-5.5 fill-blue-600 stroke-blue-600 stroke-[1.4] dark:fill-blue-400 dark:stroke-blue-400">
@@ -80,6 +85,29 @@ function Shell() {
             </a>
           ))}
         </nav>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setPalette(true)}
+            aria-label="Open command menu"
+            className="flex items-center gap-2 rounded-md border border-zinc-200 px-2.5 py-1 text-[13px] text-zinc-500 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+          >
+            <span className="hidden md:inline">Search</span>
+            <kbd className="font-sans text-xs">{mac ? "⌘K" : "Ctrl K"}</kbd>
+          </button>
+          <a
+            href={href("settings")}
+            aria-label="Settings"
+            title="Settings"
+            aria-current={view === "settings" ? "page" : undefined}
+            className={`rounded-md p-1.5 ${view === "settings" ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300" : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"}`}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" className="size-4.5 fill-none stroke-current stroke-[1.8]">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+            </svg>
+          </a>
+        </div>
       </header>
       <ScopeBar />
       <main className="mx-auto max-w-[1500px] p-3 sm:p-5">
@@ -109,6 +137,8 @@ function Routed({ path, params }: { path: string; params: URLSearchParams }) {
       return <Artifacts />;
     case "evaluation":
       return <Evaluation />;
+    case "settings":
+      return <Settings />;
     default:
       return <Explore params={params} />;
   }

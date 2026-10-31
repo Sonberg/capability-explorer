@@ -1,6 +1,7 @@
 using CapabilityExplorer.Binding;
 using CapabilityExplorer.Capabilities;
 using CapabilityExplorer.Interpretation;
+using CapabilityExplorer.Store;
 
 namespace CapabilityExplorer.Explorer;
 
@@ -58,6 +59,39 @@ public static class ExplorerApi
 {
     private const int ContextLines = 4;
 
+    private static IResult SimilarityOff(Intelligence intelligence) => Results.Json(
+        new { error = intelligence.Store is null ? "similarity search needs the database (set CE_DATABASE)" : "no Foundry embedding deployment is configured (Settings)" },
+        statusCode: StatusCodes.Status409Conflict);
+
+    private static IResult DatabaseUnavailable(Npgsql.NpgsqlException e) => Results.Json(
+        new { error = e is Npgsql.PostgresException { SqlState: "42P01" } ? "no embeddings yet: run `ce embed` (or make analyze with Foundry configured)" : $"database: {e.Message}" },
+        statusCode: StatusCodes.Status503ServiceUnavailable);
+
+    private static List<SimilarHit> InView(ViewIndex view, IReadOnlyList<SimilarSymbol> hits, int limit) =>
+        hits.Select(h => (h, Node: view.Node(h.SymbolKey)))
+            .Where(x => x.Node is not null)
+            .Take(limit)
+            .Select(x => new SimilarHit(x.h.SymbolKey, x.Node!.Record.Name, x.Node.Record.NodeKind, x.Node.Artifact.RepositoryId,
+                x.Node.Artifact.Artifact.Header.Unit.Name, view.Calculations.ContainsKey(x.h.SymbolKey), Math.Round(x.h.Score, 3)))
+            .ToList();
+
+    private static object FoundryStatus(Intelligence intelligence)
+    {
+        var o = intelligence.Layer.Options;
+        return new
+        {
+            source = intelligence.Saved is not null ? "saved" : o.Enabled ? "configuration" : "none",
+            settingsPath = intelligence.SettingsPath,
+            endpoint = o.Endpoint,
+            deployment = o.Deployment,
+            embeddingDeployment = o.EmbeddingDeployment,
+            hasApiKey = intelligence.Saved?.ApiKey is { Length: > 0 } || Environment.GetEnvironmentVariable(o.ApiKeyVariable) is { Length: > 0 },
+            apiKeySource = intelligence.Saved?.ApiKey is { Length: > 0 } ? "saved" : Environment.GetEnvironmentVariable(o.ApiKeyVariable) is { Length: > 0 } ? o.ApiKeyVariable : "entra-id",
+            database = intelligence.Store is not null,
+            problem = intelligence.Problem,
+        };
+    }
+
     public static void MapExplorerApi(this IEndpointRouteBuilder app, string? evaluationReport)
     {
         var api = app.MapGroup("/api");
@@ -65,7 +99,7 @@ public static class ExplorerApi
         // Cheap poll target: the client reloads when the generation changes (artifacts or capabilities on disk changed).
         api.MapGet("/generation", (ExplorerState state) => new { generation = state.Current.Generation });
 
-        api.MapGet("/meta", (ExplorerState state, InterpretationLayer interpretation) =>
+        api.MapGet("/meta", (ExplorerState state, InterpretationLayer interpretation, Intelligence intelligence) =>
         {
             var (index, capabilities, generation) = state.Current;
             return new
@@ -74,6 +108,7 @@ public static class ExplorerApi
                 capabilities = capabilities.List().Select(c => new { c.Id, c.Name, repositories = c.Repositories.Select(r => r.Id) }),
                 githubAuth = new { configured = capabilities.Sync.Auth.Configured, source = capabilities.Sync.Auth.Source },
                 interpretation = new { enabled = interpretation.Enabled, provider = interpretation.Options.Provider, model = interpretation.Explanations?.ModelId },
+                similarity = new { database = intelligence.Store is not null, embeddings = intelligence.Embeddings?.Id },
                 revisions = index.Revisions,
                 defaultView = index.DefaultSelection,
                 artifacts = index.Artifacts.Count,
@@ -89,6 +124,77 @@ public static class ExplorerApi
 
         api.MapGet("/search", (ExplorerIndex index, CapabilityService caps, string? q, string? kind, string? repo, string? view, string? cap) =>
             Queries.Search(index.View(view, caps.Scope(cap)), q, kind, repo));
+
+        // Similarity (pgvector): stored vectors of the configured embedding model, limited to what the view shows.
+        api.MapGet("/similar", async (ExplorerIndex index, CapabilityService caps, Intelligence intelligence, string key, string? view, string? cap, int? k, CancellationToken ct) =>
+        {
+            if (intelligence.Store is not { } store || intelligence.Embeddings is not { } model)
+            {
+                return SimilarityOff(intelligence);
+            }
+
+            try
+            {
+                var hits = await store.SimilarAsync(key, model.Id, Math.Clamp(k ?? 10, 1, 50) * 3, ct);
+                return Results.Ok(InView(index.View(view, caps.Scope(cap)), hits, Math.Clamp(k ?? 10, 1, 50)));
+            }
+            catch (Npgsql.NpgsqlException e)
+            {
+                return DatabaseUnavailable(e);
+            }
+        });
+
+        api.MapGet("/search/semantic", async (ExplorerIndex index, CapabilityService caps, Intelligence intelligence, string q, string? view, string? cap, CancellationToken ct) =>
+        {
+            if (intelligence.Store is not { } store || intelligence.Embeddings is not { } model)
+            {
+                return SimilarityOff(intelligence);
+            }
+
+            if (q.Trim().Length is < 3 or > 500)
+            {
+                return Results.BadRequest(new { error = "the query must be 3 to 500 characters" });
+            }
+
+            try
+            {
+                var vector = (await model.EmbedAsync([q.Trim()], ct))[0];
+                return Results.Ok(InView(index.View(view, caps.Scope(cap)), await store.NearestAsync(vector, model.Id, 30, ct), 10));
+            }
+            catch (InterpretationUnavailableException e)
+            {
+                return Results.Json(new { error = e.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+            catch (Npgsql.NpgsqlException e)
+            {
+                return DatabaseUnavailable(e);
+            }
+        });
+
+        // Foundry connection, editable from the Settings page. The API key is write-only: it is never sent back.
+        api.MapGet("/settings/foundry", (Intelligence intelligence) => FoundryStatus(intelligence));
+
+        api.MapPut("/settings/foundry", (Intelligence intelligence, FoundrySettingsRequest request) =>
+            intelligence.Save(request) is { } problem ? Results.BadRequest(new { error = problem }) : Results.Ok(FoundryStatus(intelligence)));
+
+        // Round-trips one short text through the embedding deployment (the chat deployment is exercised by explanations).
+        api.MapPost("/settings/foundry/test", async (Intelligence intelligence, CancellationToken ct) =>
+        {
+            if (intelligence.Embeddings is not { } model)
+            {
+                return Results.Json(new { error = "no embedding deployment is configured" }, statusCode: StatusCodes.Status409Conflict);
+            }
+
+            try
+            {
+                var vector = (await model.EmbedAsync(["capability explorer connection test"], ct))[0];
+                return Results.Ok(new { model = model.Id, dimensions = vector.Length });
+            }
+            catch (InterpretationUnavailableException e)
+            {
+                return Results.Json(new { error = e.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        });
 
         api.MapGet("/symbol", (ExplorerIndex index, CapabilityService caps, string key, string? view, string? cap) =>
             Queries.Symbol(index.View(view, caps.Scope(cap)), key) is { } detail ? Results.Ok(detail) : Results.NotFound(new { error = $"{key} is not declared in the selected revisions" }));

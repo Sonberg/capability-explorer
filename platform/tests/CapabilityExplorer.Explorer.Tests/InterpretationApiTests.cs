@@ -84,3 +84,58 @@ public sealed class InterpretationEnabledTests(RecordedExplorerFactory factory) 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
 }
+
+/// <summary>The explorer with an isolated settings file, so saving from the API never touches a real one.</summary>
+public sealed class SettingsExplorerFactory : Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program>
+{
+    public string SettingsPath { get; } = Path.Combine(Directory.CreateTempSubdirectory("ce-foundry").FullName, "foundry.json");
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.UseSetting("artifacts", Fixtures.ExpectedDirectory);
+        builder.UseSetting("foundrySettings", SettingsPath);
+    }
+}
+
+public sealed class FoundrySettingsApiTests(SettingsExplorerFactory factory) : IClassFixture<SettingsExplorerFactory>
+{
+    private readonly HttpClient _client = factory.CreateClient();
+
+    [Fact]
+    public async Task Saving_applies_at_once_and_the_api_key_is_never_sent_back()
+    {
+        var saved = await _client.PutAsJsonAsync("/api/settings/foundry", new { endpoint = "https://res.services.ai.azure.com", deployment = "chat", embeddingDeployment = "emb", apiKey = "s3cret-key" });
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        var text = await saved.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("s3cret-key", text, StringComparison.Ordinal);
+        var status = JsonDocument.Parse(text).RootElement;
+        Assert.Equal(("saved", true, "saved"), (status.GetProperty("source").GetString(), status.GetProperty("hasApiKey").GetBoolean(), status.GetProperty("apiKeySource").GetString()));
+
+        var meta = await _client.GetFromJsonAsync<JsonElement>("/api/meta");
+        Assert.True(meta.GetProperty("interpretation").GetProperty("enabled").GetBoolean());
+        Assert.Equal("foundry:emb", meta.GetProperty("similarity").GetProperty("embeddings").GetString());
+        Assert.False(meta.GetProperty("similarity").GetProperty("database").GetBoolean());
+
+        // A blank key keeps the saved one.
+        await _client.PutAsJsonAsync("/api/settings/foundry", new { endpoint = "https://res.services.ai.azure.com", embeddingDeployment = "emb2" });
+        Assert.Equal("s3cret-key", FoundrySettings.Load(factory.SettingsPath)!.ApiKey);
+
+        // Without a database, similarity says why instead of failing.
+        var similar = await _client.GetAsync("/api/similar?key=x");
+        Assert.Equal(HttpStatusCode.Conflict, similar.StatusCode);
+        Assert.Contains("CE_DATABASE", await similar.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("http://res.services.ai.azure.com", "emb", "https URL")]
+    [InlineData("https://res.services.ai.azure.com", "bad name;", "may contain")]
+    [InlineData("https://res.services.ai.azure.com", "", "chat deployment, an embedding deployment")]
+    public async Task Invalid_settings_are_rejected_and_not_saved(string endpoint, string embeddingDeployment, string message)
+    {
+        var before = File.Exists(factory.SettingsPath) ? await File.ReadAllTextAsync(factory.SettingsPath) : null;
+        var response = await _client.PutAsJsonAsync("/api/settings/foundry", new { endpoint, embeddingDeployment });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains(message, await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Equal(before, File.Exists(factory.SettingsPath) ? await File.ReadAllTextAsync(factory.SettingsPath) : null);
+    }
+}

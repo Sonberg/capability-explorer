@@ -9,7 +9,8 @@
 #   2 packages  network for package downloads only (feeds from nuget.config); resolves one exact version set per
 #               project into <work>/locks/<repo>.json; no GitHub token, no local repositories mounted
 #   3 extract   --offline: the analysed code is parsed, never restored, built or executed
-#   4 store     optional, only when CE_DATABASE (an Npgsql connection string) is set: migrate, import the artifacts and,
+#   4 store     optional, only when CE_DATABASE (an Npgsql connection string) is set: migrate, import the artifacts, embed
+#               them for similarity search when Foundry is configured (Settings page or CE_FOUNDRY_*) and,
 #               with BINDINGS=<file>, save the snapshot-level bindings. Only this step gets the connection string.
 #
 # Step 3 runs the C# (Roslyn), TypeScript/JavaScript and SQL extractors.
@@ -96,11 +97,15 @@ if [[ -n "${CE_DATABASE:-}" ]]; then
   echo "== 4/4 import into PostgreSQL (CE_DATABASE)"
   # The connection string is passed by name only, never on a command line. Network is needed to reach the database.
   # From the sandbox, a database on the host is reachable as host.docker.internal (or set SANDBOX_NETWORK=host).
-  SANDBOX_PASS_ENV="CE_DATABASE" SANDBOX_SOURCES="" scripts/sandbox dotnet bash -c '
+  # Then embeddings for similarity search, when Foundry is configured: CE_FOUNDRY_ENDPOINT (+ CE_FOUNDRY_EMBEDDING_DEPLOYMENT),
+  # or the settings saved from the explorer's Settings page. A failed embed does not undo the import.
+  embed=0; [[ -n "${CE_FOUNDRY_ENDPOINT:-}" || -f .sandbox-cache/foundry.json ]] && embed=1
+  SANDBOX_PASS_ENV="CE_DATABASE,CE_FOUNDRY_ENDPOINT,CE_FOUNDRY_EMBEDDING_DEPLOYMENT,CE_FOUNDRY_API_KEY" SANDBOX_SOURCES="" scripts/sandbox dotnet bash -c '
     set -euo pipefail
-    ce="$1"; bindings="$2"; shift 2
+    ce="$1"; bindings="$2"; embed="$3"; shift 3
     dotnet "$ce" migrate
-    if [[ -n "$bindings" ]]; then dotnet "$ce" import --bindings "$bindings" "$@"; else dotnet "$ce" import "$@"; fi' _ "$ce" "${BINDINGS:-}" "${imported[@]}"
+    if [[ -n "$bindings" ]]; then dotnet "$ce" import --bindings "$bindings" "$@"; else dotnet "$ce" import "$@"; fi
+    if [[ "$embed" == 1 ]]; then dotnet "$ce" embed || echo "-- embeddings not updated (see above); run ce embed again later"; fi' _ "$ce" "${BINDINGS:-}" "$embed" "${imported[@]}"
 else
   echo "-- not storing: set CE_DATABASE=<Npgsql connection string> to import into PostgreSQL (BINDINGS=bindings.json to bind)"
 fi

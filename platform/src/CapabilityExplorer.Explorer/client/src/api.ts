@@ -24,6 +24,8 @@ export interface Meta {
   capabilities: CapabilitySummary[];
   githubAuth: { configured: boolean; source: string };
   interpretation: { enabled: boolean; provider: string; model?: string };
+  /** Vector search: needs the database (CE_DATABASE) and a Foundry embedding deployment. */
+  similarity: { database: boolean; embeddings?: string };
   revisions: Revision[];
   defaultView: Record<string, string>;
   artifacts: number;
@@ -127,6 +129,29 @@ export interface SearchHit {
   unit: string;
   generated: boolean;
   hasCalculation: boolean;
+}
+
+export interface SimilarHit {
+  key: string;
+  name: string;
+  kind: string;
+  repositoryId: string;
+  unit: string;
+  hasCalculation: boolean;
+  /** Cosine similarity, 1 = identical text. */
+  score: number;
+}
+
+export interface FoundrySettings {
+  source: "saved" | "configuration" | "none";
+  settingsPath: string;
+  endpoint?: string;
+  deployment?: string;
+  embeddingDeployment?: string;
+  hasApiKey: boolean;
+  apiKeySource: string;
+  database: boolean;
+  problem?: string;
 }
 
 export interface Integrations {

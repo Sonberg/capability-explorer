@@ -559,13 +559,22 @@
           "Azure.Identity": "[1.21.0, )"
         }
       },
+      "capabilityexplorer.store": {
+        "type": "Project",
+        "dependencies": {
+          "CapabilityExplorer.Binding": "[1.0.0, )",
+          "CapabilityExplorer.Contracts": "[1.0.0, )",
+          "Npgsql": "[10.0.3, )"
+        }
+      },
       "ce-explorer": {
         "type": "Project",
         "dependencies": {
           "CapabilityExplorer.Binding": "[1.0.0, )",
           "CapabilityExplorer.Capabilities": "[1.0.0, )",
           "CapabilityExplorer.Contracts": "[1.0.0, )",
-          "CapabilityExplorer.Interpretation": "[1.0.0, )"
+          "CapabilityExplorer.Interpretation": "[1.0.0, )",
+          "CapabilityExplorer.Store": "[1.0.0, )"
         }
       },
       "Azure.Identity": {
@@ -584,6 +593,15 @@
         "contentHash": "bwHvTUy4gsSfMwncWT4w1OeKiZJ/yw0W1mtQq4iO6vVJdX/8xj+5Kf6q180C6yDPlRm3PS9UXTB/MecXAkdEVw==",
         "dependencies": {
           "JsonPointer.Net": "7.0.4"
+        }
+      },
+      "Npgsql": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.3, )",
+        "resolved": "10.0.3",
+        "contentHash": "7nb5YzXuvWWJxB0J8DiyL3we+X4FOctZrt0fIBnucOIaIevFEEwGQVZKtiu9olXdlNAK1eNgqSral6r/jlhI4w==",
+        "dependencies": {
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.0"
         }
       }
     }
