@@ -22,6 +22,12 @@ public sealed record ProjectModel(
     IReadOnlyList<ProjectRef> ProjectReferences,
     IReadOnlyList<string> SourceFiles)
 {
+    /// <summary>The packages this project resolves: its references plus the implicit hosting package of worker projects. Sorted, one per id.</summary>
+    public IReadOnlyList<PackageRef> PackageRoots() =>
+        Packages.Concat(IsWorker ? [new PackageRef("Microsoft.Extensions.Hosting", null, 0)] : [])
+            .DistinctBy(p => p.Id, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(p => p.Id, StringComparer.OrdinalIgnoreCase).ToList();
+
     public bool IsWeb => Sdk.Contains("Web", StringComparison.OrdinalIgnoreCase);
 
     public bool IsWorker => Sdk.Contains("Worker", StringComparison.OrdinalIgnoreCase);
