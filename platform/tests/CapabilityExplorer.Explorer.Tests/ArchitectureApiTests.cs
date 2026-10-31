@@ -27,8 +27,13 @@ public sealed class ArchitectureApiTests(ExplorerFactory factory) : IClassFixtur
         Assert.Equal("candidate", http.GetProperty("certainty").GetString());
         Assert.NotEmpty(http.GetProperty("facts").EnumerateArray().Single().GetProperty("evidence").EnumerateArray());
 
-        // forecast-cs v2-contract moved its routes: pricing-node's call is shown as unmatched, not hidden.
-        Assert.Contains(Edges(g), e => e.GetProperty("from").GetString() == "repo:pricing-node" && e.GetProperty("to").GetString() == "unmatched:GET /api/forecasts/{}");
+        // forecast-cs v2-contract moved its routes: pricing-node's call is shown as unmatched, not hidden, grouped by
+        // the base it goes through; that group opens one level down into its routes.
+        var unmatched = Edges(g).Single(e => e.GetProperty("from").GetString() == "repo:pricing-node" && e.GetProperty("label").GetString() == "GET /api/forecasts/{}");
+        var group = nodes[unmatched.GetProperty("to").GetString()!];
+        Assert.Equal("requests", group.GetProperty("drill").GetProperty("level").GetString());
+        var routes = await Graph($"level=requests&focus={Uri.EscapeDataString(group.GetProperty("drill").GetProperty("focus").GetString()!)}");
+        Assert.Contains(routes.GetProperty("nodes").EnumerateArray(), n => n.GetProperty("id").GetString() == "unmatched:GET /api/forecasts/{}");
 
         // Same-named resources are linked only by an explicit "same name" hint.
         Assert.Contains(Edges(g), e => e.GetProperty("kind").GetString() == "sameName" && e.GetProperty("facts").GetArrayLength() == 0);

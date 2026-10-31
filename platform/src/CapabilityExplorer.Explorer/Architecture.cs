@@ -55,6 +55,7 @@ public static class Architecture
             "landscape" => Landscape(all, capabilities),
             "repository" when focus is not null => Repository(view, focus, top),
             "component" when focus is not null => Component(view, focus, top),
+            "requests" when focus is not null => Requests(view, focus, top),
             _ => System(view, top, capability?.Name ?? "System"),
         };
     }
@@ -143,9 +144,7 @@ public static class Architecture
                         }
                         else if (target is null)
                         {
-                            var route = r.To is null ? "dynamic request" : Route(r.To);
-                            b.Node(new ArchNode($"unmatched:{route}", "unmatched", route, "no endpoint in scope", "Unmatched", null, null, null, ["unmatched"]));
-                            b.Edge(from, $"unmatched:{route}", "http", route, "unresolved", e);
+                            b.Edge(from, Unmatched(b, r.To), "http", r.To is null ? "dynamic request" : Route(r.To), "unresolved", e);
                         }
                         else if (target.Artifact.RepositoryId != e.Artifact.RepositoryId)
                         {
@@ -260,9 +259,7 @@ public static class Architecture
                     }
                     else if (target is null)
                     {
-                        var route = r.To is null ? "dynamic request" : Route(r.To);
-                        b.Node(new ArchNode($"unmatched:{route}", "unmatched", route, "no endpoint in scope", null, null, null, null, ["unmatched"]));
-                        b.Edge(from.Id, $"unmatched:{route}", "http", route, "unresolved", e);
+                        b.Edge(from.Id, Unmatched(b, r.To), "http", r.To is null ? "dynamic request" : Route(r.To), "unresolved", e);
                     }
                     else if (target.Artifact.RepositoryId == repo)
                     {
@@ -293,6 +290,75 @@ public static class Architecture
     }
 
     private static ArchNode ExternalRepo(ViewIndex view, string repo) => RepoNode(view, repo) with { Category = "external", Group = "Other systems" };
+
+    // ------------------------------------------------------------------ requests
+
+    /// <summary>The routes requested from one unmatched base (see <see cref="BaseOf"/>), with the components that request them.</summary>
+    private static ArchitectureGraph Requests(ViewIndex view, string focus, IReadOnlyList<Crumb> top)
+    {
+        var b = new Builder(view);
+        foreach (var e in view.Edges.Where(e => e.Record.Relation == "REQUESTS" && e.Record.To is not null && BaseOf(e.Record.To) == focus))
+        {
+            if (HttpTargets(view, e).Any(t => t.Target is not null || t.Missing is not null))
+            {
+                continue;
+            }
+
+            var repo = e.Artifact.RepositoryId;
+            var from = ComponentOf(view, e.Record.From)?.Node ?? RepoNode(view, repo);
+            b.Node(from);
+            var route = Route(e.Record.To!);
+            b.Node(new ArchNode($"unmatched:{route}", "unmatched", route, "no endpoint in scope", focus, e.Record.To, null, null, ["unmatched"]));
+            b.Edge(from.Id, $"unmatched:{route}", "http", route, "unresolved", e);
+        }
+
+        return b.Graph("requests", focus, focus, [.. top, new Crumb(focus, "requests", focus)],
+            ["Requests whose base URL names no repository in scope, grouped by the host or configuration name they go through."]);
+    }
+
+    /// <summary>Canvas id for a request with no endpoint in scope: one node per base, or one for dynamic requests.</summary>
+    private static string Unmatched(Builder b, string? to)
+    {
+        if (to is null)
+        {
+            b.Node(new ArchNode("unmatched:dynamic request", "unmatched", "dynamic request", "target not statically known", "Unmatched", null, null, null, ["unresolved"]));
+            return "unmatched:dynamic request";
+        }
+
+        var cluster = BaseOf(to);
+        b.Node(new ArchNode($"base:{cluster}", "unmatched", cluster, "no endpoint in scope", "Unmatched", null, null, new Drill("requests", cluster), ["unmatched"]));
+        return $"base:{cluster}";
+    }
+
+    /// <summary>
+    /// What a request goes through, from the base segment of its key: the host of a base URL, else the configuration
+    /// name (env var, config key, client type) it is known by, else the declared service.
+    /// </summary>
+    internal static string BaseOf(string key)
+    {
+        var seg = key.Split('|');
+        if (seg.Length < 3)
+        {
+            return "unknown base";
+        }
+
+        var store = seg[1];
+        if (!store.StartsWith("@unbound:", StringComparison.Ordinal))
+        {
+            return store;
+        }
+
+        var colon = store.IndexOf(':', "@unbound:".Length);
+        var hint = colon < 0 ? store["@unbound:".Length..] : store[(colon + 1)..];
+        var eq = hint.IndexOf('=', StringComparison.Ordinal);
+        var (kind, value) = eq < 0 ? ("", hint) : (hint[..eq], hint[(eq + 1)..]);
+        return kind switch
+        {
+            "base" when Uri.TryCreate(value, UriKind.Absolute, out var uri) => uri.Host,
+            "base" or "host" or "client" => value,
+            _ => $"{kind} {value}",
+        };
+    }
 
     // ------------------------------------------------------------------ component
 

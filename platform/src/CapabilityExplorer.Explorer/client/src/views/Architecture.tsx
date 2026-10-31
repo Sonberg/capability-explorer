@@ -59,7 +59,7 @@ interface ArchEdge {
 }
 
 interface Graph {
-  level: "landscape" | "system" | "repository" | "component";
+  level: "landscape" | "system" | "repository" | "component" | "requests";
   focus?: string;
   title: string;
   breadcrumbs: { label: string; level: string; focus?: string }[];
@@ -370,7 +370,7 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
             </span>
           ))}
         </nav>
-        <Pill tone="info">{{ landscape: "1 · landscape", system: "2 · capability", repository: "3 · components", component: "4 · code" }[level] ?? level}</Pill>
+        <Pill tone="info">{{ landscape: "1 · landscape", system: "2 · capability", repository: "3 · components", component: "4 · code", requests: "3 · requests" }[level] ?? level}</Pill>
         <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           {kinds.map((k) => (
             <label key={k} className="flex cursor-pointer items-center gap-1">
@@ -469,7 +469,7 @@ function NodePanel({ node: n, onDrill, graph }: { node: ArchNode; onDrill: () =>
         {incoming} incoming · {outgoing} outgoing connection{outgoing === 1 ? "" : "s"}
       </div>
       <div className="flex flex-wrap gap-2 pt-1">
-        {n.drill && <Button onClick={onDrill}>Open {{ system: "capability", repository: "components" }[n.drill.level] ?? "code"} →</Button>}
+        {n.drill && <Button onClick={onDrill}>Open {{ system: "capability", repository: "components", requests: "routes" }[n.drill.level] ?? "code"} →</Button>}
         {n.symbolKey && n.category !== "datastore" && n.category !== "channel" && (
           <a href={symbolHref(n.symbolKey)} className="rounded-md border border-zinc-300 px-3 py-1.5 text-[13px] font-semibold hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800">
             Open in Explore
