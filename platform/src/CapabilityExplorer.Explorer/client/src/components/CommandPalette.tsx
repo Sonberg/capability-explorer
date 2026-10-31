@@ -181,7 +181,7 @@ export function CommandPalette({ open, setOpen, views }: { open: boolean; setOpe
       <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-zinc-200 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800">
         <span>↑↓ move</span>
         <span>↵ open</span>
-        {similarity ? <span>→ similar functionality{pivot ? " · ← back" : ""}</span> : <span>Similarity search: configure Foundry in Settings and set CE_DATABASE</span>}
+        {similarity ? <span>→ similar functionality{pivot ? " · ← back" : ""}</span> : <span>Similarity search: run make ollama (or set a model in Settings) and set CE_DATABASE</span>}
         <span className="ml-auto">esc close</span>
       </div>
     </dialog>

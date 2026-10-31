@@ -30,7 +30,9 @@ public sealed record SymbolDetail(
     CalculationDto? Calculation,
     IReadOnlyList<HistoryEntry> History);
 
-public sealed record HttpLink(EdgeDto Request, IReadOnlyList<SymbolRef> Candidates, string Match, string Note);
+/// <param name="Base">What the request goes through: host, configuration name, client or service (see Architecture.BaseOf).</param>
+/// <param name="Group">Who it talks to, for grouping (see <see cref="Queries.Vendor"/>): "Fortnox", "Klarna", "Shopify", …</param>
+public sealed record HttpLink(EdgeDto Request, IReadOnlyList<SymbolRef> Candidates, string Match, string Note, string Base = "", string Group = "");
 
 public sealed record EndpointDto(NodeDto Endpoint, IReadOnlyList<SymbolRef> Handlers);
 
@@ -65,6 +67,32 @@ public static class Queries
             x.o.Record.SymbolKey, x.o.Record.Name, x.o.Record.NodeKind, x.o.Artifact.RepositoryId, x.o.Artifact.Artifact.Header.Unit.Name,
             x.o.Record.Generated ?? false, view.Calculations.ContainsKey(x.o.Record.SymbolKey))).ToList();
     }
+
+    /// <summary>
+    /// Who a request talks to, from what the code says: a host's domain name (api.fortnox.se → Fortnox), or for a typed
+    /// client the caller's namespace under its project (Glufs.Infrastructure.Klarna.* → Klarna); otherwise the base as is.
+    /// </summary>
+    internal static string Vendor(string toKey, string fromKey)
+    {
+        var via = Architecture.BaseOf(toKey);
+        var hint = toKey.Split('|').ElementAtOrDefault(1) ?? "";
+        if (hint.Contains(":client=", StringComparison.Ordinal) && fromKey.Split('|') is [.., var unit, var member])
+        {
+            // "M:Glufs.Infrastructure.Klarna.OrderManagementRestClient.CancelOrder(...)" under unit Glufs.Infrastructure.
+            var name = member.Length > 2 && member[1] == ':' ? member[2..] : member;
+            var rest = name.StartsWith(unit + ".", StringComparison.Ordinal) ? name[(unit.Length + 1)..] : "";
+            var parts = rest.Split('(')[0].Split('.');
+            return parts.Length > 2 ? Title(parts[0]) : via; // namespace, type, member: else no namespace names a vendor
+        }
+
+        // ponytail: second-to-last label is the domain; wrong for two-part suffixes (co.uk) — use a public-suffix list if that matters.
+        var labels = via.Split('.');
+        return hint.StartsWith("@unbound:", StringComparison.Ordinal) && labels.Length >= 2 && !via.Contains(' ', StringComparison.Ordinal) && labels[^1].All(char.IsAsciiLetter)
+            ? Title(labels[^2])
+            : via;
+    }
+
+    private static string Title(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
 
     private static int Rank(NodeRecord n, string q)
     {
@@ -195,7 +223,11 @@ public static class Queries
             return candidates.Count > 0
                 ? new HttpLink(dto, candidates, "route", "same method and normalised route; base URL is unbound, so the service is a candidate")
                 : new HttpLink(dto, [], "none", "no endpoint with this method and route in the selected revisions");
-        }).OrderBy(l => l.Request.RepositoryId, StringComparer.Ordinal).ThenBy(l => l.Request.From.Name, StringComparer.Ordinal).ToList();
+        })
+        .Select(l => l.Request.To is { } to
+            ? l with { Base = Architecture.BaseOf(to.Key), Group = Vendor(to.Key, l.Request.From.Key) }
+            : l with { Base = "dynamic", Group = "Dynamic" })
+        .OrderBy(l => l.Group, StringComparer.OrdinalIgnoreCase).ThenBy(l => l.Base, StringComparer.OrdinalIgnoreCase).ThenBy(l => l.Request.RepositoryId, StringComparer.Ordinal).ThenBy(l => l.Request.From.Name, StringComparer.Ordinal).ToList();
 
         var channelKeys = view.Edges.Where(e => e.Record.To?.StartsWith("chan|", StringComparison.Ordinal) == true).Select(e => e.Record.To!)
             .Concat(view.Nodes.Keys.Where(k => k.StartsWith("chan|", StringComparison.Ordinal))).Distinct(StringComparer.Ordinal);

@@ -60,11 +60,11 @@ public static class ExplorerApi
     private const int ContextLines = 4;
 
     private static IResult SimilarityOff(Intelligence intelligence) => Results.Json(
-        new { error = intelligence.Store is null ? "similarity search needs the database (set CE_DATABASE)" : "no Foundry embedding deployment is configured (Settings)" },
+        new { error = intelligence.Store is null ? "similarity search needs the database (set CE_DATABASE)" : "no embedding model is configured (Settings, or make ollama)" },
         statusCode: StatusCodes.Status409Conflict);
 
     private static IResult DatabaseUnavailable(Npgsql.NpgsqlException e) => Results.Json(
-        new { error = e is Npgsql.PostgresException { SqlState: "42P01" } ? "no embeddings yet: run `ce embed` (or make analyze with Foundry configured)" : $"database: {e.Message}" },
+        new { error = e is Npgsql.PostgresException { SqlState: "42P01" } ? "no embeddings yet: run `ce embed` (or make analyze with a model configured)" : $"database: {e.Message}" },
         statusCode: StatusCodes.Status503ServiceUnavailable);
 
     private static List<SimilarHit> InView(ViewIndex view, IReadOnlyList<SimilarSymbol> hits, int limit) =>
@@ -75,18 +75,20 @@ public static class ExplorerApi
                 x.Node.Artifact.Artifact.Header.Unit.Name, view.Calculations.ContainsKey(x.h.SymbolKey), Math.Round(x.h.Score, 3)))
             .ToList();
 
-    private static object FoundryStatus(Intelligence intelligence)
+    private static object ModelStatus(Intelligence intelligence)
     {
         var o = intelligence.Layer.Options;
         return new
         {
             source = intelligence.Saved is not null ? "saved" : o.Enabled ? "configuration" : "none",
             settingsPath = intelligence.SettingsPath,
+            provider = o.Provider,
             endpoint = o.Endpoint,
-            deployment = o.Deployment,
-            embeddingDeployment = o.EmbeddingDeployment,
+            chatModel = o.Deployment,
+            embeddingModel = o.EmbeddingModel,
+            ollamaEndpoint = ModelSettings.OllamaEndpoint,
             hasApiKey = intelligence.Saved?.ApiKey is { Length: > 0 } || Environment.GetEnvironmentVariable(o.ApiKeyVariable) is { Length: > 0 },
-            apiKeySource = intelligence.Saved?.ApiKey is { Length: > 0 } ? "saved" : Environment.GetEnvironmentVariable(o.ApiKeyVariable) is { Length: > 0 } ? o.ApiKeyVariable : "entra-id",
+            apiKeySource = intelligence.Saved?.ApiKey is { Length: > 0 } ? "saved" : Environment.GetEnvironmentVariable(o.ApiKeyVariable) is { Length: > 0 } ? o.ApiKeyVariable : "none",
             database = intelligence.Store is not null,
             problem = intelligence.Problem,
         };
@@ -171,18 +173,18 @@ public static class ExplorerApi
             }
         });
 
-        // Foundry connection, editable from the Settings page. The API key is write-only: it is never sent back.
-        api.MapGet("/settings/foundry", (Intelligence intelligence) => FoundryStatus(intelligence));
+        // Model connection (local Ollama or Foundry), editable from the Settings page. The API key is write-only: it is never sent back.
+        api.MapGet("/settings/model", (Intelligence intelligence) => ModelStatus(intelligence));
 
-        api.MapPut("/settings/foundry", (Intelligence intelligence, FoundrySettingsRequest request) =>
-            intelligence.Save(request) is { } problem ? Results.BadRequest(new { error = problem }) : Results.Ok(FoundryStatus(intelligence)));
+        api.MapPut("/settings/model", (Intelligence intelligence, ModelSettingsRequest request) =>
+            intelligence.Save(request) is { } problem ? Results.BadRequest(new { error = problem }) : Results.Ok(ModelStatus(intelligence)));
 
-        // Round-trips one short text through the embedding deployment (the chat deployment is exercised by explanations).
-        api.MapPost("/settings/foundry/test", async (Intelligence intelligence, CancellationToken ct) =>
+        // Round-trips one short text through the embedding model (the chat model is exercised by explanations).
+        api.MapPost("/settings/model/test", async (Intelligence intelligence, CancellationToken ct) =>
         {
             if (intelligence.Embeddings is not { } model)
             {
-                return Results.Json(new { error = "no embedding deployment is configured" }, statusCode: StatusCodes.Status409Conflict);
+                return Results.Json(new { error = "no embedding model is configured" }, statusCode: StatusCodes.Status409Conflict);
             }
 
             try

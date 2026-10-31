@@ -10,7 +10,7 @@ using Npgsql;
 // ce verify-evidence --repo <git dir> <artifact.jsonl...>
 // ce migrate [--connection <npgsql connection string>]
 // ce import  [--connection <npgsql connection string>] [--bindings <bindings.json>] <artifact.jsonl...>
-// ce embed  [--connection <npgsql connection string>] [--foundry <settings.json>]
+// ce embed  [--connection <npgsql connection string>] [--settings <model.json>]
 // ce evaluate --expected <dir> --actual <dir> [--config <evaluation.json>] [--repos <dir>] [--repository <id[,id]>] [--language <csharp,typescript,...>] [--json <report.json>]
 // ce export --capability <id> [--capabilities capabilities.json] [--workspace .sandbox-cache/sources] --out <dir>
 // The connection string defaults to the CE_DATABASE environment variable.
@@ -20,7 +20,7 @@ const string Usage = """
       ce verify-evidence --repo <git dir> <artifact.jsonl...>
       ce migrate [--connection <connection string>]
       ce import [--connection <connection string>] [--bindings <bindings.json>] <artifact.jsonl...>  (--bindings also saves the bound edges)
-      ce embed [--connection <connection string>] [--foundry <settings.json>]  (Foundry from CE_FOUNDRY_ENDPOINT + CE_FOUNDRY_EMBEDDING_DEPLOYMENT, else the settings saved in the explorer)
+      ce embed [--connection <connection string>] [--settings <model.json>]  (model from CE_MODEL_ENDPOINT + CE_EMBEDDING_MODEL, else the saved settings: make ollama / explorer Settings)
       ce export --capability <id> --out <dir> [--capabilities <file>] [--workspace <dir>] [--locked 1]  (1 = use the last check instead of re-checking)
       ce evaluate --expected <dir> --actual <dir> [--config <evaluation.json>] [--repos <dir>] [--repository <id[,id]>] [--language <csharp,typescript,...>] [--json <report.json>] [--max-findings <n>]
     """;
@@ -144,13 +144,14 @@ switch (command)
 
     case "embed":
     {
-        // Environment first (CI, scripts), then what was saved from the explorer's Settings page.
-        var foundry = Environment.GetEnvironmentVariable("CE_FOUNDRY_ENDPOINT") is { Length: > 0 } endpoint
-            ? new InterpretationOptions { Provider = "foundry", Endpoint = endpoint, EmbeddingDeployment = Environment.GetEnvironmentVariable("CE_FOUNDRY_EMBEDDING_DEPLOYMENT") }
-            : FoundrySettings.Load(options.GetValueOrDefault("foundry") ?? FoundrySettings.DefaultPath)?.ApplyTo(new InterpretationOptions());
-        if (foundry?.CreateEmbeddingModel() is not { } model)
+        // Environment first (CI, scripts), then what `make ollama` or the explorer's Settings page saved.
+        var endpoint = Environment.GetEnvironmentVariable("CE_MODEL_ENDPOINT");
+        var settings = endpoint is { Length: > 0 }
+            ? new ModelSettings(endpoint, null, Environment.GetEnvironmentVariable("CE_EMBEDDING_MODEL"), null)
+            : ModelSettings.Load(options.GetValueOrDefault("settings") ?? ModelSettings.DefaultPath);
+        if (settings?.ApplyTo(new InterpretationOptions()).CreateEmbeddingModel() is not { } model)
         {
-            Console.Error.WriteLine("no Foundry embeddings deployment: save one in the explorer (Settings) or set CE_FOUNDRY_ENDPOINT and CE_FOUNDRY_EMBEDDING_DEPLOYMENT");
+            Console.Error.WriteLine("no embedding model: run `make ollama`, save one in the explorer (Settings), or set CE_MODEL_ENDPOINT and CE_EMBEDDING_MODEL");
             return 2;
         }
 

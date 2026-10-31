@@ -9,7 +9,7 @@ OFFLINE := $(SANDBOX) --offline
 
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
         restore ui build test-ts test-contracts test-evaluation test-extractors test-explorer test-store evaluate evaluate-golden \
-        extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze explore clean
+        extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze explore ollama clean
 
 help:
 	@echo "make ci              everything CI runs: fixture compile checks + all tests"
@@ -21,15 +21,16 @@ help:
 	@echo "make explore [ARTIFACTS=dir] [EVALUATION=report.json] [CAPABILITIES=file] [SOURCES=/abs/repo,...] [PORT=5080]"
 	@echo "     browse the model at http://127.0.0.1:5080"
 	@echo "     private GitHub repos: GITHUB_TOKEN, or 'gh auth login'; GITHUB_AUTH=git also tries the git credential helper"
-	@echo "     optional LLM: Settings page (gear icon), or INTERPRETATION=foundry FOUNDRY_ENDPOINT=... FOUNDRY_DEPLOYMENT=... (key: CE_FOUNDRY_API_KEY)"
-	@echo "     Cmd/Ctrl+K: command menu; with CE_DATABASE and an embedding deployment also similar functionality (vector search)"
+	@echo "     optional LLM: make ollama (local, no key), the Settings page (gear icon), or INTERPRETATION=foundry FOUNDRY_ENDPOINT=... FOUNDRY_DEPLOYMENT=..."
+	@echo "     Cmd/Ctrl+K: command menu; with CE_DATABASE and an embedding model also similar functionality (vector search)"
+	@echo "make ollama [OLLAMA_EMBED=nomic-embed-text] [OLLAMA_CHAT=qwen2.5:7b|none]  start a local model server, pull the models, save them as the settings"
 	@echo "                   INTERPRETATION=recorded RECORDINGS=dir  replays stored responses, no network model"
 	@echo "make evaluate ACTUAL=out/ [REPO=id,id]  score extractor output against fixtures/expected (report: out/evaluation.json)"
 	@echo "make analyze CAPABILITY=id  check out, extract and store artifacts for one capability (picked up live by explore)"
 	@echo "     GITHUB_AUTH=auto|git|none  LOCKED=1 (analyse the last check)  PACKAGES=0 (skip nuget.org downloads)"
 	@echo "     private NuGet feeds: nuget.config in the repo, credentials via %VAR% + NUGET_PASS_ENV=VAR,VAR (only the packages step sees them)"
 	@echo "     CE_DATABASE='Host=...;Database=...;...' also imports into PostgreSQL (off otherwise); BINDINGS=bindings.json binds @unbound hints"
-	@echo "     with CE_DATABASE and Foundry (explorer Settings page, or CE_FOUNDRY_ENDPOINT + CE_FOUNDRY_EMBEDDING_DEPLOYMENT) it also embeds for similarity search"
+	@echo "     with CE_DATABASE and a model (make ollama, the Settings page, or CE_MODEL_ENDPOINT + CE_EMBEDDING_MODEL) it also embeds for similarity search"
 	@echo "     PostgreSQL needs pgvector: docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=ce pgvector/pgvector:pg17"
 	@echo "make evaluate-cs     run the C# extractor over every fixture revision and gate it on the csharp golden units"
 	@echo "make evaluate-ts     same for the TypeScript/JavaScript extractor"
@@ -164,6 +165,25 @@ explore: fixtures build
 # Needs the Docker socket so Testcontainers can start PostgreSQL (see scripts/sandbox --docker).
 test-store: build
 	$(SANDBOX) --docker dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Store.Tests'
+
+# Local models for explanations and similarity search: no key, nothing leaves the machine. Listens on the host's
+# 127.0.0.1:11434 only; the sandbox reaches it as host.docker.internal. The native Ollama app on the same port works too
+# (and uses the GPU, which Docker on macOS cannot). OLLAMA_CHAT=none skips the chat model (a few GB).
+# Saves .sandbox-cache/model.json unless settings were already saved (from the Settings page or an earlier run).
+OLLAMA_IMAGE ?= ollama/ollama:0.40.5
+OLLAMA_EMBED ?= nomic-embed-text
+OLLAMA_CHAT ?= qwen2.5:7b
+ollama:
+	@curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1 || docker start ce-ollama >/dev/null 2>&1 || \
+	  docker run -d --name ce-ollama -p 127.0.0.1:11434:11434 -v ce-ollama:/root/.ollama $(OLLAMA_IMAGE) >/dev/null
+	@for i in $$(seq 30); do curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1 && break; sleep 1; done
+	curl -fsS http://127.0.0.1:11434/api/pull -d '{"model":"$(OLLAMA_EMBED)","stream":false}' >/dev/null
+	[ "$(OLLAMA_CHAT)" = none ] || curl -fsS http://127.0.0.1:11434/api/pull -d '{"model":"$(OLLAMA_CHAT)","stream":false}' >/dev/null
+	@if [ -f .sandbox-cache/model.json ]; then echo "kept existing .sandbox-cache/model.json (change it on the Settings page)"; else \
+	  chat='"$(OLLAMA_CHAT)"'; [ "$(OLLAMA_CHAT)" = none ] && chat=null; \
+	  mkdir -p .sandbox-cache && (umask 077 && printf '{\n  "endpoint": "http://host.docker.internal:11434/v1",\n  "chatModel": %s,\n  "embeddingModel": "%s"\n}\n' \
+	    "$$chat" '$(OLLAMA_EMBED)' > .sandbox-cache/model.json) && \
+	  echo "saved .sandbox-cache/model.json: a running explorer picks it up on restart (or Save on the Settings page)"; fi
 
 clean:
 	rm -rf fixtures/.repos fixtures/.work extractors/ts/node_modules $(UI)/node_modules platform/src/CapabilityExplorer.Explorer/wwwroot

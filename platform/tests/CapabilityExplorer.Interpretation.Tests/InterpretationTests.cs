@@ -60,7 +60,8 @@ public sealed class InterpretationOptionsTests
     [InlineData("foundry", null, "dep", "interpretation:endpoint")]
     [InlineData("foundry", "https://x.services.ai.azure.com", null, "interpretation:deployment")]
     [InlineData("recorded", null, null, "interpretation:recordings")]
-    [InlineData("openai", null, null, "unknown interpretation provider")]
+    [InlineData("openai", "http://localhost:11434/v1", null, "interpretation:deployment")]
+    [InlineData("anthropic", null, null, "unknown interpretation provider")]
     public void Misconfiguration_fails_fast(string provider, string? endpoint, string? deployment, string message)
     {
         var options = new InterpretationOptions { Provider = provider, Endpoint = endpoint, Deployment = deployment };
@@ -273,7 +274,7 @@ public sealed class FoundryChatModelTests
 
     [Theory]
     [InlineData(HttpStatusCode.TooManyRequests, """{"error":{"message":"rate limited"}}""", "429")]
-    [InlineData(HttpStatusCode.OK, """{"unexpected":true}""", "unexpected Foundry response shape")]
+    [InlineData(HttpStatusCode.OK, """{"unexpected":true}""", "unexpected model response shape")]
     public async Task Failures_become_interpretation_unavailable(HttpStatusCode status, string body, string message)
     {
         using var http = new HttpClient(new Handler(status, body));
@@ -283,7 +284,7 @@ public sealed class FoundryChatModelTests
     }
 }
 
-public sealed class FoundryEmbeddingModelTests
+public sealed class OpenAiEmbeddingModelTests
 {
     private sealed class Handler(string body) : HttpMessageHandler
     {
@@ -305,7 +306,7 @@ public sealed class FoundryEmbeddingModelTests
         // The service may answer out of order; "index" says which input each vector belongs to.
         var handler = new Handler("""{"data":[{"index":1,"embedding":[0.5,0.25]},{"index":0,"embedding":[1,0]}]}""");
         using var http = new HttpClient(handler);
-        var model = new FoundryEmbeddingModel(http, new Uri("https://res.services.ai.azure.com/"), "emb", "k3y", null);
+        var model = new OpenAiEmbeddingModel(http, new Uri("https://res.services.ai.azure.com/"), "emb", "k3y", null);
 
         var vectors = await model.EmbedAsync(["first", "second"]);
 
@@ -315,35 +316,50 @@ public sealed class FoundryEmbeddingModelTests
         Assert.Equal("emb", body.RootElement.GetProperty("model").GetString());
         Assert.Equal(["first", "second"], body.RootElement.GetProperty("input").EnumerateArray().Select(i => i.GetString()));
         Assert.Equal([[1f, 0f], [0.5f, 0.25f]], vectors);
-        Assert.Equal("foundry:emb", model.Id);
+        Assert.Equal("openai:emb", model.Id);
+    }
+
+    [Fact]
+    public async Task A_local_ollama_base_url_is_used_as_given_and_needs_no_auth()
+    {
+        var handler = new Handler("""{"data":[{"index":0,"embedding":[1]}]}""");
+        using var http = new HttpClient(handler);
+        var options = new ModelSettings("http://host.docker.internal:11434/v1", null, "nomic-embed-text", null).ApplyTo(new InterpretationOptions { ApiKeyVariable = "CE_TEST_UNSET_KEY" });
+
+        await options.CreateEmbeddingModel(http)!.EmbedAsync(["a"]);
+
+        Assert.Equal("openai", options.Provider);
+        Assert.Equal("http://host.docker.internal:11434/v1/embeddings", handler.Request!.RequestUri!.ToString());
+        Assert.Null(handler.Request.Headers.Authorization);
+        Assert.False(handler.Request.Headers.Contains("api-key"));
     }
 
     [Fact]
     public async Task A_missing_vector_is_unavailable_not_a_crash()
     {
         using var http = new HttpClient(new Handler("""{"data":[{"index":0,"embedding":[1]}]}"""));
-        var model = new FoundryEmbeddingModel(http, new Uri("https://res.services.ai.azure.com"), "emb", "k", null);
+        var model = new OpenAiEmbeddingModel(http, new Uri("https://res.services.ai.azure.com"), "emb", "k", null);
         await Assert.ThrowsAsync<InterpretationUnavailableException>(() => model.EmbedAsync(["a", "b"]));
     }
 }
 
-public sealed class FoundrySettingsTests
+public sealed class ModelSettingsTests
 {
     [Fact]
     public void Saved_settings_round_trip_owner_only_and_switch_the_provider_on()
     {
-        var path = Path.Combine(Directory.CreateTempSubdirectory("ce-settings").FullName, "nested", "foundry.json");
-        new FoundrySettings("https://res.services.ai.azure.com", "", "emb", "secret").Save(path);
+        var path = Path.Combine(Directory.CreateTempSubdirectory("ce-settings").FullName, "nested", "model.json");
+        new ModelSettings("https://res.services.ai.azure.com", "", "emb", "secret").Save(path);
 
         if (!OperatingSystem.IsWindows())
         {
             Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
         }
 
-        var options = FoundrySettings.Load(path)!.ApplyTo(new InterpretationOptions { CacheDirectory = "cache" });
-        Assert.Equal(("foundry", null, "emb", "secret", "cache"), (options.Provider, options.Deployment, options.EmbeddingDeployment, options.ApiKey, options.CacheDirectory));
+        var options = ModelSettings.Load(path)!.ApplyTo(new InterpretationOptions { CacheDirectory = "cache" });
+        Assert.Equal(("foundry", null, "emb", "secret", "cache"), (options.Provider, options.Deployment, options.EmbeddingModel, options.ApiKey, options.CacheDirectory));
         Assert.Null(options.CreateModel()); // embeddings only: no chat deployment
         Assert.Equal("foundry:emb", options.CreateEmbeddingModel()!.Id);
-        Assert.Null(FoundrySettings.Load(path + ".missing"));
+        Assert.Null(ModelSettings.Load(path + ".missing"));
     }
 }

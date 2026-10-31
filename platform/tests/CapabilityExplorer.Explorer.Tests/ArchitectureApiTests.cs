@@ -63,3 +63,18 @@ public sealed class ArchitectureApiTests(ExplorerFactory factory) : IClassFixtur
         Assert.Equal(["Landscape", "System", "forecast-cs", "StrategyLoader"], g.GetProperty("breadcrumbs").EnumerateArray().Select(c => c.GetProperty("label").GetString()));
     }
 }
+
+public sealed class VendorTests
+{
+    private const string Caller = "cs|shop|Glufs.Infrastructure|M:Glufs.Infrastructure.Klarna.OrderManagementRestClient.CancelOrder(System.String)";
+
+    [Theory]
+    [InlineData("http|@unbound:shop/Glufs.Infrastructure:base=https://api.fortnox.se/3/|POST /3/invoices", Caller, "Fortnox")]
+    [InlineData("http|@unbound:web/web:host=api.playground.klarna.com|POST /checkout/v3/orders", "ts|web|web|src/pay.ts|pay#value", "Klarna")]
+    [InlineData("http|@unbound:shop/Glufs.Infrastructure:client=OrderManagementRestClient|POST /ordermanagement/v1/orders/{}/cancel", Caller, "Klarna")]
+    [InlineData("http|@unbound:shop/Glufs.Infrastructure:client=FooClient|GET /x", "cs|shop|Glufs.Infrastructure|M:Glufs.Infrastructure.FooClient.Get", "FooClient")]
+    [InlineData("http|@unbound:web/web:env=CHECKOUT_API_URL|GET /api/cart", "ts|web|web|src/cart.ts|load#value", "env CHECKOUT_API_URL")]
+    [InlineData("http|forecast.cs|Forecast.Api|GET /forecast", Caller, "forecast.cs")]
+    public void Requests_group_by_who_they_talk_to(string to, string from, string vendor) =>
+        Assert.Equal(vendor, CapabilityExplorer.Explorer.Queries.Vendor(to, from));
+}
