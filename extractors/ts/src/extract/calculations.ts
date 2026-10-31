@@ -23,6 +23,8 @@ const strip = (e: ts.Expression): ts.Expression => {
   while (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isNonNullExpression(e) || ts.isSatisfiesExpression(e) || ts.isTypeAssertionExpression(e)) e = e.expression;
   return e;
 };
+/** The written type of a parameter: the annotation in TypeScript, `@param {T}` in JavaScript. */
+const typeNodeOf = (p: ts.ParameterDeclaration): ts.TypeNode | undefined => p.type ?? ts.getJSDocType(p);
 const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 export function calculations(ctx: Ctx) {
@@ -131,7 +133,7 @@ class Builder {
   // ------------------------------------------------------------------ inputs and units
 
   private input(p: ts.ParameterDeclaration, ref: string): Record<string, unknown> {
-    const typeNode = ts.getEffectiveTypeAnnotationNode(p);
+    const typeNode = typeNodeOf(p);
     const type = typeNode ? typeNode.getText() : this.checker.typeToString(this.checker.getTypeAtLocation(p));
     let origin: string | undefined;
     const find = (n: ts.Node) => {
@@ -658,7 +660,7 @@ class Attributes {
     const check = this.find((e) => e.op === "cmp" && (e.o === "!==" || e.o === "!=") && (e.l as Expr).op === "member" && ((e.r as Expr).op === "opaque" || ((e.r as Expr).op === "lit" && (e.r as Expr).value === null)));
     if (check) return this.known("excluded", this.ev(check), { note: "rows whose field is null are filtered out" });
     const nullable = [...this.b.paramNode.values()].find((p) => {
-      const t = ts.getEffectiveTypeAnnotationNode(p);
+      const t = typeNodeOf(p);
       return t && /\b(null|undefined)\b|\?/.test(t.getText());
     });
     return nullable ? this.partial("notChecked", [this.ctx.ev(nullable)]) : this.known("notApplicable", this.paramEvidence());
