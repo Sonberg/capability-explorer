@@ -1,0 +1,200 @@
+{
+  "$comment": "Allowed node kinds per relation. Checked by the importer when both endpoints are declared in the snapshot; external targets are checked once they resolve. 'File' sources are module-level code (TypeScript top-level statements) attributed to the module node.",
+  "schema": "ce.v1",
+  "relations": {
+    "DECLARES": {
+      "from": [
+        "Project",
+        "File",
+        "Namespace",
+        "Type",
+        "Service",
+        "DataStore",
+        "Table",
+        "View"
+      ],
+      "to": [
+        "File",
+        "Namespace",
+        "Type",
+        "Method",
+        "Function",
+        "Property",
+        "Field",
+        "Variable",
+        "Endpoint",
+        "Table",
+        "View",
+        "Column",
+        "Routine"
+      ]
+    },
+    "CALLS": {
+      "from": [
+        "Method",
+        "Function",
+        "Property",
+        "Routine",
+        "View",
+        "File"
+      ],
+      "to": [
+        "Method",
+        "Function",
+        "Property",
+        "Routine"
+      ]
+    },
+    "REFERENCES": {
+      "from": [
+        "Method",
+        "Function",
+        "Property",
+        "Field",
+        "Type",
+        "Routine",
+        "View",
+        "File"
+      ],
+      "to": [
+        "Type",
+        "Property",
+        "Field",
+        "Variable",
+        "Table",
+        "View",
+        "Column",
+        "Routine"
+      ]
+    },
+    "INHERITS": {
+      "from": [
+        "Type"
+      ],
+      "to": [
+        "Type"
+      ]
+    },
+    "IMPLEMENTS": {
+      "from": [
+        "Type",
+        "Method",
+        "Property"
+      ],
+      "to": [
+        "Type",
+        "Method",
+        "Property"
+      ]
+    },
+    "DEPENDS_ON": {
+      "from": [
+        "Project"
+      ],
+      "to": [
+        "Project"
+      ]
+    },
+    "EXPOSES": {
+      "from": [
+        "Service",
+        "Project"
+      ],
+      "to": [
+        "Endpoint"
+      ]
+    },
+    "HANDLES": {
+      "from": [
+        "Method",
+        "Function",
+        "File"
+      ],
+      "to": [
+        "Endpoint",
+        "MessageContract"
+      ]
+    },
+    "REQUESTS": {
+      "from": [
+        "Method",
+        "Function",
+        "File"
+      ],
+      "to": [
+        "Endpoint"
+      ]
+    },
+    "PUBLISHES": {
+      "from": [
+        "Method",
+        "Function",
+        "File"
+      ],
+      "to": [
+        "Channel",
+        "MessageContract"
+      ]
+    },
+    "CONSUMES": {
+      "from": [
+        "Method",
+        "Function",
+        "Service",
+        "File"
+      ],
+      "to": [
+        "Channel",
+        "MessageContract"
+      ]
+    },
+    "READS": {
+      "from": [
+        "Method",
+        "Function",
+        "Routine",
+        "View",
+        "File"
+      ],
+      "to": [
+        "Table",
+        "View",
+        "Column",
+        "Routine"
+      ]
+    },
+    "WRITES": {
+      "from": [
+        "Method",
+        "Function",
+        "Routine",
+        "File"
+      ],
+      "to": [
+        "Table",
+        "Column"
+      ]
+    },
+    "REGISTERS": {
+      "from": [
+        "Method",
+        "Function",
+        "Project"
+      ],
+      "to": [
+        "Type"
+      ]
+    },
+    "MAPS_TO": {
+      "from": [
+        "Type",
+        "Property"
+      ],
+      "to": [
+        "Table",
+        "View",
+        "Column"
+      ]
+    }
+  }
+}

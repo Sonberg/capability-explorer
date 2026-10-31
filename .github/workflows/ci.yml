@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      # Builds and tests run inside scripts/sandbox containers; the runner only needs Docker.
+      - name: Cache sandbox packages
+        uses: actions/cache@v4
+        with:
+          path: .sandbox-cache
+          key: sandbox-${{ hashFiles('platform/**/packages.lock.json', 'extractors/ts/package-lock.json', 'fixtures/src/**/*.csproj', 'fixtures/src/**/package-lock.json') }}
+      - name: Pull sandbox images
+        run: |
+          docker pull mcr.microsoft.com/dotnet/sdk:10.0
+          docker pull node:22-bookworm
+          docker pull postgres:17-alpine
+      - run: make ci

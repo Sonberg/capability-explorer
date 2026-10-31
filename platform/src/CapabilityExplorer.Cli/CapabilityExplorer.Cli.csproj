@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>ce</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../CapabilityExplorer.Contracts/CapabilityExplorer.Contracts.csproj" />
+    <ProjectReference Include="../CapabilityExplorer.Store/CapabilityExplorer.Store.csproj" />
+  </ItemGroup>
+</Project>

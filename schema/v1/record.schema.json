@@ -1,0 +1,483 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://capability-explorer/schema/v1/record.schema.json",
+  "title": "Capability Explorer extractor record (v1)",
+  "description": "One line of an extractor JSONL artifact. An artifact is: exactly one header first, any number of body records, exactly one complete record last. See schema/README.md for identity and evidence rules that JSON Schema cannot express.",
+  "type": "object",
+  "required": ["schema", "kind"],
+  "properties": {
+    "schema": { "const": "ce.v1" },
+    "kind": { "enum": ["header", "node", "edge", "evidence", "calculation", "diagnostic", "complete"] }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/header" },
+    { "$ref": "#/$defs/node" },
+    { "$ref": "#/$defs/edge" },
+    { "$ref": "#/$defs/evidence" },
+    { "$ref": "#/$defs/calculation" },
+    { "$ref": "#/$defs/diagnostic" },
+    { "$ref": "#/$defs/complete" }
+  ],
+  "$defs": {
+    "sha1": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "localId": {
+      "description": "Identifier unique within one artifact. Not a global identity.",
+      "type": "string", "pattern": "^[a-z]+:[A-Za-z0-9._-]{1,128}$"
+    },
+    "symbolKey": {
+      "description": "Global symbol identity within a revision. Grammar: <scheme>|<segment>|... Unbound resource references use a segment @unbound:<repo>/<unit>:<kind>=<value>. See schema/README.md.",
+      "type": "string",
+      "pattern": "^(cs|ts|sql|http|svc|chan|store|proj)\\|[^|\\s]+(\\|[^|\\n]+)+$",
+      "maxLength": 2048
+    },
+    "relativePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))[^\\\\\\n]+$",
+      "description": "Repository-relative path with forward slashes. No leading slash, no '..'."
+    },
+    "toolRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "evidenceRefs": {
+      "type": "array", "items": { "$ref": "#/$defs/localId" }, "uniqueItems": true
+    },
+    "props": {
+      "description": "Kind-specific facts. Values are scalars or arrays of scalars; keep it flat so it maps to jsonb without surprises.",
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          { "type": ["string", "number", "boolean", "null"] },
+          { "type": "array", "items": { "type": ["string", "number", "boolean", "null"] } }
+        ]
+      }
+    },
+
+    "header": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "kind", "repositoryId", "commitSha", "unit", "language", "extractor", "configHash", "inputHash"],
+      "properties": {
+        "schema": { "const": "ce.v1" },
+        "kind": { "const": "header" },
+        "repositoryId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$" },
+        "commitSha": { "$ref": "#/$defs/sha1" },
+        "unit": {
+          "description": "The analysis unit: one project (csproj, tsconfig/package, SQL folder).",
+          "type": "object", "additionalProperties": false,
+          "required": ["path", "name"],
+          "properties": {
+            "path": { "$ref": "#/$defs/relativePath" },
+            "name": { "type": "string", "minLength": 1 }
+          }
+        },
+        "language": { "enum": ["csharp", "typescript", "javascript", "sql", "config"] },
+        "extractor": { "$ref": "#/$defs/toolRef" },
+        "rules": {
+          "description": "Framework rule packs applied, with versions.",
+          "type": "array", "items": { "$ref": "#/$defs/toolRef" }
+        },
+        "configHash": { "$ref": "#/$defs/sha256" },
+        "inputHash": {
+          "description": "Hash of the unit's own inputs plus the public API surface hashes of its dependencies. Cache/dedup key together with extractor+configHash.",
+          "$ref": "#/$defs/sha256"
+        },
+        "dependencySurfaces": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["unit", "surfaceHash"],
+            "properties": {
+              "unit": { "type": "string" },
+              "surfaceHash": { "$ref": "#/$defs/sha256" }
+            }
+          }
+        },
+        "startedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+
+    "node": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "kind", "id", "symbolKey", "nodeKind", "name", "evidence"],
+      "properties": {
+        "schema": { "const": "ce.v1" },
+        "kind": { "const": "node" },
+        "id": { "$ref": "#/$defs/localId" },
+        "symbolKey": { "$ref": "#/$defs/symbolKey" },
+        "nodeKind": {
+          "enum": [
+            "Project", "File", "Namespace", "Type", "Method", "Function", "Property", "Field", "Variable",
+            "Service", "Endpoint", "MessageContract", "Channel", "DataStore", "Table", "View", "Column", "Routine"
+          ]
+        },
+        "name": { "type": "string", "minLength": 1 },
+        "signature": { "type": "string" },
+        "generated": {
+          "description": "True for generated code (designer files, generated clients). Prevents silent double counting.",
+          "type": "boolean"
+        },
+        "props": { "$ref": "#/$defs/props" },
+        "evidence": { "$ref": "#/$defs/evidenceRefs" }
+      }
+    },
+
+    "edge": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "kind", "id", "from", "relation", "derivation", "resolution", "evidence"],
+      "properties": {
+        "schema": { "const": "ce.v1" },
+        "kind": { "const": "edge" },
+        "id": { "$ref": "#/$defs/localId" },
+        "from": { "$ref": "#/$defs/symbolKey" },
+        "relation": {
+          "enum": [
+            "DECLARES", "CALLS", "REFERENCES", "INHERITS", "IMPLEMENTS", "DEPENDS_ON",
+            "EXPOSES", "HANDLES", "REQUESTS", "PUBLISHES", "CONSUMES", "READS", "WRITES",
+            "REGISTERS", "MAPS_TO"
+          ]
+        },
+        "to": {
+          "description": "Target symbolKey. Omitted only when resolution is 'unresolved'.",
+          "$ref": "#/$defs/symbolKey"
+        },
+        "derivation": { "enum": ["compiler", "rule", "human"] },
+        "resolution": {
+          "description": "resolved: target proven. static-target: the static target is proven, the runtime target is not (interface/virtual dispatch, DI). candidate: one of several possible targets. unresolved: target unknown; see unresolvedReason.",
+          "enum": ["resolved", "static-target", "candidate", "unresolved"]
+        },
+        "unresolvedReason": {
+          "enum": ["dynamic-dispatch", "reflection", "configuration", "dynamic-string", "missing-reference", "unsupported-pattern", "external"]
+        },
+        "rule": { "$ref": "#/$defs/toolRef" },
+        "props": { "$ref": "#/$defs/props" },
+        "evidence": { "$ref": "#/$defs/evidenceRefs" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "resolution": { "const": "unresolved" } } },
+          "then": { "required": ["unresolvedReason"] },
+          "else": { "required": ["to"] }
+        },
+        {
+          "if": { "properties": { "derivation": { "const": "rule" } } },
+          "then": { "required": ["rule"] }
+        }
+      ]
+    },
+
+    "evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "kind", "id", "repositoryId", "commitSha", "path", "span", "snippetSha256", "extractor"],
+      "properties": {
+        "schema": { "const": "ce.v1" },
+        "kind": { "const": "evidence" },
+        "id": { "$ref": "#/$defs/localId" },
+        "repositoryId": { "type": "string" },
+        "commitSha": { "$ref": "#/$defs/sha1" },
+        "path": { "$ref": "#/$defs/relativePath" },
+        "span": {
+          "description": "Lines and columns are 1-based. Columns count UTF-16 code units. endColumn is exclusive.",
+          "type": "object", "additionalProperties": false,
+          "required": ["startLine", "startColumn", "endLine", "endColumn"],
+          "properties": {
+            "startLine": { "type": "integer", "minimum": 1 },
+            "startColumn": { "type": "integer", "minimum": 1 },
+            "endLine": { "type": "integer", "minimum": 1 },
+            "endColumn": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "snippetSha256": {
+          "description": "sha256 of the UTF-8 span text after CRLF->LF normalisation.",
+          "$ref": "#/$defs/sha256"
+        },
+        "extractor": { "$ref": "#/$defs/toolRef" }
+      }
+    },
+
+    "attribute": {
+      "description": "A domain attribute of a calculation. status=unknown means no evidence; never fill it in from naming.",
+      "type": "object", "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["known", "unknown", "partial"] },
+        "value": { "type": ["string", "number", "boolean", "null"] },
+        "detail": { "$ref": "#/$defs/props" },
+        "evidence": { "$ref": "#/$defs/evidenceRefs" }
+      },
+      "if": { "properties": { "status": { "const": "known" } } },
+      "then": { "required": ["value", "evidence"] }
+    },
+
+    "numericType": { "enum": ["decimal", "float64", "float32", "int32", "int64", "bigint", "numeric", "unknown"] },
+
+    "expr": {
+      "description": "Language-neutral calculation IR. Locals become $0..$n placeholders; constants, types, operators and operand order are preserved.",
+      "type": "object",
+      "required": ["op"],
+      "oneOf": [
+        {
+          "properties": {
+            "op": { "const": "lit" }, "type": { "$ref": "#/$defs/numericType" },
+            "value": { "type": ["number", "string", "boolean", "null"] }
+          },
+          "required": ["op", "value"], "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "var" }, "ref": { "type": "string", "pattern": "^\\$[0-9]+$" },
+            "type": { "$ref": "#/$defs/numericType" }
+          },
+          "required": ["op", "ref"], "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "member" }, "of": { "$ref": "#/$defs/expr" }, "name": { "type": "string" },
+            "type": { "$ref": "#/$defs/numericType" }
+          },
+          "required": ["op", "of", "name"], "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "bin" }, "o": { "enum": ["+", "-", "*", "/", "%"] },
+            "type": { "$ref": "#/$defs/numericType" },
+            "l": { "$ref": "#/$defs/expr" }, "r": { "$ref": "#/$defs/expr" }
+          },
+          "required": ["op", "o", "l", "r"], "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "cmp" }, "o": { "enum": ["==", "!=", "===", "!==", "<", "<=", ">", ">="] },
+            "l": { "$ref": "#/$defs/expr" }, "r": { "$ref": "#/$defs/expr" }
+          },
+          "required": ["op", "o", "l", "r"], "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "logic" }, "o": { "enum": ["and", "or", "not"] },
+            "args": { "type": "array", "items": { "$ref": "#/$defs/expr" }, "minItems": 1 }
+          },
+          "required": ["op", "o", "args"], "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "cond" },
+            "test": { "$ref": "#/$defs/expr" }, "then": { "$ref": "#/$defs/expr" }, "else": { "$ref": "#/$defs/expr" }
+          },
+          "required": ["op", "test", "then", "else"], "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "coalesce" },
+            "args": { "type": "array", "items": { "$ref": "#/$defs/expr" }, "minItems": 2 }
+          },
+          "required": ["op", "args"], "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "conv" }, "to": { "$ref": "#/$defs/numericType" },
+            "e": { "$ref": "#/$defs/expr" }
+          },
+          "required": ["op", "to", "e"], "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "round" },
+            "mode": {
+              "description": "Midpoint behaviour. halfTowardPositiveInfinity is JavaScript Math.round. Names avoid the ambiguous 'halfUp'.",
+              "enum": ["halfEven", "halfAwayFromZero", "halfTowardPositiveInfinity", "floor", "ceiling", "truncate", "unknown"]
+            },
+            "digits": { "$ref": "#/$defs/expr" },
+            "e": { "$ref": "#/$defs/expr" },
+            "target": { "$ref": "#/$defs/symbolKey" }
+          },
+          "required": ["op", "mode", "e"], "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "agg" },
+            "fn": { "enum": ["sum", "count", "countDistinct", "avg", "min", "max"] },
+            "over": { "$ref": "#/$defs/expr" },
+            "bind": {
+              "description": "Placeholder bound to the current element inside value/filter.",
+              "type": "string", "pattern": "^\\$[0-9]+$"
+            },
+            "value": { "$ref": "#/$defs/expr" },
+            "filter": { "$ref": "#/$defs/expr" },
+            "type": { "$ref": "#/$defs/numericType" }
+          },
+          "required": ["op", "fn", "over"], "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "call" }, "target": { "$ref": "#/$defs/symbolKey" },
+            "args": { "type": "array", "items": { "$ref": "#/$defs/expr" } },
+            "type": { "$ref": "#/$defs/numericType" }
+          },
+          "required": ["op", "target", "args"], "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "fold" },
+            "over": { "$ref": "#/$defs/expr" },
+            "bind": { "description": "Placeholder for the current element inside step.", "type": "string", "pattern": "^\\$[0-9]+$" },
+            "acc": { "description": "Placeholder for the accumulator inside step.", "type": "string", "pattern": "^\\$[0-9]+$" },
+            "init": { "$ref": "#/$defs/expr" },
+            "step": { "$ref": "#/$defs/expr" },
+            "skip": { "description": "Leading elements not visited (e.g. the first element seeds init).", "type": "integer", "minimum": 0 },
+            "type": { "$ref": "#/$defs/numericType" }
+          },
+          "required": ["op", "over", "bind", "acc", "init", "step"], "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "index" },
+            "of": { "$ref": "#/$defs/expr" },
+            "key": { "$ref": "#/$defs/expr" },
+            "type": { "$ref": "#/$defs/numericType" }
+          },
+          "required": ["op", "of", "key"], "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "tuple" },
+            "items": { "type": "array", "items": { "$ref": "#/$defs/expr" }, "minItems": 2 }
+          },
+          "required": ["op", "items"], "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "opaque" }, "reason": { "type": "string" }
+          },
+          "required": ["op", "reason"], "additionalProperties": false
+        }
+      ]
+    },
+
+    "calculation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "kind", "id", "symbolKey", "output", "inputs", "expr", "attributes", "evidence"],
+      "properties": {
+        "schema": { "const": "ce.v1" },
+        "kind": { "const": "calculation" },
+        "id": { "$ref": "#/$defs/localId" },
+        "symbolKey": {
+          "description": "The symbol whose body defines the calculation. Must be declared as a node in the same artifact.",
+          "$ref": "#/$defs/symbolKey"
+        },
+        "includes": {
+          "description": "Helper symbols inlined into expr.",
+          "type": "array", "items": { "$ref": "#/$defs/symbolKey" }
+        },
+        "output": {
+          "type": "object", "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": { "$ref": "#/$defs/numericType" },
+            "unit": { "$ref": "#/$defs/attribute" }
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["ref", "type"],
+            "properties": {
+              "ref": { "type": "string", "pattern": "^\\$[0-9]+$" },
+              "type": { "type": "string" },
+              "origin": { "$ref": "#/$defs/symbolKey" },
+              "unit": { "$ref": "#/$defs/attribute" }
+            }
+          }
+        },
+        "expr": { "$ref": "#/$defs/expr" },
+        "attributes": {
+          "type": "object", "additionalProperties": false,
+          "required": ["aggregation", "timeBucket", "denominatorSource", "rounding", "numericType", "nullHandling", "zeroDenominator", "currency"],
+          "properties": {
+            "aggregation": { "$ref": "#/$defs/attribute" },
+            "timeBucket": { "$ref": "#/$defs/attribute" },
+            "period": { "$ref": "#/$defs/attribute" },
+            "denominatorSource": {
+              "description": "Where the divisor comes from: 'period' (derived from requested period), 'data' (derived from observed rows), 'constant', 'none'.",
+              "$ref": "#/$defs/attribute"
+            },
+            "filters": { "$ref": "#/$defs/attribute" },
+            "rounding": { "$ref": "#/$defs/attribute" },
+            "numericType": { "$ref": "#/$defs/attribute" },
+            "nullHandling": { "$ref": "#/$defs/attribute" },
+            "zeroDenominator": { "$ref": "#/$defs/attribute" },
+            "currency": { "$ref": "#/$defs/attribute" },
+            "overflow": {
+              "description": "Integer overflow behaviour where relevant: 'wraps', 'throws', 'notPossible'.",
+              "$ref": "#/$defs/attribute"
+            }
+          }
+        },
+        "irHash": {
+          "description": "sha256 of the canonical JSON of expr. Optional in stage 1.",
+          "$ref": "#/$defs/sha256"
+        },
+        "evidence": { "$ref": "#/$defs/evidenceRefs" }
+      }
+    },
+
+    "diagnostic": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "kind", "id", "severity", "code", "message"],
+      "properties": {
+        "schema": { "const": "ce.v1" },
+        "kind": { "const": "diagnostic" },
+        "id": { "$ref": "#/$defs/localId" },
+        "severity": { "enum": ["error", "warning", "info"] },
+        "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]+$" },
+        "message": { "type": "string" },
+        "path": { "$ref": "#/$defs/relativePath" },
+        "affectsCoverage": { "type": "boolean" },
+        "evidence": { "$ref": "#/$defs/evidenceRefs" }
+      }
+    },
+
+    "complete": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "kind", "status", "counts", "coverage"],
+      "properties": {
+        "schema": { "const": "ce.v1" },
+        "kind": { "const": "complete" },
+        "status": {
+          "description": "full: every file in the unit was analysed. partial: diagnostics explain what is missing; consumers must not treat absent symbols as removed.",
+          "enum": ["full", "partial"]
+        },
+        "counts": {
+          "type": "object", "additionalProperties": false,
+          "required": ["node", "edge", "evidence", "calculation", "diagnostic"],
+          "properties": {
+            "node": { "type": "integer", "minimum": 0 },
+            "edge": { "type": "integer", "minimum": 0 },
+            "evidence": { "type": "integer", "minimum": 0 },
+            "calculation": { "type": "integer", "minimum": 0 },
+            "diagnostic": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "coverage": {
+          "type": "object", "additionalProperties": false,
+          "required": ["filesTotal", "filesAnalyzed"],
+          "properties": {
+            "filesTotal": { "type": "integer", "minimum": 0 },
+            "filesAnalyzed": { "type": "integer", "minimum": 0 },
+            "incompletePaths": {
+              "description": "Files that were not analysed, or only partially (e.g. parsed but with unresolved semantic errors). Facts from them may be missing; absence is not removal.",
+              "type": "array", "items": { "$ref": "#/$defs/relativePath" }, "uniqueItems": true
+            },
+            "unresolvedEdges": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "finishedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Npgsql" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../CapabilityExplorer.Contracts/CapabilityExplorer.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Migrations/*.sql" LogicalName="migrations.%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

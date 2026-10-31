@@ -1,0 +1,7 @@
+{
+  "serviceBus": {
+    "fullyQualifiedNamespace": "sb-pricing.servicebus.windows.net",
+    "queue": "article-stats-updated"
+  },
+  "capacityPerWeek": 120
+}
