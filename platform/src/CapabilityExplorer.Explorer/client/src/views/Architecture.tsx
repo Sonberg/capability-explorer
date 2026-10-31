@@ -53,7 +53,7 @@ interface ArchEdge {
   kind: string;
   label: string;
   count: number;
-  certainty: "proven" | "static" | "unbound" | "candidate" | "unresolved";
+  certainty: "proven" | "static" | "bound" | "broken" | "unbound" | "candidate" | "unresolved";
   facts: ArchFact[];
 }
 
@@ -111,6 +111,8 @@ const kindLabel: Record<string, string> = {
 const certaintyDash: Record<ArchEdge["certainty"], string | undefined> = {
   proven: undefined,
   static: undefined,
+  bound: undefined,
+  broken: "3 3",
   unbound: "6 4",
   candidate: "10 5",
   unresolved: "2 4",
@@ -119,6 +121,8 @@ const certaintyDash: Record<ArchEdge["certainty"], string | undefined> = {
 const certaintyText: Record<ArchEdge["certainty"], { label: string; tone: Tone; title: string }> = {
   proven: { label: "proven", tone: "ok", title: "Every underlying fact is resolved" },
   static: { label: "static target", tone: "info", title: "Static target proven; the runtime target is not (interface dispatch, DI)" },
+  bound: { label: "bound", tone: "ok", title: "Bound by the service map to a declared endpoint (human-derived link; extractor output unchanged)" },
+  broken: { label: "broken", tone: "bad", title: "Bound by the service map, but no such endpoint exists in the selected revision (for example a renamed route)" },
   unbound: { label: "unbound", tone: "warn", title: "Target known only by a configuration name (connection string, env var, config key)" },
   candidate: { label: "candidate", tone: "warn", title: "A match by route or name, or one of several possible targets" },
   unresolved: { label: "unresolved", tone: "bad", title: "Target not statically known" },
@@ -225,7 +229,7 @@ function ArchNodeView({ data }: NodeProps<FlowNode<CanvasNodeData>>) {
             <span
               key={b}
               className={`whitespace-nowrap rounded px-1 text-[9.5px] font-semibold ${
-                b === "unbound" || b === "partial" || b === "candidate" ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" : b === "unmatched" || b === "unresolved" ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
+                b === "unbound" || b === "partial" || b === "candidate" ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" : b === "unmatched" || b === "unresolved" || b === "broken" ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
               }`}
             >
               {b}

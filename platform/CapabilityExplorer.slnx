@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/CapabilityExplorer.Binding/CapabilityExplorer.Binding.csproj" />
     <Project Path="src/CapabilityExplorer.Capabilities/CapabilityExplorer.Capabilities.csproj" />
     <Project Path="src/CapabilityExplorer.Cli/CapabilityExplorer.Cli.csproj" />
     <Project Path="src/CapabilityExplorer.Contracts/CapabilityExplorer.Contracts.csproj" />

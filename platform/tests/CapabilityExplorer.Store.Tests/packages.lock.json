@@ -290,6 +290,12 @@
           "xunit.v3.runner.common": "[3.2.2]"
         }
       },
+      "capabilityexplorer.binding": {
+        "type": "Project",
+        "dependencies": {
+          "CapabilityExplorer.Contracts": "[1.0.0, )"
+        }
+      },
       "capabilityexplorer.contracts": {
         "type": "Project",
         "dependencies": {
@@ -299,6 +305,7 @@
       "capabilityexplorer.store": {
         "type": "Project",
         "dependencies": {
+          "CapabilityExplorer.Binding": "[1.0.0, )",
           "CapabilityExplorer.Contracts": "[1.0.0, )",
           "Npgsql": "[10.0.3, )"
         }

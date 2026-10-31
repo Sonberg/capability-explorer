@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "bindings": [
+    {
+      "hint": "@unbound:pricing-node/@fixture/pricing:env=FORECAST_API_URL",
+      "target": "forecast-cs/Forecast.Api",
+      "note": "pricing-node calls the forecast service through FORECAST_API_URL"
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+using CapabilityExplorer.Binding;
 using CapabilityExplorer.Capabilities;
 using CapabilityExplorer.Interpretation;
 
@@ -8,7 +9,8 @@ public sealed record ExplorerOptions(
     string? RepositoriesDirectory,
     string? EvaluationReport,
     string CapabilitiesFile,
-    string Workspace)
+    string Workspace,
+    string? BindingsFile = null)
 {
     public static ExplorerOptions From(IConfiguration configuration)
     {
@@ -19,7 +21,8 @@ public sealed record ExplorerOptions(
             configuration["repos"],
             configuration["evaluation"],
             configuration["capabilities"] ?? "capabilities.json",
-            configuration["workspace"] ?? ".sandbox-cache/sources");
+            configuration["workspace"] ?? ".sandbox-cache/sources",
+            configuration["bindings"]);
     }
 
     /// <summary>Builds the index, resolving repository sources through capabilities first, then the repos directory.</summary>
@@ -32,7 +35,21 @@ public sealed record ExplorerOptions(
             store.FindRepository(id) is { } source ? sync.GitDirectory(source)
             : RepositoriesDirectory is not null && GitSource.IsSafeSegment(id) ? Path.Combine(RepositoriesDirectory, id)
             : null, auth);
-        var index = ExplorerIndex.Load(ArtifactDirectories, git);
+        BindingFile? bindings = null;
+        string? problem = null;
+        if (BindingsFile is not null)
+        {
+            try
+            {
+                bindings = BindingFile.Load(BindingsFile);
+            }
+            catch (Exception e) when (e is FormatException or IOException)
+            {
+                problem = $"{BindingsFile}: {e.Message}"; // shown in the UI, and nothing is bound
+            }
+        }
+
+        var index = ExplorerIndex.Load(ArtifactDirectories, git, bindings, problem);
         return (index, new CapabilityService(store, sync, index));
     }
 }

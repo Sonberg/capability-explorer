@@ -15,7 +15,8 @@ Status at handoff: branch `stage-1-contract-and-fixtures`. `make ci` is green.
 | SQL extractor | `extractors/ts/src/sql` (`ce-ts extract-sql`) | 100% on graph metrics for all 5 SQL golden artifacts (`make evaluate-sql`). **No calculations.** |
 | Analyse pipeline | `scripts/analyze`, `make analyze CAPABILITY=<id>` | Three sandboxed steps: export → packages → offline extract (C#, TS/JS, SQL), written to `.sandbox-cache/artifacts`. |
 | Explorer | `platform/src/CapabilityExplorer.Explorer` (+ React client) | Live reload. Capabilities, architecture canvas, optional LLM layer. |
-| Store | `platform/src/CapabilityExplorer.Store` | Migrations and an idempotent importer, tested with Testcontainers. Not yet fed by `make analyze`. |
+| Store | `platform/src/CapabilityExplorer.Store` | Migrations, an idempotent importer and binding snapshots, tested with Testcontainers. Fed by `make analyze` when `CE_DATABASE` is set. |
+| Binding | `platform/src/CapabilityExplorer.Binding`, `bindings.json` | Service-map binding of `@unbound` hints into `human` edges; shown in the explorer as bound/broken links. |
 
 Ground rules that apply to all work:
 
@@ -92,16 +93,11 @@ Implemented in `Calculations.cs`, `CalculationAttributes.cs`, `CalculationIr.cs`
 - **Where:** `PackageFetcher.cs`, `PackageResolver.cs`, `scripts/analyze`.
 - **Done when:** running analyze twice on different cache states gives byte-identical artifacts. Add a test.
 
-### 5. Persist analyses + bind unbound resources (stage 3)
+### 5. Persist analyses + bind unbound resources (stage 3): done for the service map
 
-- **Goal:**
-  - `make analyze` also imports artifacts into PostgreSQL. The `Store` importer already exists.
-  - Snapshot-level binding of `@unbound:` hints (env vars, config keys, connection names) to concrete
-    services and stores. Sources: environment/IaC config, or a human-maintained service map (`bindings.json`).
-  - Binding produces new `rule`/`human` edges and never rewrites extractor output (see schema/README "Unbound resources").
-- **Explorer:** shows bound cross-repo links. Example: pricing-node `REQUESTS GET /api/forecasts/{}` →
-  forecast-cs endpoint, and the v2 route change showing as a broken link.
-- **Where:** `platform/src/CapabilityExplorer.Store`, a new `Binding` library, `Explorer/Architecture.cs`.
+- `make analyze` imports into PostgreSQL when `CE_DATABASE` is set; `BINDINGS=` also saves a binding snapshot.
+- Remaining: environment/IaC files as a second binding source (Kubernetes/compose/appsettings), a UI to edit the map,
+  and reading analyses from the database in the explorer (it still reads artifact files).
 
 ## Smaller follow-ups
 

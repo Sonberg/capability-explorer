@@ -27,6 +27,7 @@ help:
 	@echo "make analyze CAPABILITY=id  check out, extract and store artifacts for one capability (picked up live by explore)"
 	@echo "     GITHUB_AUTH=auto|git|none  LOCKED=1 (analyse the last check)  PACKAGES=0 (skip nuget.org downloads)"
 	@echo "     private NuGet feeds: nuget.config in the repo, credentials via %VAR% + NUGET_PASS_ENV=VAR,VAR (only the packages step sees them)"
+	@echo "     CE_DATABASE='Host=...;Database=...;...' also imports into PostgreSQL (off otherwise); BINDINGS=bindings.json binds @unbound hints"
 	@echo "make evaluate-cs     run the C# extractor over every fixture revision and gate it on the csharp golden units"
 	@echo "make evaluate-ts     same for the TypeScript/JavaScript extractor"
 	@echo "make evaluate-sql    same for the SQL extractor (T-SQL projects, PostgreSQL migrations)"
@@ -127,7 +128,7 @@ test-explorer: fixtures build
 # Analyse a capability's repositories: export (network + token) -> packages (nuget.org) -> extract (offline).
 analyze: build
 	@test -n "$(CAPABILITY)" || { echo "usage: make analyze CAPABILITY=<id>  (see $(CAPABILITIES))"; exit 2; }
-	GITHUB_AUTH=$(GITHUB_AUTH) scripts/analyze $(CAPABILITY) $(CAPABILITIES)
+	GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) scripts/analyze $(CAPABILITY) $(CAPABILITIES)
 
 # Read-only UI over artifacts. The container publishes the port on 127.0.0.1 only.
 # Analysed artifacts come after the golden set: for the same repository, commit and unit, the later one wins.
@@ -135,6 +136,8 @@ ARTIFACTS ?= fixtures/expected,.sandbox-cache/artifacts
 CAPABILITIES ?= capabilities.json
 GITHUB_AUTH ?= auto
 PORT ?= 5080
+# Human-maintained service map that binds @unbound hints (see schema/README.md). Used by explore and by the optional import in analyze.
+BINDINGS ?= $(wildcard bindings.json)
 # Extra local directories to mount read-only (local repositories in $(CAPABILITIES) are mounted automatically):
 # SOURCES=/abs/path,/abs/other — e.g. SOURCES=$$HOME/Code to add repositories from the UI without restarting.
 explore: fixtures build
@@ -148,7 +151,7 @@ explore: fixtures build
 	SANDBOX_SOURCES="$$(s="$(SOURCES)"; c="$$(scripts/capability-sources $(CAPABILITIES))"; echo "$${s}$${s:+$${c:+,}}$${c}")" \
 	$(SANDBOX) --port $(PORT) dotnet dotnet platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll \
 	  --artifacts $(ARTIFACTS) --repos fixtures/.repos $(if $(EVALUATION),--evaluation $(EVALUATION)) \
-	  --capabilities $(CAPABILITIES) --workspace .sandbox-cache/sources \
+	  --capabilities $(CAPABILITIES) --workspace .sandbox-cache/sources $(if $(BINDINGS),--bindings $(BINDINGS)) \
 	  $(if $(INTERPRETATION),--interpretation:provider $(INTERPRETATION) --interpretation:cacheDirectory .sandbox-cache/interpretations) \
 	  $(if $(FOUNDRY_ENDPOINT),--interpretation:endpoint $(FOUNDRY_ENDPOINT)) \
 	  $(if $(FOUNDRY_DEPLOYMENT),--interpretation:deployment $(FOUNDRY_DEPLOYMENT)) \

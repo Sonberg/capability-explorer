@@ -21,7 +21,8 @@ public sealed record ArchFact(string Relation, SymbolRef From, SymbolRef? To, st
 
 /// <summary>
 /// An aggregated edge. Certainty: "proven" (every fact resolved), "static" (static target only), "unbound" (target
-/// known by a configuration name only), "candidate" (a match by route or name, or a candidate fact), "unresolved".
+/// known by a configuration name only), "bound" (named by the service map, endpoint found), "broken" (named by the service map, endpoint missing),
+/// "candidate" (a match by route or name, or a candidate fact), "unresolved".
 /// </summary>
 public sealed record ArchEdge(string Id, string From, string To, string Kind, string Label, int Count, string Certainty, IReadOnlyList<ArchFact> Facts);
 
@@ -65,9 +66,16 @@ public static class Architecture
             var r = e.Record;
             if (r.Relation == "REQUESTS")
             {
-                foreach (var (target, certainty) in HttpTargets(view, e))
+                foreach (var (target, certainty, missing) in HttpTargets(view, e))
                 {
-                    if (target is null)
+                    if (missing is not null)
+                    {
+                        var route = Route(missing);
+                        var id = $"broken:{missing}";
+                        b.Node(new ArchNode(id, "unmatched", route, $"bound to {missing.Split('|')[1]}, but no such endpoint", "Broken", null, null, null, ["broken"]));
+                        b.Edge($"repo:{fromRepo}", id, "http", route, "broken", e);
+                    }
+                    else if (target is null)
                     {
                         var route = r.To is null ? "dynamic request" : Route(r.To);
                         b.Node(new ArchNode($"unmatched:{route}", "unmatched", route, "no endpoint in scope", "Unmatched", null, null, null, ["unmatched"]));
@@ -155,7 +163,7 @@ public static class Architecture
                 // Callers from other repositories, by route candidate, give context at the boundary.
                 if (r.Relation == "REQUESTS")
                 {
-                    foreach (var (target, certainty) in HttpTargets(view, e).Where(t => t.Target?.Artifact.RepositoryId == repo))
+                    foreach (var (target, certainty, _) in HttpTargets(view, e).Where(t => t.Target?.Artifact.RepositoryId == repo))
                     {
                         b.Node(ExternalRepo(view, fromRepo));
                         b.Edge($"repo:{fromRepo}", $"ep:{target!.Record.SymbolKey}", "http", Route(target.Record.SymbolKey), certainty, e);
@@ -177,9 +185,14 @@ public static class Architecture
             }
             else if (r.Relation == "REQUESTS")
             {
-                foreach (var (target, certainty) in HttpTargets(view, e))
+                foreach (var (target, certainty, missing) in HttpTargets(view, e))
                 {
-                    if (target is null)
+                    if (missing is not null)
+                    {
+                        b.Node(new ArchNode($"broken:{missing}", "unmatched", Route(missing), $"bound to {missing.Split('|')[1]}, but no such endpoint", null, null, null, null, ["broken"]));
+                        b.Edge(from.Id, $"broken:{missing}", "http", Route(missing), "broken", e);
+                    }
+                    else if (target is null)
                     {
                         var route = r.To is null ? "dynamic request" : Route(r.To);
                         b.Node(new ArchNode($"unmatched:{route}", "unmatched", route, "no endpoint in scope", null, null, null, null, ["unmatched"]));
@@ -252,10 +265,18 @@ public static class Architecture
             var toId = Endpoint(b, view, r.To, focus);
             if (r.Relation == "REQUESTS")
             {
-                foreach (var (target, certainty) in HttpTargets(view, e).Where(t => t.Target is not null))
+                foreach (var (target, certainty, missing) in HttpTargets(view, e))
                 {
-                    b.Node(new ArchNode($"ep:{target!.Record.SymbolKey}", "endpoint", Route(target.Record.SymbolKey), target.Artifact.RepositoryId, target.Artifact.RepositoryId, target.Record.SymbolKey, target.Artifact.RepositoryId, null, ["candidate"]));
-                    b.Edge(toId, $"ep:{target.Record.SymbolKey}", "http", "route match", certainty, e);
+                    if (missing is not null)
+                    {
+                        b.Node(new ArchNode($"broken:{missing}", "unmatched", Route(missing), $"bound to {missing.Split('|')[1]}, but no such endpoint", "Broken", null, null, null, ["broken"]));
+                        b.Edge(toId, $"broken:{missing}", "http", "bound, endpoint missing", "broken", e);
+                    }
+                    else if (target is not null)
+                    {
+                        b.Node(new ArchNode($"ep:{target.Record.SymbolKey}", "endpoint", Route(target.Record.SymbolKey), target.Artifact.RepositoryId, target.Artifact.RepositoryId, target.Record.SymbolKey, target.Artifact.RepositoryId, null, [certainty == "bound" ? "bound" : "candidate"]));
+                        b.Edge(toId, $"ep:{target.Record.SymbolKey}", "http", certainty == "bound" ? "bound by service map" : "route match", certainty, e);
+                    }
                 }
             }
 
@@ -474,30 +495,45 @@ public static class Architecture
     }
 
     /// <summary>Endpoints a REQUESTS edge may reach: the exact key, else route candidates, else nothing (null).</summary>
-    private static IEnumerable<(Occurrence<NodeRecord>? Target, string Certainty)> HttpTargets(ViewIndex view, Occurrence<EdgeRecord> e)
+    private static IEnumerable<(Occurrence<NodeRecord>? Target, string Certainty, string? Missing)> HttpTargets(ViewIndex view, Occurrence<EdgeRecord> e)
     {
         var to = e.Record.To;
+        if (to is not null && view.BoundFor(e) is { } bound)
+        {
+            // The service map names the base URL: the link is exact, or provably broken (no such endpoint).
+            if (view.Node(bound.Edge.To!) is { } hit)
+            {
+                yield return (hit, "bound", null);
+            }
+            else
+            {
+                yield return (null, "broken", bound.Edge.To);
+            }
+
+            yield break;
+        }
+
         if (to is null)
         {
-            yield return (null, "unresolved");
+            yield return (null, "unresolved", null);
             yield break;
         }
 
         if (view.Node(to) is { } exact)
         {
-            yield return (exact, e.Record.Resolution == "resolved" ? "proven" : "static");
+            yield return (exact, e.Record.Resolution == "resolved" ? "proven" : "static", null);
             yield break;
         }
 
         var matches = view.Nodes.Values.Select(l => l[0]).Where(o => o.Record.NodeKind == "Endpoint" && Route(o.Record.SymbolKey) == Route(to)).ToList();
         if (matches.Count == 0)
         {
-            yield return (null, "unresolved");
+            yield return (null, "unresolved", null);
         }
 
         foreach (var m in matches)
         {
-            yield return (m, "candidate");
+            yield return (m, "candidate", null);
         }
     }
 
@@ -568,6 +604,6 @@ public static class Architecture
             : facts.Any(f => f.Record.Resolution == "unresolved") ? "unbound"
             : "proven";
 
-        private static int Rank(string? c) => c switch { "unresolved" => 4, "candidate" => 3, "unbound" => 2, "static" => 1, _ => 0 };
+        private static int Rank(string? c) => c switch { "broken" => 5, "unresolved" => 4, "candidate" => 3, "unbound" => 2, "static" => 1, _ => 0 };
     }
 }
