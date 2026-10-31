@@ -66,7 +66,7 @@ Rules:
   The module itself is `<module path>|(module)#namespace` (node kind `File`).
 - **Anonymous code** (lambdas, arrow functions, handlers passed inline) has no key of its own. Its
   facts are attributed to the nearest named container. Top-level TypeScript code is attributed to the
-  module node, and C# top-level statements to `M:Program.<Main>$(System.String[])`. Set
+  module node, and C# top-level statements to `M:Program.{Main}$(System.String[])` (Roslyn's documentation-comment ID for the synthesized entry point; doc IDs write `<>` as `{}`). Set
   `props.handler: "lambda"` where it matters.
 - **Generics**: a call on a constructed generic (`Repository<WeeklyHistory>.ListAsync`) targets the
   original definition (``M:…Repository`1.ListAsync(…)``). The type arguments go in

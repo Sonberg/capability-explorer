@@ -293,6 +293,17 @@ public sealed class EvaluatorTests
     }
 
     [Fact]
+    public async Task Evaluation_can_be_limited_to_some_languages()
+    {
+        // An extractor for one language is gated only on the units it owns (no SQL units missing).
+        var csharpOnly = Golden.Where(g => g.Content.Contains("\"language\":\"csharp\"", StringComparison.Ordinal)).ToList();
+        var report = await Evaluator.EvaluateAsync(Golden, csharpOnly, Config, onlyLanguages: ["csharp"]);
+        Assert.True(report.Passed);
+        Assert.NotEmpty(report.Artifacts);
+        Assert.Equal(csharpOnly.Count, report.Artifacts.Count);
+    }
+
+    [Fact]
     public async Task Thresholds_are_optional()
     {
         var actual = Replace(Mutated(Api, r => r.Remove(First(r, "edge", e => (string)e["relation"]! == "DEPENDS_ON"))));

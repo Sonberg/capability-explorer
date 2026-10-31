@@ -31,8 +31,9 @@ public sealed class ServiceFixtureScenarioTests
         var forecast = A("forecast-cs/v1-base/Forecast.Api.jsonl").Edges.Single(e => e.Relation == "CONSUMES").To;
         var pricing = A("pricing-node/v1-base/_fixture_pricing.jsonl").Edges.Single(e => e.Relation == "CONSUMES");
 
-        // Both read "ServiceBus:ConnectionString" and use topic "article-stats-updated", but nothing proves one namespace.
-        Assert.EndsWith("|topic/article-stats-updated", worker, StringComparison.Ordinal);
+        // Both read "ServiceBus:ConnectionString" and use "article-stats-updated", but nothing proves one namespace.
+        // The worker only sends, which cannot tell a queue from a topic; the forecast processor proves a topic.
+        Assert.EndsWith("|entity/article-stats-updated", worker, StringComparison.Ordinal);
         Assert.EndsWith("|topic/article-stats-updated", forecast, StringComparison.Ordinal);
         Assert.NotEqual(worker, forecast);
 

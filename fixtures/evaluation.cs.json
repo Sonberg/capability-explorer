@@ -1,0 +1,48 @@
+{
+  "$comment": "Gate for the C# extractor (`make evaluate-cs`), scored only on csharp units. Same scope as evaluation.json; calculation metrics are not gated until calculation extraction exists. Raise, never lower, without review.",
+  "scope": {
+    "exhaustiveRelations": [
+      {
+        "relation": "EXPOSES"
+      },
+      {
+        "relation": "HANDLES"
+      },
+      {
+        "relation": "REQUESTS"
+      },
+      {
+        "relation": "PUBLISHES"
+      },
+      {
+        "relation": "CONSUMES"
+      },
+      {
+        "relation": "READS"
+      },
+      {
+        "relation": "WRITES"
+      },
+      {
+        "relation": "MAPS_TO",
+        "fromKinds": [
+          "Type"
+        ]
+      }
+    ],
+    "exhaustiveNodeKinds": [
+      "Endpoint",
+      "Channel"
+    ]
+  },
+  "thresholds": {
+    "nodeRecall": 1.0,
+    "edgeRecall": 1.0,
+    "edgeAccuracy": 1.0,
+    "evidenceLocated": 1.0,
+    "precision": 1.0,
+    "coverage": 1.0,
+    "maxEvidenceErrors": 0,
+    "requireAllArtifacts": true
+  }
+}

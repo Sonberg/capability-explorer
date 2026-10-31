@@ -5,6 +5,7 @@
     <Project Path="src/CapabilityExplorer.Contracts/CapabilityExplorer.Contracts.csproj" />
     <Project Path="src/CapabilityExplorer.Evaluation/CapabilityExplorer.Evaluation.csproj" />
     <Project Path="src/CapabilityExplorer.Explorer/CapabilityExplorer.Explorer.csproj" />
+    <Project Path="src/CapabilityExplorer.Extractors.CSharp/CapabilityExplorer.Extractors.CSharp.csproj" />
     <Project Path="src/CapabilityExplorer.Interpretation/CapabilityExplorer.Interpretation.csproj" />
     <Project Path="src/CapabilityExplorer.Store/CapabilityExplorer.Store.csproj" />
   </Folder>

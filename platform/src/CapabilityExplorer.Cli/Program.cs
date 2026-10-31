@@ -7,7 +7,7 @@ using Npgsql;
 // ce verify-evidence --repo <git dir> <artifact.jsonl...>
 // ce migrate [--connection <npgsql connection string>]
 // ce import  [--connection <npgsql connection string>] <artifact.jsonl...>
-// ce evaluate --expected <dir> --actual <dir> [--config <evaluation.json>] [--repos <dir>] [--repository <id[,id]>] [--json <report.json>]
+// ce evaluate --expected <dir> --actual <dir> [--config <evaluation.json>] [--repos <dir>] [--repository <id[,id]>] [--language <csharp,typescript,...>] [--json <report.json>]
 // The connection string defaults to the CE_DATABASE environment variable.
 const string Usage = """
     usage:
@@ -15,7 +15,7 @@ const string Usage = """
       ce verify-evidence --repo <git dir> <artifact.jsonl...>
       ce migrate [--connection <connection string>]
       ce import [--connection <connection string>] <artifact.jsonl...>
-      ce evaluate --expected <dir> --actual <dir> [--config <evaluation.json>] [--repos <dir>] [--repository <id[,id]>] [--json <report.json>] [--max-findings <n>]
+      ce evaluate --expected <dir> --actual <dir> [--config <evaluation.json>] [--repos <dir>] [--repository <id[,id]>] [--language <csharp,typescript,...>] [--json <report.json>] [--max-findings <n>]
     """;
 
 if (args.Length == 0)
@@ -126,7 +126,8 @@ switch (command)
             ArtifactFile.LoadDirectory(actual),
             config,
             options.GetValueOrDefault("repos"),
-            options.TryGetValue("repository", out var only) ? only.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : null);
+            options.TryGetValue("repository", out var only) ? only.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : null,
+            options.TryGetValue("language", out var languages) ? languages.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : null);
         ReportWriter.WriteText(report, Console.Out, options.TryGetValue("max-findings", out var max) ? int.Parse(max, System.Globalization.CultureInfo.InvariantCulture) : 40);
         if (options.TryGetValue("json", out var jsonPath))
         {

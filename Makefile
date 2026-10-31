@@ -8,7 +8,8 @@ NODE    := $(SANDBOX) node
 OFFLINE := $(SANDBOX) --offline
 
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
-        restore ui build test-ts test-contracts test-evaluation test-explorer test-store evaluate evaluate-golden explore clean
+        restore ui build test-ts test-contracts test-evaluation test-explorer test-store evaluate evaluate-golden \
+        extract-cs evaluate-cs explore clean
 
 help:
 	@echo "make ci              everything CI runs: fixture compile checks + all tests"
@@ -23,10 +24,11 @@ help:
 	@echo "     optional LLM: INTERPRETATION=foundry FOUNDRY_ENDPOINT=... FOUNDRY_DEPLOYMENT=... (key via SANDBOX_PASS_ENV=CE_FOUNDRY_API_KEY)"
 	@echo "                   INTERPRETATION=recorded RECORDINGS=dir  replays stored responses, no network model"
 	@echo "make evaluate ACTUAL=out/ [REPO=id,id]  score extractor output against fixtures/expected (report: out/evaluation.json)"
+	@echo "make evaluate-cs     run the C# extractor over every fixture revision and gate it on the csharp golden units"
 
 ci: fixtures-compile test
 
-test: golden-check test-ts test-contracts test-evaluation evaluate-golden test-explorer test-store
+test: golden-check test-ts test-contracts test-evaluation evaluate-golden evaluate-cs test-explorer test-store
 
 fixtures:
 	$(OFFLINE) node scripts/build-fixtures.sh
@@ -82,6 +84,16 @@ evaluate: fixtures build
 	$(OFFLINE) dotnet $(CE) evaluate --expected fixtures/expected --actual $(ACTUAL) \
 	  --config fixtures/evaluation.json --repos fixtures/.repos --json $(ACTUAL)/evaluation.json \
 	  $(if $(REPO),--repository $(REPO))
+
+# C# extractor (Roslyn, no MSBuild/restore of the target): offline, over `git archive` of each locked revision.
+EXTRACTED := .sandbox-cache/extracted
+extract-cs: fixtures build fixtures-compile
+	rm -rf $(EXTRACTED)/cs
+	$(OFFLINE) dotnet bash scripts/extract-fixtures.sh cs $(EXTRACTED)/cs
+
+evaluate-cs: extract-cs
+	$(OFFLINE) dotnet $(CE) evaluate --expected fixtures/expected --actual $(EXTRACTED)/cs \
+	  --config fixtures/evaluation.cs.json --repos fixtures/.repos --language csharp --json $(EXTRACTED)/cs/evaluation.json
 
 test-explorer: fixtures build
 	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Explorer.Tests && dotnet test --no-build tests/CapabilityExplorer.Interpretation.Tests && dotnet test --no-build tests/CapabilityExplorer.Capabilities.Tests'

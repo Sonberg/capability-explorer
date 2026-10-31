@@ -16,7 +16,7 @@ const conn = key.unbound(R, A, "conn", "Forecasts");
 export const k = {
   proj: key.proj(R, "src/Forecast.Api/Forecast.Api.csproj"),
   service: key.svc(R, A),
-  program: cs("M:Program.<Main>$(System.String[])"),
+  program: cs("M:Program.{Main}$(System.String[])"),
   endpoints: cs("T:Forecast.Api.Endpoints.ForecastEndpoints"),
   mapEndpoints: cs("M:Forecast.Api.Endpoints.ForecastEndpoints.MapForecastEndpoints(Microsoft.AspNetCore.Routing.RouteGroupBuilder)"),
   getForecast: cs(
@@ -243,7 +243,7 @@ export default function forecastCs(repo, tag) {
     });
   }
   a.edge({
-    from: k.resolve, rel: "REFERENCES", resolution: "unresolved", reason: "reflection",
+    from: k.resolve, rel: "REFERENCES", derivation: "rule", rule: DI, resolution: "unresolved", reason: "reflection",
     props: { expression: "Activator.CreateInstance(Type.GetType(name[PluginPrefix.Length..]))", expectedType: k.iStrategy },
     at: [loader, "Type.GetType(name[PluginPrefix.Length..], throwOnError: true)"],
   });

@@ -27,6 +27,7 @@ public static class Evaluator
         EvaluationConfig config,
         string? repositoriesDirectory = null,
         IReadOnlyCollection<string>? onlyRepositories = null,
+        IReadOnlyCollection<string>? onlyLanguages = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(expected);
@@ -43,7 +44,8 @@ public static class Evaluator
             }
 
             var a = report.Artifact!;
-            if (onlyRepositories is { Count: > 0 } && !onlyRepositories.Contains(a.Header.RepositoryId))
+            if ((onlyRepositories is { Count: > 0 } && !onlyRepositories.Contains(a.Header.RepositoryId))
+                || (onlyLanguages is { Count: > 0 } && !onlyLanguages.Contains(a.Header.Language)))
             {
                 continue;
             }
