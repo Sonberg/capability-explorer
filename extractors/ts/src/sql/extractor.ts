@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ToolRef } from "../contracts/records.ts";
-import { ArtifactBuilder, sha256 } from "../extract/builder.ts";
+import { ArtifactBuilder, BUILD, sha256 } from "../extract/builder.ts";
 import { applyStatement, lookupKey, newCatalog, splitStatements, type Catalog, type Range } from "./ddl.ts";
 import { LineIndex, tokenize } from "./lexer.ts";
 import { discoverSqlUnits, type SqlUnit } from "./project.ts";
@@ -135,7 +135,7 @@ function extractUnit(root: string, unit: SqlUnit, options: SqlExtractOptions): S
   }
 
   const inputs = unit.files.map((f) => `${f}\0${sha256(read(f))}\n`).join("") + (unit.projectFile ? `${unit.projectFile}\0${sha256(read(unit.projectFile))}\n` : "");
-  const configHash = sha256(`${SQL_EXTRACTOR.name}/${SQL_EXTRACTOR.version}|${d}`);
+  const configHash = sha256(`${SQL_EXTRACTOR.name}/${SQL_EXTRACTOR.version}|build=${BUILD}|${d}`);
   const jsonl = b.toJsonl({ path: unit.dir, name: unit.name }, "sql", [rule], configHash, sha256(inputs), unit.files.length);
   void lookupKey;
   return { unitPath: unit.dir, unitName: unit.name, jsonl };

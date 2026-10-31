@@ -251,6 +251,21 @@ export interface RepositoryStatus {
   analysedRevisions: string[];
 }
 
+/** An "Analyze code" run, executed on the host by scripts/analyze-worker. */
+export interface AnalysisJob {
+  state: "idle" | "queued" | "running" | "stopping" | "done" | "failed" | "stopped";
+  since?: string;
+  log?: string;
+}
+
+export interface RebuildResult {
+  imported: number;
+  unchanged: number;
+  failed: string[];
+  embedded: number;
+  model: string;
+}
+
 export interface CapabilityStatus {
   id: string;
   name: string;

@@ -130,14 +130,14 @@ export function PropsList({ props }: { props?: Props }) {
   return <Kv pairs={Object.entries(props).map(([k, v]) => [k, typeof v === "string" && v.includes("|") ? <Mono className="text-xs">{v}</Mono> : jsonText(v)])} />;
 }
 
-export function Button({ children, onClick, variant = "primary", disabled, type = "button" }: { children: ReactNode; onClick?: () => void; variant?: "primary" | "secondary" | "danger"; disabled?: boolean; type?: "button" | "submit" }) {
+export function Button({ children, onClick, variant = "primary", disabled, type = "button", title }: { children: ReactNode; onClick?: () => void; variant?: "primary" | "secondary" | "danger"; disabled?: boolean; type?: "button" | "submit"; title?: string }) {
   const styles = {
     primary: "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:text-zinc-950 dark:hover:bg-blue-400",
     secondary: "border border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800",
     danger: "border border-red-200 bg-white text-red-700 hover:bg-red-50 dark:border-red-900 dark:bg-zinc-900 dark:text-red-300 dark:hover:bg-red-950",
   };
   return (
-    <button type={type} disabled={disabled} onClick={onClick} className={`rounded-md px-3 py-1.5 text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${styles[variant]}`}>
+    <button type={type} disabled={disabled} onClick={onClick} title={title} className={`rounded-md px-3 py-1.5 text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${styles[variant]}`}>
       {children}
     </button>
   );
