@@ -43,3 +43,22 @@ P rubric: acceptance40/40, deterministic order30/30, bounded/errors30/30;
 grade100/100, iteration2. Log /private/tmp/ce-glossary-p-2.log.
 Brain closeout: sparc/capability-cards.md#sparc; no additional dependency warranted.
 Full projection/UI behavior not yet tested. No paid provider routing; spend unknown.
+
+## Architecture
+
+Frozen GlossaryDtos and mirrored TypeScript contracts; read-only API scopes via
+existing ViewIndex and CapabilityService. MADR-0004 distinguishes candidates from
+reviewed equivalence. No new dependency/service/schema/fixture/threshold change.
+`make test-explorer` exited0: Explorer88, Interpretation28, Capabilities28 passed,
+zero failed/skipped; UI and solution build0 warnings/errors. Architecture rubric:
+contracts40/40, context/evidence isolation40/40, compatible integration20/20;
+A grade100/100, iteration3. Log /private/tmp/ce-glossary-a-3.log.
+Iterations fixed private-helper return types and test analyzer compliance (no
+suppression). API enum decoding explicitly matches the existing wire serializer.
+Independent Astra review found same-symbol calculation first-winner ambiguity and
+missing nested JSON property-order coverage. Commits27bb122/192e997 preserve every
+record with stable record-ID identity and add meaningful regressions; independent
+re-review found no remaining blockers. All88 tests execute these assertions.
+Brain closeout: sparc/capability-cards.md#sparc; no additional runtime dependency.
+Browser behavior and full cross-project CI remain pending. No provider API spend
+invoked; native worker monetary cost unavailable, no numeric savings claimed.

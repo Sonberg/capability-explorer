@@ -298,3 +298,39 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const shortSha = (sha?: string) => (sha ? sha.slice(0, 12) : "");
+
+/** A source occurrence in an exact-name candidate, not a reviewed concept link. */
+export interface GlossaryOccurrence {
+  id: string;
+  key: string;
+  name: string;
+  kind: string;
+  role: string;
+  repositoryId: string;
+  commitSha: string;
+  unit: string;
+  unitPath: string;
+  type: string | null;
+  capabilities: string[];
+  evidence: Evidence[];
+}
+
+export interface GlossaryComparison {
+  leftId: string;
+  rightId: string;
+  sameExpression: boolean | null;
+  differences: Comparison["differences"];
+}
+
+export interface GlossaryCandidate {
+  term: string;
+  occurrences: GlossaryOccurrence[];
+  repositories: string[];
+  capabilities: string[];
+  typeDiffers: boolean;
+  derivationDiffers: boolean;
+  expressionDiffers: boolean;
+  comparisonsComplete: boolean;
+  possibleComparisons: number;
+  comparisons: GlossaryComparison[];
+}

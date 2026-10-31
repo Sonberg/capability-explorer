@@ -109,7 +109,7 @@ function CandidateDetail({ candidate }: { candidate: GlossaryCandidate }) {
       <H2>Calculation comparisons</H2>
       <Muted className="text-xs">{candidate.comparisons.length} of {candidate.possibleComparisons} possible calculation pairs compared. Only calculation occurrences participate.</Muted>
       {!candidate.comparisonsComplete && <Note>Comparison coverage is incomplete: the deterministic pair limit was reached. Uncompared pairs may contain additional differences or evidence gaps.</Note>}
-      <p className="my-2 text-xs text-zinc-500">Different values or numeric parameters are observed attribute differences. “Known on one side” is an evidence gap, not a business divergence. Expression-hash inequality is not proof of mathematical inequivalence.</p>
+      <p className="my-2 text-xs text-zinc-500">Different values or details are observed attribute differences. “Known on one side” is an evidence gap, not a business divergence. Expression-hash inequality is not proof of mathematical inequivalence.</p>
       {candidate.comparisons.length === 0 ? <Note>No calculation pairs are available for comparison in this candidate.</Note> : candidate.comparisons.map((comparison) => {
         const left = candidate.occurrences.find((occurrence) => occurrence.id === comparison.leftId);
         const right = candidate.occurrences.find((occurrence) => occurrence.id === comparison.rightId);
@@ -121,7 +121,7 @@ function CandidateDetail({ candidate }: { candidate: GlossaryCandidate }) {
             <Pill>{comparison.sameExpression === null ? "expression hash unavailable" : comparison.sameExpression ? "same expression hash" : "different expression hashes"}</Pill>
           </div>
           <div className="mb-2 text-xs text-zinc-500"><OccurrenceLabel occurrence={left} /> vs <OccurrenceLabel occurrence={right} /></div>
-          {differences.length > 0 ? <DifferenceTable differences={differences} /> : <Muted className="text-xs">No known attribute values or numeric parameters differ in this pair.</Muted>}
+          {differences.length > 0 ? <DifferenceTable differences={differences} /> : <Muted className="text-xs">No known attribute values or details differ in this pair.</Muted>}
           {gaps.length > 0 && <div className="mt-3"><div className="mb-1 text-xs font-semibold">Evidence gaps</div><DifferenceTable differences={gaps} /></div>}
         </div>;
       })}
@@ -138,7 +138,7 @@ function OccurrenceLabel({ occurrence }: { occurrence?: GlossaryOccurrence }) {
 function DifferenceTable({ differences }: { differences: Difference[] }) {
   const labels: Record<Difference["kind"], string> = {
     ValueDiffers: "Different known values",
-    DetailDiffers: "Different numeric parameters",
+    DetailDiffers: "Different details",
     KnownOnOneSide: "Known on one side — evidence gap",
   };
   return <Table columns={["Attribute", "Left", "Right", "Observation"]} rows={differences.map((difference) => [

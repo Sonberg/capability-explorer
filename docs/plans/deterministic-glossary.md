@@ -101,7 +101,7 @@ Implementation pseudocode (frozen before worker integration):
 2. Normalize names in O(name length), tokenize acronym/case/separator boundaries,
    strip one terminal container suffix and preserve semantic qualifiers.
 3. Identify occurrences by a length-safe tuple (repo, commit, unit path, key, role),
-   not load-order artifact IDs. Sort evidence by exact source identity.
+   with a stable calculation-record discriminator where applicable, not load-order artifact IDs. Sort evidence by exact source identity.
 4. Group exact normalized labels, then sort all output collections ordinally.
 5. Canonicalize supported explicit primitive aliases; missing type stays null.
    A known/unknown pair is not a mismatch. Group only same-label calculations.
