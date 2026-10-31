@@ -1,6 +1,6 @@
 # Handoff: remaining work
 
-Status: integration work package based on `stage-1-contract-and-fixtures`, including upstream `7fd2a2f`. SQL calculation implementation and focused gates are complete; full CI is pending; see [build evidence](plans/sql-build-evidence.md) for executed gates and current limitations. Environment/IaC files as a binding source remain open. Shared terminology and governance: [ubiquitous language](ubiquitous-language.md), [MADR-0002](adr/0002-ubiquitous-language.md).
+Status: integration work package based on `stage-1-contract-and-fixtures`, including upstream `7fd2a2f`. SQL calculation implementation and focused gates are complete; full project CI passed locally through act at `7dfa349`; see [build evidence](plans/sql-build-evidence.md) for executed gates and current limitations. Environment/IaC files as a binding source remain open. Shared terminology and governance: [ubiquitous language](ubiquitous-language.md), [MADR-0002](adr/0002-ubiquitous-language.md).
 
 ## What exists
 
@@ -23,6 +23,14 @@ Ground rules that apply to all work:
 - Every build, install and test goes through `scripts/sandbox` via `make`. Nothing runs on the host.
 - Extraction is `--offline` and never builds, restores or executes the analysed code.
 - Evaluation thresholds are only ever raised.
+
+## Local checks before pushing
+
+Install the repository hook with `make install-git-hooks`; run `make local-check`
+for the full project gate. See [MADR-0003](adr/0003-local-ci-before-push.md).
+The local hook is installed in this clone; other contributors must install it.
+The tracked `out/evaluation.json` is a historical missing-actual report, not current
+acceptance evidence. Current reports are `.sandbox-cache/extracted/{cs,ts,sql}/evaluation.json`.
 
 ## Remaining work (independent workstreams)
 
@@ -75,7 +83,10 @@ Implemented in `Calculations.cs`, `CalculationAttributes.cs`, `CalculationIr.cs`
   calculations, emitted through the existing `ArtifactBuilder.calculation` API. SQL calculation
   recall, attribute accuracy and IR-hash thresholds are 1.0; all graph thresholds are preserved.
   The PostgreSQL golden currency/output unit was explicitly corrected to unknown because names
-  and scaling do not establish monetary semantics. No locked source revision changed.
+  and scaling do not establish monetary semantics. The subsequent security scan found
+  CVE-2026-109461; the operator approved upgrading the pricing fixture to Azure Identity
+  4.14.1 (locked MSAL 7.1.2), regenerating both pricing revisions and four goldens.
+  Independent comparison verified unchanged semantic facts.
   Unsupported calculations retain graph facts and emit `SQL_CALCULATION_UNSUPPORTED`; dynamic
   SQL remains partial. See [the execution contract](plans/deterministic-sql-calculations.md).
 - **Known gaps:** no `CREATE TRIGGER`, `SYNONYM` or cross-database references (they are `unresolved`); DML in

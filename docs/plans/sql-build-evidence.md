@@ -190,3 +190,72 @@ SHA-256 inputs:
 * TS package-lock.json: `6451b54d934eedfddb7a744ae8e3c89e60e8d8f21dfdef58bc7e50f4582ba7e8`
 
 Completion/full CI and refreshed explorer smoke remain pending at this phase.
+
+
+## Completion and project-wide local CI
+
+The operator expanded acceptance to include the full project through local
+GitHub Actions and a High/Critical dependency vulnerability gate. See MADR-0003.
+The original fixture-preservation constraint was explicitly amended after Trivy
+found CVE-2026-109461 in locked MSAL 6.0.1. Commit `8706420` upgrades Azure Identity
+to 4.14.1, which locks MSAL 7.1.2, and regenerates both pricing revisions and four
+golden files. Independent structured comparison normalized only commit identity,
+header input hashes and evidence identities/references: all semantic records,
+source spans/snippets, IR and attributes were unchanged. The patched scan passes.
+Primary advisory: https://github.com/AzureAD/microsoft-authentication-library-for-js/security/advisories/GHSA-xcx6-jx8p-x3h5
+
+Final complete workflow: `make local-check`, source
+`7dfa349c58d03210f7c95556bf0c8755bf4b75fb`, exit 0, 2026-10-31T21:08:34Z.
+Nektos runner reports `act version 0.2.94+dirty` (official extension artifact).
+Runner image and success source are recorded in `.sandbox-cache/local-ci/last-success.txt`;
+this receipt is evidence only and never bypasses a later run. Log on this machine:
+`/private/tmp/ce-act-full-3.log`. The CI job took 2m21.65s, not a comparative benchmark.
+
+| Gate | Actual result |
+|---|---|
+| Wayne action advisory audit | pass on host before act; authentication stays outside local runner |
+| Trivy full tracked lockfiles, dev dependencies included | no High/Critical findings; no ignored unfixed CVEs |
+| Fixture compilation | all expected successes and intentional failure verified |
+| Hook harness | 30 passed, including audit/runner failures and outgoing-source validation |
+| TypeScript | 108 passed, 0 failed/skipped |
+| .NET contracts/evaluation/extractors | 105/25/7 passed, 0 failed/skipped |
+| Explorer/interpretation/capabilities | 52/28/28 passed, 0 failed/skipped |
+| PostgreSQL store integration | 15 passed, 0 failed/skipped |
+| Golden self-check and C#/TS/SQL extraction gates | all thresholds passed |
+| SQL semantic gate | calculations5/5, attributes52/52, hashes5/5; evidence errors0 |
+
+Integration fixes discovered by real execution: stale C# currency expectation;
+Wayne auditor authentication (host audit locally, narrowly scoped token in hosted
+step); active macOS Docker context resolution; and an existing Git archive pipe
+deadlock. The last fix drains trailing tar padding before waiting for Git and
+bounds the existing empty-file regression by cancellation. Independent review
+confirmed the fix, and the previously hanging 28-test capabilities suite passed
+in the same act runner. The direct macOS make-ci attempt could not mount the Linux
+Docker socket; the final act run did exercise all 15 store tests successfully.
+
+The hook is installed in this clone's common Git directory and preserves custom
+hooks. It uses each checkout's tracked hook; branches without that hook fail
+closed. Changes remain committed locally, not pushed or merged. No hosted CI,
+production deployment, private repository authentication, or interactive browser
+journey was tested. Trivy here checks dependency vulnerabilities, not secrets,
+misconfigurations or arbitrary application security. Historical out/evaluation.json
+is not current evidence. Brain recall has a successful exact checkpoint readback
+but intermittent hook/search timeouts remain; model learning quality is unproven.
+No paid provider routing was invoked; no dollar savings claim is made.
+Completion brain closeout returned the SPARC capability card; no additional
+runtime dependency was warranted.
+
+Explorer verification after the successful workflow: `make explore GITHUB_AUTH=none
+ARTIFACTS=fixtures/expected,.sandbox-cache/extracted/cs,.sandbox-cache/extracted/ts,.sandbox-cache/extracted/sql`.
+HTTP `/`, `/api/meta` and `/api/calculations` all returned 200 on localhost:5080.
+Metadata reports 18 artifacts, no problems, source available; the default latest
+view exposes 10 calculations including two SQL calculations at the current locked
+revisions. This is an HTTP smoke check, not an interactive browser test.
+
+Completion grade: 100/100 against the scoped rubric: complete test suite 40/40,
+documentation 20/20, verified local running application and no-publication boundary
+20/20, criterion-to-evidence traceability 20/20. Five complete-gate attempts were
+needed (two direct make-ci attempts, three act attempts); failures and fixes are
+recorded above. This score does not certify hosted CI, release readiness or Brain
+learning quality. Final documentation-only commit follows the tested source SHA;
+a future push reruns the entire gate on that outgoing commit.
