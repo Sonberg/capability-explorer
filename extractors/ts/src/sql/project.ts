@@ -47,7 +47,9 @@ function walk(root: string): { sql: string[]; sqlproj: string[]; other: string[]
 }
 
 const globToRegExp = (glob: string) =>
-  new RegExp("^" + glob.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*\/?/g, "\u0000").replace(/\*/g, "[^/]*").replace(/\u0000/g, "(?:.*/)?").replace(/\?/g, "[^/]") + "$", "i");
+  new RegExp(
+    "^" + glob.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*\/?/g, (m) => (m.endsWith("/") ? "\u0000" : "\u0001")).replace(/\*/g, "[^/]*")
+      .replace(/\u0000/g, "(?:.*/)?").replace(/\u0001/g, ".*").replace(/\?/g, "[^/]") + "$", "i");
 
 /** Reads the parts of a `.sqlproj` that decide which scripts belong to the model. The project is never built. */
 function readProject(root: string, projectFile: string, sql: string[]): string[] {

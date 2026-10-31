@@ -165,7 +165,7 @@ export function analyzeBody(cat: Catalog, routine: RoutineDef): BodyAnalysis {
     const first = t[i]!;
     let end = t[n.next - 1]!.end;
     const lastPart = n.parts[n.parts.length - 1]!;
-    if (isP(t[n.next], "(")) {
+    if (rel === "READS" && isP(t[n.next], "(")) {
       // A function in FROM: its arguments are scanned normally; an alias may follow the closing parenthesis.
       callOf(n, first.start, end);
       st.parenAlias = parens + 1;
