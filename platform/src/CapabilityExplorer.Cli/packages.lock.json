@@ -40,6 +40,12 @@
           "JsonSchema.Net": "[9.6.0, )"
         }
       },
+      "capabilityexplorer.evaluation": {
+        "type": "Project",
+        "dependencies": {
+          "CapabilityExplorer.Contracts": "[1.0.0, )"
+        }
+      },
       "capabilityexplorer.store": {
         "type": "Project",
         "dependencies": {

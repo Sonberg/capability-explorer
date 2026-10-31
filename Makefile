@@ -8,7 +8,7 @@ NODE    := $(SANDBOX) node
 OFFLINE := $(SANDBOX) --offline
 
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
-        restore build test-ts test-contracts test-store clean
+        restore build test-ts test-contracts test-evaluation test-store evaluate evaluate-golden clean
 
 help:
 	@echo "make ci              everything CI runs: fixture compile checks + all tests"
@@ -17,10 +17,11 @@ help:
 	@echo "make fixtures-lock   rebuild fixture repos and rewrite revisions.lock.json (after editing fixtures/src)"
 	@echo "make golden          regenerate fixtures/expected from fixtures/golden/facts"
 	@echo "make fixtures-compile  check every fixture revision compiles (or fails) as intended"
+	@echo "make evaluate ACTUAL=out/ [REPO=id,id]  score extractor output against fixtures/expected (report: out/evaluation.json)"
 
 ci: fixtures-compile test
 
-test: golden-check test-ts test-contracts test-store
+test: golden-check test-ts test-contracts test-evaluation evaluate-golden test-store
 
 fixtures:
 	$(OFFLINE) node scripts/build-fixtures.sh
@@ -53,6 +54,23 @@ test-ts: restore
 
 test-contracts: fixtures build
 	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Contracts.Tests'
+
+test-evaluation: fixtures build
+	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Evaluation.Tests'
+
+CE := dotnet platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll
+
+# Self-check of the scorer: the golden set scored against itself must pass every threshold.
+evaluate-golden: fixtures build
+	$(OFFLINE) dotnet $(CE) evaluate --expected fixtures/expected --actual fixtures/expected \
+	  --config fixtures/evaluation.json --repos fixtures/.repos
+
+# Score real extractor output: make evaluate ACTUAL=out/ [REPO=forecast-cs,pricing-node]
+evaluate: fixtures build
+	@test -n "$(ACTUAL)" || { echo "usage: make evaluate ACTUAL=<dir with .jsonl artifacts>"; exit 2; }
+	$(OFFLINE) dotnet $(CE) evaluate --expected fixtures/expected --actual $(ACTUAL) \
+	  --config fixtures/evaluation.json --repos fixtures/.repos --json $(ACTUAL)/evaluation.json \
+	  $(if $(REPO),--repository $(REPO))
 
 # Needs the Docker socket so Testcontainers can start PostgreSQL (see scripts/sandbox --docker).
 test-store: build

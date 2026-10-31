@@ -14,7 +14,7 @@ and an idempotent PostgreSQL importer.
 |---|---|
 | `schema/v1/` | `record.schema.json` (JSON Schema, the source of truth), `relations.json`, [rules](schema/README.md) |
 | `fixtures/` | Five fixture repos (C#, TypeScript/JavaScript, T-SQL, PostgreSQL) built deterministically from overlays, plus golden artifacts. See [fixtures/README.md](fixtures/README.md). |
-| `platform/` | .NET 10: `Contracts` (validator, evidence verifier), `Store` (migrations, importer), `Cli` (`ce`), tests |
+| `platform/` | .NET 10: `Contracts` (validator, evidence verifier), `Evaluation` (scoring against golden), `Store` (migrations, importer), `Cli` (`ce`), tests |
 | `extractors/ts/` | Node/TypeScript package. Stage 1 contains only the contract validator (ajv against the same schema). |
 | `scripts/sandbox` | Runs every build, install and test in a disposable container |
 
@@ -30,6 +30,33 @@ make fixtures-compile   # every fixture revision compiles (or fails) as intended
 ```
 
 Behind a TLS-intercepting proxy, run `export SANDBOX_EXTRA_CA_FILE=/path/to/ca.pem` first.
+
+### Validating extractor output
+
+There are three levels, each stricter than the one before:
+
+| Question | Command | Checks |
+|---|---|---|
+| Is it a valid ce.v1 artifact? | `ce validate out/*.jsonl` | schema, framing (truncation), ids, references, relation catalogue, unbound scoping, counts, coverage consistency |
+| Does the evidence match the code? | `ce verify-evidence --repo <git dir> out/*.jsonl` | every span exists at that commit and its snippet hash matches (`git show`, no checkout) |
+| Is it **correct**? | `make evaluate ACTUAL=out/ [REPO=forecast-cs]` | scores against `fixtures/expected` using `fixtures/evaluation.json`; also runs both checks above |
+
+`ce evaluate` pairs artifacts by header (repository, commit, unit path), not by file name, and reports:
+
+- **Recall**: golden nodes (`symbolKey` + kind), edges (`from`, relation, `to`, or the reason when the
+  target is unknown), calculations and every calculation attribute.
+- **Accuracy**: matched edges must agree on `resolution`, `unresolvedReason` and `derivation`.
+  Claiming `resolved` for an interface call is an error. For attributes, an `unknown` in the golden set
+  must stay `unknown`; a guessed value is reported as `AttributeFabricated`.
+- **Evidence located**: a matched fact must point at the same file and overlapping lines.
+- **Precision**, only where the golden set is exhaustive (integration edges, endpoints, channels).
+  Golden sets are subsets, so an extra `CALLS` edge costs nothing, but an extra `READS` does.
+- **Coverage**: `full`/`partial`, incomplete paths and expected diagnostics.
+
+The output is a text report with one line per finding, saying where the fact was expected, plus
+`out/evaluation.json`. The exit code is 1 if any threshold in `fixtures/evaluation.json` fails. The
+thresholds start at 100%; lower one only as a reviewed decision. `make evaluate-golden` scores the
+golden set against itself and runs in CI as a self-check of the scorer.
 
 ### Sandbox model
 
@@ -61,12 +88,13 @@ Behind a TLS-intercepting proxy, run `export SANDBOX_EXTRA_CA_FILE=/path/to/ca.p
   and reject a changed artifact under the same analysis key.
 - `FixtureSqlTests` (Testcontainers): the PostgreSQL fixture SQL runs and behaves as its golden
   attributes claim.
+- `EvaluatorTests`: starting from a perfect "extractor" (golden = actual), each test breaks one thing
+  and checks that the scorer reports exactly that finding and moves exactly that metric.
 - `extractors/ts` tests: the same golden files validate against the same schema in TypeScript.
 
 ## Next (stage 2)
 
 - Roslyn extractor (`MSBuildWorkspace`) and TypeScript extractor (`ts.createProgram` + `TypeChecker`),
   both emitting ce.v1.
-- An evaluation command that scores extractor output against `fixtures/expected`.
 - Open decision: TypeScript 7 (native compiler) has a different programmatic API. Stage 1 pins
   `typescript@5.9` for the extractor until that API is evaluated.
