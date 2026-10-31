@@ -11,6 +11,8 @@ set with known answers, and `make analyze` runs them over the repositories of a 
 present: validators on both stacks, an idempotent PostgreSQL importer and the explorer UI.
 C# and TypeScript/JavaScript calculations are extracted and gated; SQL routine calculations are not done yet.
 
+Shared terminology: [ubiquitous language](docs/ubiquitous-language.md).
+
 ## Layout
 
 | Path | Content |
