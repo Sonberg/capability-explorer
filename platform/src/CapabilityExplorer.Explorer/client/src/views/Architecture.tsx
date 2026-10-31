@@ -347,7 +347,7 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
   const drill = (n: ArchNode) => n.drill && open(n.drill);
 
   return (
-    <div className="flex h-[calc(100vh-150px)] min-h-[520px] flex-col gap-2">
+    <div className="architecture-workspace flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
         <nav aria-label="Abstraction level" className="flex items-center gap-1 text-[13px]">
           {(graph?.breadcrumbs ?? [{ label: "Landscape", level: "landscape" }]).map((c, i, all) => (
@@ -386,8 +386,8 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
         </span>
       </div>
       {error && <ErrorBox message={error} />}
-      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="relative min-h-[420px] overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="architecture-panels grid min-h-0 flex-1 gap-3">
+        <div className="architecture-canvas relative min-h-[420px] min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
           {loading && !graph && <div className="absolute inset-0 grid place-items-center text-zinc-500">Laying out…</div>}
           {graph && graph.nodes.length === 0 && <div className="absolute inset-0 grid place-items-center text-zinc-500">Nothing to draw at this level for the selected scope.</div>}
           <ReactFlow

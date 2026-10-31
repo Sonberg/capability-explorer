@@ -1,0 +1,98 @@
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+import { mkdir, writeFile } from 'node:fs/promises';
+const output = '/work/.sandbox-cache/likec4-browser';
+await mkdir(output, {recursive:true});
+const browser = await chromium.launch({headless:true,args:['--no-sandbox']});
+const errors = [], external = [], measurements = [];
+try {
+  for (const [width,height] of [[5120,2160],[2560,1080],[1920,1080],[390,844]]) {
+    const page = await browser.newPage({viewport:{width,height}, reducedMotion:'no-preference'});
+    page.on('pageerror',e=>errors.push(e.message));
+    page.on('request',r=>{const u=new URL(r.url());if(u.protocol.startsWith('http') && u.hostname!=='host.docker.internal')external.push(r.url());});
+    await page.goto('http://host.docker.internal:5091');
+    await page.locator('.react-flow__node').first().waitFor();
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(500); // allow the renderer's initial fit to settle
+    assert.equal(await page.locator('.react-flow__node').count(), 9);
+    assert.equal(await page.locator('.react-flow__edge').count(), 12);
+    const canvas=await page.locator('.canvas').boundingBox();
+    assert.ok(canvas.width>width*.9, `spike must use viewport width at ${width}`);
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth), 'spike horizontal page overflow');
+    assert.equal(await page.getByRole('checkbox').isChecked(),false);
+    const paths=page.locator('.react-flow__edge-path');
+    assert.ok((await paths.evaluateAll(es=>es.map(e=>getComputedStyle(e).animationName))).every(n=>n==='none'));
+    await page.screenshot({path:`${output}/likec4-${width}.png`});
+    await page.getByRole('checkbox').check();
+    assert.ok((await paths.evaluateAll(es=>es.map(e=>getComputedStyle(e).animationName))).some(n=>n==='ce-edge-flow'));
+    await page.locator('.ce-motion-particle').first().waitFor();
+    const moving = await paths.first().evaluate(async e => {const before=getComputedStyle(e).opacity;await new Promise(r=>setTimeout(r,120));return before!==getComputedStyle(e).opacity;});
+    assert.ok(moving, 'enabled motion changes edge highlight');
+    await page.getByRole('checkbox').uncheck();
+    assert.equal(await page.locator('.ce-motion-particle').count(),0);
+    assert.ok((await paths.evaluateAll(es=>es.map(e=>getComputedStyle(e).animationName))).every(n=>n==='none'));
+    await page.getByRole('button',{name:'Diagram source',exact:true}).click();
+    assert.ok((await page.locator('pre').textContent()).includes('metadata'));
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth), 'source panel overflows page');
+    const downloadPromise=page.waitForEvent('download');
+    await page.getByRole('button',{name:'Download .c4'}).click();
+    assert.equal((await downloadPromise).suggestedFilename(),'architecture.c4');
+    await page.emulateMedia({reducedMotion:'reduce'});
+    await page.waitForFunction(()=>document.querySelector('input[type=checkbox]')?.disabled === true);
+    assert.equal(await page.getByRole('checkbox').isDisabled(),true);
+    assert.equal(await page.getByRole('checkbox').isChecked(),false);
+    if (width === 1920) {
+      await page.getByRole('button',{name:'Dark mode',exact:true}).click();
+      assert.equal(await page.locator('.spike').getAttribute('data-theme'),'dark');
+      await page.getByRole('button',{name:'Groups & layout',exact:true}).click();
+      const choices=page.locator('.member-list input');
+      await choices.nth(0).check(); await choices.nth(1).check();
+      await page.getByRole('button',{name:'Create group',exact:true}).click();
+      await page.locator('.react-flow__node-view-group').waitFor();
+      assert.equal(await page.locator('.react-flow__node').count(),10);
+      await page.getByRole('button',{name:'Diagram source',exact:true}).click();
+      await page.waitForTimeout(600);
+      const group=page.locator('.react-flow__node-view-group');
+      const childA=page.locator('.react-flow__node[data-id="n0"]');
+      const childB=page.locator('.react-flow__node[data-id="n1"]');
+      const beforeA=await childA.boundingBox(), beforeB=await childB.boundingBox();
+      const box=await group.boundingBox();
+      await page.mouse.move(box.x+box.width/2,box.y+10);await page.mouse.down();
+      await page.mouse.move(box.x+box.width/2+90,box.y+70,{steps:12});await page.mouse.up();
+      await page.waitForTimeout(300);
+      const afterA=await childA.boundingBox(), afterB=await childB.boundingBox();
+      assert.ok(Math.abs(afterA.x-beforeA.x)>30,'group drag moves child A');
+      assert.ok(Math.abs((afterA.x-beforeA.x)-(afterB.x-beforeB.x))<2,'group children move together');
+      assert.ok(Math.abs((afterA.y-beforeA.y)-(afterB.y-beforeB.y))<2,'group children maintain vertical offsets');
+      await page.screenshot({path:`${output}/likec4-group-dark.png`});
+      await choices.nth(0).check();await choices.nth(1).check();
+      await page.getByRole('button',{name:'Create group',exact:true}).click();
+      await page.waitForTimeout(600);
+      assert.equal(await page.locator('.react-flow__node-view-group').count(),2);
+      await page.getByRole('combobox').selectOption('vertical');
+      await page.waitForTimeout(600);
+      assert.equal(await page.locator('.react-flow__node').count(),9);
+      assert.equal(await page.locator('.react-flow__node-view-group').count(),0);
+      await page.getByRole('button',{name:'Reset layout',exact:true}).click();
+    }
+    measurements.push({app:'likec4',width,height,canvasWidth:canvas.width,nodes:9,edges:12});
+    await page.close();
+
+    const explorer=await browser.newPage({viewport:{width,height}});
+    explorer.on('pageerror',e=>errors.push(e.message));
+    await explorer.addInitScript(()=>localStorage.setItem('ce.capability',JSON.stringify('weekly-sales')));
+    await explorer.goto('http://host.docker.internal:5090/#/architecture');
+    await explorer.locator('.react-flow__node').first().waitFor();
+    await explorer.waitForTimeout(500);
+    const main=await explorer.locator('main').boundingBox();
+    assert.ok(main.width>=width-2, `Explorer shell capped at ${width}`);
+    assert.ok(await explorer.evaluate(()=>document.documentElement.scrollWidth<=innerWidth), `Explorer horizontal page overflow at ${width}`);
+    await explorer.screenshot({path:`${output}/explorer-${width}.png`});
+    measurements.push({app:'explorer',width,height,mainWidth:main.width});
+    await explorer.close();
+  }
+  assert.deepEqual(errors,[], 'browser exceptions');
+  assert.deepEqual(external,[], 'spike must not fetch third-party resources');
+  await writeFile(`${output}/measurements.json`,JSON.stringify(measurements,null,2)+'\n');
+  console.log(JSON.stringify({passed:true,measurements},null,2));
+} finally { await browser.close(); }

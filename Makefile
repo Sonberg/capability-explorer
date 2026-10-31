@@ -188,3 +188,18 @@ ollama:
 clean:
 	rm -rf fixtures/.repos fixtures/.work extractors/ts/node_modules $(UI)/node_modules platform/src/CapabilityExplorer.Explorer/wwwroot
 	find platform -type d \( -name bin -o -name obj \) -prune -exec rm -rf {} +
+
+# Isolated LikeC4 experiment; production Explorer dependencies stay unchanged.
+.PHONY: likec4-check likec4-preview
+ci: likec4-check
+likec4-check:
+	$(NODE) sh -c 'cd spikes/likec4 && npm ci'
+	$(OFFLINE) node sh -c 'cd spikes/likec4 && npm test && node scripts/check-model.mjs && npm run build'
+
+likec4-preview: likec4-check
+	$(SANDBOX) --port 5091 node sh -c 'cd spikes/likec4 && npm run preview -- --host 0.0.0.0 --port 5091 --strictPort'
+
+# Optional visual checks against running ports 5090/5091; not an extra hosted-CI image.
+.PHONY: likec4-browser-check
+likec4-browser-check:
+	SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node node spikes/likec4/test/browser.mjs

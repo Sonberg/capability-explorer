@@ -1,0 +1,152 @@
+// Architecture API snapshot; certainty is not upgraded by visualization.
+specification {
+  color eventColor #8b5cf6
+  element artifact
+  element service { style { color blue } }
+  element application { style { color sky } }
+  element datastore { style { color amber } }
+  element channel { style { color eventColor } }
+  relationship observed { line solid }
+  relationship association { line dashed head none }
+  relationship uncertain { line dashed }
+}
+model {
+  n0 = service "api-cs" {
+    description "Sales.Api"
+    metadata {
+      source "{\"badges\":[\"v3-filter\",\"2 endpoints\",\"2 calculations\"],\"category\":\"service\",\"drill\":{\"focus\":\"api-cs\",\"level\":\"repository\"},\"id\":\"repo:api-cs\",\"label\":\"api-cs\",\"repositoryId\":\"api-cs\",\"sublabel\":\"Sales.Api\"}"
+    }
+  }
+  n1 = application "web-ts" {
+    description "@fixture/web"
+    metadata {
+      source "{\"badges\":[\"v1-base\",\"1 calculations\"],\"category\":\"application\",\"drill\":{\"focus\":\"web-ts\",\"level\":\"repository\"},\"id\":\"repo:web-ts\",\"label\":\"web-ts\",\"repositoryId\":\"web-ts\",\"sublabel\":\"@fixture/web\"}"
+    }
+  }
+  n2 = service "worker-cs" {
+    description "Sales.Worker"
+    metadata {
+      source "{\"badges\":[\"v2-broken\",\"1 calculations\",\"partial\"],\"category\":\"service\",\"drill\":{\"focus\":\"worker-cs\",\"level\":\"repository\"},\"id\":\"repo:worker-cs\",\"label\":\"worker-cs\",\"repositoryId\":\"worker-cs\",\"sublabel\":\"Sales.Worker\"}"
+    }
+  }
+  n3 = channel "article-stats-updated" {
+    description "entity · worker-cs/Sales.Worker:config=ServiceBus: ConnectionString"
+    metadata {
+      source "{\"badges\":[\"unbound\"],\"category\":\"channel\",\"group\":\"Messaging\",\"id\":\"res:chan|servicebus|@unbound:worker-cs/Sales.Worker:config=ServiceBus:ConnectionString|entity/article-stats-updated\",\"label\":\"article-stats-updated\",\"repositoryId\":\"worker-cs\",\"sublabel\":\"entity · worker-cs/Sales.Worker:config=ServiceBus: ConnectionString\",\"symbolKey\":\"chan|servicebus|@unbound:worker-cs/Sales.Worker:config=ServiceBus:ConnectionString|entity/article-stats-updated\"}"
+    }
+  }
+  n4 = datastore "dbo.Sales" {
+    description "api-cs/Sales.Api: connection Sales"
+    metadata {
+      source "{\"badges\":[\"unbound\"],\"category\":\"datastore\",\"group\":\"Data\",\"id\":\"res:sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales\",\"label\":\"dbo.Sales\",\"sublabel\":\"api-cs/Sales.Api: connection Sales\",\"symbolKey\":\"sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales\"}"
+    }
+  }
+  n5 = datastore "dbo.ArticleStats" {
+    description "api-cs/SalesDb: db project SalesDb"
+    metadata {
+      source "{\"badges\":[\"unbound\"],\"category\":\"datastore\",\"group\":\"Data\",\"id\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.ArticleStats\",\"label\":\"dbo.ArticleStats\",\"repositoryId\":\"api-cs\",\"sublabel\":\"api-cs/SalesDb: db project SalesDb\",\"symbolKey\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.ArticleStats\"}"
+    }
+  }
+  n6 = datastore "dbo.Sales" {
+    description "api-cs/SalesDb: db project SalesDb"
+    metadata {
+      source "{\"badges\":[\"unbound\"],\"category\":\"datastore\",\"group\":\"Data\",\"id\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\",\"label\":\"dbo.Sales\",\"repositoryId\":\"api-cs\",\"sublabel\":\"api-cs/SalesDb: db project SalesDb\",\"symbolKey\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\"}"
+    }
+  }
+  n7 = datastore "dbo.ArticleStats" {
+    description "worker-cs/Sales.Worker: connection Sales"
+    metadata {
+      source "{\"badges\":[\"unbound\"],\"category\":\"datastore\",\"group\":\"Data\",\"id\":\"res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.ArticleStats\",\"label\":\"dbo.ArticleStats\",\"sublabel\":\"worker-cs/Sales.Worker: connection Sales\",\"symbolKey\":\"sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.ArticleStats\"}"
+    }
+  }
+  n8 = datastore "dbo.Sales" {
+    description "worker-cs/Sales.Worker: connection Sales"
+    metadata {
+      source "{\"badges\":[\"unbound\"],\"category\":\"datastore\",\"group\":\"Data\",\"id\":\"res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.Sales\",\"label\":\"dbo.Sales\",\"sublabel\":\"worker-cs/Sales.Worker: connection Sales\",\"symbolKey\":\"sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.Sales\"}"
+    }
+  }
+  n0 -[uncertain]-> n4 "maps to [unbound]" {
+    description "unbound; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"unbound\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"29571e3528e537313f938a1fedae43aaeb4dbef9\",\"endColumn\":43,\"endLine\":13,\"id\":\"ev:7b5256ab204a02f4\",\"path\":\"src/Sales.Api/Data/SalesDbContext.cs\",\"repositoryId\":\"api-cs\",\"startColumn\":13,\"startLine\":13},{\"commitSha\":\"29571e3528e537313f938a1fedae43aaeb4dbef9\",\"endColumn\":76,\"endLine\":9,\"id\":\"ev:2cb6e09e9d3567d9\",\"path\":\"src/Sales.Api/Program.cs\",\"repositoryId\":\"api-cs\",\"startColumn\":48,\"startLine\":9}],\"from\":{\"declared\":true,\"key\":\"cs|api-cs|Sales.Api|T:Sales.Api.Data.SaleEntity\",\"kind\":\"Type\",\"name\":\"SaleEntity\",\"repositoryId\":\"api-cs\"},\"relation\":\"MAPS_TO\",\"resolution\":\"unresolved\",\"rule\":\"efcore 1\",\"to\":{\"declared\":false,\"key\":\"sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales\",\"name\":\"dbo.Sales\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"repo:api-cs\",\"id\":\"repo:api-cs->res:sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales:data\",\"kind\":\"data\",\"label\":\"maps to\",\"to\":\"res:sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales\"}"
+    }
+  }
+  n0 -[observed]-> n5 "declares [proven]" {
+    description "proven; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"proven\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"29571e3528e537313f938a1fedae43aaeb4dbef9\",\"endColumn\":30,\"endLine\":1,\"id\":\"ev:4ce62c06c04f329e\",\"path\":\"database/tables/ArticleStats.sql\",\"repositoryId\":\"api-cs\",\"startColumn\":1,\"startLine\":1}],\"from\":{\"declared\":true,\"key\":\"proj|api-cs|database\",\"kind\":\"Project\",\"name\":\"SalesDb\",\"repositoryId\":\"api-cs\"},\"relation\":\"DECLARES\",\"resolution\":\"resolved\",\"rule\":\"tsql.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.ArticleStats\",\"kind\":\"Table\",\"name\":\"dbo.ArticleStats\",\"repositoryId\":\"api-cs\"}}],\"from\":\"repo:api-cs\",\"id\":\"repo:api-cs->res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.ArticleStats:declares\",\"kind\":\"declares\",\"label\":\"declares\",\"to\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.ArticleStats\"}"
+    }
+  }
+  n0 -[observed]-> n6 "declares [proven]" {
+    description "proven; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"proven\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"29571e3528e537313f938a1fedae43aaeb4dbef9\",\"endColumn\":23,\"endLine\":1,\"id\":\"ev:634133732dcadc8b\",\"path\":\"database/tables/Sales.sql\",\"repositoryId\":\"api-cs\",\"startColumn\":1,\"startLine\":1}],\"from\":{\"declared\":true,\"key\":\"proj|api-cs|database\",\"kind\":\"Project\",\"name\":\"SalesDb\",\"repositoryId\":\"api-cs\"},\"relation\":\"DECLARES\",\"resolution\":\"resolved\",\"rule\":\"tsql.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\",\"kind\":\"Table\",\"name\":\"dbo.Sales\",\"repositoryId\":\"api-cs\"}}],\"from\":\"repo:api-cs\",\"id\":\"repo:api-cs->res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales:declares\",\"kind\":\"declares\",\"label\":\"declares\",\"to\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\"}"
+    }
+  }
+  n1 -[uncertain]-> n0 "GET /api/articles/{}/weekly-sales [candidate]" {
+    description "candidate; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"candidate\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"4f254bb0209550bfe8fd40459ae4136b1d37ebe4\",\"endColumn\":116,\"endLine\":11,\"id\":\"ev:150569d7c9a4a809\",\"path\":\"src/api/salesClient.ts\",\"repositoryId\":\"web-ts\",\"startColumn\":15,\"startLine\":11},{\"commitSha\":\"4f254bb0209550bfe8fd40459ae4136b1d37ebe4\",\"endColumn\":55,\"endLine\":12,\"id\":\"ev:b950720365391d0d\",\"path\":\"src/api/salesClient.ts\",\"repositoryId\":\"web-ts\",\"startColumn\":26,\"startLine\":12}],\"from\":{\"declared\":true,\"key\":\"ts|web-ts|@fixture/web|src/api/salesClient.ts|fetchWeeklySales#value\",\"kind\":\"Function\",\"name\":\"fetchWeeklySales\",\"repositoryId\":\"web-ts\"},\"relation\":\"REQUESTS\",\"resolution\":\"unresolved\",\"rule\":\"web.fetch 1\",\"to\":{\"declared\":false,\"key\":\"http|@unbound:web-ts/@fixture/web:base=salesApiBaseUrl|GET /api/articles/{}/weekly-sales\",\"name\":\"GET /api/articles/{}/weekly-sales\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"repo:web-ts\",\"id\":\"repo:web-ts->repo:api-cs:http\",\"kind\":\"http\",\"label\":\"GET /api/articles/{}/weekly-sales\",\"to\":\"repo:api-cs\"}"
+    }
+  }
+  n2 -[uncertain]-> n3 "publishes [unbound]" {
+    description "unbound; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"unbound\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"b884b04321a12d82c23f8575c94c1980de349ce9\",\"endColumn\":64,\"endLine\":12,\"id\":\"ev:6031dfa3fd591ea6\",\"path\":\"src/Sales.Worker/Messaging/StatsPublisher.cs\",\"repositoryId\":\"worker-cs\",\"startColumn\":34,\"startLine\":12},{\"commitSha\":\"b884b04321a12d82c23f8575c94c1980de349ce9\",\"endColumn\":39,\"endLine\":14,\"id\":\"ev:ce457488e78e3a65\",\"path\":\"src/Sales.Worker/Messaging/StatsPublisher.cs\",\"repositoryId\":\"worker-cs\",\"startColumn\":15,\"startLine\":14}],\"from\":{\"declared\":true,\"key\":\"cs|worker-cs|Sales.Worker|M:Sales.Worker.Messaging.StatsPublisher.PublishAsync(Sales.Worker.Messaging.ArticleStatsUpdated,System.Threading.CancellationToken)\",\"kind\":\"Method\",\"name\":\"PublishAsync\",\"repositoryId\":\"worker-cs\"},\"relation\":\"PUBLISHES\",\"resolution\":\"unresolved\",\"rule\":\"azure.servicebus 1\",\"to\":{\"declared\":true,\"key\":\"chan|servicebus|@unbound:worker-cs/Sales.Worker:config=ServiceBus:ConnectionString|entity/article-stats-updated\",\"kind\":\"Channel\",\"name\":\"article-stats-updated\",\"repositoryId\":\"worker-cs\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"repo:worker-cs\",\"id\":\"repo:worker-cs->res:chan|servicebus|@unbound:worker-cs/Sales.Worker:config=ServiceBus:ConnectionString|entity/article-stats-updated:message\",\"kind\":\"message\",\"label\":\"publishes\",\"to\":\"res:chan|servicebus|@unbound:worker-cs/Sales.Worker:config=ServiceBus:ConnectionString|entity/article-stats-updated\"}"
+    }
+  }
+  n2 -[uncertain]-> n7 "writes [unbound]" {
+    description "unbound; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"unbound\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"b884b04321a12d82c23f8575c94c1980de349ce9\",\"endColumn\":52,\"endLine\":19,\"id\":\"ev:37a5d5bec65c2d65\",\"path\":\"src/Sales.Worker/Data/StatsRepository.cs\",\"repositoryId\":\"worker-cs\",\"startColumn\":9,\"startLine\":19},{\"commitSha\":\"b884b04321a12d82c23f8575c94c1980de349ce9\",\"endColumn\":124,\"endLine\":9,\"id\":\"ev:ab804a869b03f29f\",\"path\":\"src/Sales.Worker/Program.cs\",\"repositoryId\":\"worker-cs\",\"startColumn\":96,\"startLine\":9}],\"from\":{\"declared\":true,\"key\":\"cs|worker-cs|Sales.Worker|M:Sales.Worker.Data.StatsRepository.SaveAverageAsync(System.String,System.Decimal)\",\"kind\":\"Method\",\"name\":\"SaveAverageAsync\",\"repositoryId\":\"worker-cs\"},\"relation\":\"WRITES\",\"resolution\":\"unresolved\",\"rule\":\"dapper.sql 1\",\"to\":{\"declared\":false,\"key\":\"sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.ArticleStats\",\"name\":\"dbo.ArticleStats\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"repo:worker-cs\",\"id\":\"repo:worker-cs->res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.ArticleStats:data\",\"kind\":\"data\",\"label\":\"writes\",\"to\":\"res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.ArticleStats\"}"
+    }
+  }
+  n4 -[uncertain]-> n0 "reads [unbound]" {
+    description "unbound; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"unbound\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"29571e3528e537313f938a1fedae43aaeb4dbef9\",\"endColumn\":30,\"endLine\":15,\"id\":\"ev:67d4bac124d66bfb\",\"path\":\"src/Sales.Api/Data/SalesRepository.cs\",\"repositoryId\":\"api-cs\",\"startColumn\":22,\"startLine\":15}],\"from\":{\"declared\":true,\"key\":\"cs|api-cs|Sales.Api|M:Sales.Api.Data.SalesRepository.GetSalesAsync(System.String,System.DateOnly,System.DateOnly,System.Threading.CancellationToken)\",\"kind\":\"Method\",\"name\":\"GetSalesAsync\",\"repositoryId\":\"api-cs\"},\"relation\":\"READS\",\"resolution\":\"unresolved\",\"rule\":\"efcore 1\",\"to\":{\"declared\":false,\"key\":\"sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales\",\"name\":\"dbo.Sales\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"res:sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales\",\"id\":\"res:sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales->repo:api-cs:data\",\"kind\":\"data\",\"label\":\"reads\",\"to\":\"repo:api-cs\"}"
+    }
+  }
+  n4 -[association]-> n6 "same name, not proven same [candidate]" {
+    description "candidate; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"candidate\",\"count\":1,\"facts\":[],\"from\":\"res:sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales\",\"id\":\"res:sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales~res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\",\"kind\":\"sameName\",\"label\":\"same name, not proven same\",\"to\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\"}"
+    }
+  }
+  n5 -[association]-> n7 "same name, not proven same [candidate]" {
+    description "candidate; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"candidate\",\"count\":1,\"facts\":[],\"from\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.ArticleStats\",\"id\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.ArticleStats~res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.ArticleStats\",\"kind\":\"sameName\",\"label\":\"same name, not proven same\",\"to\":\"res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.ArticleStats\"}"
+    }
+  }
+  n6 -[observed]-> n0 "reads ×4 [proven]" {
+    description "proven; 4 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"proven\",\"count\":4,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"29571e3528e537313f938a1fedae43aaeb4dbef9\",\"endColumn\":41,\"endLine\":17,\"id\":\"ev:11dd0d4038ad7205\",\"path\":\"database/functions/fnWeeklySalesAverage.sql\",\"repositoryId\":\"api-cs\",\"startColumn\":11,\"startLine\":17}],\"from\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.fnWeeklySalesAverage\",\"kind\":\"Routine\",\"name\":\"dbo.fnWeeklySalesAverage\",\"repositoryId\":\"api-cs\"},\"relation\":\"READS\",\"resolution\":\"resolved\",\"rule\":\"tsql.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales#SoldOn\",\"kind\":\"Column\",\"name\":\"SoldOn\",\"repositoryId\":\"api-cs\"}},{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"29571e3528e537313f938a1fedae43aaeb4dbef9\",\"endColumn\":24,\"endLine\":15,\"id\":\"ev:6fb0fee39ec1db8d\",\"path\":\"database/functions/fnWeeklySalesAverage.sql\",\"repositoryId\":\"api-cs\",\"startColumn\":5,\"startLine\":15}],\"from\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.fnWeeklySalesAverage\",\"kind\":\"Routine\",\"name\":\"dbo.fnWeeklySalesAverage\",\"repositoryId\":\"api-cs\"},\"relation\":\"READS\",\"resolution\":\"resolved\",\"rule\":\"tsql.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\",\"kind\":\"Table\",\"name\":\"dbo.Sales\",\"repositoryId\":\"api-cs\"}},{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"29571e3528e537313f938a1fedae43aaeb4dbef9\",\"endColumn\":34,\"endLine\":12,\"id\":\"ev:de39e11610c94198\",\"path\":\"database/functions/fnWeeklySalesAverage.sql\",\"repositoryId\":\"api-cs\",\"startColumn\":24,\"startLine\":12}],\"from\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.fnWeeklySalesAverage\",\"kind\":\"Routine\",\"name\":\"dbo.fnWeeklySalesAverage\",\"repositoryId\":\"api-cs\"},\"relation\":\"READS\",\"resolution\":\"resolved\",\"rule\":\"tsql.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales#Quantity\",\"kind\":\"Column\",\"name\":\"Quantity\",\"repositoryId\":\"api-cs\"}},{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"29571e3528e537313f938a1fedae43aaeb4dbef9\",\"endColumn\":35,\"endLine\":16,\"id\":\"ev:f64446797c298c9c\",\"path\":\"database/functions/fnWeeklySalesAverage.sql\",\"repositoryId\":\"api-cs\",\"startColumn\":11,\"startLine\":16}],\"from\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.fnWeeklySalesAverage\",\"kind\":\"Routine\",\"name\":\"dbo.fnWeeklySalesAverage\",\"repositoryId\":\"api-cs\"},\"relation\":\"READS\",\"resolution\":\"resolved\",\"rule\":\"tsql.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales#ArticleId\",\"kind\":\"Column\",\"name\":\"ArticleId\",\"repositoryId\":\"api-cs\"}}],\"from\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\",\"id\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales->repo:api-cs:data\",\"kind\":\"data\",\"label\":\"reads ×4\",\"to\":\"repo:api-cs\"}"
+    }
+  }
+  n6 -[association]-> n8 "same name, not proven same [candidate]" {
+    description "candidate; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"candidate\",\"count\":1,\"facts\":[],\"from\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\",\"id\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales~res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.Sales\",\"kind\":\"sameName\",\"label\":\"same name, not proven same\",\"to\":\"res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.Sales\"}"
+    }
+  }
+  n8 -[uncertain]-> n2 "reads [unbound]" {
+    description "unbound; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"unbound\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"b884b04321a12d82c23f8575c94c1980de349ce9\",\"endColumn\":83,\"endLine\":16,\"id\":\"ev:c97315024d6f2b36\",\"path\":\"src/Sales.Worker/Data/StatsRepository.cs\",\"repositoryId\":\"worker-cs\",\"startColumn\":9,\"startLine\":16},{\"commitSha\":\"b884b04321a12d82c23f8575c94c1980de349ce9\",\"endColumn\":124,\"endLine\":9,\"id\":\"ev:ab804a869b03f29f\",\"path\":\"src/Sales.Worker/Program.cs\",\"repositoryId\":\"worker-cs\",\"startColumn\":96,\"startLine\":9}],\"from\":{\"declared\":true,\"key\":\"cs|worker-cs|Sales.Worker|M:Sales.Worker.Data.StatsRepository.GetSalesSinceAsync(System.DateTime)\",\"kind\":\"Method\",\"name\":\"GetSalesSinceAsync\",\"repositoryId\":\"worker-cs\"},\"relation\":\"READS\",\"resolution\":\"unresolved\",\"rule\":\"dapper.sql 1\",\"to\":{\"declared\":false,\"key\":\"sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.Sales\",\"name\":\"dbo.Sales\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.Sales\",\"id\":\"res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.Sales->repo:worker-cs:data\",\"kind\":\"data\",\"label\":\"reads\",\"to\":\"repo:worker-cs\"}"
+    }
+  }
+}
+views {
+  view index {
+    title "Weekly sales"
+    include *
+    autoLayout LeftRight
+  }
+  view vertical {
+    title "Architecture · vertical"
+    include *
+    autoLayout TopBottom
+  }
+}

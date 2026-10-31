@@ -9,3 +9,12 @@
   html { color-scheme: light dark; }
   body { font-size: 14px; line-height: 1.45; }
 }
+
+/* Let data views use the viewport; keep only the evidence inspector bounded. */
+.architecture-workspace { min-height: 520px; height: calc(100dvh - 150px); }
+.architecture-panels { grid-template-columns: minmax(0, 1fr) clamp(300px, 20vw, 420px); }
+@media (max-width: 1023px) {
+  .architecture-workspace { height: auto; }
+  .architecture-panels { grid-template-columns: minmax(0, 1fr); }
+  .architecture-canvas { height: 65dvh; }
+}

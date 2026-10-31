@@ -1,0 +1,29 @@
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.5 system-ui, sans-serif; color: #18283b; background: #f3f6fa; }
+.spike { height: 100dvh; min-height: 540px; display: flex; flex-direction: column; padding: clamp(12px, 1.2vw, 32px); gap: 12px; }
+header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
+small { color: #52677f; letter-spacing: .12em; font-size: 11px; }
+h1 { margin: 2px 0; font-size: 24px; } h2 { font-size: 16px; }
+.actions { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+button { font: inherit; border: 1px solid #b9c8da; border-radius: 7px; background: white; color: inherit; padding: 7px 12px; cursor: pointer; }
+button:focus-visible, input:focus-visible { outline: 3px solid #337cdb; outline-offset: 3px; }
+.notice, footer { font-size: 12px; color: #52677f; }
+main { display: grid; grid-template-columns: minmax(0, 1fr); flex: 1; min-height: 0; gap: 16px; }
+main.with-source { grid-template-columns: minmax(0, 1fr) clamp(320px, 25vw, 620px); }
+.canvas { min-width: 0; min-height: 360px; overflow: hidden; background: white; border: 1px solid #d4dfe9; border-radius: 10px; }
+aside { min-width: 0; overflow: auto; border: 1px solid #d4dfe9; border-radius: 10px; padding: 16px; background: white; }
+pre { font: 12px/1.6 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Defence in depth for renderer CSS motion; reduceGraphics controls its JS motion. */
+[data-motion="off"] .canvas *, [data-motion="off"] .canvas *::before, [data-motion="off"] .canvas *::after { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { .canvas *, .canvas *::before, .canvas *::after { animation: none !important; transition: none !important; } }
+@media (max-width: 800px) { main.with-source { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(360px, 1fr) 240px; } .spike:has(.with-source) { height: auto; } }
+
+[data-theme="dark"] { color-scheme: dark; color: #e3eaf4; background: #101722; }
+[data-theme="dark"] .canvas, [data-theme="dark"] aside { background: #141d2b; border-color: #34445b; }
+[data-theme="dark"] button { background: #202e41; border-color: #4d6584; }
+[data-theme="dark"] small, [data-theme="dark"] .notice, [data-theme="dark"] footer { color: #a9bdd6; }
+
+.group-tools { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:12px; border:1px solid #7b91ad; border-radius:8px; max-height:240px; overflow:auto; }
+.group-tools p { margin:0; font-size:12px; }
+.member-list { display:flex; flex-wrap:wrap; gap:10px; }
+button:disabled { opacity:.45; cursor:default; }
