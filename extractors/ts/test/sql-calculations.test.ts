@@ -190,6 +190,35 @@ for (const d of ["tsql", "postgresql"] as const) {
     assert.notEqual(c.attributes.nullHandling!.value, "notApplicable");
   });
 
+  test(`${d}: a zero constant divisor is not reported as safe`, () => {
+    const c = calculation(run(files(d, "SELECT 1 / 0", "", "integer")));
+    assert.equal(c.expr.o, "/");
+    assert.equal((c.expr.r as Expr).value, 0);
+    assert.notEqual(c.attributes.zeroDenominator!.value, "notApplicable");
+  });
+
+  test(`${d}: one coalesced operand cannot hide another nullable aggregate operand`, () => {
+    const coalesce = d === "tsql" ? "ISNULL" : "COALESCE";
+    const c = calculation(run(files(d, `SELECT SUM(${coalesce}(e.${q("Amount")}, 0) + e.${q("Amount")}) FROM ${table} e`)));
+    assert.notEqual(c.attributes.nullHandling!.value, "nullAsZero");
+    assert.notEqual(c.attributes.nullHandling!.value, "notApplicable");
+  });
+
+  test(`${d}: filter attributes preserve grouping and additional bounds`, () => {
+    const quantity = `e.${q("Quantity")}`;
+    const filtered = (predicate: string) => calculation(run(files(d,
+      `SELECT SUM(${quantity}) FROM ${table} e WHERE ${predicate}`, "", "bigint")));
+    const grouped = filtered(`(${quantity} + 1) * 2 > 5`);
+    const ungrouped = filtered(`${quantity} + 1 * 2 > 5`);
+    assert.notDeepEqual(grouped.expr, ungrouped.expr, "changed grouping changes the actual predicate");
+    assert.equal(grouped.attributes.filters!.status, "known");
+    assert.notEqual(grouped.attributes.filters!.value, ungrouped.attributes.filters!.value, "descriptions must distinguish predicates with different meanings");
+    const interval = filtered(`${quantity} >= 0 AND ${quantity} < 10`);
+    const restricted = filtered(`${quantity} >= 0 AND ${quantity} < 10 AND ${quantity} >= 5`);
+    assert.equal(expressions(restricted.expr.filter).filter((e) => e.op === "cmp").length, 3);
+    assert.notEqual(restricted.attributes.filters!.value, interval.attributes.filters!.value, "formatting an interval must not discard an additional restrictive bound");
+  });
+
   test(`${d}: integer literal promotion boundaries retain dialect types`, () => {
     const maxInt = calculation(run(files(d, "SELECT 2147483647", "", "integer")));
     assert.equal(maxInt.expr.type, "int32");
