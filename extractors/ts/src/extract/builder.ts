@@ -120,7 +120,7 @@ export class ArtifactBuilder {
     this.incomplete.add(path);
   }
 
-  toJsonl(unit: { path: string; name: string }, language: "typescript" | "javascript", rules: ToolRef[], configHash: string, inputHash: string, filesTotal: number): string {
+  toJsonl(unit: { path: string; name: string }, language: "typescript" | "javascript" | "sql", rules: ToolRef[], configHash: string, inputHash: string, filesTotal: number): string {
     // Edges from symbols this artifact does not declare are dropped (a rule matched code the extractor skipped).
     const edges = [...this.edges.values()].filter((e) => this.nodes.has(e.from as string));
     const used = new Set<string>([
