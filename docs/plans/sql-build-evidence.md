@@ -114,3 +114,79 @@ approved unknown-currency correction. Grade 100/100 (typed cross-module skeleton
 because the source was unchanged; only evidence and language documentation were
 added afterward. Architecture brain closeout rechecked queen/worker coordination;
 Ruflo remains a ledger and native isolated workers perform implementation.
+
+## Concurrent upstream work
+
+Remote refresh found `7fd2a2fe0905f20d6da7f2006bd76de5d2197d8c` (local Ollama
+integration) after the original baseline. Merged cleanly in `15f6e66`; no SQL or
+language-document files overlapped. Final gates must use this combined lineage.
+The running explorer smoke above predates this merge and will be repeated.
+
+Refinement workers use three native Sol/high sessions, isolated by owned paths.
+The test worker's effort was raised from the planned medium to high for dialect
+semantics. No paid provider routing was invoked; numerical savings are unknown.
+Shared checkpoint `project-state-current-sql-415e13d` was stored and retrieved
+by exact key through Ruflo against the canonical original-worktree memory path.
+The CLI warned that a separate AgentDB store exists; this receipt proves only the
+selected store's exact write/read, not semantic search or cross-store recall.
+
+## Refinement verification in progress
+
+The first integrated gate stopped at one test defect: the PostgreSQL metamorphic
+helper omitted the existing default `public` schema in its key lookup. It passed
+98/99 tests, no skips; correction changed the lookup, not production behavior.
+The second `make test-ts evaluate-sql evaluate-golden` passed 99/99 tests, no skips,
+SQL calculations 5/5, attributes 52/52, IR hashes 5/5, all prior graph metrics and
+zero evidence errors. Golden self-evaluation passed all 18 artifacts, 21/21
+calculations, 212/212 attributes and 21/21 IR hashes. End-to-end gate time was
+56.61 seconds (includes restore/build overhead; not an extraction benchmark).
+Log: `/private/tmp/ce-sql-refinement-2.log`.
+
+Independent native Astra/high review then found additional coercion and attribute
+edge cases beyond the goldens. Refinement remains open until those regressions
+pass: T-SQL default decimal casts/returns, PostgreSQL NULLIF promotion, nullable
+parameters in aggregates, outer null replacement, string ISNULL truncation and
+session-dependent T-SQL overflow. Golden success alone does not clear this gate.
+
+### Final Refinement gate
+
+Fourth integrated invocation passed: `make test-ts evaluate-sql evaluate-golden`,
+108 tests passed, 0 failed, 0 skipped; SQL 5/5 calculations, 52/52 attributes,
+5/5 hashes and every graph/evidence threshold passed. Golden self-check again
+passed all 18 artifacts. End-to-end time 40.12 seconds, including build overhead.
+Log: `/private/tmp/ce-sql-refinement-4.log`. Source worker fixes integrated through
+`04d17dc`; extractor wiring, version/config and documentation are included in the
+Refinement commit that records this result.
+
+Independent Astra/high review resolved eight findings (the decimal cast and
+return cases count separately), then independently passed 12/12 source-only
+regression assertions in offline containers. No SQL was executed. Exact reviewed
+worker commits: `b4e2373` and `99ffb32`, integrated as `70184e0` and `f5030fe`.
+No routine-name/path special cases found. Existing graph thresholds and scope
+were compared programmatically against the refreshed remote and are unchanged.
+
+Refinement grade: 100/100 against the declared rubric: SQL golden semantic gate
+40/40, graph/evidence 20/20, negative paths 20/20, determinism/metamorphic 20/20.
+Four gate invocations were used; the first fixed a test helper, subsequent review
+added conservative coercion/null/session/literal boundaries. Brain closeout
+retrieved `sparc/docs/User_Guide.md`; it reinforced evidence-gated advancement,
+with no additional dependency warranted.
+
+| Acceptance | Executable evidence |
+|---|---|
+| Existing SQL calculations and attributes | evaluate-sql, 5/5 calculations, 52/52 attributes, 5/5 hashes |
+| Graph facts/evidence preserved | evaluate-sql, nodes44/44 edges61/61 precision22/22 coverage5/5 errors0 |
+| Types, nulls, casts, filters and rejection | sql-calculations.test.ts, including independent-review regressions |
+| Valid exact source evidence | test helper checks spans/snippet SHA and validateArtifact |
+| Deterministic complete bytes | sql-determinism.test.ts, independent roots and three creation orders |
+| Stable/meaningful IR identity | cosmetic edits and rename stable; literal mutation changes hash |
+| Bounded expression/literal work | depth64/token4096/single numeric literal1024 rejection tests |
+| No schema/dependency/source-lock drift | golden-check and diff against refreshed remote |
+
+SHA-256 inputs:
+
+* revisions.lock.json: `c779ee204a406a187afd1f24dbbe036a5f997060d1be4a19417087267b059dc0`
+* evaluation.extractors.json: `c0a35ca1f319d19700f61c9a2121f2b38f0d6f917bde7b328d4d96d8766dc86b`
+* TS package-lock.json: `6451b54d934eedfddb7a744ae8e3c89e60e8d8f21dfdef58bc7e50f4582ba7e8`
+
+Completion/full CI and refreshed explorer smoke remain pending at this phase.

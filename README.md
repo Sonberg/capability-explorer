@@ -9,7 +9,7 @@ source span.
 migrations as text. Both are gated in CI against a reference fixture
 set with known answers, and `make analyze` runs them over the repositories of a capability. Also
 present: validators on both stacks, an idempotent PostgreSQL importer and the explorer UI.
-C# and TypeScript/JavaScript calculations are extracted and gated; SQL routine calculations are not done yet.
+C#, TypeScript/JavaScript and the supported SQL routine calculations are extracted and gated.
 
 Shared terminology: [ubiquitous language](docs/ubiquitous-language.md).
 
@@ -206,18 +206,33 @@ capability files and reloads when they change, and the UI refetches what it show
   info diagnostic says from what: the database in the repository's connection strings (T-SQL), or the
   enclosing package name plus `-db` (PostgreSQL). The reference fixtures rely on this.
 
+- Routine calculations use a bounded typed expression parser and ce.v1 lowering. Unsupported
+  calculations produce `SQL_CALCULATION_UNSUPPORTED`; ordinary graph facts remain available.
+  Dynamic SQL retains its existing partial coverage behavior. Units and currency stay unknown
+  when names or arithmetic scaling are the only clues. See the
+  [SQL work package and evidence](docs/plans/sql-build-evidence.md).
+- The subset includes int32/bigint and dialect decimal/numeric arithmetic, SUM, COUNT DISTINCT,
+  AND/comparisons/BETWEEN, null replacement, NULLIF, two-argument ROUND, T-SQL DATEDIFF(day),
+  PostgreSQL date_trunc(week), and date plus/minus integer. Widening int32-to-bigint and PostgreSQL
+  integer-to-unbounded-numeric casts preserve conversions. Numeric parameter types normalize
+  `int`/`integer` to `int32`; string/date declaration spellings remain explicit.
+
 **Known limits**
 
 - Calculations are extracted for C# and TypeScript/JavaScript, and gated at 100% (`fixtures/evaluation.csharp.json`, `fixtures/evaluation.extractors.ts.json`).
 - TS/JS calculations cover numeric functions that round (`Math.round/trunc/floor/ceil`, `toFixed`) or aggregate (`filter`/`map`/`reduce`, `new Set(..).size`, `for…of` sums). Other shapes yield a `CALCULATION_UNSUPPORTED` info diagnostic instead of an approximate IR.
-- SQL routine calculations (`fnWeeklySalesAverage`, `pricing.weekly_revenue`) are not extracted yet; the SQL gate covers the graph only.
+- SQL calculations cover bounded static single-expression routines with at most one table. Joins,
+  procedural statements, smallint/tinyint, implicit return conversions, constrained casts/returns,
+  exponent/leading-dot numeric literals and other unsupported semantics are rejected. Parser
+  limits apply after tokenization: 4096 body tokens and expression depth 64. Numeric literals are
+  limited to 1024 characters before numeric conversion; these are not whole-file limits.
 - Package versions are locked per analysis: the same commit and lock give byte-identical artifacts whatever the shared download folder holds. `header.configHash` covers the resolved set. Floating versions (`1.*`) are resolved when the lock is written, so re-running the packages step later can pick a newer one and then yields a different `configHash`. Without `--lock` (as in `make evaluate-cs`) `ce-cs` falls back to the folder's contents; the hash records what it used.
 - Only `@unbound` hints in edge targets are bound; environment/IaC files as a binding source are not read yet (service map only).
 
 `make evaluate-cs`, `make evaluate-ts` and `make evaluate-sql` run each extractor over every fixture revision. They
 score it against the golden units of its own languages using `fixtures/evaluation.csharp.json` (C#),
 `fixtures/evaluation.extractors.ts.json` (TS/JS) and `fixtures/evaluation.extractors.json` (SQL). Graph recall, edge
-accuracy, evidence and precision are held at 100%; for C# and TS/JS so are calculation recall, attribute accuracy and
+accuracy, evidence and precision are held at 100%; for all three extractors so are calculation recall, attribute accuracy and
 `irHash` match. All three targets run in `make test`.
 
 ### Storing analyses and binding unbound resources
@@ -320,6 +335,6 @@ golden set against itself and runs in CI as a self-check of the scorer.
 
 ## Next
 
-- Calculation extraction for SQL routines.
+- Broader SQL calculation syntax beyond the documented static subset.
 - Open decision: TypeScript 7 (native compiler) has a different programmatic API. The extractor pins
   `typescript@5.9` until that API is evaluated.
