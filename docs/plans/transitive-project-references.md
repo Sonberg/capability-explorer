@@ -109,3 +109,24 @@ asserted. R100/100 iteration1: cases40/determinism30/boundaries30. No unresolved
 review blockers. Brain closeout: sparc/CARD/sparc-card; no additional primitive.
 No production Glufs reanalysis, dense-DAG benchmark, conditional/cyclic MSBuild
 expansion or assembly unification tested. No provider API spend; native cost unknown.
+
+
+Completion gate: full installed pre-push act exited0 for clean exact source
+f527c9ef1933555ed82a27293bcde5cb4e066388 and main98be7a4, then pushed. Log
+/private/tmp/ce-transitive-push.log. Trivy, action audit,42 harness checks,
+fixture compilation,108 Node tests, all golden gates,17 extractor tests,
+Explorer/interpretation/capability suites and PostgreSQL store integration passed.
+Source/main alignment was verified before and after the gate. This final phase
+record is documentation only and must itself pass the installed pre-push hook
+before PR creation; the final receipt is reported in the issue/PR handoff.
+
+Trace: chain/diamond -> ProjectReferencesTests named cases; repeat bytes -> diamond;
+no invented direct edges -> AssertDependencies in chain/diamond; missing/unrelated
+-> two negative controls; preserved fixture semantics -> evaluate-cs and full CI;
+package boundaries -> unchanged predicate plus independent source review. No
+migration/service/deployment required. Rollback is reverting the narrow extractor
+fix; tests expose the reintroduced failure. No production deployment performed.
+C100/100 iteration1: fullCI40/alignment30/trace20/handoff10. Brain closeout:
+sparc/CARD/sparc-card; no new runtime primitive. Scores apply to this bounded
+contract, not all issue6 mapping behavior. Untested limits remain as above.
+Native worker cost unknown; no paid provider API execution or runtime model calls.
