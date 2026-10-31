@@ -2,21 +2,26 @@
   "name": "@capability-explorer/ts-extractor",
   "version": "0.1.0",
   "private": true,
-  "description": "TypeScript/JavaScript extractor. Stage 1: shared ce.v1 contract validation only.",
+  "description": "TypeScript/JavaScript extractor (TypeScript compiler API) and the shared ce.v1 contract validation.",
   "type": "module",
-  "engines": { "node": ">=22.18" },
-  "bin": { "ce-ts": "./src/cli.ts" },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "ce-ts": "./src/cli.ts"
+  },
   "scripts": {
     "typecheck": "tsc -p .",
     "test": "node --test --test-reporter=spec \"test/**/*.test.ts\"",
-    "validate": "node src/cli.ts validate"
+    "validate": "node src/cli.ts validate",
+    "extract": "node src/cli.ts extract"
   },
   "dependencies": {
     "ajv": "8.20.0",
-    "ajv-formats": "3.0.1"
+    "ajv-formats": "3.0.1",
+    "typescript": "5.9.3"
   },
   "devDependencies": {
-    "@types/node": "22.20.5",
-    "typescript": "5.9.3"
+    "@types/node": "22.20.5"
   }
 }

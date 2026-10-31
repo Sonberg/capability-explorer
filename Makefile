@@ -9,7 +9,7 @@ OFFLINE := $(SANDBOX) --offline
 
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
         restore ui build test-ts test-contracts test-evaluation test-explorer test-store evaluate evaluate-golden \
-        extract-cs evaluate-cs analyze explore clean
+        extract-cs evaluate-cs extract-ts evaluate-ts analyze explore clean
 
 help:
 	@echo "make ci              everything CI runs: fixture compile checks + all tests"
@@ -27,10 +27,11 @@ help:
 	@echo "make analyze CAPABILITY=id  check out, extract and store artifacts for one capability (picked up live by explore)"
 	@echo "     GITHUB_AUTH=auto|git|none  LOCKED=1 (analyse the last check)  PACKAGES=0 (skip nuget.org downloads)"
 	@echo "make evaluate-cs     run the C# extractor over every fixture revision and gate it on the csharp golden units"
+	@echo "make evaluate-ts     same for the TypeScript/JavaScript extractor"
 
 ci: fixtures-compile test
 
-test: golden-check test-ts test-contracts test-evaluation evaluate-golden evaluate-cs test-explorer test-store
+test: golden-check test-ts test-contracts test-evaluation evaluate-golden evaluate-cs evaluate-ts test-explorer test-store
 
 fixtures:
 	$(OFFLINE) node scripts/build-fixtures.sh
@@ -95,7 +96,16 @@ extract-cs: fixtures build fixtures-compile
 
 evaluate-cs: extract-cs
 	$(OFFLINE) dotnet $(CE) evaluate --expected fixtures/expected --actual $(EXTRACTED)/cs \
-	  --config fixtures/evaluation.cs.json --repos fixtures/.repos --language csharp --json $(EXTRACTED)/cs/evaluation.json
+	  --config fixtures/evaluation.extractors.json --repos fixtures/.repos --language csharp --json $(EXTRACTED)/cs/evaluation.json
+
+# TypeScript/JavaScript extractor (compiler API; the analysed packages are never installed).
+extract-ts: fixtures restore
+	rm -rf $(EXTRACTED)/ts
+	$(OFFLINE) node bash scripts/extract-fixtures.sh ts $(EXTRACTED)/ts
+
+evaluate-ts: extract-ts build
+	$(OFFLINE) dotnet $(CE) evaluate --expected fixtures/expected --actual $(EXTRACTED)/ts \
+	  --config fixtures/evaluation.extractors.json --repos fixtures/.repos --language typescript,javascript --json $(EXTRACTED)/ts/evaluation.json
 
 test-explorer: fixtures build
 	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Explorer.Tests && dotnet test --no-build tests/CapabilityExplorer.Interpretation.Tests && dotnet test --no-build tests/CapabilityExplorer.Capabilities.Tests'

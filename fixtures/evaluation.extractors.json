@@ -1,5 +1,5 @@
 {
-  "$comment": "Gate for the C# extractor (`make evaluate-cs`), scored only on csharp units. Same scope as evaluation.json; calculation metrics are not gated until calculation extraction exists. Raise, never lower, without review.",
+  "$comment": "Gate for the extractors (`make evaluate-cs`, `make evaluate-ts`), each scored only on the golden units of its own languages. Same scope as evaluation.json; calculation metrics are not gated until calculation extraction exists. Raise, never lower, without review.",
   "scope": {
     "exhaustiveRelations": [
       {

@@ -4,18 +4,20 @@ Extracts a versioned model of architecture, dependencies, business concepts and 
 several codebases (C#, TypeScript/JavaScript, SQL). Every claim is traceable to an exact revision and
 source span.
 
-**Status: stage 1 (contract and fixtures).** No extractor exists yet. What exists is the contract
-every extractor must produce, a reference fixture set with known answers, validators on both stacks,
-and an idempotent PostgreSQL importer.
+**Status: stage 2 (extractors).** A C# extractor (Roslyn) and a TypeScript/JavaScript extractor
+(TypeScript compiler API) produce the ce.v1 contract. Both are gated in CI against a reference fixture
+set with known answers, and `make analyze` runs them over the repositories of a capability. Also
+present: validators on both stacks, an idempotent PostgreSQL importer and the explorer UI.
+Calculation extraction and SQL projects are not done yet.
 
 ## Layout
 
-| Path | Stage 1 content |
+| Path | Content |
 |---|---|
 | `schema/v1/` | `record.schema.json` (JSON Schema, the source of truth), `relations.json`, [rules](schema/README.md) |
 | `fixtures/` | Five fixture repos (C#, TypeScript/JavaScript, T-SQL, PostgreSQL) built deterministically from overlays, plus golden artifacts. See [fixtures/README.md](fixtures/README.md). |
-| `platform/` | .NET 10: `Contracts` (validator, evidence verifier), `Evaluation` (scoring against golden), `Store` (migrations, importer), `Cli` (`ce`), `Capabilities` (repository sets and source acquisition), `Interpretation` (optional LLM), `Explorer` (API + React/Tailwind UI), tests |
-| `extractors/ts/` | Node/TypeScript package. Stage 1 contains only the contract validator (ajv against the same schema). |
+| `platform/` | .NET 10: `Contracts` (validator, evidence verifier), `Evaluation` (scoring against golden), `Store` (migrations, importer), `Cli` (`ce`), `Extractors.CSharp` (`ce-cs`), `Capabilities` (repository sets and source acquisition), `Interpretation` (optional LLM), `Explorer` (API + React/Tailwind UI), tests |
+| `extractors/ts/` | Node/TypeScript package: the TypeScript/JavaScript extractor (`ce-ts extract`) and the contract validator (ajv against the same schema). |
 | `scripts/sandbox` | Runs every build, install and test in a disposable container |
 
 ## Running
@@ -89,7 +91,7 @@ blob-less partial clones under `.sandbox-cache/sources`, with no checkout, hooks
 Local repositories are read in place. The definitions live in `capabilities.json`, which is fit to
 commit; the locked revisions live in `.sandbox-cache/sources/snapshots.json`. Repository ids are global,
 because artifacts are keyed by them. A repository shows as *analysed* once artifacts for its locked
-commit are loaded; extractors arrive in stage 2.
+commit are loaded (see *Analysing a capability* below).
 
 **Local repositories**
 
@@ -138,6 +140,54 @@ See [docs/intelligence-layer.md](docs/intelligence-layer.md).
 
 Source is read with `git show` from `fixtures/.repos`, and only for files an artifact cites. All
 repository content is rendered as text, never as markup.
+
+### Analysing a capability
+
+```sh
+make analyze CAPABILITY=weekly-sales     # while `make explore` runs, the UI picks up the results by itself
+```
+
+Each step runs in its own sandbox and gets only what it needs:
+
+| Step | Sandbox | What happens |
+|---|---|---|
+| 1 export | network, GitHub token, local repositories mounted read-only | Checks the capability again, so each ref is locked to its current commit (`LOCKED=1` keeps the last check). Then it writes each locked tree to `.sandbox-cache/analyze/<id>/src/`. Only regular files are written: symlinks and files over 8 MB are skipped. A blob-less clone fetches the blobs it needs in one batch. |
+| 2 packages | network, no token, no local mounts | Downloads the NuGet packages that the projects reference, plus their dependencies, from nuget.org into `.sandbox-cache/analyze-packages`. They are unpacked as data only: nuspec plus `ref/`/`lib/` assemblies. There is no restore and no MSBuild evaluation. `PACKAGES=0` skips this step. |
+| 3 extract | `--offline` | Runs `ce-cs extract` and `ce-ts extract` over each tree. The output for each revision is swapped into `.sandbox-cache/artifacts/<repo>/<commit>/` only once every extractor has finished. |
+
+The analysed code is parsed and bound, never restored, built or executed. `make explore` loads
+`fixtures/expected` and `.sandbox-cache/artifacts`. For the same repository, commit and unit, the
+analysed artifact replaces the golden one. The explorer polls the artifact directories and the
+capability files and reloads when they change, and the UI refetches what it shows.
+
+**C# (`ce-cs`)**
+
+- It builds Roslyn compilations from `.csproj` read as XML. Project references come from the project
+  files, framework references from the SDK reference packs, and packages from step 2.
+- Source generators do not run. Their absence is an info diagnostic.
+- Compiler errors make the affected files `partial`.
+- Rules: ASP.NET Core controllers and minimal APIs, DI (including keyed services and reflection),
+  EF Core, Dapper, Azure Service Bus, typed `HttpClient`.
+
+**TypeScript/JavaScript (`ce-ts`)**
+
+- A unit is one `tsconfig.json`, or a `package.json` with plain JavaScript and no tsconfig. Each file
+  belongs to the deepest unit that includes it.
+- Imported packages are not installed. Calls into them are left out, and a `DEPENDENCIES_NOT_INSTALLED`
+  info diagnostic names them. Calls into the TypeScript libs resolve to `ts|@ext|typescript|…`.
+- Rules: Express routes (apps, nested routers, `route()` chains), `fetch`, axios clients, generated
+  OpenAPI clients, `pg` SQL, Azure Service Bus (literal values in imported JSON config bind the
+  channel), and handler maps behind dynamic dispatch (as `candidate` edges).
+
+**Known limits**
+
+- Calculations (the IR and its attributes) are not extracted yet. They are scored but not gated.
+- SQL projects (`.sqlproj`, migrations) are not extracted yet.
+- Edges into package code depend on the package versions the shared download folder holds.
+
+`make evaluate-cs` and `make evaluate-ts` run each extractor over every fixture revision. They score it
+against the golden units of its own languages using `fixtures/evaluation.extractors.json`. Graph
+recall, edge accuracy, evidence and precision are held at 100%. Both targets run in `make test`.
 
 ### Validating extractor output
 
@@ -207,11 +257,13 @@ golden set against itself and runs in CI as a self-check of the scorer.
 - `CapabilityTests` / `CapabilityApiTests`: parsing of repository lines (GitHub URL forms, local paths,
   refs, rejected input), atomic definition and snapshot storage, global repository ids, locking local
   repositories, and views scoped to a capability's locked revisions.
-- `extractors/ts` tests: the same golden files validate against the same schema in TypeScript.
+- `extractors/ts` tests: the same golden files validate against the same schema in TypeScript. The
+  extractor is also tested on synthetic projects: routers, clients, SQL, messaging and plain JavaScript.
+- `LiveReloadTests`: new artifacts on disk raise the explorer's generation and replace the same unit.
 
-## Next (stage 2)
+## Next
 
-- Roslyn extractor (`MSBuildWorkspace`) and TypeScript extractor (`ts.createProgram` + `TypeChecker`),
-  both emitting ce.v1.
-- Open decision: TypeScript 7 (native compiler) has a different programmatic API. Stage 1 pins
-  `typescript@5.9` for the extractor until that API is evaluated.
+- Calculation extraction (IR + attributes) for C# and TypeScript, then SQL projects (T-SQL `.sqlproj`,
+  PostgreSQL migrations).
+- Open decision: TypeScript 7 (native compiler) has a different programmatic API. The extractor pins
+  `typescript@5.9` until that API is evaluated.
