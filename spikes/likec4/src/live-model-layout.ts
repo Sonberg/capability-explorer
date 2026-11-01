@@ -77,9 +77,9 @@ export function layoutLiveView(view:ComputedElementView):LayoutedElementView {
       const right=to.x>=from.x,start:[number,number]=[right?from.x+from.width:from.x,from.y+from.height/2],end:[number,number]=[right?to.x:to.x+to.width,to.y+to.height/2];
       const mid=(start[0]+end[0])/2;points=[start,[mid,start[1]],[mid,end[1]],end];
     }
-    const middle=points[Math.floor(points.length/2)]!,labelWidth=Math.min(360,Math.max(40,(edge.label?.length??0)*6.5));
+    const middle=points[Math.floor(points.length/2)]!,labelWidth=Math.min(360,Math.max(40,(edge.label?.length??0)*7.5+20));
     const controlPoints:NonNullable<DiagramEdge['controlPoints']>=[{x:points[0][0],y:points[0][1]},...points.slice(1).map(([x,y])=>({x,y}))];
-    return {...edge,points:cubicPoints(points),controlPoints,labelBBox:edge.label?{x:middle[0]-labelWidth/2,y:middle[1]-28-(index%3)*4,width:labelWidth,height:24}:null};
+    return {...edge,points:cubicPoints(points),controlPoints,labelBBox:edge.label?{x:middle[0]-labelWidth/2,y:middle[1]-48-(index%3)*4,width:labelWidth,height:44}:null};
   });
   const all=[...nodes,...edges.flatMap(e=>e.labelBBox?[e.labelBBox]:[]),...edges.flatMap(e=>e.points.map(([x,y])=>({x,y,width:0,height:0})))];
   const x=all.length?Math.min(...all.map(b=>b.x))-24:0,y=all.length?Math.min(...all.map(b=>b.y))-24:0;
