@@ -5,6 +5,7 @@ import type { ToolRef } from "../contracts/records.ts";
 import type { Props } from "./builder.ts";
 import { isFunctionInit, type Ctx } from "./context.ts";
 import { splitHttpPath } from "./http.ts";
+import { postgresStore, serviceBusNamespace } from "./resource-identities.ts";
 
 export const EXPRESS = { name: "express.routes", version: "1" };
 export const AXIOS = { name: "axios", version: "1" };
@@ -32,6 +33,17 @@ export const unwrap = (e: ts.Expression): ts.Expression => {
   while (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isNonNullExpression(e) || ts.isSatisfiesExpression(e) || ts.isAwaitExpression(e)) e = e.expression;
   return e;
 };
+
+/** Retain simple reference names, never arbitrary expression text containing source literals. */
+function referenceLabel(expression: ts.Expression): string | undefined {
+  const e = unwrap(expression);
+  if (ts.isIdentifier(e)) return e.text;
+  if (ts.isPropertyAccessExpression(e)) {
+    const parent = referenceLabel(e.expression);
+    return parent ? `${parent}.${e.name.text}` : undefined;
+  }
+  return undefined;
+}
 
 /** `process.env.NAME` / `process.env["NAME"]`, optionally with `?? "fallback"`. */
 export function envVar(e: ts.Expression | undefined): { name: string; fallback?: string; node: ts.Expression } | undefined {
@@ -312,8 +324,12 @@ export function pgRule(ctx: Ctx, rules: Set<ToolRef>) {
       const value = cs && ts.isPropertyAssignment(cs) ? resolveValue(ctx, cs.initializer) : cfg ? resolveValue(ctx, cfg) : { kind: "env" as const, name: "PGDATABASE", evidence: ctx.ev(n) };
       if (value.kind === "env") pools.set(sym, { store: ctx.unbound("env", value.name), resolved: false, evidence: value.evidence });
       else if (value.kind === "literal") {
-        const db = /\/\/(?:[^@/]*@)?([^/:?]+)(?::\d+)?\/([^?]+)/.exec(value.value);
-        pools.set(sym, db ? { store: `@unbound:${ctx.repo}/${ctx.pkg}:db=${db[1]}/${db[2]}`, resolved: false, evidence: value.evidence } : { store: ctx.unbound("pool", sym.name), resolved: false });
+        const store = postgresStore(value.value);
+        pools.set(sym, store ? { store: ctx.unbound("db", store), resolved: false, evidence: value.evidence } : { store: ctx.unbound("pool", sym.name), resolved: false });
+        if (!store) {
+          ctx.b.diagnostic("warning", "PG_CONNECTION_UNSUPPORTED", "Database identity is unavailable from this connection literal; credentials and ambiguous paths are not copied.", ctx.rel(sf.fileName), true, value.evidence);
+          ctx.b.markIncomplete(ctx.rel(sf.fileName));
+        }
       } else pools.set(sym, { store: ctx.unbound("pool", sym.name), resolved: false });
     });
   }
@@ -345,7 +361,7 @@ export function pgRule(ctx: Ctx, rules: Set<ToolRef>) {
         sql = sqlNode.head.text;
         for (const span of sqlNode.templateSpans) {
           const kw = /((?:ORDER|GROUP)\s+BY|[A-Za-z_]+)\s*$/i.exec(sql)?.[0] ?? "";
-          dynamicParts.push(`${kw}\${${span.expression.getText()}}`);
+          dynamicParts.push(`${kw}\${${referenceLabel(span.expression) ?? "<dynamic-expression>"}}`);
           const t = ctx.checker.getTypeAtLocation(span.expression);
           if (t.isUnion() && t.types.every((x) => x.isStringLiteral())) allowed = t.types.map((x) => (x as ts.StringLiteralType).value);
           sql += `__dyn__${span.literal.text}`;
@@ -403,7 +419,7 @@ export function serviceBusRule(ctx: Ctx, rules: Set<ToolRef>) {
       if (!sym) return;
       const ns = resolveValue(ctx, n.arguments?.[0]);
       const cred = n.arguments?.[1] && unwrap(n.arguments[1]);
-      clients.set(sym, { ns, evidence: ctx.ev(n), credential: cred && ts.isNewExpression(cred) ? cred.expression.getText() : undefined });
+      clients.set(sym, { ns, evidence: ctx.ev(n), credential: cred && ts.isNewExpression(cred) ? referenceLabel(cred.expression) : undefined });
     });
   }
   for (const sf of ctx.files) {
@@ -420,9 +436,13 @@ export function serviceBusRule(ctx: Ctx, rules: Set<ToolRef>) {
       const subscription = op === "createReceiver" && n.arguments.length > 1 && !ts.isObjectLiteralExpression(unwrap(n.arguments[1]!));
       const entityType = op === "createSender" ? "entity" : subscription ? "topic" : "queue";
       const rel = op === "createSender" ? "PUBLISHES" : "CONSUMES";
-      const nsRef = info.ns.kind === "literal" ? namespaceOf(info.ns.value) : info.ns.kind === "env" ? ctx.unbound("env", info.ns.name) : undefined;
+      const nsRef = info.ns.kind === "literal" ? serviceBusNamespace(info.ns.value) : info.ns.kind === "env" ? ctx.unbound("env", info.ns.name) : undefined;
       const props: Props = { configSource: info.ns.kind === "literal" ? info.ns.source : undefined, credential: info.credential };
       if (!nsRef || entity.kind === "unknown") {
+        if (!nsRef && info.ns.kind === "literal") {
+          ctx.b.diagnostic("warning", "SERVICEBUS_NAMESPACE_UNSUPPORTED", "Namespace identity is unavailable from this connection literal; credentials and malformed values are not copied.", ctx.rel(sf.fileName), true, info.evidence);
+          ctx.b.markIncomplete(ctx.rel(sf.fileName));
+        }
         ctx.b.edge({ from, rel, derivation: "rule", rule: SB, resolution: "unresolved", reason: "configuration", props, evidence: [ctx.ev(n), info.evidence] });
         return;
       }
@@ -439,10 +459,4 @@ export function serviceBusRule(ctx: Ctx, rules: Set<ToolRef>) {
       });
     });
   }
-}
-
-/** Namespace host from a fully qualified namespace or a connection string. */
-function namespaceOf(value: string): string {
-  const endpoint = /Endpoint=sb:\/\/([^/;]+)/i.exec(value)?.[1];
-  return (endpoint ?? value.replace(/^sb:\/\//, "")).replace(/\/$/, "");
 }
