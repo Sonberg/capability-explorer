@@ -1,16 +1,13 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { canonical, checkAssertions, equalRuns, hash, inside, inventory, requireThat, verifyEvidence, verifyLockedFiles } from './mapping-replay-lib.mjs';
+import { canonical, checkAssertions, equalRuns, hash, inside, inventory, replayOutputPath, requireThat, verifyEvidence, verifyLockedFiles } from './mapping-replay-lib.mjs';
 
 const root = process.cwd();
 const input = 'tests/mapping-fixtures/source';
 const json = (file) => JSON.parse(readFileSync(file, 'utf8'));
 const save = (file, value) => writeFileSync(file, canonical(value) + '\n');
-const safeOutput = (name) => {
-  requireThat(name.startsWith('.sandbox-cache/mapping-replay/'), 'output must be under .sandbox-cache/mapping-replay/');
-  return inside(root, name);
-};
+const safeOutput = (name) => replayOutputPath(root, name);
 const sourcePaths = ['extractors/ts/src', 'extractors/ts/package.json', 'extractors/ts/package-lock.json',
   'schema', 'platform/src/CapabilityExplorer.Extractors.CSharp', 'platform/src/CapabilityExplorer.Contracts',
   'platform/Directory.Build.props', 'platform/Directory.Packages.props', 'platform/global.json'];

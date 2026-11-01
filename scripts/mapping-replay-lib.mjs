@@ -21,6 +21,13 @@ export function inside(root, name) {
   return path;
 }
 
+export function replayOutputPath(root, name) {
+  const path = inside(root, name);
+  const cache = resolve(root, '.sandbox-cache/mapping-replay');
+  requireThat(path.startsWith(cache + '/'), 'output must resolve under .sandbox-cache/mapping-replay/');
+  return path;
+}
+
 export function inventory(directory, excluded = new Set()) {
   const files = {};
   function visit(path) {

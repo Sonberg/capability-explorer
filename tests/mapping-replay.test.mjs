@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import test from 'node:test';
-import { canonical, checkAssertions, equalRuns, hash, inside, inventory, semanticRecord, snippet, verifyEvidence, verifyLockedFiles } from '../scripts/mapping-replay-lib.mjs';
+import { canonical, checkAssertions, equalRuns, hash, inside, inventory, replayOutputPath, semanticRecord, snippet, verifyEvidence, verifyLockedFiles } from '../scripts/mapping-replay-lib.mjs';
 
 const oldNode = { kind: 'node', id: 'n:old', nodeKind: 'http-endpoint', symbolKey: 'http|old', name: 'old', evidence: ['ev:old'] };
 const newNode = { kind: 'node', id: 'n:new', nodeKind: 'http-endpoint', symbolKey: 'http|new', name: 'new', evidence: ['ev:new'] };
@@ -75,6 +75,16 @@ test('absolute, escaping, and symlink paths are rejected', (t) => {
   assert.throws(() => inside(dir, '../escape'), /escapes root/);
   assert.throws(() => inside(dir, 'source/link/anything'), /symlink/);
   assert.throws(() => inventory(resolve(dir, 'source')), /symlink/);
+});
+test('output traversal cannot leave the replay cache while remaining inside the checkout', (t) => {
+  const dir = temporary(t);
+  for (const path of ['.sandbox-cache/mapping-replay/../../other-dir',
+    '.sandbox-cache/mapping-replay/../mapping-replay-other/result',
+    '.sandbox-cache/mapping-replay/candidate/..']) {
+    assert.throws(() => replayOutputPath(dir, path), /output must resolve under/);
+  }
+  assert.equal(replayOutputPath(dir, '.sandbox-cache/mapping-replay/nested/../candidate'),
+    resolve(dir, '.sandbox-cache/mapping-replay/candidate'));
 });
 test('source evidence validates exact UTF-16 spans, revision, path and snippet', (t) => {
   const dir = temporary(t), source = 'const emoji = "😀";\r\nsecond line\n';
