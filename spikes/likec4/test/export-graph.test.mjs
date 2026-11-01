@@ -37,3 +37,20 @@ test('real LikeC4 parser preserves quoted labels and evidence without injected e
     assert.equal(evidence.certainty,'candidate');
   } finally { await instance.dispose(); }
 });
+
+test('nested source hierarchy and named viewpoints compile with original evidence',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const {LikeC4}=await import('likec4');
+  const snapshot=JSON.parse(readFileSync(new URL('./weekly-sales.graph.json',import.meta.url),'utf8'));
+  const source=toLikeC4(snapshot);
+  for(const name of ['index','flow','vertical','applications','data','messaging','repository_0_detail','objects','sql_scope_0_detail']) assert.match(source,new RegExp(`view ${name}\\b`));
+  assert.match(source,/shape storage/);
+  assert.match(source,/Declared SQL table/);
+  const instance=await LikeC4.fromSource(source,{throwIfInvalid:true,printErrors:false});
+  try {
+    const model=await instance.computedModel();
+    assert.equal([...model.elements()].length,15);
+    assert.equal([...model.relationships()].length,snapshot.edges.length);
+    assert.equal(JSON.parse(model.element('repository_0.n0').getMetadata('source')).id,'repo:api-cs');
+  } finally {await instance.dispose();}
+});
