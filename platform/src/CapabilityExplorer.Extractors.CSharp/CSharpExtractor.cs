@@ -31,6 +31,10 @@ public sealed class CSharpExtractor(ExtractorOptions options)
     internal sealed record Unit(ProjectModel Project, CSharpCompilation Compilation, IReadOnlyList<PackageRef> MissingPackages, IReadOnlyList<ProjectRef> MissingProjects, IReadOnlyList<LockedPackage> ResolvedPackages)
     {
         public IReadOnlyList<UnselectedPackage> UnselectedPackages { get; init; } = [];
+
+        public IReadOnlyList<string> FrameworkPacks { get; init; } = [];
+
+        public IReadOnlyList<string> FrameworkFallbacks { get; init; } = [];
     }
 
     public IReadOnlyList<UnitResult> Extract()
@@ -48,7 +52,8 @@ public sealed class CSharpExtractor(ExtractorOptions options)
 
             visiting.Add(p.FullPath);
             var references = new List<MetadataReference>();
-            references.AddRange(FrameworkReferences(p));
+            var framework = FrameworkReferences(p);
+            references.AddRange(framework.References);
             var resolution = resolver.Resolve(p.PackageRoots(), options.Lock?.For(p.RelativePath) ?? (options.Lock is null ? null : []));
             var (packageAssemblies, missingPackages) = (resolution.Assemblies, resolution.Missing);
             references.AddRange(packageAssemblies.Select(a => MetadataReference.CreateFromFile(a)));
@@ -75,9 +80,9 @@ public sealed class CSharpExtractor(ExtractorOptions options)
                 trees.Add(CSharpSyntaxTree.ParseText(string.Concat(usings.Select(u => $"global using global::{u};\n")), parse, path: "<implicit-usings>"));
             }
 
-            var compilation = CSharpCompilation.Create(p.AssemblyName, trees, references.DistinctBy(r => r.Display),
+            var compilation = CSharpCompilation.Create(p.AssemblyName, trees, ReferenceUnifier.Unify(references),
                 new CSharpCompilationOptions(p.IsExecutable ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: p.Nullable ? NullableContextOptions.Enable : NullableContextOptions.Disable, checkOverflow: p.CheckedArithmetic));
-            var unit = new Unit(p, compilation, missingPackages, missingProjects, resolution.Resolved) { UnselectedPackages = resolution.Unselected };
+            var unit = new Unit(p, compilation, missingPackages, missingProjects, resolution.Resolved) { UnselectedPackages = resolution.Unselected, FrameworkPacks = framework.Packs, FrameworkFallbacks = framework.Fallbacks };
             compilations[p.FullPath] = unit;
             visiting.Remove(p.FullPath);
             return unit;
@@ -89,8 +94,16 @@ public sealed class CSharpExtractor(ExtractorOptions options)
         return units.Select(u => ExtractUnit(u, context)).ToList();
     }
 
-    private IEnumerable<MetadataReference> FrameworkReferences(ProjectModel p)
+    /// <summary>
+    /// The reference pack assemblies for the project's own target framework: the highest installed pack version that has
+    /// <c>ref/&lt;tfm&gt;</c>, never "whatever is newest" (a net8.0 project must not see the net10.0 surface). Without a
+    /// literal target framework, or without a matching pack, the newest pack is used and the fallback is reported.
+    /// </summary>
+    internal FrameworkSelection FrameworkReferences(ProjectModel p)
     {
+        var packs = new List<string>();
+        var fallbacks = new List<string>();
+
         IEnumerable<string> Pack(string name)
         {
             var root = Path.Combine(options.ReferencePacks, name);
@@ -99,9 +112,43 @@ public sealed class CSharpExtractor(ExtractorOptions options)
                 return [];
             }
 
-            var version = Directory.EnumerateDirectories(root).OrderBy(d => d, StringComparer.Ordinal).Last();
-            var refDir = Directory.EnumerateDirectories(Path.Combine(version, "ref")).OrderBy(d => d, StringComparer.Ordinal).Last();
-            return Directory.EnumerateFiles(refDir, "*.dll");
+            var versions = Directory.EnumerateDirectories(root)
+                .Select(d => (Dir: d, Version: Version.TryParse(Path.GetFileName(d).Split('-')[0], out var v) ? v : new Version(0, 0)))
+                .OrderByDescending(x => x.Version).ThenByDescending(x => x.Dir, StringComparer.Ordinal).ToList();
+            string? refDir = null;
+            string? chosen = null;
+            if (p.TargetFramework is { } tfm)
+            {
+                foreach (var v in versions)
+                {
+                    var candidate = Path.Combine(v.Dir, "ref", tfm);
+                    if (Directory.Exists(candidate))
+                    {
+                        (refDir, chosen) = (candidate, v.Dir);
+                        break;
+                    }
+                }
+            }
+
+            if (refDir is null)
+            {
+                if (versions.Count == 0 || !Directory.Exists(Path.Combine(versions[0].Dir, "ref")))
+                {
+                    return [];
+                }
+
+                chosen = versions[0].Dir;
+                refDir = Directory.EnumerateDirectories(Path.Combine(chosen, "ref")).OrderBy(d => d, StringComparer.Ordinal).LastOrDefault();
+                if (refDir is null)
+                {
+                    return [];
+                }
+
+                fallbacks.Add($"{name} {Path.GetFileName(chosen)}/{Path.GetFileName(refDir)}");
+            }
+
+            packs.Add($"{name}/{Path.GetFileName(chosen)}/{Path.GetFileName(refDir)}");
+            return Directory.EnumerateFiles(refDir, "*.dll").Order(StringComparer.Ordinal);
         }
 
         var files = Pack("Microsoft.NETCore.App.Ref");
@@ -110,8 +157,10 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             files = files.Concat(Pack("Microsoft.AspNetCore.App.Ref"));
         }
 
-        return files.Select(f => MetadataReference.CreateFromFile(f));
+        return new FrameworkSelection(files.Select(f => (MetadataReference)MetadataReference.CreateFromFile(f)).ToList(), packs, fallbacks);
     }
+
+    internal sealed record FrameworkSelection(IReadOnlyList<MetadataReference> References, IReadOnlyList<string> Packs, IReadOnlyList<string> Fallbacks);
 
     private UnitResult ExtractUnit(Unit unit, RuleContext context)
     {
@@ -130,6 +179,11 @@ public sealed class CSharpExtractor(ExtractorOptions options)
         foreach (var r in unit.MissingPackages.Where(m => m.Line > 0))
         {
             b.Diagnostic("warning", "UNRESOLVED_PACKAGE", $"Package {r.Id} {r.Version} is not in the packages folder; symbols from it are unresolved", p.RelativePath, true, b.LineEvidence(p.RelativePath, r.Line, projectText));
+        }
+
+        foreach (var f in unit.FrameworkFallbacks)
+        {
+            b.Diagnostic("info", "FRAMEWORK_PACK_FALLBACK", $"No reference pack matches target framework {p.TargetFramework ?? "(not a literal value)"}; used {f}", p.RelativePath, false);
         }
 
         foreach (var u in unit.UnselectedPackages)
@@ -202,7 +256,9 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             .Select(f => $"{Relative(f)}\0{ArtifactBuilder.Sha256(File.ReadAllText(f))}\n")));
         // The exact package set is part of the configuration: a different set is a different analysis, never silently different bytes.
         var packageSet = string.Concat(unit.ResolvedPackages.Select(r => $"{r.Id.ToLowerInvariant()}@{r.Version.ToLowerInvariant()}\n"));
-        var configHash = ArtifactBuilder.Sha256($"{Tool.Name}/{Tool.Version}|build={Build}|packages={(options.PackagesRoot is null ? "none" : options.Lock is null ? "folder" : "lock")}\n{packageSet}");
+        // The reference packs the compilation actually used are part of it too: a different pack is a different compile surface.
+        var packs = string.Concat(unit.FrameworkPacks.Select(r => $"pack={r}\n"));
+        var configHash = ArtifactBuilder.Sha256($"{Tool.Name}/{Tool.Version}|build={Build}|packages={(options.PackagesRoot is null ? "none" : options.Lock is null ? "folder" : "lock")}\n{packageSet}{packs}");
         var jsonl = b.ToJsonl(p.RelativePath, p.AssemblyName, "csharp", Rules.Tools, configHash, inputHash, p.SourceFiles.Count);
         return new UnitResult(p.RelativePath, p.AssemblyName, jsonl);
     }
