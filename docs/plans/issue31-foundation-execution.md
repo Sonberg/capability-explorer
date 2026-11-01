@@ -36,6 +36,38 @@ Not tested in this phase: validator implementation, candidates, CI.
 
 ## Phase ledger
 
+### Pseudocode
+
+1. Parse only explicit CLI modes; unknown arguments/stages fail, never default to
+   success. Resolve the checkout and constrain every evidence path beneath it.
+2. Load bounded JSON, reject traversal/symlink components, read bytes and recompute
+   SHA-256. Verify register arithmetic and sealed corpus/oracle independently.
+3. For each tool stage, validate its proposal identity and role-specific criteria;
+   bind all four independent role records to the canonical proposal digest.
+4. Verify claim references and actual brief artifacts. A pending/defer/reject
+   record may be complete, but cannot advance the trial/introduction state.
+5. Trial checks require actual receipt files, matching identities, zero exit and
+   complete non-skipped cases. Rehash sealed inputs and outputs; compare repeated
+   canonical facts from independent process IDs. Never run receipt commands.
+6. Introduction requires a second judge decision over the trial digest, no open
+   blockers, one tool/mode and main-only PR scope, opt-in/rollback and merged
+   foundation. Ordinary local CI remains separate and mandatory.
+7. Global research phase checks fail if required dossiers/evidence are absent;
+   foundation checks validate only F1–F6 and cannot claim full issue completion.
+
+Complexity: O(total bounded evidence bytes + registered modes + cases), with
+explicit limits on file bytes, record/array counts and path depth. No unbounded
+tree walks, network access, analyzed scripts or command execution in validation.
+Error paths return exit 1 with the violated invariant. Tests inject absent,
+tampered, malformed, stale and role-conflicting data, including valid-looking
+declarations with no artifacts. A consistent maliciously authored receipt cannot
+be authenticated by a hash; independent review remains required and disclosed.
+
+Final pseudocode score: 97/100 (oracle/comparability35, negative cases30,
+reproducibility20, measurement limits12/15: no runtime candidate evidence exists).
+Instrument: explicit F1–F7 trace and algorithm/failure-path inspection.
+Not tested: production implementation or candidate execution.
+
 Each later phase records its instrument, final grade, limits and source-bound
 commit. Phase commits are milestones; final PR checks bind the final clean HEAD.
 No new router is installed: standard-library scripts do mechanical work; native
