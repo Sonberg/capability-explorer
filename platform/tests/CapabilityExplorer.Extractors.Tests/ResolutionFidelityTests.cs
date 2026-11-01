@@ -352,13 +352,31 @@ public sealed class ResolutionFidelityTests : IDisposable
         Package("Same", "net8.0", "namespace Shared; public static class Api { public static int Read() => 1; }");
         Package("RootA", "net8.0", "public class RootA { }");
         Package("RootB", "net8.0", "public class RootB { }");
-        File.WriteAllText(Path.Combine(Cache, "roota", "1.0.0", "roota.nuspec"), "<package><metadata><dependencies><dependency id=\"Same\" version=\"1.0.0\" /></dependencies></metadata></package>");
+        File.WriteAllText(Path.Combine(Cache, "roota", "1.0.0", "roota.nuspec"), "<package><metadata><dependencies><dependency id=\"Same\" version=\"[1.0.0]\" /></dependencies></metadata></package>");
         File.WriteAllText(Path.Combine(Cache, "rootb", "1.0.0", "rootb.nuspec"), "<package><metadata><dependencies><dependency id=\"Same\" version=\"2.0.0\" /></dependencies></metadata></package>");
         Project("<PackageReference Include=\"RootA\" Version=\"1.0.0\" /><PackageReference Include=\"RootB\" Version=\"1.0.0\" />", "public class App { public int Run() => Shared.Api.Read(); }");
         var output = Extract();
         Assert.Contains("PACKAGE_VERSION_CONFLICT", output);
         Assert.Contains("\"resolution\":\"unresolved\"", output);
         Assert.DoesNotContain("cs|@ext|Same|M:Shared.Api.Read", output);
+    }
+
+    [Theory]
+    [InlineData("10.0.18", false)]
+    [InlineData("10.0.32767", false)]
+    [InlineData("10.1.0", true)]
+    [InlineData("11.0.0", true)]
+    public void Sdk_pruning_metadata_covers_servicing_patches_but_not_the_next_minor(string request, bool missing)
+    {
+        var packs = Path.Combine(_root, "patch-packs");
+        var pack = Path.Combine(packs, "Microsoft.NETCore.App.Ref", "10.0.0");
+        var refs = Directory.CreateDirectory(Path.Combine(pack, "ref", "net10.0")).FullName;
+        var data = Directory.CreateDirectory(Path.Combine(pack, "data")).FullName;
+        File.Copy(Directory.EnumerateFiles(Path.Combine(Packs, "Microsoft.NETCore.App.Ref"), "System.Runtime.dll", SearchOption.AllDirectories).Single(), Path.Combine(refs, "System.Runtime.dll"));
+        File.WriteAllText(Path.Combine(data, "PackageOverrides.txt"), "Microsoft.Extensions.Caching.Memory|10.0.0\n");
+        Project($"<PackageReference Include=\"Microsoft.Extensions.Caching.Memory\" Version=\"{request}\" />", "public class App { }");
+        var output = Extract(packs);
+        Assert.Equal(missing, output.Contains("UNRESOLVED_PACKAGE", StringComparison.Ordinal));
     }
 
     private string Package(string id, string tfm, string source, string? assembly = null)

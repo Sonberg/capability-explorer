@@ -23,7 +23,11 @@ internal sealed record FrameworkPackageCoverage(IReadOnlyDictionary<string, stri
             {
                 var parts = line.Trim().Split('|');
                 if (parts.Length != 2 || !NuGetVersion.TryParse(parts[1], out var version) || version.IsPrerelease) continue;
-                if (!packages.TryGetValue(parts[0], out var prior) || version > NuGetVersion.Parse(prior)) packages[parts[0]] = parts[1];
+                // The SDK assumes package patches are supplied by .NETCoreApp servicing patches.
+                // This applies only to SDK-produced override metadata, never to cached package versions.
+                if (Path.GetFileName(Path.GetDirectoryName(root)) is "Microsoft.NETCore.App.Ref" or "Microsoft.AspNetCore.App.Ref")
+                    version = new NuGetVersion(version.Major, version.Minor, 32767);
+                if (!packages.TryGetValue(parts[0], out var prior) || version > NuGetVersion.Parse(prior)) packages[parts[0]] = version.ToNormalizedString();
             }
         }
         return new(packages, ArtifactBuilder.Sha256(string.Join("\n", inputs)));

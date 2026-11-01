@@ -26,7 +26,7 @@ public sealed class PackageResolver(string? packagesRoot, IReadOnlyDictionary<st
         var resolved = new List<LockedPackage>();
         var missing = new List<PackageRef>();
         var issues = new List<ResolutionIssue>();
-        var conflicting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var inspected = new List<LockedPackage>();
         if (locked is not null)
         {
             var roots = packages.ToList();
@@ -63,24 +63,19 @@ public sealed class PackageResolver(string? packagesRoot, IReadOnlyDictionary<st
         }
         else
         {
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var p in packages)
+            var graph = new CachedPackageGraph(packagesRoot, targetFramework, frameworkPackages).Resolve(packages);
+            missing.AddRange(graph.Missing);
+            issues.AddRange(graph.Issues);
+            inspected.AddRange(graph.Inspected);
+            resolved.AddRange(graph.Selected);
+            foreach (var package in graph.Selected)
             {
-                if (!Visit(p.Id, p.Version, assemblies, resolved, seen, issues, conflicting, targetFramework, depth: 0))
-                {
-                    missing.Add(p);
-                }
+                var root = Path.Combine(packagesRoot!, package.Id.ToLowerInvariant(), package.Version.ToLowerInvariant());
+                assemblies.AddRange(AssembliesIn(root, targetFramework, package.Id, issues));
             }
         }
 
-        var inputFingerprint = Fingerprint(resolved);
-        if (conflicting.Count > 0)
-        {
-            var omitted = resolved.Where(p => conflicting.Contains(p.Id))
-                .Select(p => Path.Combine(packagesRoot!, p.Id.ToLowerInvariant(), p.Version.ToLowerInvariant()) + Path.DirectorySeparatorChar).ToList();
-            assemblies.RemoveAll(a => omitted.Any(root => a.StartsWith(root, StringComparison.Ordinal)));
-            resolved.RemoveAll(p => conflicting.Contains(p.Id));
-        }
+        var inputFingerprint = Fingerprint(inspected.Concat(resolved).Distinct());
         return new PackageResolution(
             assemblies.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList(),
             missing,
@@ -139,59 +134,6 @@ public sealed class PackageResolver(string? packagesRoot, IReadOnlyDictionary<st
         }
         // Packages with no lib/ref assets (meta-packages, analyzers, build-only packages) need no compile assembly.
         return [];
-    }
-
-    private bool Visit(string id, string? versionRange, List<string> assemblies, List<LockedPackage> resolved, HashSet<string> seen, List<ResolutionIssue> issues, HashSet<string> conflicting, string? target, int depth)
-    {
-        if (PackageVersionSelection.Parse(versionRange) is not { } requested)
-        {
-            issues.Add(new("UNSUPPORTED_PACKAGE_VERSION_RANGE", $"Package {id} has an invalid, missing or floating version request ({versionRange ?? "none"}); an exact package lock is required for floating resolution"));
-            return false;
-        }
-        if (FrameworkPackageCoverage.Satisfies(frameworkPackages, id, versionRange)) return true;
-        if (packagesRoot is null || depth > 6)
-        {
-            return false;
-        }
-
-        if (!seen.Add(id))
-        {
-            var selected = resolved.FirstOrDefault(p => p.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
-            if (selected is null || !NuGet.Versioning.NuGetVersion.TryParse(selected.Version, out var cachedVersion)) return false;
-            if (PackageVersionSelection.Allows(requested, cachedVersion)) return !conflicting.Contains(id);
-            conflicting.Add(id);
-            issues.Add(new("PACKAGE_VERSION_CONFLICT", $"Package {id} selected as {selected.Version} cannot satisfy later request {versionRange}; its compile assets are omitted; use a compatible exact package lock for global resolution"));
-            return false;
-        }
-
-        var dir = Path.Combine(packagesRoot, id.ToLowerInvariant());
-        if (!Directory.Exists(dir))
-        {
-            return false;
-        }
-
-        var version = PackageVersionSelection.Pick(dir, requested);
-        if (version is null)
-        {
-            return false;
-        }
-
-        var root = Path.Combine(dir, version);
-        resolved.Add(new LockedPackage(id, version));
-        assemblies.AddRange(AssembliesIn(root, target, id, issues));
-
-        foreach (var dep in FrameworkSelection.DependencyElements(root, target))
-        {
-            if ((string?)dep.Attribute("id") is { } depId)
-            {
-                if (!Visit(depId, (string?)dep.Attribute("version"), assemblies, resolved, seen, issues, conflicting, target, depth + 1))
-                {
-                    issues.Add(new("UNRESOLVED_TRANSITIVE_PACKAGE", $"Package {id} requires {depId} {(string?)dep.Attribute("version")}, which is unavailable"));
-                }
-            }
-        }
-
-        return true;
     }
 
 }

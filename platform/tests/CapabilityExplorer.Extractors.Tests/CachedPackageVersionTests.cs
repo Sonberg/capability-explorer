@@ -47,7 +47,7 @@ public sealed class CachedPackageVersionTests : IDisposable
     {
         Directory.CreateDirectory(Path.Combine(_root, "example.package", "1.0.0"));
         Directory.CreateDirectory(Path.Combine(_root, "example.package", "2.0.0"));
-        var result = new PackageResolver(_root).Resolve([new("Example.Package", "1.0.0", 1), new("Example.Package", "2.0.0", 2)], targetFramework: "net10.0");
+        var result = new PackageResolver(_root).Resolve([new("Example.Package", "[1.0.0]", 1), new("Example.Package", "2.0.0", 2)], targetFramework: "net10.0");
         Assert.Empty(result.Resolved);
         Assert.Empty(result.Assemblies);
         Assert.Contains(result.Issues, i => i.Code == "PACKAGE_VERSION_CONFLICT");
