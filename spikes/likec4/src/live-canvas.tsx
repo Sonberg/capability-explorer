@@ -191,7 +191,7 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
           {nodeChoices.length > 0 && <><h2>Represented source elements</h2>{nodeChoices.map(node => <button key={node.id} aria-label={`Inspect element ${node.id}`} onClick={() => onNodeSelect(node)}>{node.label ?? node.id}<code>{node.id}</code></button>)}</>}
         </aside>}
         <div className="diagram-surface"><LikeC4ModelProvider likec4model={model}><LikeC4EditorProvider editor={editor}>
-          {initialViewport.ready && <ReactLikeC4 key={`${view}-${resetKey}`} className="ce-live-diagram" viewId={view} initialZoom={initialViewport.zoom} injectFontCss={false} onNodeClick={nodeClick}
+          {initialViewport.ready && <ReactLikeC4 key={`${view}-${resetKey}`} className="ce-live-diagram" viewId={view} initialZoom={initialViewport.zoom} fitView={false} injectFontCss={false} onNodeClick={nodeClick}
             onEdgeClick={edge => {const originals=graph.edges.filter(original => result.edgeSourceIds[edge.id]?.includes(original.id)); setNodeChoices([]); if (originals.length===1) {setEdgeChoices([]); onEdgeSelect(originals[0]);} else setEdgeChoices(originals);}}
             onCanvasClick={() => {if (!editing) {setSelected([]); clear();}}}
             onInitialized={initialized => {detachImmediate.current?.(); api.current=initialized.diagram; acceptedGeometry.current=null; detachImmediate.current=editable ? attachImmediateLayout(initialized, layout => acceptLayout.current(layout)) : null;}}

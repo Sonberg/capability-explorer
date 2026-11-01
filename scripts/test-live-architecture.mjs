@@ -184,6 +184,11 @@ try {
   const initialHeights = await canvas().locator('.react-flow__node:not(.react-flow__node-view-group)').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().height));
   receipt.initialMeanLeafHeight = initialHeights.reduce((sum, height) => sum + height, 0) / initialHeights.length;
   check(receipt.initialMeanLeafHeight >= 40, 'initial diagram must keep average leaf height at least 40px before any explicit Fit action');
+  const labelCollisions = await canvas().locator('.likec4-edge-label').evaluateAll(elements => {
+    const boxes = elements.map(element => ({id:element.getAttribute('data-edge-id'), box:element.getBoundingClientRect()}));
+    return boxes.flatMap((a,index) => boxes.slice(index+1).filter(b => a.box.left < b.box.right && b.box.left < a.box.right && a.box.top < b.box.bottom && b.box.top < a.box.bottom).map(b => [a.id,b.id]));
+  });
+  equal(labelCollisions, [], 'actual rendered relationship label boxes must not overlap');
   equal(await page.locator('iframe').count(), 0, 'production Architecture must render directly without an experimental iframe');
   equal(await page.getByRole('tab', { name: /experiment/i }).count(), 0, 'obsolete static experiment tab must be retired');
   const allIdentity = await canvas().getAttribute('data-input-identity');
