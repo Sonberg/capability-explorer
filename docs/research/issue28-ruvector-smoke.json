@@ -1,0 +1,187 @@
+{
+  "schema": 1,
+  "utc": "2026-11-01T22:04:22Z",
+  "host_machine": "arm64",
+  "inspected_source": "cf357d8121f9def5bc9d2db512a47f61c62b0651",
+  "source_binary_lineage": "UNVERIFIED: image has no revision label",
+  "purpose": "SMOKE: not adoption/performance/security proof",
+  "paid_model_calls": 0,
+  "results": [
+    {
+      "image": "pgvector/pgvector:0.8.6-pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f",
+      "extension": "vector",
+      "platform": "linux/arm64",
+      "checks": {
+        "exact_bounded_lookup": {
+          "status": "PASS",
+          "actual": "99\n990\n991",
+          "expected": "99\n990\n991",
+          "error": ""
+        },
+        "bounded_adjacency": {
+          "status": "PASS",
+          "actual": "100",
+          "expected": "100",
+          "error": ""
+        },
+        "relational_rollback": {
+          "status": "PASS",
+          "actual": "0",
+          "expected": "0",
+          "error": ""
+        },
+        "fixed_vector_distance": {
+          "status": "PASS",
+          "actual": "t",
+          "expected": "t",
+          "error": ""
+        },
+        "clean_restart_relational": {
+          "status": "PASS",
+          "actual": "1000",
+          "expected": "1000",
+          "error": ""
+        },
+        "crash_restart_relational": {
+          "status": "PASS",
+          "actual": "1000",
+          "expected": "1000",
+          "error": ""
+        }
+      },
+      "status": "PASS_SMOKE_ONLY",
+      "image_id": "sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f",
+      "image_bytes": 644203131,
+      "architecture": "arm64",
+      "extension_version": "0.8.6",
+      "server_version": "17.11 (Debian 17.11-1.pgdg12+2)",
+      "idle_stats": "{\"BlockIO\":\"0B / 279kB\",\"CPUPerc\":\"0.03%\",\"Container\":\"ce-issue28-probe-0d1474ea7caf\",\"ID\":\"345f93bc2929\",\"MemPerc\":\"1.88%\",\"MemUsage\":\"9.645MiB / 512MiB\",\"Name\":\"ce-issue28-probe-0d1474ea7caf\",\"NetIO\":\"0B / 0B\",\"PIDs\":\"6\"}"
+    },
+    {
+      "image": "ruvnet/ruvector-postgres@sha256:7fb09d439d82fccbe6e0035d09f91c9dce456bb2d70cb2e8d6afb12a6afa2051",
+      "extension": "ruvector",
+      "platform": "linux/amd64",
+      "checks": {
+        "exact_bounded_lookup": {
+          "status": "PASS",
+          "actual": "99\n990\n991",
+          "expected": "99\n990\n991",
+          "error": ""
+        },
+        "bounded_adjacency": {
+          "status": "PASS",
+          "actual": "100",
+          "expected": "100",
+          "error": ""
+        },
+        "relational_rollback": {
+          "status": "PASS",
+          "actual": "0",
+          "expected": "0",
+          "error": ""
+        },
+        "pgvector_extension_available": {
+          "status": "FAIL",
+          "actual": "0",
+          "expected": "1",
+          "error": ""
+        },
+        "real_array_vector_cast": {
+          "status": "FAIL",
+          "actual": "",
+          "expected": null,
+          "error": "ERROR:  type \"vector\" does not exist\nLINE 1: SELECT ARRAY[1,0,0]::real[]::vector;\n                                     ^"
+        },
+        "graph_seed": {
+          "status": "PASS",
+          "actual": "t\n1",
+          "expected": null,
+          "error": ""
+        },
+        "graph_persists_new_session": {
+          "status": "PASS",
+          "actual": "1",
+          "expected": "1",
+          "error": "NOTICE:  relation \"_ruvector_graphs\" already exists, skipping\nNOTICE:  relation \"_ruvector_nodes\" already exists, skipping\nNOTICE:  relation \"_ruvector_edges\" already exists, skipping"
+        },
+        "graph_same_session_rollback": {
+          "status": "FAIL",
+          "actual": "t\n2",
+          "expected": "t\n1",
+          "error": "NOTICE:  relation \"_ruvector_graphs\" already exists, skipping\nNOTICE:  relation \"_ruvector_nodes\" already exists, skipping\nNOTICE:  relation \"_ruvector_edges\" already exists, skipping"
+        },
+        "graph_after_rollback_new_session": {
+          "status": "PASS",
+          "actual": "1",
+          "expected": "1",
+          "error": "NOTICE:  relation \"_ruvector_graphs\" already exists, skipping\nNOTICE:  relation \"_ruvector_nodes\" already exists, skipping\nNOTICE:  relation \"_ruvector_edges\" already exists, skipping"
+        },
+        "fixed_vector_distance": {
+          "status": "PASS",
+          "actual": "t",
+          "expected": "t",
+          "error": ""
+        },
+        "clean_restart_relational": {
+          "status": "PASS",
+          "actual": "1000",
+          "expected": "1000",
+          "error": ""
+        },
+        "clean_restart_graph": {
+          "status": "PASS",
+          "actual": "1",
+          "expected": "1",
+          "error": "NOTICE:  relation \"_ruvector_graphs\" already exists, skipping\nNOTICE:  relation \"_ruvector_nodes\" already exists, skipping\nNOTICE:  relation \"_ruvector_edges\" already exists, skipping"
+        },
+        "crash_restart_relational": {
+          "status": "PASS",
+          "actual": "1000",
+          "expected": "1000",
+          "error": ""
+        },
+        "crash_restart_graph": {
+          "status": "PASS",
+          "actual": "1",
+          "expected": "1",
+          "error": "NOTICE:  relation \"_ruvector_graphs\" already exists, skipping\nNOTICE:  relation \"_ruvector_nodes\" already exists, skipping\nNOTICE:  relation \"_ruvector_edges\" already exists, skipping"
+        }
+      },
+      "status": "FAIL",
+      "image_id": "sha256:7fb09d439d82fccbe6e0035d09f91c9dce456bb2d70cb2e8d6afb12a6afa2051",
+      "image_bytes": 627042582,
+      "architecture": "amd64",
+      "extension_version": "0.3.0",
+      "server_version": "17.9 (Debian 17.9-1.pgdg12+1)",
+      "idle_stats": "{\"BlockIO\":\"98.3kB / 86kB\",\"CPUPerc\":\"0.22%\",\"Container\":\"ce-issue28-probe-067653a1fac2\",\"ID\":\"a2f40ff37bb3\",\"MemPerc\":\"4.51%\",\"MemUsage\":\"23.11MiB / 512MiB\",\"Name\":\"ce-issue28-probe-067653a1fac2\",\"NetIO\":\"0B / 0B\",\"PIDs\":\"6\"}"
+    }
+  ],
+  "candidate_rerun_utc": "2026-11-01T22:04:59Z",
+  "initial_candidate_attempt": "NOT_EVALUATED: initial probe observed temporary initdb server; fixed readiness to require PID1 postgres before one candidate rerun",
+  "unmeasured": [
+    "Npgsql integration",
+    "coinstalled pgvector compatibility",
+    "multisession cache invalidation",
+    "WAL durability under concurrent writes",
+    "ANN recall/latency/index rebuild",
+    "fair same-architecture same-PG-version performance",
+    "image/dependency vulnerability scan",
+    "large-corpus resource use",
+    "cancellation",
+    "production migration/upgrade/rollback"
+  ],
+  "source_files": {
+    "crates__ruvector-postgres__src__graph__operators.rs": "44917661fd2779fe8b9da68a047645416519bf7f3f91a3bfc651562b1b4feb26",
+    "LICENSE": "50fefb93560af4421369c99c93cc214cd835b3181ab7f16323f9e6f2ded870e3",
+    "crates__ruvector-postgres__src__graph__storage.rs": "f65b0b1a2cd5478f1b3b0cc555d4572c6787734869a36aa15cb85f02294ff50e",
+    "crates__ruvector-postgres__Dockerfile.prebuilt": "723c93ab470b150ed6cdd27462f376e5b77d0db788152db54516516511930a3d",
+    "crates__ruvector-postgres__ruvector.control": "510e9e56bc5a73ddc9a4cd25448047ae6e6bbdaa100a3744b9fcf24b972eb76d",
+    "crates__ruvector-postgres__src__index__hnsw_am.rs": "613f9e05969f060450e8baab7e6b956c35967b27283216822a588f497e58daf7",
+    "crates__ruvector-postgres__Cargo.toml": "504036cb4e97970e673f4487e825cb061dc6ab1f36b397462dcb52e5772d5384",
+    "crates__ruvector-postgres__src__graph__mod.rs": "76e7a6e5bb27dc2f8c872af822fb06a1186ad81dc8ae326353125cfbf920234d",
+    "crates__ruvector-postgres__sql__ruvector--2.0.0--0.3.0.sql": "9db9867f46893d15a4d93dc1ad62c47eb0db0d0dd08a64736228ac65f5cc07b3",
+    "crates__ruvector-postgres__Dockerfile": "6277895becddd4fcd16f585dcdcbb12c5390e69b7ba5c6fe66b6b77742da7710"
+  },
+  "executed_runner_sha256": "30fa7c1253c6141bbdc85940133ed0d75332326a27d5612e26b6a70a68cc7218",
+  "final_reviewed_runner_sha256": "50daa44458e1d084230a1f3b77db1c2397689f68c2e0211b618a51dd0346382d"
+}
