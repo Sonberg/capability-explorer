@@ -27,8 +27,15 @@ existing ce.v1 contracts, small dependencies and reviewable multi-developer work
 Choose option 2. Keep the existing extract → bind → evaluate pipeline. No analyzed
 build scripts, Next configuration, application code or model inference execute.
 
-Use pinned NuGet.Frameworks for compatible framework reduction instead of a second
-hand-maintained compatibility table. Read literal project targets, select compatible
+Use pinned NuGet.Frameworks for compatible framework reduction and NuGet.Versioning
+for cached version constraints instead of hand-maintained compatibility/range parsers.
+Cached versions must satisfy complete bounds, including exclusivity and exact pins;
+prereleases require an explicit prerelease bound. Invalid/missing/floating unlocked
+requests remain unresolved. Bounded deterministic rounds select cached versions
+satisfying all reachable requests; empty intersections omit the package's compile
+assets with a diagnostic. Non-convergence fails closed. This is not full NuGet
+restore, nearest-wins emulation or MSBuild evaluation.
+Read literal project targets, select compatible
 package compile assets and exact-target installed reference packs. Prefer compatible
 ref assets to lib assets. Unsupported project metadata, missing packs/assets and
 conflicting assembly identities produce coverage diagnostics. Equal assembly bytes
@@ -38,7 +45,9 @@ arbitrary package conflict resolution. This remains bounded static analysis, not
 replacement for MSBuild or full NuGet restore. Package lock format remains v1.
 Selected framework packs may supply dependencies pruned by .NET restore. Recognize
 that only from the selected pack's versioned PackageOverrides data and supported
-version constraints; hash that metadata with resolution inputs. Missing metadata,
+version constraints; hash that metadata with resolution inputs. Apply the SDK's
+stable .NETCoreApp pruning ceiling of major.minor.32767 only to this metadata
+pathway, never to cached package-version bounds. Missing metadata,
 unknown constraints or requirements above the supplied ceiling remain unresolved.
 Do not infer package coverage merely from an assembly or package name.
 

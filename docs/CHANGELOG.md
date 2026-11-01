@@ -31,4 +31,5 @@ history or imply that existing private package versions are product releases.
 
 - HTTP request identities now separate absolute hosts from routes and exclude credentials, query values and fragments from derived URL metadata.
 - C# package/reference visibility follows the analyzed target framework and reports incompatible assets or conflicting assembly identities.
+- Cached C# packages must satisfy complete version bounds; incompatible repeated requests omit package assets instead of silently selecting an invalid version.
 - TypeScript analysis configuration hashes no longer depend on the checkout's absolute path.

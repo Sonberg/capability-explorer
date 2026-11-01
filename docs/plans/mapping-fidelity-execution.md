@@ -168,18 +168,38 @@ pinned compatibility reducer and native URI parsers implement the chosen contrac
 
 ## Refinement gate and final local evidence
 
-Refinement score: 95/100 (three verification iterations). The first integrated
+Refinement score: 95/100 (five verification iterations). The first integrated
 C# golden run exposed SDK-pruned dependencies incorrectly reported as missing;
 selected-pack PackageOverrides evidence fixed the cause without suppressing unknown
 packages or changing thresholds. Replay then rejected the intentional TS input-hash
 expansion; an exact, source-manifest-bound transition now permits only that reviewed
 change. Output-path traversal is rejected after path normalization.
 
+A broader adversarial evaluation after the first full CI pass reproduced an inherited
+cached-version fallback: a 2.0.0 request accepted cached 1.0.0. NuGet.Versioning now
+checks full bounds and prerelease policy. The initial repair correctly exposed
+compatible transitive constraints that the old traversal ignored; the unchanged
+golden gate rejected coverage at 3/10. Bounded deterministic rounds now select the
+lowest cached version satisfying all reachable requests, rewalk changed dependencies,
+remove stale branches and reject invalid/intersecting-conflict/non-convergent graphs.
+The limits are 32 rounds and 600 IDs; no full NuGet/MSBuild equivalence is claimed.
+Official SDK package-pruning semantics expand stable metadata ceilings to
+major.minor.32767; cached package constraints themselves remain strict.
+
+Final source `03d261c` passes 106 extractor tests and 10/10 unchanged C# goldens,
+including full expected coverage. The original probe now returns no resolved package
+and an explicit Missing entry for 2.0.0. Negative range tests failed 11/16 before the
+repair; graph tests cover compatible diamonds, exact conflicts, order invariance,
+unknown requests, cycles, oscillation, stale branches and metadata patch limits.
+See [the separate project/workflow evaluation](project-metaharness-evaluation.md)
+for the review-snapshot score and unproven automation claims. That score is distinct
+from this package's phase grade.
+
 Final focused results, all zero failures/skips:
 
 | Command/evidence | Result |
 |---|---|
-| `make test-extractors evaluate-cs` | 74 tests; 10/10 C# goldens; all metrics/coverage at 100% |
+| Sandbox extractor build/test and fixture extraction/evaluation | 106 tests; 10/10 C# goldens; all metrics/coverage at 100% |
 | TS typecheck and `npm test` through sandbox | 122 tests |
 | `make test-contracts` | 105 tests |
 | `make evaluate-ts evaluate-sql` | 3/3 TS and 5/5 SQL goldens, unchanged thresholds |
@@ -195,8 +215,12 @@ Fixture sources, revision IDs, golden bytes and thresholds have no diff from sta
 
 Logs: `.sandbox-cache/mapping-csharp-recheck.log`, `mapping-ts-sql-evaluation.log`,
 `mapping-platform-regression.log`, `ts-integration.log`, `replay-final-tests.log`
-and `replay-final2.log`. Earlier failed logs remain available for diagnosis.
+and `replay-final-v2.log`. Final C# evidence is
+`cached-graph-final-validation.log`; `version-range-validation.log` preserves the
+failed intermediate golden gate. Earlier failed logs remain available for diagnosis.
 Independent native reviewers covered resolution/HTTP boundaries and replay integrity.
+The final read-only review of `03d261c` found no blocking issue; refreshed replay
+again passes all 21 assertions/17 changes/38 source spans with repeated bytes equal.
 Brain closing pass: `sparc/docs/tutorial.md` reconfirmed source-bound independent
 proof; no additional runtime tool was justified. No external inference calls were
 made; native session spend is unavailable and savings are not estimated.

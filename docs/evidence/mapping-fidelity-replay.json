@@ -133,11 +133,11 @@
   },
   "candidate": {
     "artifacts": {
-      "csharp/HttpFixture.jsonl": "bf668009d1a7bd9ca10b2978f0f3b9e5e287b2eaf061a588a2cea419d5a3b520",
+      "csharp/HttpFixture.jsonl": "aede0eacc450e6372909a3b3d493ee2bd4a772f9e2039c9df66abf65927b0087",
       "ts/mapping-replay-ts.jsonl": "140bd6f7fa0086982bdfa5d039d49baed4737bca8f0662b88a7448cc559b5561"
     },
-    "buildHash": "4570b061f444225baedc5fc7bc33aead18fcb202c6962cd0e699ff45f11f028d",
-    "commitHint": "3b03718bb7eec971cee2a29f663e3d4ad5d64997",
+    "buildHash": "5eeeb47da9c85a7690df07e43e25c42e73678a51bb979b96df07337b3e0e8d10",
+    "commitHint": "03d261c97bc189e0ea3a4e81ab6d3a5b8e060d2c",
     "identities": [
       {
         "artifactLanguage": "typescript",
@@ -148,13 +148,13 @@
       },
       {
         "artifactLanguage": "csharp",
-        "configHash": "9eed5875b785dcf3323c3d01f7775741ea0b58cee6e2b63b58db166cc7997d86",
+        "configHash": "2a5f71a6346557619f2eb0bcc94d306ed292dfc94b44bb83b46b5df7b6539c30",
         "inputHash": "31122e89480f9119cd1dd6d10932cbd8e94104184678b52a3961176cd49f9f4c",
         "language": "csharp",
         "unit": "csharp/HttpFixture.csproj"
       }
     ],
-    "sourceSnapshotHash": "997723db76ee28dde8607858ae9dabf797cf109be80fc2152e494931f8e3cb15"
+    "sourceSnapshotHash": "add6589f1f73fc663b85a5d9a307fd19ee991a507669050601deef70d6d5e55a"
   },
   "changedRecords": 17,
   "evidenceVerified": {
