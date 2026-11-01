@@ -74,21 +74,21 @@ export function matches(value, selector) {
 }
 
 export function semanticRecord(record) {
-  const clean = (v) => Array.isArray(v) ? v.map(clean) : v && typeof v === 'object'
-    ? Object.fromEntries(Object.entries(v).filter(([k]) => k !== 'id' && k !== 'evidence').map(([k, x]) => [k, clean(x)])) : v;
-  return clean(record);
+  const { id: _recordId, evidence: _recordEvidenceReferences, ...semantic } = record;
+  return semantic;
 }
 
-export function checkAssertions(before, after, assertions, expectedChanges = []) {
+export function checkAssertions(before, after, assertions, expectedChanges = { removed: [], added: [] }) {
   requireThat(Array.isArray(assertions) && assertions.length > 0, 'nonzero named assertions required');
+  requireThat(assertions.some((a) => a.baseline + a.candidate > 0), 'assertions must observe nonzero records');
   const names = new Set();
   const results = assertions.map((a) => {
     requireThat(typeof a.name === 'string' && a.name.length > 0 && !names.has(a.name), 'assertion names must be nonempty and unique');
     names.add(a.name);
     requireThat(a.selector && ['node', 'edge', 'diagnostic', 'calculation'].includes(a.selector.kind)
       && Object.keys(a.selector).length >= 2, `bounded record selector required: ${a.name}`);
-    requireThat(Number.isInteger(a.baseline) && a.baseline >= 0 && Number.isInteger(a.candidate) && a.candidate >= 0
-      && a.baseline + a.candidate > 0, `nonempty exact assertion counts required: ${a.name}`);
+    requireThat(Number.isInteger(a.baseline) && a.baseline >= 0 && Number.isInteger(a.candidate) && a.candidate >= 0,
+      `exact nonnegative assertion counts required: ${a.name}`);
     const baseline = before.filter((r) => matches(r, a.selector)).length;
     const candidate = after.filter((r) => matches(r, a.selector)).length;
     requireThat(baseline === a.baseline && candidate === a.candidate,
@@ -100,22 +100,26 @@ export function checkAssertions(before, after, assertions, expectedChanges = [])
   const included = (r) => ['node', 'edge', 'calculation', 'diagnostic', 'complete'].includes(r.kind);
   const first = before.filter(included).map(semanticRecord), second = after.filter(included).map(semanticRecord);
   const difference = (left, right) => {
-    const remaining = right.map(canonical);
+    const remaining = new Map();
+    for (const record of right) {
+      const key = canonical(record); remaining.set(key, (remaining.get(key) ?? 0) + 1);
+    }
     return left.filter((record) => {
-      const index = remaining.indexOf(canonical(record));
-      if (index < 0) return true;
-      remaining.splice(index, 1); return false;
+      const key = canonical(record), count = remaining.get(key) ?? 0;
+      if (!count) return true;
+      remaining.set(key, count - 1); return false;
     });
   };
-  const changed = [...difference(first, second), ...difference(second, first)];
+  const removed = difference(first, second), added = difference(second, first), changed = [...removed, ...added];
   for (const record of changed) {
     // Counts can change only as a consequence of explicitly accounted records; coverage must stay equal.
     if (record.kind === 'complete') continue;
-    requireThat(assertions.some((a) => a.baseline !== a.candidate && matches(record, a.selector)),
+    requireThat(assertions.some((a) => matches(record, a.selector)),
       `unexplained semantic change: ${canonical(record)}`);
   }
   const semanticChanges = (records) => records.filter((r) => r.kind !== 'complete').map(canonical).sort();
-  requireThat(canonical(semanticChanges(changed)) === canonical(semanticChanges(expectedChanges)), 'exact semantic change inventory differs from locked expectations');
+  requireThat(canonical(semanticChanges(removed)) === canonical(semanticChanges(expectedChanges.removed))
+    && canonical(semanticChanges(added)) === canonical(semanticChanges(expectedChanges.added)), 'exact semantic change inventory differs from locked expectations');
   const coverage = (records) => records.filter((r) => r.kind === 'complete').map((r) => {
     const { unresolvedEdges: _explainedByEdgeRecords, ...files } = r.coverage;
     return { status: r.status, coverage: files };

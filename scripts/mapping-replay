@@ -8,7 +8,7 @@ if [[ "${1:-}" == prepare && $# == 3 ]]; then
   exec scripts/sandbox --offline node node scripts/mapping-replay.mjs prepare "$2" "$3"
 fi
 [[ $# -ge 2 && $# -le 4 ]] || {
-  echo 'usage: scripts/mapping-replay prepare <bundle-dir> <source-commit>' >&2
+  echo 'usage: scripts/mapping-replay prepare <bundle-dir> <advisory-commit>' >&2
   echo '       scripts/mapping-replay <baseline-bundle> <candidate-bundle> [manifest] [output-dir]' >&2
   exit 2
 }

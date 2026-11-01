@@ -26,8 +26,8 @@ function sourceInventory() {
   return files;
 }
 
-function prepare(name, sourceCommit) {
-  requireThat(/^[0-9a-f]{40}$/.test(sourceCommit ?? ''), 'exact source commit required');
+function prepare(name, commitHint) {
+  requireThat(/^[0-9a-f]{40}$/.test(commitHint ?? ''), 'advisory commit label must be a 40-character SHA');
   const dest = safeOutput(name);
   requireThat(!existsSync(dest), 'bundle already exists; choose a new immutable bundle path');
   const binaries = inside(root, 'platform/src/CapabilityExplorer.Extractors.CSharp/bin/Debug/net10.0');
@@ -51,7 +51,7 @@ function prepare(name, sourceCommit) {
   const files = inventory(dest);
   const laneId = (prefix) => hash(canonical(Object.fromEntries(Object.entries(files).filter(([p]) => p.startsWith(prefix)))));
   save(resolve(dest, 'build.json'), {
-    format: 'mapping-replay-build.v1', sourceCommit, sourceHash: hash(canonical(sources)), sourceFiles: sources,
+    format: 'mapping-replay-build.v1', commitHint, sourceSnapshotHash: hash(canonical(sources)), sourceFiles: sources,
     files, buildHash: hash(canonical(files)), tsBuild: laneId('ts/'), csharpBuild: laneId('csharp/'),
   });
   console.log(`sealed ${name}: ${hash(canonical(files))}`);
@@ -59,8 +59,8 @@ function prepare(name, sourceCommit) {
 
 function bundle(name) {
   const path = inside(root, name), build = json(resolve(path, 'build.json'));
-  requireThat(build.format === 'mapping-replay-build.v1' && /^[0-9a-f]{40}$/.test(build.sourceCommit)
-    && build.sourceHash === hash(canonical(build.sourceFiles)) && build.buildHash === hash(canonical(build.files)), 'invalid build identity');
+  requireThat(build.format === 'mapping-replay-build.v1' && /^[0-9a-f]{40}$/.test(build.commitHint)
+    && build.sourceSnapshotHash === hash(canonical(build.sourceFiles)) && build.buildHash === hash(canonical(build.files)), 'invalid build identity');
   const actual = inventory(path, new Set(['build.json']));
   requireThat(canonical(actual) === canonical(build.files), `sealed build bytes differ: ${name}`);
   for (const [language, prefix] of [['ts', 'ts/'], ['csharp', 'csharp/']]) {
@@ -80,7 +80,8 @@ function inputs(manifestName) {
   requireThat(manifest.inputHash === hash(canonical(manifest.files)) && manifest.commitSha === manifest.inputHash.slice(0, 40), 'synthetic commit must identify locked source bytes');
   requireThat(Array.isArray(manifest.assertions) && manifest.assertions.length > 0, 'nonzero named assertions required');
   requireThat(manifest.assertions.some((a) => a.baseline !== a.candidate)
-    && Array.isArray(manifest.expectedChanges) && manifest.expectedChanges.length > 0, 'nonzero locked improvement/delta expectations required');
+    && Array.isArray(manifest.expectedChanges?.removed) && Array.isArray(manifest.expectedChanges?.added)
+    && manifest.expectedChanges.removed.length + manifest.expectedChanges.added.length > 0, 'nonzero locked improvement/delta expectations required');
   return manifest;
 }
 
@@ -109,7 +110,7 @@ async function artifacts(directory, manifest) {
 
 async function verify(baselineName, candidateName, manifestName, outputName) {
   const manifest = inputs(manifestName), baseline = bundle(baselineName), candidate = bundle(candidateName), out = safeOutput(outputName);
-  requireThat(candidate.sourceHash === hash(canonical(sourceInventory())), 'candidate source no longer matches checkout');
+  requireThat(candidate.sourceSnapshotHash === hash(canonical(sourceInventory())), 'candidate source no longer matches checkout');
   const before = await artifacts(resolve(out, 'baseline/1'), manifest), beforeAgain = await artifacts(resolve(out, 'baseline/2'), manifest);
   const after = await artifacts(resolve(out, 'candidate/1'), manifest), afterAgain = await artifacts(resolve(out, 'candidate/2'), manifest);
   equalRuns(before.hashes, beforeAgain.hashes); equalRuns(after.hashes, afterAgain.hashes);
@@ -123,10 +124,10 @@ async function verify(baselineName, candidateName, manifestName, outputName) {
   const report = {
     format: 'mapping-replay-report.v1', inputKind: 'synthetic', inputHash: manifest.inputHash,
     manifestHash: hash(readFileSync(inside(root, manifestName))),
-    baseline: { sourceCommit: baseline.sourceCommit, sourceHash: baseline.sourceHash, buildHash: baseline.buildHash, artifacts: before.hashes, identities: before.identities },
-    candidate: { sourceCommit: candidate.sourceCommit, sourceHash: candidate.sourceHash, buildHash: candidate.buildHash, artifacts: after.hashes, identities: after.identities },
+    baseline: { commitHint: baseline.commitHint, sourceSnapshotHash: baseline.sourceSnapshotHash, buildHash: baseline.buildHash, artifacts: before.hashes, identities: before.identities },
+    candidate: { commitHint: candidate.commitHint, sourceSnapshotHash: candidate.sourceSnapshotHash, buildHash: candidate.buildHash, artifacts: after.hashes, identities: after.identities },
     repeatBytesEqual: true, schemaValidated: true, evidenceVerified: { baseline: before.evidence, candidate: after.evidence }, ...delta,
-    limitations: ['Synthetic source only; no private repository fidelity claim.', 'C# framework/package asset selection is covered by dedicated extractor tests, not this HTTP replay.'],
+    limitations: ["Commit hints are caller labels; sourceSnapshotHash and buildHash are authoritative.", "Installed dependencies are sealed by file hash; registry tarball integrity is not independently recomputed.", 'Synthetic source only; no private repository fidelity claim.', 'C# framework/package asset selection is covered by dedicated extractor tests, not this HTTP replay.'],
   };
   save(resolve(out, 'report.json'), report);
   console.log(`replay passed: ${delta.assertions.length} named assertions, ${delta.changedRecords} explained changed records, ${before.evidence + after.evidence} exact evidence spans`);

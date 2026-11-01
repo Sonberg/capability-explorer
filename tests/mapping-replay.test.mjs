@@ -11,25 +11,35 @@ const expectations = [
   { name: 'old target removed', selector: { kind: 'node', symbolKey: 'http|old' }, baseline: 1, candidate: 0 },
   { name: 'new target identified', selector: { kind: 'node', symbolKey: 'http|new' }, baseline: 0, candidate: 1 },
 ];
+const expectedChanges = { removed: [semanticRecord(oldNode)], added: [semanticRecord(newNode)] };
 function temporary(t) {
   const path = mkdtempSync(resolve(tmpdir(), 'mapping-replay-'));
   t.after(() => rmSync(path, { recursive: true, force: true })); return path;
 }
 
 test('named exact counts explain a bounded replacement', () => {
-  const report = checkAssertions([oldNode], [newNode], expectations, [oldNode, newNode].map(semanticRecord));
+  const report = checkAssertions([oldNode], [newNode], expectations, expectedChanges);
   assert.equal(report.assertions.length, 2); assert.equal(report.changedRecords, 2);
 });
 test('unasserted props on an allowed replacement fail the exact delta inventory', () => {
   assert.throws(() => checkAssertions([oldNode], [{ ...newNode, props: { guessed: true } }], expectations,
-    [oldNode, newNode].map(semanticRecord)), /exact semantic change inventory/);
+    expectedChanges), /exact semantic change inventory/);
+});
+test('nested semantic id and evidence props survive normalization', () => {
+  const record = { ...oldNode, props: { id: 'domain-id', evidence: 'domain-value' } };
+  assert.deepEqual(semanticRecord(record).props, record.props);
+});
+test('multiset comparison preserves duplicate record cardinality', () => {
+  assert.throws(() => checkAssertions([oldNode, oldNode], [newNode], [
+    { ...expectations[0], baseline: 2 }, expectations[1],
+  ], expectedChanges), /exact semantic change inventory/);
 });
 test('unrelated lost record fails despite passing named assertions', () => {
   assert.throws(() => checkAssertions([oldNode, { ...oldNode, symbolKey: 'http|keep' }], [newNode], expectations), /unexplained semantic change/);
 });
 test('same-count property regression cannot hide under an unchanged assertion', () => {
   const assertion = [{ name: 'stable endpoint', selector: { kind: 'node', symbolKey: 'http|old' }, baseline: 1, candidate: 1 }];
-  assert.throws(() => checkAssertions([oldNode], [{ ...oldNode, name: 'regressed' }], assertion), /unexplained semantic change/);
+  assert.throws(() => checkAssertions([oldNode], [{ ...oldNode, name: 'regressed' }], assertion), /exact semantic change inventory/);
 });
 test('zero, duplicate, broad and empty assertions fail closed', () => {
   for (const assertions of [[], [expectations[0], expectations[0]], [{ name: 'all', selector: { kind: 'node' }, baseline: 1, candidate: 0 }],
@@ -43,7 +53,7 @@ test('incorrect named count fails', () => {
 test('full to partial coverage regression fails', () => {
   const complete = { kind: 'complete', status: 'full', counts: {}, coverage: { filesTotal: 1, filesAnalyzed: 1 } };
   assert.throws(() => checkAssertions([oldNode, complete], [newNode, { ...complete, status: 'partial' }], expectations,
-    [oldNode, newNode].map(semanticRecord)), /coverage/);
+    expectedChanges), /coverage/);
 });
 test('repeat proof compares filenames and every output byte hash', () => {
   equalRuns({ 'a.jsonl': hash('same') }, { 'a.jsonl': hash('same') });
