@@ -16,8 +16,12 @@ try {
   const page=await browser.newPage({viewport:{width,height}}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.goto(url);
-  if(url.includes('#/architecture'))await page.getByRole('tab',{name:'LikeC4 · experiment',exact:true}).click();
-  const frame=url.includes('#/architecture')?page.frames().find(f=>f.url().includes('/likec4/')):page.mainFrame();
+  let frame=page.mainFrame();
+  if(url.includes('#/architecture')){
+   const navigation=page.waitForEvent('framenavigated',{predicate:frame=>frame.url().includes('/likec4/')});
+   await page.getByRole('tab',{name:'LikeC4 · experiment',exact:true}).click();
+   frame=await navigation;
+  }
   assert.ok(frame,'diagram frame available');
   await frame.locator('[data-routing-state=ready]').waitFor({timeout:30000});
   await frame.getByRole('switch',{name:'Routing diagnostics',exact:true}).check();
