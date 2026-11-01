@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using CapabilityExplorer.Contracts;
 using CapabilityExplorer.Explorer;
 using CapabilityExplorer.Store;
@@ -11,7 +12,7 @@ public sealed class PostgresExplorerQueryTests(PostgresFixture db)
 {
     private readonly PostgresExplorerQueries _queries = new(db.DataSource, new ExplorerQueryCursor(new byte[32]));
 
-    private async Task<ExplorerQueryContext> Snapshot(string? capability = null, long generation = 1)
+    private async Task<ExplorerQueryContext> Snapshot(string? capability = null, long generation = 1, Action<List<JsonObject>>? mutate = null)
     {
         var cap = capability ?? "queries-" + Guid.NewGuid().ToString("N");
         var snapshot = Guid.NewGuid();
@@ -24,13 +25,23 @@ public sealed class PostgresExplorerQueryTests(PostgresFixture db)
         await insert.ExecuteNonQueryAsync();
         foreach (var file in Fixtures.GoldenFiles.Where(x => x.Contains("/v1-base/", StringComparison.Ordinal)))
         {
-            var artifact = ArtifactValidator.Validate(Fixtures.Golden(file)).Artifact!;
+            var jsonl = Fixtures.Golden(file);
+            if (mutate is not null && file == "web-ts/v1-base/_fixture_web.jsonl")
+            {
+                var records = jsonl.TrimEnd('\n').Split('\n').Select(line => JsonNode.Parse(line)!.AsObject()).ToList();
+                records[0]["configHash"] = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+                mutate(records);
+                jsonl = string.Join('\n', records.Select(record => record.ToJsonString())) + "\n";
+            }
+            var validation = ArtifactValidator.Validate(jsonl);
+            Assert.True(validation.IsValid, string.Join("; ", validation.Problems));
+            var artifact = validation.Artifact!;
             var imported = await new ArtifactImporter(db.DataSource).ImportAsync(artifact);
             await using var member = db.DataSource.CreateCommand("""
                 insert into analysis_snapshot_artifact(snapshot_id,artifact_id,repository_id,commit_sha,unit_path)
                 select @snapshot,id,repository_id,commit_sha,unit_path from artifact where id=@artifact;
-                insert into snapshot_revision(snapshot_id,repository_id,commit_sha,label)
-                select @snapshot,repository_id,commit_sha,'base' from artifact where id=@artifact on conflict do nothing;
+                insert into snapshot_revision(snapshot_id,repository_id,commit_sha,label,is_default)
+                select @snapshot,repository_id,commit_sha,'base',true from artifact where id=@artifact on conflict do nothing;
                 """);
             member.Parameters.AddWithValue("snapshot", snapshot); member.Parameters.AddWithValue("artifact", imported.ArtifactId);
             await member.ExecuteNonQueryAsync();
@@ -149,4 +160,72 @@ public sealed class PostgresExplorerQueryTests(PostgresFixture db)
         using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _queries.SearchAsync(context, null, null, null, new(50), cancelled.Token));
     }
+    [Fact]
+    public async Task OversizedUtf8NodeProjectionFailsBeforeMaterializingRows()
+    {
+        string key = "";
+        var context = await Snapshot(mutate: records =>
+        {
+            key = records.First(record => record["kind"]!.GetValue<string>() == "calculation")["symbolKey"]!.GetValue<string>();
+            records.First(record => record["kind"]!.GetValue<string>() == "node" && record["symbolKey"]!.GetValue<string>() == key)["name"] = new string('界', 4000);
+        });
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => _queries.SearchAsync(context, null, null, "web-ts", new(100)));
+        Assert.Contains("projection exceeds", error.Message, StringComparison.Ordinal);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _queries.SymbolAsync(context, key));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _queries.CalculationsAsync(context, new(100)));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _queries.CalculationAsync(context, key));
+    }
+
+    [Fact]
+    public async Task OversizedUnitMetadataFailsArtifactAndSearchProjection()
+    {
+        var context = await Snapshot(mutate: records => records[0]["unit"]!["name"] = new string('界', 4000));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _queries.ArtifactsAsync(context, new(100)));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _queries.SearchAsync(context, null, null, "web-ts", new(100)));
+    }
+
+    [Fact]
+    public async Task OversizedEdgeProjectionFailsInsteadOfSilentlySkipping()
+    {
+        string key = "";
+        var context = await Snapshot(mutate: records =>
+        {
+            var edge = records.First(record => record["kind"]!.GetValue<string>() == "edge");
+            var original = edge["from"]!.GetValue<string>();
+            var node = records.First(record => record["kind"]!.GetValue<string>() == "node" && record["symbolKey"]!.GetValue<string>() == original).DeepClone().AsObject();
+            key = "ts|web-ts|@fixture/web|large.ts|" + new string('界', 1900) + "#value";
+            node["symbolKey"] = key; node["id"] = "n:sizeguard";
+            records.Insert(records.Count - 1, node);
+            records[^1]["counts"]!["node"] = records[^1]["counts"]!["node"]!.GetValue<int>() + 1;
+            edge["from"] = key;
+            edge["to"] = "ts|@ext|benchmark|large.ts|" + new string('界', 1900) + "#value";
+        });
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _queries.EdgesAsync(context, key, "outgoing", new(100)));
+    }
+
+    [Fact]
+    public async Task OversizedEvidencePathProjectionFailsBeforeTransferringPath()
+    {
+        string key = "";
+        var context = await Snapshot(mutate: records =>
+        {
+            var node = records.First(record => record["kind"]!.GetValue<string>() == "node");
+            key = node["symbolKey"]!.GetValue<string>();
+            var evidenceId = node["evidence"]![0]!.GetValue<string>();
+            records.First(record => record["kind"]!.GetValue<string>() == "evidence" && record["id"]!.GetValue<string>() == evidenceId)["path"] = new string('界', 4000) + ".ts";
+        });
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _queries.EvidenceAsync(context, key, new(100)));
+    }
+
+    [Fact]
+    public async Task MissingImmutableDefaultCannotFallBackToLexicographicRevision()
+    {
+        var context = await Snapshot();
+        await using var command = db.DataSource.CreateCommand("update snapshot_revision set is_default=false where snapshot_id=@snapshot");
+        command.Parameters.AddWithValue("snapshot", context.SnapshotId);
+        await command.ExecuteNonQueryAsync();
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => _queries.ResolveAsync(context.Capability));
+        Assert.Contains("default revision", error.Message, StringComparison.Ordinal);
+    }
+
 }
