@@ -97,7 +97,7 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
     /// <summary>Routes compare by shape: parameters become {}, no query string, lower case, no trailing slash.</summary>
     internal static string NormaliseRoute(string route)
     {
-        var path = route.Split('?')[0];
+        var path = SplitAbsoluteUrl(route).Path.Split('?')[0].Split('#')[0];
         path = RouteParameter().Replace(path, "{}");
         path = "/" + string.Join('/', path.Split('/', StringSplitOptions.RemoveEmptyEntries));
         return path.ToLowerInvariant();
@@ -105,6 +105,28 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
 
     [GeneratedRegex(@"\{[^}]*\}")]
     private static partial Regex RouteParameter();
+
+    /// <summary>
+    /// Splits an absolute http(s) URL into its lower-case authority (host and port, user info removed) and the rest
+    /// (path, query, fragment). Other strings are returned unchanged with no authority. An authority containing a hole
+    /// ({}) is dynamic: the path is still split off, but no host is reported.
+    /// </summary>
+    internal static (string? Host, string Path) SplitAbsoluteUrl(string url)
+    {
+        var m = AbsoluteUrl().Match(url);
+        if (!m.Success)
+        {
+            return (null, url);
+        }
+
+        var authority = m.Groups["authority"].Value;
+        authority = authority[(authority.LastIndexOf('@') + 1)..].ToLowerInvariant();
+        var host = authority.Length == 0 || authority.Contains('{', StringComparison.Ordinal) ? null : authority;
+        return (host, m.Groups["rest"].Value);
+    }
+
+    [GeneratedRegex(@"^https?://(?<authority>[^/?#]*)(?<rest>.*)$", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex AbsoluteUrl();
 
     private static string Join(string prefix, string route) =>
         "/" + string.Join('/', (prefix + "/" + route).Split('/', StringSplitOptions.RemoveEmptyEntries));
@@ -729,6 +751,12 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                 var verb = HttpVerbs.First(v => name.StartsWith(v, StringComparison.Ordinal)).ToUpperInvariant();
                 var containing = CSharpExtractor.Owner(f.Model, inv.SpanStart)?.ContainingType;
                 var hint = containing is not null && bases.TryGetValue(keys.Of(containing), out var h) ? h : $"client={containing?.Name ?? "unknown"}";
+                var (urlHost, _) = SplitAbsoluteUrl(url.Value);
+                if (urlHost is not null)
+                {
+                    hint = $"host={urlHost}"; // an absolute URL overrides any BaseAddress
+                }
+
                 var parts = hint.Split('=', 2);
                 var route = NormaliseRoute(url.Value);
                 var props = new JsonObject { ["method"] = verb, ["normalizedRoute"] = route };

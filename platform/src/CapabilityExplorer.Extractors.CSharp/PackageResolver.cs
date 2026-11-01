@@ -6,13 +6,32 @@ namespace CapabilityExplorer.Extractors.CSharp;
 /// Finds package assemblies in a NuGet global-packages layout (&lt;root&gt;/&lt;id&gt;/&lt;version&gt;/lib/&lt;tfm&gt;),
 /// following nuspec dependencies. Read-only: it never downloads, restores or runs package code.
 /// </summary>
-public sealed record PackageResolution(IReadOnlyList<string> Assemblies, IReadOnlyList<PackageRef> Missing, IReadOnlyList<LockedPackage> Resolved);
+public sealed record PackageResolution(IReadOnlyList<string> Assemblies, IReadOnlyList<PackageRef> Missing, IReadOnlyList<LockedPackage> Resolved)
+{
+    /// <summary>
+    /// Resolved packages that ship ref/lib assemblies of which none was selected by <see cref="PackageResolver.Frameworks"/>,
+    /// with the folders they do ship (relative, e.g. <c>lib/net45</c>). Packages without any assembly (meta, analyzer) are not listed.
+    /// </summary>
+    public IReadOnlyList<UnselectedPackage> Unselected { get; init; } = [];
+}
+
+public sealed record UnselectedPackage(string Id, string Version, IReadOnlyList<string> Folders);
 
 public sealed class PackageResolver(string? packagesRoot)
 {
     private static readonly string[] AssemblyFolders = ["ref", "lib"];
 
-    internal static readonly string[] Frameworks = ["net10.0", "net9.0", "net8.0", "net7.0", "net6.0", "netstandard2.1", "netstandard2.0", "netcoreapp3.1"];
+    /// <summary>
+    /// Target frameworks whose assets are used, best first. Modern .NET, then .NET Standard, then older .NET Core and
+    /// .NET Standard 1.x, so a package that only ships an older asset still contributes its compile surface.
+    /// </summary>
+    internal static readonly string[] Frameworks =
+    [
+        "net10.0", "net9.0", "net8.0", "net7.0", "net6.0", "net5.0",
+        "netstandard2.1", "netstandard2.0",
+        "netcoreapp3.1", "netcoreapp3.0", "netcoreapp2.2", "netcoreapp2.1", "netcoreapp2.0",
+        "netstandard1.6", "netstandard1.5", "netstandard1.4", "netstandard1.3", "netstandard1.2", "netstandard1.1", "netstandard1.0",
+    ];
 
     /// <summary>
     /// The reference assemblies for a project's packages. With a <paramref name="locked"/> set, exactly those versions
@@ -25,6 +44,7 @@ public sealed class PackageResolver(string? packagesRoot)
         var assemblies = new List<string>();
         var resolved = new List<LockedPackage>();
         var missing = new List<PackageRef>();
+        var unselected = new List<UnselectedPackage>();
         if (locked is not null)
         {
             foreach (var l in locked)
@@ -35,7 +55,7 @@ public sealed class PackageResolver(string? packagesRoot)
                     throw new InvalidOperationException($"locked package {l.Id} {l.Version} is not in the packages folder; run the packages step again");
                 }
 
-                assemblies.AddRange(AssembliesIn(root));
+                Add(root, l, assemblies, unselected);
                 resolved.Add(l);
             }
 
@@ -47,7 +67,7 @@ public sealed class PackageResolver(string? packagesRoot)
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var p in packages)
             {
-                if (!Visit(p.Id, p.Version, assemblies, resolved, seen, depth: 0))
+                if (!Visit(p.Id, p.Version, assemblies, resolved, unselected, seen, depth: 0))
                 {
                     missing.Add(p);
                 }
@@ -57,7 +77,24 @@ public sealed class PackageResolver(string? packagesRoot)
         return new PackageResolution(
             assemblies.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList(),
             missing,
-            resolved.OrderBy(r => r.Id, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Version, StringComparer.Ordinal).ToList());
+            resolved.OrderBy(r => r.Id, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Version, StringComparer.Ordinal).ToList())
+        {
+            Unselected = unselected.OrderBy(u => u.Id, StringComparer.OrdinalIgnoreCase).ThenBy(u => u.Version, StringComparer.Ordinal).ToList(),
+        };
+    }
+
+    private static void Add(string root, LockedPackage package, List<string> assemblies, List<UnselectedPackage> unselected)
+    {
+        var found = AssembliesIn(root).ToList();
+        assemblies.AddRange(found);
+        if (found.Count == 0 && AssemblyFolders.Select(d => Path.Combine(root, d)).Where(Directory.Exists)
+                .SelectMany(d => Directory.EnumerateDirectories(d))
+                .Where(d => Directory.EnumerateFiles(d, "*.dll").Any())
+                .Select(d => $"{Path.GetFileName(Path.GetDirectoryName(d))}/{Path.GetFileName(d)}")
+                .Order(StringComparer.Ordinal).ToList() is { Count: > 0 } folders)
+        {
+            unselected.Add(new UnselectedPackage(package.Id, package.Version, folders));
+        }
     }
 
     private static IEnumerable<string> AssembliesIn(string root)
@@ -68,7 +105,7 @@ public sealed class PackageResolver(string? packagesRoot)
         return tfm is null ? [] : Directory.EnumerateFiles(tfm, "*.dll").Order(StringComparer.Ordinal);
     }
 
-    private bool Visit(string id, string? versionRange, List<string> assemblies, List<LockedPackage> resolved, HashSet<string> seen, int depth)
+    private bool Visit(string id, string? versionRange, List<string> assemblies, List<LockedPackage> resolved, List<UnselectedPackage> unselected, HashSet<string> seen, int depth)
     {
         if (packagesRoot is null || depth > 6)
         {
@@ -94,7 +131,7 @@ public sealed class PackageResolver(string? packagesRoot)
 
         var root = Path.Combine(dir, version);
         resolved.Add(new LockedPackage(id, version));
-        assemblies.AddRange(AssembliesIn(root));
+        Add(root, new LockedPackage(id, version), assemblies, unselected);
 
         var nuspec = Directory.EnumerateFiles(root, "*.nuspec").FirstOrDefault();
         if (nuspec is not null)
@@ -108,7 +145,7 @@ public sealed class PackageResolver(string? packagesRoot)
             {
                 if ((string?)dep.Attribute("id") is { } depId)
                 {
-                    Visit(depId, (string?)dep.Attribute("version"), assemblies, resolved, seen, depth + 1);
+                    Visit(depId, (string?)dep.Attribute("version"), assemblies, resolved, unselected, seen, depth + 1);
                 }
             }
         }
@@ -120,6 +157,7 @@ public sealed class PackageResolver(string? packagesRoot)
     {
         null => null,
         var t when t.StartsWith(".netstandard", StringComparison.Ordinal) => "netstandard" + t[".netstandard".Length..],
+        var t when t.StartsWith(".netcoreapp", StringComparison.Ordinal) => "netcoreapp" + t[".netcoreapp".Length..],
         var t when t.StartsWith("net", StringComparison.Ordinal) && t.Contains('.', StringComparison.Ordinal) => t.Split('-')[0],
         var t => t,
     };

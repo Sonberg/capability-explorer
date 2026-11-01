@@ -8,6 +8,7 @@ import { calculations } from "./calculations.ts";
 import { Ctx } from "./context.ts";
 import { declare, detectGenerated } from "./declarations.ts";
 import { discoverUnits, posix, type UnitConfig } from "./project.ts";
+import { nextRoutes } from "./next.ts";
 import { axiosRule, express, fetchRule, openApiRule, pgRule, projectNode, serviceBusRule, serviceNode } from "./rules.ts";
 
 export const EXTRACTOR: ToolRef = { name: "ts-compiler", version: "0.1.0" };
@@ -61,6 +62,7 @@ export function extract(options: ExtractOptions): UnitResult[] {
     calls(ctx);
     calculations(ctx);
     express(ctx, rules);
+    nextRoutes(ctx, rules);
     axiosRule(ctx, rules);
     openApiRule(ctx, rules);
     fetchRule(ctx, rules);
