@@ -27,7 +27,7 @@ The downloaded `.c4` includes thirteen named viewpoints for this fixture: landsc
 - Shift-click nodes and choose **Group selection** to create a custom group. Moving a member into another group removes its prior presentation membership. Drag a group header to move its members together.
 - Group names, membership and deletions persist in browser storage for the exact generated source snapshot and survive viewpoint changes. A changed source snapshot restores identified defaults rather than reusing stale IDs. Manual positions remain temporary; reset layout restores the selected view's generated positions while retaining group definitions.
 - Source-oriented/scoped views retain the evidence hierarchy. Presentation groups are editable in the horizontal/vertical resource overview, not by rewriting source ownership in a drilldown. Nested custom groups are not supported.
-- Dark/light mode initially follows the system preference. Animation starts off; reduced motion disables it. Decorative particles/highlights do not represent measured traffic or execution.
+- Dark mode starts on. Animation starts off; reduced motion disables it. Decorative particles/highlights do not represent measured traffic or execution.
 - Source inspection/download preserves the original generated model, all named viewpoints and evidence. Browser presentation edits are saved separately; they do not rewrite the downloaded `.c4`.
 
 ## Evidence and determinism
@@ -51,3 +51,5 @@ Focused tests cover deterministic output, malformed identities/endpoints, certai
 The renderer's default remote font injection is disabled. The package audit reported zero vulnerabilities at the initial locked installation. The renderer adds roughly 785 KB gzip of JavaScript, so production adoption needs a deliberate lazy-loading/bundle decision. This is not a physical-monitor validation, compatibility proof for arbitrary architecture graphs, or a full-project local `act` result. The full stage-aligned CI/security gate must run after #11 merges and before publication.
 
 LikeC4 is useful for architecture views and compound grouping. BPMN/DMN semantics and bpmn.io evaluation belong to issue #12, not this visualization adapter. Keep the existing evidence contract authoritative regardless of renderer.
+
+Settings stay at the bottom of the viewpoint menu: Orthogonal defaults on, Animation defaults off, and Dark mode defaults on. Toggles apply across viewpoints for the current page session. Reduced-motion preferences disable animation. The viewer defaults every viewpoint to orthogonal routing. Build-time source retains spline geometry so switching orthogonal off can restore curves without relayout; the runtime switch preserves node positions and group membership.

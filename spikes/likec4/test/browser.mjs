@@ -26,7 +26,24 @@ try {
     const menu=await page.locator('.viewpoint-drawer').boundingBox();
     assert.ok(width>700?menu.x+menu.width<=canvas.x+1:menu.y+menu.height<=canvas.y+1,'permanent menu must not overlap canvas');
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth), 'spike horizontal page overflow');
-    assert.equal(await page.getByRole('checkbox').isChecked(),false);
+    assert.equal(await page.getByRole('switch',{name:'Animation',exact:true}).isChecked(),false);
+    assert.equal(await page.getByRole('switch',{name:'Orthogonal',exact:true}).isChecked(),true);
+    assert.equal(await page.getByRole('switch',{name:'Dark mode',exact:true}).isChecked(),true);
+    assert.equal(await page.locator('.spike').getAttribute('data-theme'),'dark');
+    const nodePositions=()=>page.locator('.react-flow__node').evaluateAll(es=>es.map(e=>({id:e.dataset.id,transform:e.style.transform})));
+    const positions=await nodePositions();
+    const routes=()=>page.locator('.react-flow__edge-path').evaluateAll(es=>es.map(e=>e.getAttribute('d')));
+    const orthoRoutes=await routes();
+    await page.getByRole('switch',{name:'Orthogonal',exact:true}).uncheck();
+    await page.waitForTimeout(300);
+    assert.notDeepEqual(await routes(),orthoRoutes,'routing toggle changes rendered paths');
+    assert.deepEqual(await nodePositions(),positions,'routing preserves node positions');
+    await page.getByRole('switch',{name:'Orthogonal',exact:true}).check();
+    await page.waitForTimeout(300);
+    assert.deepEqual(await routes(),orthoRoutes,'orthogonal routing restored deterministically');
+    await page.getByRole('switch',{name:'Dark mode',exact:true}).uncheck();
+    assert.equal(await page.locator('.spike').getAttribute('data-theme'),'light');
+
     const paths=page.locator('.react-flow__edge-path');
     assert.ok((await paths.evaluateAll(es=>es.map(e=>getComputedStyle(e).animationName))).every(n=>n==='none'));
     await page.screenshot({path:`${output}/likec4-${width}.png`});
@@ -46,12 +63,12 @@ try {
     await page.getByRole('button',{name:'Expand ledger',exact:true}).click();
     await page.getByRole('button',{name:'Minimize ledger',exact:true}).click();
     assert.equal(await page.locator('.react-flow__viewport').first().getAttribute('style'),viewportBefore,'menu and ledger actions must not move diagram');
-    await page.getByRole('checkbox').check();
+    await page.getByRole('switch',{name:'Animation',exact:true}).check();
     assert.ok((await paths.evaluateAll(es=>es.map(e=>getComputedStyle(e).animationName))).some(n=>n==='ce-edge-flow'));
     await page.locator('.ce-motion-particle').first().waitFor();
     const moving = await paths.first().evaluate(async e => {const before=getComputedStyle(e).opacity;await new Promise(r=>setTimeout(r,120));return before!==getComputedStyle(e).opacity;});
     assert.ok(moving, 'enabled motion changes edge highlight');
-    await page.getByRole('checkbox').uncheck();
+    await page.getByRole('switch',{name:'Animation',exact:true}).uncheck();
     assert.equal(await page.locator('.ce-motion-particle').count(),0);
     assert.ok((await paths.evaluateAll(es=>es.map(e=>getComputedStyle(e).animationName))).every(n=>n==='none'));
     await page.getByRole('button',{name:'Diagram source',exact:true}).click();
@@ -61,12 +78,12 @@ try {
     await page.getByRole('button',{name:'Download .c4'}).click();
     assert.equal((await downloadPromise).suggestedFilename(),'architecture.c4');
     await page.emulateMedia({reducedMotion:'reduce'});
-    await page.waitForFunction(()=>document.querySelector('input[type=checkbox]')?.disabled === true);
-    assert.equal(await page.getByRole('checkbox').isDisabled(),true);
-    assert.equal(await page.getByRole('checkbox').isChecked(),false);
+    await page.waitForFunction(()=>[...document.querySelectorAll('input')].some(e=>e.disabled));
+    assert.equal(await page.getByRole('switch',{name:'Animation',exact:true}).isDisabled(),true);
+    assert.equal(await page.getByRole('switch',{name:'Animation',exact:true}).isChecked(),false);
     if (width === 1920) {
       await page.getByRole('button',{name:'Diagram source',exact:true}).click();
-      await page.getByRole('button',{name:'Dark mode',exact:true}).click();
+      await page.getByRole('switch',{name:'Dark mode',exact:true}).check();
       assert.equal(await page.locator('.spike').getAttribute('data-theme'),'dark');
       assert.equal(await page.locator('.react-flow__node-view-group').count(),3,'explicit repositories auto-group');
       const node=id=>page.locator(`.react-flow__node[data-id="${id}"]`);

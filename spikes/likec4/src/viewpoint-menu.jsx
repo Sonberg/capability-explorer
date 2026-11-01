@@ -7,7 +7,7 @@ function preferences(source,views) {
   } catch {return {favorites:defaults.filter(id=>Object.hasOwn(views,id))};}
 }
 export const viewpointLabel=(id,view)=>id==='flow'?'Resource overview':id==='vertical'?'Resource overview · vertical':id==='index'?'Landscape':id==='objects'?'SQL object detail':view.title??id;
-export function ViewpointMenu({views,current,onSelect,source}) {
+export function ViewpointMenu({views,current,onSelect,source,settings}) {
   const [initial]=useState(()=>preferences(source,views));
   const [favorites,setFavorites]=useState(initial.favorites), [storageError,setStorageError]=useState(false);
   useEffect(()=>{try{localStorage.setItem('ce.likec4.viewpoints.v1',JSON.stringify({source,favorites}));setStorageError(false);}catch{setStorageError(true);}},[source,favorites]);
@@ -20,8 +20,15 @@ export function ViewpointMenu({views,current,onSelect,source}) {
   const sections=[['Architecture',['index','flow','vertical','applications','data','messaging']],['SQL objects',['objects']],['Repositories',Object.keys(views).filter(id=>id.startsWith('repository_'))],['SQL resources',Object.keys(views).filter(id=>id.startsWith('sql_scope_'))]];
   return <nav id="viewpoint-drawer" className="viewpoint-drawer" data-open="true" aria-label="Viewpoints">
       <div className="drawer-heading"><strong>Viewpoints</strong></div>
-      <section aria-label="Favorite viewpoints"><h2>Favorites</h2>{favorites.length?favorites.map(row):<p>Star a viewpoint below to add it here.</p>}</section>
+      <div className="viewpoint-list"><section aria-label="Favorite viewpoints"><h2>Favorites</h2>{favorites.length?favorites.map(row):<p>Star a viewpoint below to add it here.</p>}</section>
       {sections.map(([title,ids])=>ids.some(id=>views[id])&&<section key={title} aria-label={`${title} viewpoints`}><h2>{title}</h2>{ids.filter(id=>views[id]).map(row)}</section>)}
       {storageError&&<p role="status">Preferences cannot be saved in this browser.</p>}
+      </div>
+      <section className="diagram-settings" aria-label="Settings"><h2>Settings</h2>
+        <label><span>Orthogonal</span><input type="checkbox" role="switch" checked={settings.orthogonal} onChange={e=>settings.setOrthogonal(e.target.checked)}/></label>
+        <label><span>Animation</span><input type="checkbox" role="switch" checked={settings.motion} disabled={settings.reduced} onChange={e=>settings.setAnimations(e.target.checked)}/></label>
+        <label><span>Dark mode</span><input type="checkbox" role="switch" checked={settings.dark} onChange={e=>settings.setDark(e.target.checked)}/></label>
+        {settings.reduced&&<p>Animation disabled by reduced-motion preference.</p>}
+      </section>
     </nav>;
 }

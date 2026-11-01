@@ -17,6 +17,7 @@ function OptionalEditor({enabled,editor,children}) {
 }
 function App() {
   const sourceModel = useLikeC4Model();
+  const [orthogonal,setOrthogonal]=useState(true);
   const [view, setView] = useState('flow');
   const [resetKey, setResetKey] = useState(0);
   const [customView, setCustomView] = useState(null);
@@ -36,7 +37,8 @@ function App() {
   const canvas = useRef(null);
   const editable=view==='flow'||view==='vertical';
   const generatedView=useMemo(()=>editable?applyGroups(sourceModel.$data.views[view],groups):sourceModel.$data.views[view],[sourceModel,view,groups,editable]);
-  const currentView = editable ? (customView ?? generatedView) : generatedView;
+  const layoutView = editable ? (customView ?? generatedView) : generatedView;
+  const currentView = useMemo(()=>({...layoutView,routing:orthogonal?'ortho':'spline'}),[layoutView,orthogonal]);
   const model = useMemo(() => LikeC4Model.create({...sourceModel.$data,views:{...sourceModel.$data.views,[view]:currentView},manualLayouts:{}}), [sourceModel,currentView]);
   const editor = useMemo(() => createLikeC4Editor({fetchView: id => model.$data.views[id],handleChange: (id, change) => {if (id === view && change.op === 'save-view-snapshot') setCustomView(change.layout); return {waitForViewSync:false};}}), [model,view]);
   const selectedLeaves=selected.filter(id=>currentView.nodes.some(n=>n.id===id&&n.kind!=='@group'));
@@ -63,7 +65,7 @@ function App() {
     const ids=draftMembers.includes(node.id)?draftMembers.filter(id=>id!==node.id):[...draftMembers,node.id];
     setDraftMembers(ids);api.current?.select({nodes:ids});
   }
-  const [dark, setDark] = useState(() => matchMedia('(prefers-color-scheme: dark)').matches);
+  const [dark, setDark] = useState(true);
   const [animations, setAnimations] = useState(false);
   const [reduced, setReduced] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
   const [showSource, setShowSource] = useState(false);
@@ -84,8 +86,6 @@ function App() {
     <header><div><small>CAPABILITY EXPLORER / EXPERIMENT</small><h1>Architecture · LikeC4</h1></div>
       <div className="actions">
         <span className="current-viewpoint">{viewpointLabel(view,sourceModel.$data.views[view])}</span>
-        <button aria-pressed={dark} onClick={() => setDark(!dark)}>{dark ? 'Light mode' : 'Dark mode'}</button>
-        <label><input type="checkbox" checked={motion} disabled={reduced} onChange={e => setAnimations(e.target.checked)} /> Animation {motion ? 'on' : 'off'}</label>
         <button onClick={() => {setCustomView(null);setSelected([]);setEditing(null);setResetKey(k=>k+1);}}>Reset layout</button>
         <button onClick={() => setShowSource(!showSource)} aria-expanded={showSource}>Diagram source</button>
         <button onClick={download}>Download .c4</button>
@@ -94,7 +94,7 @@ function App() {
     <div className="notice">Experimental renderer · build-time architecture snapshot · no live refresh or runtime flow claims.{reduced && ' Motion disabled by system preference.'}</div>
     <main className={showSource ? 'with-source' : ''}>
       <div className="diagram-workspace">
-        <ViewpointMenu views={sourceModel.$data.views} current={view} onSelect={switchView} source={source}/>
+        <ViewpointMenu views={sourceModel.$data.views} current={view} onSelect={switchView} source={source} settings={{orthogonal,setOrthogonal,motion,setAnimations,reduced,dark,setDark}}/>
       <section ref={canvas} className="canvas" aria-label="LikeC4 architecture diagram">
         <DiagramLegend/>
         <div className="canvas-hint">{editable?'Click a group to manage it · Shift-click nodes to group · edits stay with this snapshot':'Source hierarchy · choose a repository or SQL-resource detail viewpoint to explore its contents'}</div>

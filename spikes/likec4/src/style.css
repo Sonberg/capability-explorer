@@ -33,7 +33,7 @@ button:disabled { opacity:.45; cursor:default; }
 
 .current-viewpoint { font-size:13px; color:inherit; }
 .diagram-workspace { display:grid; grid-template-columns:280px minmax(0,1fr); min-width:0; min-height:0; }
-.viewpoint-drawer { min-height:0; overflow:auto; padding:16px; background:#f8fafc; border:1px solid #9eb0c7; border-radius:10px 0 0 10px; }
+.viewpoint-drawer { display:flex; flex-direction:column; min-height:0; overflow:hidden; padding:16px; background:#f8fafc; border:1px solid #9eb0c7; border-radius:10px 0 0 10px; }
 .drawer-heading { display:flex; align-items:center; gap:8px; position:sticky; top:-16px; padding:12px 0; background:inherit; z-index:1; }
 .drawer-heading strong { flex:1; }
 .drawer-heading button { font-size:12px; padding:5px 8px; }
@@ -67,4 +67,14 @@ button:disabled { opacity:.45; cursor:default; }
 .ledger-swatch { padding:7px 9px; border:1px solid; border-radius:6px; display:flex; flex-direction:column; font-size:11px; }
 .ledger-swatch span { font-size:10px; margin-top:2px; }
 
-@media(max-width:700px) { .diagram-workspace { grid-template-columns:minmax(0,1fr); grid-template-rows:150px minmax(360px,1fr); overflow:auto; } .viewpoint-drawer { border-radius:10px 10px 0 0; } }
+@media(max-width:700px) { .diagram-workspace { grid-template-columns:minmax(0,1fr); grid-template-rows:300px minmax(360px,1fr); overflow:auto; } .viewpoint-drawer { border-radius:10px 10px 0 0; } }
+
+.viewpoint-list { flex:1; min-height:0; overflow:auto; }
+.viewpoint-drawer .diagram-settings { flex-shrink:0; margin:12px 0 0; padding-top:8px; border-top:1px solid #9eb0c7; }
+.diagram-settings label { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:5px 0; }
+.diagram-settings input { appearance:none; width:34px; height:20px; border-radius:12px; background:#6d7785; cursor:pointer; position:relative; flex-shrink:0; }
+.diagram-settings input::after { content:''; position:absolute; width:14px; height:14px; border-radius:50%; background:white; top:3px; left:3px; }
+.diagram-settings input:checked { background:#0783BD; }
+.diagram-settings input:checked::after { left:17px; }
+.diagram-settings input:disabled { opacity:.45; cursor:default; }
+.diagram-settings p { font-size:11px; margin:4px 0; }
