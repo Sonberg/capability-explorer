@@ -253,7 +253,7 @@ clean:
 	rm -rf fixtures/.repos fixtures/.work extractors/ts/node_modules $(UI)/node_modules platform/src/CapabilityExplorer.Explorer/wwwroot
 	find platform -type d \( -name bin -o -name obj \) -prune -exec rm -rf {} +
 
-# Isolated LikeC4 experiment; production Explorer dependencies stay unchanged.
+# Shared LikeC4 renderer and standalone fixture regression harness.
 .PHONY: likec4-deps likec4-dist likec4-check likec4-preview
 ci: likec4-check
 likec4-deps:

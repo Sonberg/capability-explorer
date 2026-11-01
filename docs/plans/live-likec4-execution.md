@@ -62,7 +62,7 @@ source wwwroot is insufficient. Served asset identities are checked after rebuil
 - Explorer backend: 138/138 tests passed after generating fixture repositories and
   building UI assets. Earlier missing fixture/UI failures were setup omissions,
   corrected without changing test assertions.
-- Shared/spike unit suite: 56/56 passed, including model/worker and group tests.
+- Shared/spike unit suite: 60/60 passed, including model/worker and group tests.
   The live model suite also passed against a captured real system-level API graph.
 - Compiler round-trip: exported source preserves node IDs, metadata, labels and
   viewpoint membership. Shuffled input yields identical source and layout; unrelated
@@ -71,6 +71,10 @@ source wwwroot is insufficient. Served asset identities are checked after rebuil
   both at 1440×900, 5120×2160 and 390×844. CRUD, exact occurrence/evidence selection,
   reviewed association arrows, read-only behavior and source provenance passed.
   Simulated 409/503 cases test browser handling, not a real database outage.
+- Architecture browser journey: 178 assertions passed, including exact provenance,
+  live scope/revisions, drills, filtering after group edits, group persistence, real
+  label bounds, readable initial zoom and explicit Fit. Worker startup failure/retry
+  and late API responses are simulated; all three viewport sizes use Chromium.
 - Trivy scan: 21 dependency manifests, zero High/Critical findings. This focused scan
   does not substitute for the final clean-HEAD ordinary push gate.
 
@@ -78,15 +82,36 @@ Receipts/screenshots are ignored local artifacts in `.sandbox-cache/glossary-bro
 `.sandbox-cache/live-architecture-browser/` and worker review caches. They are not
 committed as source or claimed to cover remote deployments.
 
+## Performance investigation (not accepted)
+
+The source-bound comparison uses the captured historical 22-node/31-edge input,
+SHA-256 `f6bd4915eb94ae9c0fc63cb22c46170b3deeb99388b380bd615cd149442e72e9`,
+and 30 real pointer drags of the same repository node, run sequentially. The accepted
+baseline is PR #15's `ba61ede` served on port 5093, asset `index-CgAIXxBW.js`. Port
+5091 is an older runtime and is not a valid accepted comparison.
+
+| Measurement | Accepted baseline | Dagre candidate `index-BxAhVrmb.js` |
+|---|---:|---:|
+| Worker refinement p50 / p95 | 83.9 / 111.9 ms | 270.9 / 310.8 ms |
+| Release-to-routing-ready attribute p50 / p95 | 109.5 / 152.0 ms | 294.9 / 350.3 ms |
+
+An in-page MutationObserver measures the routing-ready attribute. Earlier locator
+polling inflated candidate results to approximately 830 ms; those values are invalid
+and superseded. Neither attribute timestamps nor frame opportunities prove physical
+display paint. Both builds have zero overlapping rendered label pairs. The candidate
+has readable 90 px initial leaves but fails performance parity.
+
+A coordinate-cache search optimization preserved paths but did not reproduce its
+initial microbenchmark gain in the actual module; it was rejected. The public
+Graphviz WASM API already present transitively is being evaluated in the existing
+model worker, without private LikeC4 compiler imports or another service.
+
 ## Remaining gates and limits
 
-Complete the Architecture browser harness (live capability/revision changes,
-source/drill/filter parity, group CRUD and persistence, worker failure/retry,
-late-response cancellation, three viewport sizes) and independent visual review.
-Measure initial readability/routing without treating frame opportunities as paint.
-Then run the full ordinary push hook (`make ci` via act plus Trivy), fresh `make
-pr-check`, and create the owner-review PR against stage. Final phase scores and
-source-bound gate receipt belong in the completed handoff, not this pending record.
+Resolve the measured performance regression and repeat source-bound browser
+validation. Then run the full ordinary push hook (`make ci` via act plus Trivy),
+fresh `make pr-check`, and create the owner-review PR against stage. Final phase
+scores and gate receipt belong in the completed handoff, not this pending record.
 
 Issue #13's 200 ms p95 final-settling target remains open. The initial bundle adds
 approximately 700 KiB gzip for the lazy shared renderer and a 668 KiB uncompressed
