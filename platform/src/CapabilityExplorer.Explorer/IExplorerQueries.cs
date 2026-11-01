@@ -47,3 +47,6 @@ public interface IExplorerQueries
     Task<bool> IsCitedAsync(ExplorerQueryContext context, string repository, string commit, string path,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>Derived read projection is not available; never fall back to a different search contract.</summary>
+public sealed class ExplorerProjectionUnavailableException(string message) : Exception(message);

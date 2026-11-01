@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Npgsql;
+using CapabilityExplorer.Store;
 
 namespace CapabilityExplorer.Explorer;
 
@@ -17,9 +18,15 @@ public sealed partial class PostgresExplorerQueries(NpgsqlDataSource dataSource,
         """;
     private const string Nodes = """
         , nodes as (
-          select distinct on(n.symbol_key collate "C") n.symbol_key,n.node_kind,n.name,n.generated,a.repository_id,a.commit_sha,a.unit_name,a.language
+          select n.symbol_key,n.node_kind,n.name,n.generated,a.repository_id,a.commit_sha,a.unit_name,a.language,
+            s.name_fold,s.symbol_fold,s.name_sort,s.local_id is null as projection_missing
           from selected a join node n on n.artifact_id=a.id
-          order by n.symbol_key collate "C",a.unit_path collate "C",a.id,n.local_id collate "C"
+          left join node_search s on s.artifact_id=n.artifact_id and s.local_id=n.local_id and s.normalizer_id=@normalizer
+          where not exists (
+            select 1 from selected other join node n2 on n2.artifact_id=other.id
+            where n2.symbol_key=n.symbol_key
+              and (other.unit_path collate "C",other.id) < (a.unit_path collate "C",a.id)
+          )
         )
         """;
 
@@ -65,7 +72,14 @@ public sealed partial class PostgresExplorerQueries(NpgsqlDataSource dataSource,
                 chosen[pair.Key] = pair.Value;
             }
         }
-        return new ExplorerQueryContext(snapshot, capability, generation, chosen);
+        var context = new ExplorerQueryContext(snapshot, capability, generation, chosen);
+        await using var readiness = Scoped(context, Selected + """
+            select exists(select 1 from selected a left join artifact_search_projection p
+              on p.artifact_id=a.id and p.normalizer_id=@normalizer where p.artifact_id is null)
+            """);
+        if ((bool)(await readiness.ExecuteScalarAsync(cancellationToken))!)
+            throw new ExplorerProjectionUnavailableException("snapshot search projection is not ready; run the bounded normalization backfill");
+        return context;
     }
 
     public async Task<ExplorerDatabaseMetadata> MetadataAsync(ExplorerQueryContext context, CancellationToken cancellationToken = default)
@@ -110,30 +124,30 @@ public sealed partial class PostgresExplorerQueries(NpgsqlDataSource dataSource,
     {
         var q = (query ?? "").Trim();
         if (q.Length > 500) throw new ArgumentException("search query exceeds 500 characters", nameof(query));
-        var filter = JsonSerializer.Serialize(new { endpoint = "search", q, kind, repository });
+        var filter = JsonSerializer.Serialize(new { endpoint = "search.v2", normalizer = NodeSearchNormalization.NormalizerId, q, kind, repository });
         var after = cursors.Decode(context, filter, page.Cursor);
         await using var command = Scoped(context, Selected + Nodes + $"""
             , ranked as (
-              select *,case when @q='' then 1 when lower(name)=lower(@q) then 4
-              when starts_with(lower(name),lower(@q)) then 3 when strpos(lower(name),lower(@q))>0 then 2
-              when strpos(lower(symbol_key),lower(@q))>0 then 1 else 0 end rank
+              select *,case when projection_missing then 5 when @q='' then 1 when name_fold collate "C"=@q collate "C" then 4
+              when starts_with(name_fold collate "C",@q collate "C") then 3 when strpos(name_fold collate "C",@q collate "C")>0 then 2
+              when strpos(symbol_fold collate "C",@q collate "C")>0 then 1 else 0 end rank
               from nodes where (@kind='' or node_kind=@kind) and (@repo='' or repository_id=@repo)
             )
-            select {GuardedColumns("symbol_key", "name", "node_kind", "repository_id", "unit_name", "generated", "exists(select 1 from selected a join calculation c on c.artifact_id=a.id where c.symbol_key=r.symbol_key)", "rank", "lower(name)")}
+            select {GuardedColumns("case when projection_missing then null else symbol_key end", "name", "node_kind", "repository_id", "unit_name", "generated", "exists(select 1 from selected a join calculation c on c.artifact_id=a.id where c.symbol_key=r.symbol_key)", "rank", "name_sort")},projection_missing
             from ranked r where rank>0 and (@first or rank<@rank or
-              (rank=@rank and (lower(name) collate "C",symbol_key collate "C") > (@name collate "C",@key collate "C")))
-            order by rank desc,lower(name) collate "C",symbol_key collate "C" limit @limit
+              (rank=@rank and (name_sort,symbol_key collate "C") > (@nameSort,@key collate "C")))
+            order by rank desc,name_sort,symbol_key collate "C" limit @limit
             """);
-        command.Parameters.AddWithValue("q", q); command.Parameters.AddWithValue("kind", kind ?? ""); command.Parameters.AddWithValue("repo", repository ?? "");
+        command.Parameters.AddWithValue("q", NodeSearchNormalization.Fold(q)); command.Parameters.AddWithValue("kind", kind ?? ""); command.Parameters.AddWithValue("repo", repository ?? "");
         command.Parameters.AddWithValue("first", after is null); command.Parameters.AddWithValue("rank", after is null ? 0 : int.Parse(after[0], CultureInfo.InvariantCulture));
-        command.Parameters.AddWithValue("name", after?[1] ?? ""); command.Parameters.AddWithValue("key", after?[2] ?? ""); command.Parameters.AddWithValue("limit", page.BoundedLimit + 1);
+        command.Parameters.AddWithValue("nameSort", after is null ? Array.Empty<byte>() : Convert.FromBase64String(after[1])); command.Parameters.AddWithValue("key", after?[2] ?? ""); command.Parameters.AddWithValue("limit", page.BoundedLimit + 1);
         var rows = new List<SearchHit>();
         var positions = new Dictionary<string, string[]>(StringComparer.Ordinal);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await ReadProjectionAsync(reader, cancellationToken))
+        while (await ReadProjectionAsync(reader, 9, cancellationToken))
         {
             rows.Add(new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetBoolean(5), reader.GetBoolean(6)));
-            positions[reader.GetString(0)] = [reader.GetInt32(7).ToString(CultureInfo.InvariantCulture), reader.GetString(8), reader.GetString(0)];
+            positions[reader.GetString(0)] = [reader.GetInt32(7).ToString(CultureInfo.InvariantCulture), Convert.ToBase64String(reader.GetFieldValue<byte[]>(8)), reader.GetString(0)];
         }
         return Page(context, page, filter, rows, r => positions[r.Key]);
     }
@@ -177,9 +191,12 @@ public sealed partial class PostgresExplorerQueries(NpgsqlDataSource dataSource,
         var bytes = string.Join("+", columns.Select(column => $"coalesce(octet_length(({column})::text),0)"));
         return string.Join(",", columns.Select(column => $"case when ({bytes})<=8192 then {column} else null end"));
     }
-    private static async Task<bool> ReadProjectionAsync(NpgsqlDataReader reader, CancellationToken cancellationToken)
+    private static Task<bool> ReadProjectionAsync(NpgsqlDataReader reader, CancellationToken cancellationToken) => ReadProjectionAsync(reader, -1, cancellationToken);
+    private static async Task<bool> ReadProjectionAsync(NpgsqlDataReader reader, int missingProjectionColumn, CancellationToken cancellationToken)
     {
         if (!await reader.ReadAsync(cancellationToken)) return false;
+        if (missingProjectionColumn >= 0 && reader.GetBoolean(missingProjectionColumn))
+            throw new ExplorerProjectionUnavailableException("selected node search projection is missing");
         if (reader.IsDBNull(0)) throw new InvalidOperationException("projection exceeds eight KiB response limit");
         return true;
     }
@@ -189,6 +206,7 @@ public sealed partial class PostgresExplorerQueries(NpgsqlDataSource dataSource,
     {
         var command = Command(sql);
         command.Parameters.AddWithValue("snapshot", context.SnapshotId);
+        if (sql.Contains("@normalizer", StringComparison.Ordinal)) command.Parameters.AddWithValue("normalizer", NodeSearchNormalization.NormalizerId);
         command.Parameters.AddWithValue("repos", context.Selection.Keys.ToArray());
         command.Parameters.AddWithValue("shas", context.Selection.Values.ToArray());
         return command;

@@ -12,7 +12,7 @@ public sealed class PostgresExplorerQueryTests(PostgresFixture db)
 {
     private readonly PostgresExplorerQueries _queries = new(db.DataSource, new ExplorerQueryCursor(new byte[32]));
 
-    private async Task<ExplorerQueryContext> Snapshot(string? capability = null, long generation = 1, Action<List<JsonObject>>? mutate = null)
+    private async Task<ExplorerQueryContext> Snapshot(string? capability = null, long generation = 1, Action<List<JsonObject>>? mutate = null, string? additionalJsonl = null)
     {
         var cap = capability ?? "queries-" + Guid.NewGuid().ToString("N");
         var snapshot = Guid.NewGuid();
@@ -23,9 +23,10 @@ public sealed class PostgresExplorerQueryTests(PostgresFixture db)
         insert.Parameters.AddWithValue("id", snapshot); insert.Parameters.AddWithValue("cap", cap);
         insert.Parameters.AddWithValue("identity", snapshot.ToString()); insert.Parameters.AddWithValue("generation", generation);
         await insert.ExecuteNonQueryAsync();
-        foreach (var file in Fixtures.GoldenFiles.Where(x => x.Contains("/v1-base/", StringComparison.Ordinal)))
+        foreach (var (file, input) in Fixtures.GoldenFiles.Where(x => x.Contains("/v1-base/", StringComparison.Ordinal)).Select(file => (file, Fixtures.Golden(file)))
+            .Concat(additionalJsonl is null ? [] : new[] { ("additional", additionalJsonl) }))
         {
-            var jsonl = Fixtures.Golden(file);
+            var jsonl = input;
             if (mutate is not null && file == "web-ts/v1-base/_fixture_web.jsonl")
             {
                 var records = jsonl.TrimEnd('\n').Split('\n').Select(line => JsonNode.Parse(line)!.AsObject()).ToList();
@@ -226,6 +227,132 @@ public sealed class PostgresExplorerQueryTests(PostgresFixture db)
         await command.ExecuteNonQueryAsync();
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => _queries.ResolveAsync(context.Capability));
         Assert.Contains("default revision", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task UnicodeSearchMatchesOrdinalCaseOracle()
+    {
+        var observations = new List<string>(); var mismatches = new List<string>();
+        foreach (var (name, query) in new (string Name, string Query)[]
+        {
+            ("Σ", "ς"), ("ς", "σ"), ("İ", "i"), ("İ", "I"), ("ı", "I"),
+            ("K", "k"), ("K", "K"), ("ſ", "S"), ("ß", "ẞ"), ("σ", "Σ"),
+        })
+        {
+            string key = "";
+            var context = await Snapshot(mutate: records =>
+            {
+                var node = records.First(record => record["kind"]!.GetValue<string>() == "node");
+                key = node["symbolKey"]!.GetValue<string>(); node["name"] = name;
+            });
+            var expected = name.Equals(query, StringComparison.OrdinalIgnoreCase);
+            var expectedRank = expected ? 4 : name.StartsWith(query, StringComparison.OrdinalIgnoreCase) ? 3
+                : name.Contains(query, StringComparison.OrdinalIgnoreCase) ? 2 : key.Contains(query, StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            var actual = (await _queries.SearchAsync(context, query, null, "web-ts", new(100))).Items.Any(hit => hit.Key == key);
+            await using var command = db.DataSource.CreateCommand("""
+                select lower(n.name)=lower(@query),upper(n.name)=upper(@query),
+                  case when s.name_fold=@fold then 4 when starts_with(s.name_fold,@fold) then 3
+                  when strpos(s.name_fold,@fold)>0 then 2 when strpos(s.symbol_fold,@fold)>0 then 1 else 0 end
+                from analysis_snapshot_artifact a join node n on n.artifact_id=a.artifact_id
+                join node_search s on s.artifact_id=n.artifact_id and s.local_id=n.local_id
+                where a.snapshot_id=@snapshot and n.symbol_key=@key and s.normalizer_id=@normalizer
+                """);
+            command.Parameters.AddWithValue("query", query); command.Parameters.AddWithValue("key", key);
+            command.Parameters.AddWithValue("snapshot", context.SnapshotId);
+            command.Parameters.AddWithValue("normalizer", NodeSearchNormalization.NormalizerId);
+            command.Parameters.AddWithValue("fold", NodeSearchNormalization.Fold(query));
+            await using var reader = await command.ExecuteReaderAsync(); Assert.True(await reader.ReadAsync());
+            var observation = $"name={name},query={query}: OrdinalIgnoreCase={expected}, queryHit={actual}, expectedRank={expectedRank}, actualRank={reader.GetInt32(2)}, PostgreSQL lower={reader.GetBoolean(0)}, upper={reader.GetBoolean(1)}, .NET upper={name.ToUpperInvariant().Equals(query.ToUpperInvariant(), StringComparison.Ordinal)}";
+            observations.Add(observation); if (reader.GetInt32(2) != expectedRank || actual != (expectedRank > 0)) mismatches.Add(observation);
+        }
+        Assert.True(mismatches.Count == 0, "Unicode search differs from the existing OrdinalIgnoreCase contract:\n" + string.Join("\n", observations));
+    }
+
+    [Fact]
+    public async Task SearchUsesOrdinalIgnoreCaseSortAcrossSupplementaryAndBmpNames()
+    {
+        var keys = new List<string>();
+        var names = new[] { "\uE000", "\U00010000" };
+        var context = await Snapshot(mutate: records =>
+        {
+            var nodes = records.Where(record => record["kind"]!.GetValue<string>() == "node").Take(2).ToList();
+            for (var i = 0; i < 2; i++) { keys.Add(nodes[i]["symbolKey"]!.GetValue<string>()); nodes[i]["name"] = names[i]; }
+        });
+        var actual = new List<SearchHit>(); string? cursor = null;
+        do
+        {
+            var page = await _queries.SearchAsync(context, "", null, "web-ts", new(1, cursor));
+            actual.AddRange(page.Items); cursor = page.NextCursor;
+        } while (cursor is not null);
+        Assert.Equal(names.Order(StringComparer.OrdinalIgnoreCase), actual.Where(hit => keys.Contains(hit.Key, StringComparer.Ordinal)).Select(hit => hit.Name));
+    }
+
+    [Fact]
+    public async Task CanonicalWinnerIsChosenBeforeFilteringAcrossDuplicateUnitDeclarations()
+    {
+        var records = Fixtures.Golden("web-ts/v1-base/_fixture_web.jsonl").TrimEnd('\n').Split('\n').Select(line => JsonNode.Parse(line)!.AsObject()).ToList();
+        var node = records.First(record => record["kind"]!.GetValue<string>() == "node");
+        var key = node["symbolKey"]!.GetValue<string>(); var originalName = node["name"]!.GetValue<string>();
+        var originalKind = node["nodeKind"]!.GetValue<string>();
+        records[0]["unit"]!["path"] = "000-first-tsconfig.json";
+        records[0]["configHash"] = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        node["name"] = "CanonicalWinner"; node["nodeKind"] = originalKind == "Function" ? "Method" : "Function";
+        var context = await Snapshot(additionalJsonl: string.Join('\n', records.Select(record => record.ToJsonString())) + "\n");
+        Assert.Equal("CanonicalWinner", (await _queries.SymbolAsync(context, key))!.Name);
+        var winner = await _queries.SearchAsync(context, "CanonicalWinner", null, "web-ts", new(100));
+        Assert.Single(winner.Items, hit => hit.Key == key);
+        var shadowed = await _queries.SearchAsync(context, originalName, null, "web-ts", new(100));
+        Assert.All(shadowed.Items.Where(hit => hit.Key == key), hit => Assert.Equal("CanonicalWinner", hit.Name));
+        var shadowedKind = await _queries.SearchAsync(context, "", originalKind, "web-ts", new(100));
+        Assert.DoesNotContain(shadowedKind.Items, hit => hit.Key == key);
+    }
+
+    [Fact]
+    public async Task MissingArtifactProjectionMarkerFailsClosedWithoutLoadingNodes()
+    {
+        var context = await Snapshot();
+        await using var command = db.DataSource.CreateCommand("delete from artifact_search_projection where artifact_id in(select artifact_id from analysis_snapshot_artifact where snapshot_id=@snapshot)");
+        command.Parameters.AddWithValue("snapshot", context.SnapshotId); await command.ExecuteNonQueryAsync();
+        await Assert.ThrowsAsync<ExplorerProjectionUnavailableException>(() => _queries.ResolveAsync(context.Capability));
+    }
+
+    [Fact]
+    public async Task MissingNodeProjectionDespiteMarkerFailsExplicitlyWhenQueried()
+    {
+        string key = "";
+        var context = await Snapshot(mutate: records =>
+        {
+            var node = records.First(record => record["kind"]!.GetValue<string>() == "node");
+            key = node["symbolKey"]!.GetValue<string>(); node["name"] = "UniqueProjectionTest";
+        });
+        var symbol = await _queries.SymbolAsync(context, key);
+        await using var command = db.DataSource.CreateCommand("delete from node_search where artifact_id=@artifact and local_id=(select local_id from node where artifact_id=@artifact and symbol_key=@key)");
+        command.Parameters.AddWithValue("artifact", symbol!.ArtifactId); command.Parameters.AddWithValue("key", key);
+        await command.ExecuteNonQueryAsync();
+        await Assert.ThrowsAsync<ExplorerProjectionUnavailableException>(() => _queries.SearchAsync(context, "absent-query", null, "web-ts", new(1)));
+    }
+
+    [Fact]
+    public async Task MixedUnicodeNamesHaveTheSameOrderingAsOrdinalIgnoreCaseAcrossPages()
+    {
+        var keys = new List<string>();
+        var names = new[] { "a", "Σ", "ς", "İ", "K", "ſ", "ß", "\uE000", "\U00010000" };
+        var context = await Snapshot(mutate: records =>
+        {
+            var nodes = records.Where(record => record["kind"]!.GetValue<string>() == "node").ToList();
+            Assert.Equal(names.Length, nodes.Count);
+            for (var i = 0; i < names.Length; i++) { keys.Add(nodes[i]["symbolKey"]!.GetValue<string>()); nodes[i]["name"] = names[i]; }
+        });
+        var actual = new List<SearchHit>(); string? cursor = null;
+        do
+        {
+            var page = await _queries.SearchAsync(context, "", null, "web-ts", new(1, cursor));
+            actual.AddRange(page.Items); cursor = page.NextCursor;
+        } while (cursor is not null);
+        Assert.Equal(names.Length, actual.Count);
+        Assert.Equal(names.Length, actual.Select(hit => hit.Key).Distinct(StringComparer.Ordinal).Count());
+        for (var i = 1; i < actual.Count; i++)
+            Assert.True(StringComparer.OrdinalIgnoreCase.Compare(actual[i - 1].Name, actual[i].Name) <= 0, $"Incorrect order: {actual[i - 1].Name} before {actual[i].Name}");
     }
 
 }
