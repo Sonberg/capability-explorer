@@ -12,10 +12,11 @@ import { Capabilities } from "./views/Capabilities";
 import { Changes } from "./views/Changes";
 import { Evaluation } from "./views/Evaluation";
 import { Explore } from "./views/Explore";
+import { BindingPreview } from "./views/BindingPreview";
 import { Integrations } from "./views/Integrations";
 import { Settings } from "./views/Settings";
 
-// The canvas pulls in React Flow and dagre; load it only when opened.
+// Load the shared LikeC4 canvas only when Architecture is opened.
 const ArchitectureView = lazy(() => import("./views/Architecture").then((m) => ({ default: m.ArchitectureView })));
 
 const VIEWS = [
@@ -23,6 +24,7 @@ const VIEWS = [
   ["architecture", "Architecture"],
   ["integrations/exposed", "Integrations: Exposed"],
   ["integrations/consumed", "Integrations: Consumed"],
+  ["binding-preview", "Binding review"],
   ["calculations", "Calculations"],
   ["glossary", "Glossary"],
   ["changes", "Changes"],
@@ -151,7 +153,7 @@ function Shell() {
       </header>
       <ScopeBar />
       {chat && <ChatPanel onClose={() => setChat(false)} />}
-      <main className={`mx-auto max-w-[1500px] p-3 sm:p-5 ${chat ? "sm:mr-[420px]" : ""}`}>
+      <main className={`min-w-0 p-3 sm:p-5 ${chat ? "sm:mr-[420px]" : "w-full"}`}>
         <Routed path={view} params={route.params} />
       </main>
     </>
@@ -170,6 +172,8 @@ function Routed({ path, params }: { path: string; params: URLSearchParams }) {
       return <Integrations direction="exposed" />;
     case "integrations/consumed":
       return <Integrations direction="consumed" />;
+    case "binding-preview":
+      return <BindingPreview />;
     case "integrations":
       window.location.replace("#/integrations/exposed");
       return null;

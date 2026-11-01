@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Reuse one application build, but analyze every configured capability in isolated sandboxes.
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+capabilities="${1:-capabilities.json}"
+scripts/sandbox --offline node node scripts/analysis-receipt.mjs --clear
+ids="$(scripts/sandbox --offline node node scripts/analysis-capability-ids.mjs "$capabilities")"
+application="$(git rev-parse --verify HEAD)"
+state=clean
+[[ -z "$(git status --porcelain --untracked-files=all)" ]] || state=dirty
+while IFS= read -r id; do
+  [[ -n "$id" ]] || continue
+  printf '#### %s\n' "$id"
+  scripts/analyze "$id" "$capabilities"
+done <<< "$ids"
+scripts/sandbox --offline node node scripts/analysis-receipt.mjs "$capabilities" "$application" "$state" "${BINDINGS:-}"

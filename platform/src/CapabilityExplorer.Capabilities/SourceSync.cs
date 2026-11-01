@@ -9,8 +9,9 @@ public sealed record ExportResult(int Files, int Skipped);
 /// blob-less partial clones under the workspace: no checkout, no hooks, no submodules, no build. Local
 /// repositories are only read. Nothing from a repository is executed.
 /// </summary>
-public sealed partial class SourceSync(string workspace, TimeSpan? timeout = null, GitHubAuth? auth = null)
+public sealed partial class SourceSync(string workspace, TimeSpan? timeout = null, GitHubAuth? auth = null, ExportLimits? exportLimits = null)
 {
+    private readonly ExportLimits _exportLimits = exportLimits ?? new ExportLimits();
     private readonly TimeSpan _timeout = timeout ?? TimeSpan.FromMinutes(3);
 
     public GitHubAuth Auth { get; } = auth ?? GitHubAuth.None;
@@ -18,7 +19,7 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
     /// <summary>The directory git commands for this repository run against.</summary>
     public string GitDirectory(RepositorySource source)
     {
-        ArgumentNullException.ThrowIfNull(source);
+        SourceParser.Validate(source);
         if (source.Kind == SourceKind.Local)
         {
             return Path.GetFullPath(ExpandHome(source.Location));
@@ -76,7 +77,7 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
                 return new LockedRepository(source.Id, source.Ref, null, null, null, $"{dir} is not a git repository");
             }
 
-            var (ok, sha) = await GitAsync(dir, ["rev-parse", "--verify", "--quiet", $"{source.Ref}^{{commit}}"], cancellationToken);
+            var (ok, sha) = await GitAsync(dir, ["rev-parse", "--verify", "--quiet", "--end-of-options", $"{source.Ref}^{{commit}}"], cancellationToken);
             if (!ok)
             {
                 return new LockedRepository(source.Id, source.Ref, null, null, null, $"ref '{source.Ref}' not found");
@@ -98,7 +99,7 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
     {
         if (Directory.Exists(dir))
         {
-            string[] fetchArgs = ["fetch", "--prune", "--tags", "--filter=blob:none", "origin", "+refs/heads/*:refs/heads/*"];
+            string[] fetchArgs = ["fetch", "--prune", "--tags", "--filter=blob:none", source.Location, "+refs/heads/*:refs/heads/*"];
             var fetch = await GitAsync(dir, fetchArgs, cancellationToken);
             if (!fetch.Ok && Auth.Configured && GitHubAuth.IsAuthError(fetch.Output))
             {
@@ -150,10 +151,12 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
             throw new ArgumentException($"not a commit sha: {commitSha}", nameof(commitSha));
         }
 
+        _exportLimits.Validate();
         var dir = GitDirectory(source);
+        destination = SourceSafety.PrepareDestination(destination);
         if (source.Kind == SourceKind.GitHub)
         {
-            await PrefetchAsync(dir, commitSha, cancellationToken);
+            await PrefetchAsync(dir, source.Location, commitSha, cancellationToken);
         }
 
         Directory.CreateDirectory(destination);
@@ -163,13 +166,19 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(_timeout * 4);
         using var process = Process.Start(start) ?? throw new InvalidOperationException("could not start git");
-        var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
-        int files = 0, skipped = 0;
+        var stderr = SourceSafety.ReadBoundedAsync(process.StandardError, process, 64 * 1024, timeout.Token);
+        int files = 0, skipped = 0, entries = 0;
+        long bytes = 0;
         try
         {
             var reader = new System.Formats.Tar.TarReader(process.StandardOutput.BaseStream);
             while (await reader.GetNextEntryAsync(copyData: false, timeout.Token) is { } entry)
             {
+                if (++entries > _exportLimits.Entries || entry.Length < 0 || entry.Length > _exportLimits.Bytes - bytes)
+                {
+                    throw new InvalidOperationException("git archive exceeded total export entry or byte limits");
+                }
+                bytes += entry.Length;
                 var target = Path.GetFullPath(Path.Combine(destination, entry.Name));
                 if (!target.StartsWith(root, StringComparison.Ordinal))
                 {
@@ -177,6 +186,7 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
                     continue;
                 }
 
+                SourceSafety.RejectLinks(target);
                 switch (entry.EntryType)
                 {
                     case System.Formats.Tar.TarEntryType.GlobalExtendedAttributes:
@@ -186,7 +196,7 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
                         break;
                     case System.Formats.Tar.TarEntryType.RegularFile or System.Formats.Tar.TarEntryType.V7RegularFile when entry.Length <= MaxExportedFileBytes:
                         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                        await using (var file = File.Create(target))
+                        await using (var file = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                         {
                             if (entry.DataStream is { } data) // null for empty files
                             {
@@ -209,8 +219,14 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
         }
         catch (OperationCanceledException)
         {
-            process.Kill(entireProcessTree: true);
+            SourceSafety.Kill(process);
             throw new InvalidOperationException($"git archive timed out after {(_timeout * 4).TotalSeconds:0}s");
+        }
+
+        catch
+        {
+            SourceSafety.Kill(process);
+            throw;
         }
 
         if (process.ExitCode != 0)
@@ -218,6 +234,7 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
             throw new InvalidOperationException($"git archive failed: {Last(await stderr)}");
         }
 
+        await stderr; // propagate bounded stderr failures even when Git exits successfully
         return new ExportResult(files, skipped);
     }
 
@@ -227,7 +244,7 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
     private static partial System.Text.RegularExpressions.Regex CommitPattern();
 
     /// <summary>Fetches the blobs a commit's tree needs in one request, the way git's own lazy fetch does per object.</summary>
-    private async Task PrefetchAsync(string dir, string commitSha, CancellationToken cancellationToken)
+    private async Task PrefetchAsync(string dir, string location, string commitSha, CancellationToken cancellationToken)
     {
         var (ok, listing) = await GitAsync(dir, ["rev-list", "--objects", "--missing=print", commitSha], cancellationToken);
         if (!ok)
@@ -241,7 +258,7 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
             return;
         }
 
-        string[] fetchArgs = ["-c", "fetch.negotiationAlgorithm=noop", "fetch", "origin", "--no-tags", "--no-write-fetch-head", "--recurse-submodules=no", "--filter=blob:none", "--stdin"];
+        string[] fetchArgs = ["-c", "fetch.negotiationAlgorithm=noop", "fetch", location, "--no-tags", "--no-write-fetch-head", "--recurse-submodules=no", "--filter=blob:none", "--stdin"];
         var input = string.Join('\n', missing) + "\n";
         var fetch = await GitAsync(dir, fetchArgs, cancellationToken, input: input);
         if (!fetch.Ok && Auth.Configured && GitHubAuth.IsAuthError(fetch.Output))
@@ -259,7 +276,7 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
     {
         var start = new ProcessStartInfo("git") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
         // Never run repository-provided code or prompt for credentials.
-        foreach (var a in new[] { "-c", "core.hooksPath=/dev/null", "-c", "protocol.file.allow=never", "-c", "protocol.ext.allow=never", "-c", "core.fsmonitor=false" })
+        foreach (var a in new[] { "-c", "core.hooksPath=/dev/null", "-c", "protocol.file.allow=never", "-c", "protocol.ext.allow=never", "-c", "core.fsmonitor=false", "-c", "credential.helper=", "-c", "protocol.allow=never", "-c", "protocol.https.allow=always", "-c", "http.followRedirects=false", "-c", "http.sslVerify=true", "-c", "core.sshCommand=/bin/false" })
         {
             start.ArgumentList.Add(a);
         }
@@ -275,6 +292,10 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
             start.ArgumentList.Add(a);
         }
 
+        start.Environment["GIT_SSL_NO_VERIFY"] = "false";
+        start.Environment["GIT_CONFIG_NOSYSTEM"] = "1";
+        start.Environment["GIT_CONFIG_GLOBAL"] = "/dev/null";
+        start.Environment["GIT_NO_LAZY_FETCH"] = "1";
         start.Environment["GIT_TERMINAL_PROMPT"] = "0";
         start.Environment["GIT_ASKPASS"] = "/bin/false";
         if (!anonymous)
@@ -293,24 +314,29 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(_timeout);
         using var process = Process.Start(start) ?? throw new InvalidOperationException("could not start git");
-        if (input is not null)
-        {
-            await process.StandardInput.WriteAsync(input.AsMemory(), timeout.Token);
-            process.StandardInput.Close();
-        }
-
-        var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
-        var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
+        var stdout = SourceSafety.ReadBoundedAsync(process.StandardOutput, process, 8 * 1024 * 1024, timeout.Token);
+        var stderr = SourceSafety.ReadBoundedAsync(process.StandardError, process, 64 * 1024, timeout.Token);
         try
         {
+            if (input is not null)
+            {
+                await process.StandardInput.WriteAsync(input.AsMemory(), timeout.Token);
+                process.StandardInput.Close();
+            }
             await process.WaitForExitAsync(timeout.Token);
+            var output = await stdout;
+            var error = await stderr;
+            return (process.ExitCode == 0, process.ExitCode == 0 ? output : error + output);
         }
         catch (OperationCanceledException)
         {
-            process.Kill(entireProcessTree: true);
+            SourceSafety.Kill(process);
             throw new InvalidOperationException($"git {args[0]} timed out after {_timeout.TotalSeconds:0}s");
         }
-
-        return (process.ExitCode == 0, process.ExitCode == 0 ? await stdout : await stderr + await stdout);
+        catch
+        {
+            SourceSafety.Kill(process);
+            throw;
+        }
     }
 }

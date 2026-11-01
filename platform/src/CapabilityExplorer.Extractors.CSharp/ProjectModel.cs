@@ -2,7 +2,10 @@ using System.Xml.Linq;
 
 namespace CapabilityExplorer.Extractors.CSharp;
 
-public sealed record PackageRef(string Id, string? Version, int Line);
+public sealed record PackageRef(string Id, string? Version, int Line)
+{
+    public bool UnsupportedAssets { get; init; }
+}
 
 public sealed record ProjectRef(string Include, string? ResolvedPath, int Line);
 
@@ -26,11 +29,18 @@ public sealed record ProjectModel(
 
     /// <summary>The packages this project resolves: its references plus the implicit hosting package of worker projects. Sorted, one per id.</summary>
     public IReadOnlyList<PackageRef> PackageRoots() =>
-        Packages.Concat(IsWorker ? [new PackageRef("Microsoft.Extensions.Hosting", null, 0)] : [])
+        Packages.Where(p => !p.UnsupportedAssets).Concat(IsWorker && !Packages.Any(p => p.Id.Equals("Microsoft.Extensions.Hosting", StringComparison.OrdinalIgnoreCase)) ? [new PackageRef("Microsoft.Extensions.Hosting", null, 0)] : [])
             .DistinctBy(p => p.Id, StringComparer.OrdinalIgnoreCase)
             .OrderBy(p => p.Id, StringComparer.OrdinalIgnoreCase).ToList();
 
     public bool IsWeb => Sdk.Contains("Web", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A single literal target. Conditional, inherited and multi-target builds are not evaluated.</summary>
+    public string? TargetFramework { get; init; }
+
+    public IReadOnlyList<ResolutionIssue> ResolutionIssues { get; init; } = [];
+
+    public IReadOnlyList<string> FrameworkReferences { get; init; } = [];
 
     /// <summary>&lt;CheckForOverflowUnderflow&gt;true: integer arithmetic throws instead of wrapping.</summary>
     public bool CheckedArithmetic { get; init; }
@@ -65,16 +75,47 @@ public sealed record ProjectModel(
         string? Prop(string name) => project.Descendants().FirstOrDefault(e => e.Name.LocalName == name)?.Value.Trim();
         int Line(XElement e) => ((System.Xml.IXmlLineInfo)e).LineNumber;
 
+        static bool Conditional(XElement e) => e.AncestorsAndSelf().Any(x => x.Attribute("Condition") is not null);
+        var issues = new List<ResolutionIssue>();
+        var targets = project.Descendants().Where(e => e.Name.LocalName is "TargetFramework" or "TargetFrameworks").ToList();
+        var target = targets.Count == 1 && targets[0].Name.LocalName == "TargetFramework" && !Conditional(targets[0])
+            && FrameworkSelection.Parse(targets[0].Value.Trim()) is not null ? targets[0].Value.Trim() : null;
+        if (target is null)
+        {
+            issues.Add(new("UNSUPPORTED_TARGET_FRAMEWORK", "A single literal, unconditional TargetFramework is required; MSBuild properties, imports and multi-targeting are not evaluated"));
+        }
+
+        var conditionalReferences = project.Descendants().Where(e => e.Name.LocalName is "PackageReference" or "ProjectReference" or "FrameworkReference").Where(Conditional).ToList();
+        if (conditionalReferences.Count > 0)
+        {
+            issues.Add(new("UNSUPPORTED_CONDITIONAL_REFERENCES", "Conditional package/project/framework references are omitted because MSBuild conditions are not evaluated"));
+        }
+
+        var frameworks = project.Descendants().Where(e => e.Name.LocalName == "FrameworkReference" && !Conditional(e))
+            .Select(e => (string?)e.Attribute("Include")).OfType<string>().Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        foreach (var framework in frameworks.Where(f => f is not "Microsoft.NETCore.App" and not "Microsoft.AspNetCore.App"))
+        {
+            issues.Add(new("UNSUPPORTED_FRAMEWORK_REFERENCE", $"FrameworkReference {framework} is not supported by this static extractor"));
+        }
+
         var dir = Path.GetDirectoryName(path)!;
-        var central = CentralVersions(root, dir);
-        var packages = project.Descendants().Where(e => e.Name.LocalName == "PackageReference")
+        var central = CentralVersions(root, dir, issues);
+        static bool AssetControls(XElement e) => e.Attributes().Any(a => a.Name.LocalName is "IncludeAssets" or "ExcludeAssets" or "PrivateAssets")
+            || e.Elements().Any(c => c.Name.LocalName is "IncludeAssets" or "ExcludeAssets" or "PrivateAssets");
+        if (project.Descendants().Any(e => e.Name.LocalName == "PackageReference" && AssetControls(e)))
+        {
+            issues.Add(new("UNSUPPORTED_PACKAGE_ASSET_METADATA", "Package references with IncludeAssets, ExcludeAssets or PrivateAssets are omitted from compile resolution; their asset flow is not evaluated"));
+        }
+        var packages = project.Descendants().Where(e => e.Name.LocalName == "PackageReference" && !Conditional(e))
             .Select(e => new PackageRef(
                 (string?)e.Attribute("Include") ?? (string?)e.Attribute("Update") ?? "",
                 (string?)e.Attribute("Version") ?? e.Elements().FirstOrDefault(x => x.Name.LocalName == "Version")?.Value ?? central.GetValueOrDefault(((string?)e.Attribute("Include") ?? "").ToLowerInvariant()),
-                Line(e)))
+                Line(e)) { UnsupportedAssets = AssetControls(e) || issues.Any(i => i.Code == "UNSUPPORTED_CENTRAL_PACKAGE_CONDITIONS")
+                    && e.Attribute("Version") is null && !e.Elements().Any(x => x.Name.LocalName == "Version")
+                    && !central.ContainsKey(((string?)e.Attribute("Include") ?? "").ToLowerInvariant()) })
             .Where(p => p.Id.Length > 0)
             .ToList();
-        var projectRefs = project.Descendants().Where(e => e.Name.LocalName == "ProjectReference")
+        var projectRefs = project.Descendants().Where(e => e.Name.LocalName == "ProjectReference" && !Conditional(e))
             .Select(e =>
             {
                 var include = ((string?)e.Attribute("Include") ?? "").Replace('\\', '/');
@@ -114,6 +155,9 @@ public sealed record ProjectModel(
             projectRefs,
             sources)
         {
+            TargetFramework = target,
+            ResolutionIssues = issues,
+            FrameworkReferences = frameworks,
             CheckedArithmetic = string.Equals(Prop("CheckForOverflowUnderflow"), "true", StringComparison.OrdinalIgnoreCase),
             IsTestProject = isTestProject,
             IsExecutable = string.Equals(outputType, "Exe", StringComparison.OrdinalIgnoreCase) || string.Equals(outputType, "WinExe", StringComparison.OrdinalIgnoreCase)
@@ -122,7 +166,7 @@ public sealed record ProjectModel(
     }
 
     /// <summary>Central package management: Directory.Packages.props in the project directory or above (within root).</summary>
-    private static Dictionary<string, string> CentralVersions(string root, string dir)
+    private static Dictionary<string, string> CentralVersions(string root, string dir, List<ResolutionIssue> issues)
     {
         var result = new Dictionary<string, string>(StringComparer.Ordinal);
         for (var d = dir; d is not null && d.StartsWith(Path.GetFullPath(root), StringComparison.Ordinal); d = Path.GetDirectoryName(d))
@@ -133,11 +177,19 @@ public sealed record ProjectModel(
                 continue;
             }
 
-            foreach (var e in XDocument.Load(props).Descendants().Where(e => e.Name.LocalName == "PackageVersion"))
+            var versions = XDocument.Load(props).Descendants().Where(e => e.Name.LocalName == "PackageVersion").ToList();
+            var conditionalIds = versions.Where(e => e.AncestorsAndSelf().Any(x => x.Attribute("Condition") is not null))
+                .Select(e => (string?)e.Attribute("Include")).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (conditionalIds.Count > 0)
+            {
+                issues.Add(new("UNSUPPORTED_CENTRAL_PACKAGE_CONDITIONS", "Packages with conditional central PackageVersion declarations are omitted because MSBuild conditions are not evaluated"));
+            }
+
+            foreach (var e in versions)
             {
                 if ((string?)e.Attribute("Include") is { } id && (string?)e.Attribute("Version") is { } v)
                 {
-                    result.TryAdd(id.ToLowerInvariant(), v);
+                    if (!conditionalIds.Contains(id)) result.TryAdd(id.ToLowerInvariant(), v);
                 }
             }
 

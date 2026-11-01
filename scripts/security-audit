@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Offline evidence validation. Collection is separate and never inferred from a receipt.
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+if [[ "${1:-}" == baseline || "${1:-}" == verify ]]; then
+  [[ $# == 2 ]] || { echo "manifest required" >&2; exit 2; }
+  node scripts/security-collect.mjs history-check "$2"
+fi
+exec scripts/sandbox --offline node node scripts/security-audit.mjs "$@"

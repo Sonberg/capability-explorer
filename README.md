@@ -13,6 +13,21 @@ C#, TypeScript/JavaScript and the supported SQL routine calculations are extract
 
 Shared terminology: [ubiquitous language](docs/ubiquitous-language.md).
 
+## Contributing and PR updates
+
+Start with [HANDOFF](docs/HANDOFF.md) and the
+[PR lifecycle and conflict-prevention decision](docs/adr/0005-pr-lifecycle-and-conflict-prevention.md).
+**All PRs merge only into `main`. Preserve main through owner-reviewed PRs.**
+Claim scope before editing and use an isolated feature branch/worktree based on
+freshly fetched `origin/main`. Integrate that target
+before CI; create PRs explicitly with `gh pr create --base main`.
+Do not directly push, merge, revert or rewrite main without explicit authority.
+The current transition uses existing PR #27; see [MADR-0016](docs/adr/0016-main-only-pr-integration.md).
+One integration owner coordinates shared files and dependent PRs. The default is
+owner review and merge; agents do not merge PRs or enable auto-merge. Run
+`make pr-check` after the required pre-push gate and before creating a PR or
+handing updated code back for review. See the MADR for conflicts and retargeting.
+
 ## Before pushing
 
 Install Docker and GitHub CLI, then run `gh extension install nektos/gh-act --pin v0.2.94`.
@@ -23,7 +38,7 @@ docker pull catthehacker/ubuntu:act-24.04@sha256:c58e2b364da03b0c804c7d660f2ecbe
 ```
 
 Run `make install-git-hooks` once in each clone. `make local-check` executes the full
-GitHub CI job locally: action advisory audit, Trivy High/Critical dependency scan
+GitHub CI job locally: action advisory audit, Trivy all-severity dependency scan
 (including dev dependencies), fixture compilation, all tests and golden gates.
 The pre-push hook requires a clean checkout of the outgoing commit and blocks on
 failure. Package, image and vulnerability database downloads are cached locally.
@@ -35,6 +50,15 @@ applies project-wide; see [MADR-0003](docs/adr/0003-local-ci-before-push.md) for
 policy, limits, pinned tools and hook installation behavior. Hosted CI remains required.
 
 ## Layout
+
+Trusted native development remains the default outside CI. Use `EXECUTION=sandbox`
+for fully containerized development/validation; CI selects that profile and uses
+only Docker on the runner. Repository analysis is sandboxed in either profile.
+After PR #27 merges, run `make EXECUTION=sandbox dev`: by default it re-analyzes
+configured capabilities before importing artifacts. `DEV_REANALYZE=0` explicitly
+requests import-only startup. Compare the private `.sandbox-cache/analysis-receipt.json`
+application/repository SHAs and hashes with the owner to verify shared inputs;
+unavailable repositories remain failures or not assessed, never successful analysis.
 
 | Path | Content |
 |---|---|

@@ -7,7 +7,16 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 lang="$1"; out="$2"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-node_or_python=""
+# Materialize the inventory first: process-substitution failures otherwise leave
+# the loop empty while the script exits successfully. Only Bash and sed are needed.
+sed -n 's/^ *"\([a-z0-9-]*\)": {$/\1/p; s/^ *"\([a-z0-9.-]*\)": "\([0-9a-f]\{40\}\)",\{0,1\}$/\1\t\2/p' "$root/fixtures/revisions.lock.json" > "$work/lock-lines"
+current_repo=""
+while IFS=$'\t' read -r name commit; do
+  if [[ -z "$commit" ]]; then current_repo="$name"; continue; fi
+  [[ -n "$current_repo" ]] || { echo 'fixture revision has no repository' >&2; exit 1; }
+  printf '%s\t%s\t%s\n' "$current_repo" "$name" "$commit"
+done < "$work/lock-lines" > "$work/revisions.tsv"
+[[ -s "$work/revisions.tsv" ]] || { echo 'fixture revision inventory is empty' >&2; exit 1; }
 while IFS=$'\t' read -r repo tag sha; do
   src="$work/$repo@$tag"; mkdir -p "$src"
   git -C "$root/fixtures/.repos/$repo" archive "$sha" | tar -x -C "$src"
@@ -18,4 +27,4 @@ while IFS=$'\t' read -r repo tag sha; do
     ts) node "$root/extractors/ts/src/cli.ts" extract --source "$src" --repository "$repo" --commit "$sha" --out "$dest" | sed "s#^#$repo@$tag #" ;;
     sql) node "$root/extractors/ts/src/cli.ts" extract-sql --source "$src" --repository "$repo" --commit "$sha" --out "$dest" | sed "s#^#$repo@$tag #" ;;
   esac
-done < <(sed -n 's/^ *"\([a-z0-9-]*\)": {$/\1/p; s/^ *"\([a-z0-9.-]*\)": "\([0-9a-f]\{40\}\)",\{0,1\}$/\1\t\2/p' "$root/fixtures/revisions.lock.json" | awk -F'\t' 'NF==1{repo=$1; next} {print repo "\t" $1 "\t" $2}')
+done < "$work/revisions.tsv"

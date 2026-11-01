@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "erasableSyntaxOnly": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "types": [
+      "vite/client",
+      "node",
+      "likec4/vite-plugin-modules"
+    ]
+  },
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "src/routing.worker.ts",
+    "src/live-model.worker.ts"
+  ]
+}

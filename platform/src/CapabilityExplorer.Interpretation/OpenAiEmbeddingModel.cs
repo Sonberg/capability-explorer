@@ -46,7 +46,7 @@ public sealed class OpenAiEmbeddingModel
         }
         catch (HttpRequestException e)
         {
-            throw new InterpretationUnavailableException($"model request failed: {e.Message}", e);
+            throw new InterpretationUnavailableException("model request failed", e);
         }
 
         using (response)
@@ -54,7 +54,7 @@ public sealed class OpenAiEmbeddingModel
             var text = await response.Content.ReadAsStringAsync(cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                throw new InterpretationUnavailableException($"model API returned {(int)response.StatusCode}: {Truncate(text)}");
+                throw new InterpretationUnavailableException($"model API returned {(int)response.StatusCode}");
             }
 
             try
@@ -70,10 +70,9 @@ public sealed class OpenAiEmbeddingModel
             }
             catch (Exception e) when (e is JsonException or KeyNotFoundException or IndexOutOfRangeException or InvalidOperationException)
             {
-                throw new InterpretationUnavailableException($"unexpected model response shape: {Truncate(text)}", e);
+                throw new InterpretationUnavailableException("unexpected model response shape", e);
             }
         }
     }
 
-    private static string Truncate(string s) => s.Length <= 300 ? s : s[..300] + "…";
 }

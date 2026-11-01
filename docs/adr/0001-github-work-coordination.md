@@ -61,16 +61,24 @@ the reviewing PR. Adoption by one session does not bind another contributor.
    outstanding risks, and remaining ownership. Release claims explicitly. Mark
    `merged` only with an actual merge reference.
 
-### Main alignment before validation and PRs
+### Target-branch alignment before validation and PRs
+
+Operator correction (2026-11-01): the sole delivery target is
+`main`. This supersedes earlier main-based instructions.
+Never push, merge, revert or rewrite main. Explicitly create PRs with
+`--base main`; owner review/merge authority is unchanged.
 
 At the operator's request, each delivery fetches `origin/main` and integrates it
-before the full local CI gate. `scripts/check-main-alignment` rejects a HEAD that
+before the full local CI gate. `scripts/check-target-alignment` rejects a HEAD that
 does not contain the freshly fetched commit, including fetch failures. It never
 merges, rebases, or resolves conflicts automatically. After integration, commit
 and run the full gate against that clean source. Do not create a PR from an old
 branch just because its earlier checks passed.
 
-Immediately before creating or updating a PR, run `make pr-check`. It refreshes
+Before PR creation, base changes or review handoff, run `make pr-check`. Code
+updates are gated by the installed pre-push hook; discussion-only comments do not
+require CI. See [MADR-0005](0005-pr-lifecycle-and-conflict-prevention.md) for the
+full sequence, merge authority, conflicts and dependency retargeting. The command refreshes
 main and checks the local CI receipt against both HEAD and that main SHA. If main
 advanced, integrate it and rerun the gate. Record both SHAs in the handoff. GitHub
 can change after a check, so this is not an atomic remote merge guarantee; hosted

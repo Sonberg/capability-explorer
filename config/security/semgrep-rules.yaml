@@ -1,0 +1,55 @@
+rules:
+  - id: ce.javascript-dynamic-code
+    languages: [javascript, typescript]
+    message: Dynamic code execution crosses the analyzed-source trust boundary; review every argument origin.
+    severity: ERROR
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+  - id: ce.javascript-html-sink
+    languages: [javascript, typescript]
+    message: HTML sink requires evidence of trusted static markup or context-appropriate sanitization.
+    severity: WARNING
+    pattern-either:
+      - pattern: $EL.innerHTML = $VALUE
+      - pattern: $EL.outerHTML = $VALUE
+      - pattern: $EL.insertAdjacentHTML($POSITION, $VALUE)
+      - pattern: dangerouslySetInnerHTML={$VALUE}
+  - id: ce.csharp-process-boundary
+    languages: [csharp]
+    message: Process launch must use a fixed executable and argument-list entries; inspect tainted arguments and option injection.
+    severity: WARNING
+    pattern-either:
+      - pattern: new ProcessStartInfo(...)
+      - pattern: Process.Start(...)
+      - pattern: $PSI.Arguments = $VALUE
+      - pattern: $PSI.UseShellExecute = true
+  - id: ce.csharp-xml-resolution
+    languages: [csharp]
+    message: Explicit XML resolver or DTD parsing requires offline external-entity controls.
+    severity: ERROR
+    pattern-either:
+      - pattern: $SETTINGS.DtdProcessing = DtdProcessing.Parse
+      - pattern: $SETTINGS.XmlResolver = new XmlUrlResolver(...)
+  - id: ce.csharp-archive-extraction
+    languages: [csharp]
+    message: Archive extraction needs traversal, symlink and resource-limit review for untrusted packages.
+    severity: WARNING
+    pattern-either:
+      - pattern: ZipFile.ExtractToDirectory(...)
+      - pattern: $ENTRY.ExtractToFile(...)
+      - pattern: $ARCHIVE.ExtractToDirectory(...)
+  - id: ce.csharp-sql-command
+    languages: [csharp]
+    message: SQL command construction requires parameterization; static queries are reviewed false positives.
+    severity: WARNING
+    pattern-either:
+      - pattern: new NpgsqlCommand(...)
+      - pattern: new SqlCommand(...)
+      - pattern: $QUERY.ExecuteSqlRaw(...)
+      - pattern: $QUERY.FromSqlRaw(...)
+  - id: ce.shell-eval
+    languages: [bash]
+    message: Shell eval is a code execution boundary; require a fixed trusted command without analyzed input.
+    severity: ERROR
+    pattern: eval ...

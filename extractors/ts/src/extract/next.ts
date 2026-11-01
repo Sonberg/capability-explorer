@@ -1,165 +1,157 @@
-import { readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import ts from "typescript";
 import type { ToolRef } from "../contracts/records.ts";
-import { isFunctionInit, type Ctx } from "./context.ts";
+import type { Ctx } from "./context.ts";
 
-export const NEXT = { name: "next.routes", version: "1" };
-
-/** Verbs a Next.js App Router route handler may export. HEAD and OPTIONS are only extracted when exported explicitly. */
+export const NEXT: ToolRef = { name: "next.app-router", version: "1" };
 export const NEXT_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] as const;
+const METHODS = new Set<string>(NEXT_METHODS);
 
 export interface NextRoute {
-  /** Display form: `[id]` -> `{id}`, `[...path]` -> `{...path}`. */
   route: string;
-  /** Comparison form used in endpoint keys: `{}` for one segment, `{...}` for a catch-all. */
   normalized: string;
   catchAll?: boolean;
   optionalCatchAll?: boolean;
 }
-
 export type NextRouteResult = { route: NextRoute } | { skip: "private" } | { unsupported: string } | undefined;
 
-const ROUTE_FILE = /(?:^|\/)(?:src\/)?app\/((?:.*\/)?)route\.(?:[mc]?[jt]sx?)$/;
-
-/**
- * The URL a `route.ts` file serves, from its path relative to the package root. Undefined when the file is not an
- * App Router route handler. Route groups `(x)` add no segment, `_private` folders are not routable, parallel
- * (`@slot`) and intercepting (`(.)x`) folders are reported as unsupported rather than guessed.
- */
+/** Legacy display helper. Artifacts retain distinct required/optional catch-all identities below. */
 export function nextRouteFor(pathInPackage: string): NextRouteResult {
-  const m = ROUTE_FILE.exec(pathInPackage);
-  if (!m) return undefined;
-  const segments = m[1]!.split("/").filter(Boolean);
-  const display: string[] = [];
-  const normalized: string[] = [];
-  let catchAll = false;
-  let optionalCatchAll = false;
-  for (const [i, seg] of segments.entries()) {
-    if (seg.startsWith("_")) return { skip: "private" };
-    if (seg.startsWith("@")) return { unsupported: `parallel route folder "${seg}"` };
-    if (/^\((\.{1,3})\)/.test(seg)) return { unsupported: `intercepting route folder "${seg}"` };
-    if (/^\(.*\)$/.test(seg)) continue; // route group
-    let d: RegExpExecArray | null;
-    if ((d = /^\[\[\.\.\.([^\]]+)\]\]$/.exec(seg))) {
-      if (i !== segments.length - 1) return { unsupported: `optional catch-all "${seg}" is not the last segment` };
-      display.push(`{...${d[1]}}`); normalized.push("{...}"); catchAll = optionalCatchAll = true;
-    } else if ((d = /^\[\.\.\.([^\]]+)\]$/.exec(seg))) {
-      if (i !== segments.length - 1) return { unsupported: `catch-all "${seg}" is not the last segment` };
-      display.push(`{...${d[1]}}`); normalized.push("{...}"); catchAll = true;
-    } else if ((d = /^\[([^\].[]+)\]$/.exec(seg))) {
-      display.push(`{${d[1]}}`); normalized.push("{}");
-    } else if (/[[\]]/.test(seg)) {
-      return { unsupported: `folder "${seg}"` };
-    } else {
-      display.push(seg); normalized.push(seg.toLowerCase());
-    }
+  const match = /^(?:src\/)?app\/((?:.*\/)?)route\.(?:[mc]?[jt]sx?)$/.exec(pathInPackage);
+  if (!match) return undefined;
+  const segments = match[1]!.split("/").filter(Boolean);
+  const display: string[] = [], normalized: string[] = [];
+  let catchAll = false, optionalCatchAll = false;
+  for (const [i, segment] of segments.entries()) {
+    if (segment.startsWith("_")) return { skip: "private" };
+    if (/^\([^.)][^/]*\)$/.test(segment)) continue;
+    if (segment.startsWith("@") || segment.startsWith("(") || /[%?#{}\s]/.test(segment)) return { unsupported: `route folder "${segment}"` };
+    const optional = /^\[\[\.\.\.([^\[\]]+)\]\]$/.exec(segment);
+    const required = /^\[\.\.\.([^\[\]]+)\]$/.exec(segment);
+    const dynamic = /^\[([^\[\].]+)\]$/.exec(segment);
+    if ((optional || required) && i !== segments.length - 1) return { unsupported: `catch-all "${segment}" is not the last segment` };
+    if (optional || required) {
+      display.push(`{...${(optional ?? required)![1]}}`); normalized.push("{...}");
+      catchAll = true; optionalCatchAll = !!optional;
+    } else if (dynamic) { display.push(`{${dynamic[1]}}`); normalized.push("{}"); }
+    else if (/[\[\]]/.test(segment)) return { unsupported: `route folder "${segment}"` };
+    else { display.push(segment); normalized.push(segment.toLowerCase()); }
   }
-  return {
-    route: {
-      route: "/" + display.join("/"),
-      normalized: "/" + normalized.join("/"),
-      catchAll: catchAll || undefined,
-      optionalCatchAll: optionalCatchAll || undefined,
-    },
-  };
+  return { route: { route: "/" + display.join("/"), normalized: "/" + normalized.join("/"),
+    catchAll: catchAll || undefined, optionalCatchAll: optionalCatchAll || undefined } };
 }
 
-/** Whether the unit's package.json declares `next`. */
+/** Read package evidence through the same source boundary as the compiler. */
 export function usesNext(ctx: Ctx): boolean {
   if (!ctx.unit.packageJson) return false;
   try {
-    const pkg = JSON.parse(readFileSync(ctx.unit.packageJson, "utf8")) as Record<string, Record<string, string> | undefined>;
-    return Boolean(pkg.dependencies?.next ?? pkg.devDependencies?.next ?? pkg.peerDependencies?.next);
-  } catch {
-    return false;
-  }
+    const pkg = JSON.parse(ctx.readRepoFile(ctx.rel(ctx.unit.packageJson))) as {
+      dependencies?: Record<string, unknown>; devDependencies?: Record<string, unknown>; peerDependencies?: Record<string, unknown>;
+    };
+    return typeof (pkg.dependencies?.next ?? pkg.devDependencies?.next ?? pkg.peerDependencies?.next) === "string";
+  } catch { return false; }
 }
 
-interface Handler { method: string; decl: ts.Declaration; node: ts.Node }
-
-const unwrap = (e: ts.Expression): ts.Expression => {
-  while (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isNonNullExpression(e) || ts.isSatisfiesExpression(e)) e = e.expression;
-  return e;
+const unwrap = (expression: ts.Expression): ts.Expression => {
+  while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isNonNullExpression(expression) || ts.isSatisfiesExpression(expression)) expression = expression.expression;
+  return expression;
 };
 
-/**
- * Resolve an exported verb alias to the callable declaration it names. If the
- * callable is external or otherwise not represented in this artifact, the
- * route module is the nearest valid HANDLES source.
- */
-function handlerOwner(ctx: Ctx, h: Handler, sf: ts.SourceFile): string {
-  let decl: ts.Declaration | undefined = h.decl;
+/** Local immutable aliases are source proof; factories, mutable bindings and cross-module re-exports are not. */
+function handlerOwner(ctx: Ctx, symbol: ts.Symbol, sf: ts.SourceFile): { key: string; declaration: ts.Declaration } | undefined {
+  let declaration = symbol.valueDeclaration;
   const seen = new Set<ts.Declaration>();
-  while (decl && !seen.has(decl)) {
-    seen.add(decl);
-    if (ts.isFunctionDeclaration(decl) || ts.isMethodDeclaration(decl) || ts.isGetAccessor(decl) || ts.isSetAccessor(decl)) {
-      const key = ctx.keyOf(decl);
-      if (key && ctx.b.hasNode(key)) return key;
-      break;
+  while (declaration && !seen.has(declaration) && declaration.getSourceFile() === sf) {
+    seen.add(declaration);
+    if (ts.isFunctionDeclaration(declaration) && declaration.body) {
+      const key = ctx.keyOf(declaration);
+      return key && ctx.b.hasNode(key) ? { key, declaration } : undefined;
     }
-    if ((ts.isVariableDeclaration(decl) || ts.isPropertyDeclaration(decl)) && decl.initializer) {
-      if (isFunctionInit(decl.initializer)) {
-        const key = ctx.keyOf(decl);
-        if (key && ctx.b.hasNode(key)) return key;
-        break;
-      }
-      const init = unwrap(decl.initializer);
-      decl = ctx.resolveSymbol(init)?.valueDeclaration;
-      continue;
+    if (!ts.isVariableDeclaration(declaration) || !declaration.initializer || !(ts.getCombinedNodeFlags(declaration) & ts.NodeFlags.Const)) return undefined;
+    const initializer = unwrap(declaration.initializer);
+    if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) {
+      const key = ctx.keyOf(declaration);
+      return key && ctx.b.hasNode(key) ? { key, declaration } : undefined;
     }
-    break;
+    if (ts.isIdentifier(initializer)) { declaration = ctx.resolveSymbol(initializer)?.valueDeclaration; continue; }
+    // A known function property (e.g. Response.json) has no local function node. Keep module ownership.
+    if (ts.isPropertyAccessExpression(initializer) && ctx.checker.getTypeAtLocation(initializer).getCallSignatures().length > 0)
+      return { key: ctx.fileKey(sf), declaration };
+    return undefined;
   }
-  return ctx.fileKey(sf);
+  return undefined;
 }
 
-/** Statically exported HTTP handlers of a route module: `export function GET`, `export const POST = ...`, `export { x as PUT }`. */
-function exportedHandlers(ctx: Ctx, sf: ts.SourceFile): Handler[] {
-  const out: Handler[] = [];
-  const isVerb = (n: string): n is (typeof NEXT_METHODS)[number] => (NEXT_METHODS as readonly string[]).includes(n);
-  const exported = (n: ts.Node) => ts.canHaveModifiers(n) && ts.getModifiers(n)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
-  for (const s of sf.statements) {
-    if (ts.isFunctionDeclaration(s) && s.name && exported(s) && isVerb(s.name.text)) {
-      out.push({ method: s.name.text, decl: s, node: s.name });
-    } else if (ts.isVariableStatement(s) && exported(s)) {
-      for (const d of s.declarationList.declarations) {
-        if (ts.isIdentifier(d.name) && isVerb(d.name.text)) out.push({ method: d.name.text, decl: d, node: d.name });
-      }
-    } else if (ts.isExportDeclaration(s) && !s.moduleSpecifier && s.exportClause && ts.isNamedExports(s.exportClause)) {
-      for (const e of s.exportClause.elements) {
-        if (!isVerb(e.name.text)) continue;
-        const decl = ctx.resolveSymbol(e.propertyName ?? e.name)?.declarations?.[0];
-        if (decl) out.push({ method: e.name.text, decl, node: e.name });
-      }
-    }
-  }
-  return out;
-}
-
-/** Next.js App Router handlers: `app/**\/route.ts` exports named after HTTP verbs, with the route taken from the folder path. */
+/** File conventions only: no Next build/config execution, implicit methods or rewrites. */
 export function nextRoutes(ctx: Ctx, rules: Set<ToolRef>) {
   if (!usesNext(ctx)) return;
+  const root = existsSync(join(ctx.unit.packageRoot, "app")) ? "app/" : "src/app/";
+  const config = ["next.config.ts", "next.config.js", "next.config.mjs", "next.config.cjs"].find((f) => existsSync(join(ctx.unit.packageRoot, f)));
   const service = `svc|${ctx.repo}|${ctx.pkg}`;
-  let any = false;
-  for (const sf of ctx.files) {
-    const result = nextRouteFor(ctx.mod(sf.fileName));
-    if (!result || "skip" in result) continue;
-    if ("unsupported" in result) {
-      const first = sf.statements[0];
-      ctx.b.diagnostic("info", "NEXT_ROUTE_UNSUPPORTED", `route handler not extracted: ${result.unsupported}`, ctx.rel(sf.fileName), false, first ? ctx.ev(first, sf) : undefined);
-      continue;
+  const seen = new Map<string, string>();
+  for (const sf of [...ctx.files].sort((a, b) => a.fileName < b.fileName ? -1 : a.fileName > b.fileName ? 1 : 0)) {
+    const modulePath = ctx.mod(sf.fileName);
+    if (!modulePath.startsWith(root) || !/(^|\/)route\.(ts|js)$/.test(modulePath)) continue;
+    const segments = modulePath.slice(root.length).split("/").slice(0, -1);
+    if (segments.some((s) => s.startsWith("_"))) continue; // private folders opt out of routing
+    rules.add(NEXT);
+    const warn = (message: string, node: ts.Node = sf.statements[0] ?? sf) => {
+      ctx.b.diagnostic("warning", "NEXT_ROUTE_UNSUPPORTED", message, ctx.rel(sf.fileName), true, ctx.ev(node));
+      ctx.b.markIncomplete(ctx.rel(sf.fileName));
+    };
+    const routeParts: string[] = [], normalizedParts: string[] = [];
+    const parameters: { name: string; kind: string }[] = [];
+    let unsupported = false;
+    for (const [i, segment] of segments.entries()) {
+      if (/^\([^.)][^/]*\)$/.test(segment)) continue;
+      if (segment.startsWith("@") || segment.startsWith("(") || /[%?#{}\s]/.test(segment)) { unsupported = true; break; }
+      const optional = /^\[\[\.\.\.([^\[\]]+)\]\]$/.exec(segment);
+      const catchAll = /^\[\.\.\.([^\[\]]+)\]$/.exec(segment);
+      const dynamic = /^\[([^\[\].]+)\]$/.exec(segment);
+      const match = optional ?? catchAll ?? dynamic;
+      if (!match && /[\[\]]/.test(segment)) { unsupported = true; break; }
+      if ((optional || catchAll) && i !== segments.length - 1) { unsupported = true; break; }
+      routeParts.push(segment);
+      normalizedParts.push(optional ? "{**}" : catchAll ? "{*}" : dynamic ? "{}" : segment.toLowerCase());
+      if (match) parameters.push({ name: match[1]!, kind: optional ? "optional-catch-all" : catchAll ? "catch-all" : "dynamic" });
     }
-    const { route } = result;
-    for (const h of exportedHandlers(ctx, sf)) {
-      const endpoint = `http|${ctx.repo}/${ctx.pkg}|${h.method} ${route.normalized}`;
-      const ev = ctx.ev(h.node, sf);
-      ctx.b.node(endpoint, "Endpoint", `${h.method} ${route.route}`, [ev], {
-        props: { method: h.method, route: route.route, normalizedRoute: route.normalized, style: "next-app-router", catchAll: route.catchAll, optionalCatchAll: route.optionalCatchAll },
+    if (unsupported) { warn("route path uses unsupported parallel, intercepting or malformed segments"); continue; }
+    const route = "/" + routeParts.join("/");
+    const normalizedRoute = "/" + normalizedParts.join("/");
+    if (config) {
+      ctx.b.diagnostic("warning", "NEXT_CONFIGURATION_NOT_EVALUATED", `paths are app-relative; ${config} basePath, rewrites and pageExtensions are not evaluated`, ctx.rel(sf.fileName), true, ctx.ev(sf.statements[0] ?? sf));
+      ctx.b.markIncomplete(ctx.rel(sf.fileName));
+    }
+    const moduleSymbol = ctx.checker.getSymbolAtLocation(sf);
+    const exports = moduleSymbol ? ctx.checker.getExportsOfModule(moduleSymbol) : [];
+    for (const exported of [...exports].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)) {
+      const method = exported.name;
+      if (!METHODS.has(method)) {
+        if (method === "default" || ["TRACE", "CONNECT", "ALL"].includes(method)) warn(`export ${method} is not a supported App Router HTTP method handler`, exported.declarations?.[0]);
+        continue;
+      }
+      const exportDecl = exported.declarations?.[0];
+      // Cross-module re-exports and factory results require more than file-convention evidence.
+      const symbol = exported.flags & ts.SymbolFlags.Alias ? ctx.checker.getAliasedSymbol(exported) : exported;
+      const owner = handlerOwner(ctx, symbol, sf);
+      if (!owner) { warn(`exported ${method} handler is not a supported local function declaration`, exportDecl); continue; }
+      const from = owner.key;
+      const evidence = [...new Set([ctx.ev(exportDecl ?? owner.declaration), ctx.headerEv(owner.declaration)])];
+      const endpoint = `http|${ctx.repo}/${ctx.pkg}|${method} ${normalizedRoute}`;
+      const prior = seen.get(endpoint);
+      if (prior) { warn(`multiple route files declare ${method} ${normalizedRoute}; first declaration: ${prior}`, exportDecl); }
+      seen.set(endpoint, ctx.rel(sf.fileName));
+      ctx.b.node(service, "Service", ctx.pkg, [evidence[0]!], { props: { framework: "next" } });
+      ctx.b.node(endpoint, "Endpoint", `${method} ${route}`, evidence, {
+        props: { method, route, normalizedRoute, style: "next-app-router",
+          catchAll: parameters.some((p) => p.kind !== "dynamic") || undefined,
+          optionalCatchAll: parameters.some((p) => p.kind === "optional-catch-all") || undefined,
+          routeParameterNames: parameters.length ? parameters.map((p) => p.name) : undefined,
+          routeParameterKinds: parameters.length ? parameters.map((p) => p.kind) : undefined },
       });
-      ctx.b.edge({ from: service, rel: "EXPOSES", to: endpoint, derivation: "rule", rule: NEXT, evidence: [ev] });
-      const from = handlerOwner(ctx, h, sf);
-      ctx.b.edge({ from, rel: "HANDLES", to: endpoint, derivation: "rule", rule: NEXT, evidence: [ev] });
-      any = true;
+      ctx.b.edge({ from: service, rel: "EXPOSES", to: endpoint, derivation: "rule", rule: NEXT, evidence });
+      ctx.b.edge({ from, rel: "HANDLES", to: endpoint, derivation: "rule", rule: NEXT, evidence });
     }
   }
-  if (any) rules.add(NEXT);
 }

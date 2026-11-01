@@ -62,7 +62,7 @@ public sealed partial class Intelligence
     {
         ArgumentNullException.ThrowIfNull(request);
         var endpoint = request.Endpoint?.Trim();
-        if (endpoint is { Length: > 0 } && !(Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) && IsAllowed(uri) && uri.Query.Length == 0))
+        if (endpoint is { Length: > 0 } && !(Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) && IsAllowed(uri) && uri.Query.Length == 0 && uri.UserInfo.Length == 0 && uri.Fragment.Length == 0))
         {
             return "endpoint must be an https URL (http only for a local server such as localhost, host.docker.internal or a container name), without a query";
         }
@@ -80,6 +80,9 @@ public sealed partial class Intelligence
             return "set a chat model, an embedding model, or both";
         }
 
+        if (Saved?.ApiKey is { Length: > 0 } && !request.ClearApiKey && string.IsNullOrEmpty(request.ApiKey)
+            && !SameAuthority(Saved.Endpoint, endpoint))
+            return "Changing the endpoint authority requires an explicit new API key or clearing the saved key";
         var apiKey = request.ClearApiKey ? null : request.ApiKey is { Length: > 0 } key ? key.Trim() : Saved?.ApiKey;
         var settings = new ModelSettings(endpoint is { Length: > 0 } ? endpoint : null, request.ChatModel?.Trim(), request.EmbeddingModel?.Trim(), apiKey);
         State state;
@@ -102,6 +105,10 @@ public sealed partial class Intelligence
     private static bool IsAllowed(Uri uri) =>
         uri.Scheme == Uri.UriSchemeHttps
         || (uri.Scheme == Uri.UriSchemeHttp && (uri.IsLoopback || uri.Host == "host.docker.internal" || !uri.Host.Contains('.', StringComparison.Ordinal)));
+
+    private static bool SameAuthority(string? oldEndpoint, string? newEndpoint) =>
+        Uri.TryCreate(oldEndpoint, UriKind.Absolute, out var before) && Uri.TryCreate(newEndpoint, UriKind.Absolute, out var after)
+        && string.Equals(before.GetLeftPart(UriPartial.Authority), after.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase);
 
     private State Build(ModelSettings? saved)
     {

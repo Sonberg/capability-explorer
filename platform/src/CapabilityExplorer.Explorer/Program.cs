@@ -29,6 +29,7 @@ var database = builder.Configuration["database"] ?? Environment.GetEnvironmentVa
 var dataSource = database is { Length: > 0 } ? NpgsqlDataSource.Create(database) : null;
 var intelligence = new Intelligence(interpretation, builder.Configuration["modelSettings"] ?? ModelSettings.DefaultPath, dataSource is null ? null : new EmbeddingStore(dataSource)) { DataSource = dataSource };
 builder.Services.AddSingleton(intelligence);
+builder.Services.AddSingleton(new GlossaryReviewService(dataSource));
 builder.Services.AddTransient(_ => intelligence.Layer);
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
@@ -41,8 +42,23 @@ if (builder.Configuration["urls"] is null && Environment.GetEnvironmentVariable(
 }
 
 var app = builder.Build();
+app.Use(async (context, next) =>
+{
+    if (!LocalRequestGuard.Allowed(context.Request))
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await context.Response.WriteAsync("Only trusted local requests are supported.");
+        return;
+    }
+    context.Response.Headers.XContentTypeOptions = "nosniff";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    context.Response.Headers["X-Frame-Options"] = "DENY";
+    await next(context);
+});
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapExplorerApi(options.EvaluationReport);
+app.MapGlossaryReviewApi();
+app.MapBindingPreviewApi();
 app.MapFallbackToFile("index.html");
 app.Run();

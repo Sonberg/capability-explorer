@@ -62,14 +62,15 @@ test("next routes: exported verbs become endpoints with handlers; pages and non-
   assert.deepEqual(endpoints, [
     "http|web/@shop/web|DELETE /api/orders/{}",
     "http|web/@shop/web|GET /api/orders/{}",
-    "http|web/@shop/web|GET /api/{...}",
+    "http|web/@shop/web|GET /api/{*}",
     "http|web/@shop/web|PATCH /api/external",
     "http|web/@shop/web|POST /api/subscribe",
     "http|web/@shop/web|PUT /api/orders/{}",
   ]);
-  const catchAll = unit!.records.find((r) => r.symbolKey === "http|web/@shop/web|GET /api/{...}")!;
+  // Canonical artifacts distinguish required {*} from optional {**}; the legacy display helper stays compatible.
+  const catchAll = unit!.records.find((r) => r.symbolKey === "http|web/@shop/web|GET /api/{*}")!;
   assert.equal(catchAll.props?.catchAll, true);
-  assert.equal(catchAll.name, "GET /api/{...path}");
+  assert.equal(catchAll.name, "GET /api/[...path]");
   assert.equal(unit!.records.filter((r) => r.relation === "EXPOSES").length, 6);
   const handles = unit!.records.filter((r) => r.relation === "HANDLES");
   assert.equal(handles.length, 6);

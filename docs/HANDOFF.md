@@ -1,11 +1,101 @@
 # Handoff: remaining work
 
-Status: SQL/local-CI package merged via PR #5 as `98be7a4`. Issue #3's earlier
-unpushed handoff is superseded. Glossary first slice is in PR #7; check its current
-review status before overlapping it. Environment/IaC binding remains open.
+## Main-only integration: current directive
+
+[MADR-0016](adr/0016-main-only-pr-integration.md) supersedes the earlier stage-only policy.
+All PRs target main. Existing owner PR #27 reconciles stage into main; prepare its
+head with both histories preserved, ordinary exact-main local CI and owner review.
+Do not merge or enable auto-merge. Earlier stage receipts below are historical.
+After the owner merges #27, verify the main SHA and run `make EXECUTION=sandbox dev`
+with re-analysis enabled (the default). Compare the private analysis receipt
+(application/repository SHAs and artifact hashes), not just localhost URLs.
+The declared-contract catalog is committed separately on feat/declared-integration-contracts
+at 8a8a6b9 and preview port5110; it is excluded from reconciliation and must be ported
+to merged main before a later main-targeted PR.
+
+
+## Security and binding batch (in progress)
+
+`feat/security-corpus-binding` targets stage only. Source-bound audit collection,
+security fixes, locked corpus replay and binding preview/export are implemented
+locally. [MADR-0011](adr/0011-source-bound-security-validation.md) and
+[MADR-0012](adr/0012-revision-bound-binding-preview.md) document the boundaries.
+Live binding review passed nine browser assertions on loopback port 5108.
+The [execution record](plans/security-corpus-binding-execution.md) records passed
+focused checks and failed/incomplete gates. After Docker restoration, full local
+act CI and nine binding browser checks passed exact source `09737b0`.
+Subsequent commits need their own exact-source receipts. The complete security
+audit remains incomplete. The operator clarified that unavailable private inputs
+must not block a review PR; MADR-0011 now permits draft publication with scoped
+evidence and disclosed findings, while strict security verification remains failed. Container findings
+remain tracked in [issue #24](https://github.com/Sonberg/capability-explorer/issues/24);
+private Glufs validation remains blocked in [issue #23](https://github.com/Sonberg/capability-explorer/issues/23).
+Do not mistake passing dependency scans or synthetic replay for those missing gates.
+
+New proposed policy: [MADR-0013 integration contract standards](adr/0013-integration-contract-standards.md)
+records OpenAPI/AsyncAPI version and evidence boundaries; document parsers are not
+implemented by this decision. [Code-analysis research](research/code-analysis-options.md)
+compares existing tooling and alternatives with a weighted rubric and source log;
+candidate tools have not been benchmarked or adopted.
+
+Status: reconciliation PR #11 merged into `stage-1-contract-and-fixtures` at `db18165`.
+Historical policy at that time targeted stage; the current main-only directive above supersedes it.
+#5/#7/#8 landed on main; #9 landed only on `feat/main-aligned-delivery` after #8.
+This package includes both histories and corrected #10 lifecycle documentation.
+The merge was verified on 2026-11-01; it does not imply owner validation of every feature.
+The operator reports notifying the owner; subsequent validation is unconfirmed.
+See [reconciliation and source SHAs](plans/stage-branch-reconciliation.md).
+Environment/IaC binding remains open.
 Shared terminology: [ubiquitous language](ubiquitous-language.md),
 [MADR-0002](adr/0002-ubiquitous-language.md). Issue #6 tracks mapping defects;
 those fixes are separate from synthetic test coverage.
+
+PR updates and newcomer workflow: [MADR-0005](adr/0005-pr-lifecycle-and-conflict-prevention.md).
+Disk retention: [MADR-0014](adr/0014-pr-publication-worktree-retention.md) makes
+verified PR publication the cleanup checkpoint, without waiting for merge.
+Preserve private evidence outside the checkout and defer active worktrees until handoff.
+
+Release notes: [changelog](CHANGELOG.md), [MADR-0006](adr/0006-keep-a-changelog.md).
+Compatibility/versioning: [MADR-0007](adr/0007-semantic-versioning.md).
+Current owner-review package: [cross-repository flow and reviewed glossary links](plans/cross-repository-value-flow.md), issue #4 layers 4 and 3. Implementation and validation are recorded in [the execution receipt](plans/glossary-flow-execution.md); see [MADR-0008](adr/0008-glossary-flow-and-reviewed-assertions.md). BPMN/DMN issue #12 still requires an owner scope decision. LikeC4 PRs #14/#15 are now merged into stage.
+
+## Mapping fidelity workstream
+
+The independent stage-targeted mapping package is recorded in
+[the execution plan](plans/mapping-fidelity-execution.md) and
+[MADR-0010](adr/0010-deterministic-mapping-fidelity.md). It improves static C#
+reference selection, Next app-router endpoints and HTTP identities. It preserves
+uncertain bindings and does not implement full MSBuild/Next configuration execution.
+The synthetic replay is separate from the locked product fixtures and private-corpus
+validation. `make test-mapping-replay` runs harness failure-path tests in ordinary CI;
+`scripts/mapping-replay` compares explicitly sealed baseline/candidate bundles.
+Owner review remains required; issue #6 is not automatically closed by synthetic proof.
+The [project/workflow evaluation](plans/project-metaharness-evaluation.md) separates
+measured CI/replay and memory persistence from unproven routing savings and learning uplift.
+
+## LikeC4 spike delivery
+
+PR #14 merged at `87d310d` and PR #15 at `daf02df` on stage (verified 2026-11-01).
+The live replacement PR #21 merged into stage at `5ce7f21` on 2026-11-01.
+It replaces the production fixture iframe and shares the renderer with glossary
+connections. See [MADR-0009](adr/0009-live-likec4-architecture.md), the
+[preflight contract](plans/live-likec4-preflight.md) and
+[execution handoff](plans/live-likec4-execution.md). Its sampled routing-ready DOM
+p95 of 148.2 ms is narrower than the final-paint/physical-display target below;
+merge status does not establish owner acceptance of every feature.
+The standalone spike retains its
+captured five-repository fixture as a regression harness.
+See [spike scope](spikes/likec4.md). Strict TypeScript 7.0.2 checks cover the spike;
+the extractor compiler API remains unchanged.
+
+[Routing diagnostics and measurements](spikes/likec4-routing-diagnostics.md) record
+600 warm drags: release-to-second-frame-opportunity p50/p95 is 130/208 ms at 1920
+and 184/269 ms at 5120. These are not exact-paint or physical-display measurements.
+Immediate completed-edit capture preserves native undo/redo; exact A* scratch
+reuse reduces allocation. The evaluated RuVector WASM adapter was slower and is
+not shipped. Opt-in local tracing supports a host-supplied OTel tracer without a
+mandatory SDK/collector. [Issue #13](https://github.com/Sonberg/capability-explorer/issues/13)
+remains open: the 200 ms p95 target and final-paint validation are not achieved.
 
 ## What exists
 
@@ -33,9 +123,9 @@ Ground rules that apply to all work:
 ## Local checks before pushing
 
 Install the repository hook with `make install-git-hooks`; run `make local-check`
-for the full project gate. Fetch/integrate `origin/main` first; local-check enforces
-that alignment and rejects changes to main during CI. Run `make pr-check` immediately
-before PR creation/update; if main advanced, integrate and rerun. See [MADR-0003](adr/0003-local-ci-before-push.md).
+for the full project gate. Fetch/integrate `origin/stage-1-contract-and-fixtures` first; local-check enforces
+that alignment and rejects changes to stage-1-contract-and-fixtures during CI. Run `make pr-check` immediately
+before PR creation, base changes or review handoff; if stage-1-contract-and-fixtures advanced, integrate and rerun. See [MADR-0003](adr/0003-local-ci-before-push.md).
 The local hook is installed in this clone; other contributors must install it.
 The tracked `out/evaluation.json` is a historical missing-actual report, not current
 acceptance evidence. Current reports are `.sandbox-cache/extracted/{cs,ts,sql}/evaluation.json`.
@@ -121,7 +211,7 @@ Implemented in `Calculations.cs`, `CalculationAttributes.cs`, `CalculationIr.cs`
 - Remaining: environment/IaC files as a second binding source (Kubernetes/compose/appsettings), a UI to edit the map,
   and reading analyses from the database in the explorer (it still reads artifact files).
 
-## Glossary: issue #4 first slice
+## Glossary: issue #4 candidates, connections and reviewed assertions
 
 Read-only deterministic candidates and the Glossary tab are implemented in the
 stacked glossary workstream. Names group only by explicit normalization; calendar
@@ -134,8 +224,27 @@ limits (about 60% precision on a fresh blind sample; TypeScript members are not 
 Weights live in `glossary-weights.json`; the fixture gold set is a regression test.
 
 See [MADR-0004](adr/0004-glossary-candidates.md) and
-[build evidence](plans/glossary-build-evidence.md). Flow tracing, persistent reviewed
-terms/same-value links, and LLM proposals remain separate unimplemented layers.
+[candidate build evidence](plans/glossary-build-evidence.md).
+
+The current package adds bounded exact-occurrence source/binding navigation and
+separately attributed human term assertions. PostgreSQL migration 0004 persists
+terms, links and mismatch issues with version conflicts and transactional audit
+writes. Links retain the exact observed commit, unit, occurrence and artifact hash;
+changed inputs require explicit re-review. The Glossary tab uses the existing
+Architecture canvas and source viewer. Without `CE_DATABASE`, source navigation
+works and review is read-only; a configured but unavailable database is an error.
+
+Review terms are global. Capability/revision selection constrains source references
+and their state; it is not an access-control boundary. Term deletion retires its
+links/issues across repositories. The trusted-local write guard is browser request
+protection, not authentication. Audit history is append-only through the application;
+database administrators can still alter storage. No release version is assigned.
+
+Field-level value propagation, runtime traffic, inferred equivalence and LLM
+proposals remain unimplemented. Calls, bindings and shared term hubs must not be
+reported as proof of value equality. #6 extractor gaps, live LikeC4 integration,
+#13 settling performance and owner-controlled #12 BPMN/DMN scope remain separate.
+See [execution evidence and commands](plans/glossary-flow-execution.md).
 
 ## Smaller follow-ups
 
@@ -143,3 +252,14 @@ terms/same-value links, and LLM proposals remain separate unimplemented layers.
 - `scripts/extract-fixtures.sh` re-parses the lock file with sed. A `ce` subcommand would be sturdier.
 - The explorer polls every 2 s. Fine locally, but worth making configurable.
 - The TypeScript 7 native compiler API: evaluate before upgrading beyond `typescript@5.9`.
+
+
+## C# transitive project visibility (issue #6, defect 1)
+
+The transitive-reference workstream propagates cached compilation references
+through acyclic project graphs and deduplicates by compilation identity. Direct
+DEPENDS_ON edges still describe only declared references. Synthetic chain,
+diamond/repeat-byte, missing-project and unrelated-project controls pass; the
+C# golden gate remains unchanged. See [execution evidence](plans/transitive-project-references.md).
+This does not fix framework selection, package version conflicts, older framework
+fallback, conditional MSBuild references, or other issue #6 mapping gaps.

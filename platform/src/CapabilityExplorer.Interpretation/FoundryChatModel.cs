@@ -129,7 +129,7 @@ public sealed class FoundryChatModel : IInterpretationModel, IChatModel
         }
         catch (Exception e) when (e is JsonException or KeyNotFoundException or IndexOutOfRangeException or InvalidOperationException)
         {
-            throw new InterpretationUnavailableException($"unexpected model response shape: {Truncate(text)}", e);
+            throw new InterpretationUnavailableException("unexpected model response shape", e);
         }
     }
 
@@ -145,7 +145,7 @@ public sealed class FoundryChatModel : IInterpretationModel, IChatModel
         }
         catch (HttpRequestException e)
         {
-            throw new InterpretationUnavailableException($"model request failed: {e.Message}", e);
+            throw new InterpretationUnavailableException("model request failed", e);
         }
         catch (TaskCanceledException e) when (!cancellationToken.IsCancellationRequested)
         {
@@ -155,11 +155,12 @@ public sealed class FoundryChatModel : IInterpretationModel, IChatModel
         using (response)
         {
             var text = await response.Content.ReadAsStringAsync(cancellationToken);
-            return response.IsSuccessStatusCode
-                ? text
-                : throw new InterpretationUnavailableException($"model API returned {(int)response.StatusCode}: {Truncate(text)}");
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new InterpretationUnavailableException($"model API returned {(int)response.StatusCode}");
+            }
+            return text;
         }
     }
 
-    private static string Truncate(string s) => s.Length <= 300 ? s : s[..300] + "…";
 }
