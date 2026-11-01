@@ -3,6 +3,7 @@
 // script starts no server, edits no artifacts and writes no reviewed database data.
 import { chromium } from '../spikes/likec4/node_modules/playwright/index.mjs';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 
 const base = process.env.CE_TEST_BASE_URL ?? process.env.CE_LIVE_ARCHITECTURE_BASE_URL ?? process.argv[2] ?? 'http://host.docker.internal:5096';
@@ -180,6 +181,12 @@ try {
   const meta = await metaResponse.json();
   check(meta.capabilities.length > 0 && meta.revisions.length > 0, 'preview must contain analyzed capability/revision fixtures');
   currentGraph = await navigate('system');
+  receipt.assets = [];
+  for (const url of await page.locator('script[src]').evaluateAll(elements => elements.map(element => element.src))) {
+    const response = await page.request.get(url);
+    check(response.ok(), 'served application asset must be readable for the receipt');
+    receipt.assets.push({url, sha256:createHash('sha256').update(await response.body()).digest('hex')});
+  }
   check(currentGraph.nodes.length > 0 && currentGraph.edges.length > 0, 'actual all-repositories graph must be nonempty');
   const initialHeights = await canvas().locator('.react-flow__node:not(.react-flow__node-view-group)').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().height));
   receipt.initialMeanLeafHeight = initialHeights.reduce((sum, height) => sum + height, 0) / initialHeights.length;

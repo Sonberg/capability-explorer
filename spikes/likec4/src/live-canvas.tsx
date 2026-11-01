@@ -211,7 +211,7 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
           </ReactLikeC4>}
         </LikeC4EditorProvider></LikeC4ModelProvider></div>
       </section></div>
-      {showSource && <aside className="live-source" aria-label="Diagram source"><h2>Reviewable source</h2><p>Source IDs, certainty and associations come from the selected artifacts. Presentation edits do not change evidence.</p><pre data-live-source data-input-identity={snapshotKey}>{result.source}</pre></aside>}
+      {showSource && <aside className="live-source" aria-label="Diagram source" tabIndex={0}><h2>Reviewable source</h2><p>Source IDs, certainty and associations come from the selected artifacts. Presentation edits do not change evidence.</p><pre data-live-source data-input-identity={snapshotKey}>{result.source}</pre></aside>}
     </main>
     <footer>Pan to explore · scroll to zoom · animation is optional decoration. Source and evidence remain authoritative.</footer>
   </div>;
