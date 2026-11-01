@@ -88,6 +88,7 @@ public sealed class GlossaryStoreTests(PostgresFixture db)
         Assert.True(deleted.Value!.Deleted);
         Assert.Equal("Reviewer B", deleted.Value.Reviewer);
         Assert.Equal(GlossaryMutationStatus.Unchanged, (await _store.DeleteTermAsync(term.Id, 1, "Reviewer B")).Status);
+        Assert.Equal(GlossaryMutationStatus.Conflict, (await _store.DeleteTermAsync(term.Id, 1, "Reviewer C")).Status);
         Assert.Equal(GlossaryMutationStatus.Conflict, (await _store.SaveTermAsync(term, 0)).Status);
         var snapshot = await _store.GetSnapshotAsync();
         Assert.DoesNotContain(snapshot.Terms, t => t.Id == term.Id);
@@ -231,6 +232,26 @@ public sealed class GlossaryStoreTests(PostgresFixture db)
         Assert.Contains((await save).Status, new[] { GlossaryMutationStatus.Created, GlossaryMutationStatus.NotFound });
         Assert.Equal(GlossaryMutationStatus.Deleted, (await delete).Status);
         Assert.DoesNotContain((await _store.GetSnapshotAsync()).Links, l => l.Id == link.Id);
+    }
+
+    [Fact]
+    public async Task Precancelled_mutations_do_not_create_update_delete_or_add_audit_events()
+    {
+        var term = Term();
+        var neverCreated = Term();
+        await _store.SaveTermAsync(term, 0);
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _store.SaveTermAsync(neverCreated, 0, cancelled.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _store.SaveTermAsync(term with { Name = "Cancelled update" }, 1, cancelled.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _store.DeleteTermAsync(term.Id, 1, "Reviewer B", cancelled.Token));
+        Assert.Null(await _store.GetTermAsync(neverCreated.Id));
+        var retained = await _store.GetTermAsync(term.Id);
+        Assert.False(retained!.Deleted);
+        Assert.Equal(term.Name, retained.Name);
+        Assert.Equal(1, retained.Version);
+        Assert.Single((await _store.GetAuditAsync(term.Id)).Events);
+        Assert.Empty((await _store.GetAuditAsync(neverCreated.Id)).Events);
     }
 
     private async Task<string> ArtifactRowsAsync(long artifactId)

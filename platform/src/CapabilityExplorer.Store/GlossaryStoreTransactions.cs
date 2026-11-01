@@ -67,7 +67,8 @@ public sealed partial class GlossaryStore
         await LockAsync(connection, tx, ct);
         var current = await ReadAsync(connection, tx, entity, id, ct);
         if (current is null) return new(GlossaryMutationStatus.NotFound, default);
-        if (current.Deleted && current.Version == expectedVersion + 1)
+        if (current.Deleted && current.Version == expectedVersion + 1
+            && JsonNode.Parse(current.Json)?["reviewer"]?.GetValue<string>() == actor)
             return new(GlossaryMutationStatus.Unchanged, map(current));
         if (current.Deleted || current.Version != expectedVersion)
             return new(GlossaryMutationStatus.Conflict, map(current));
