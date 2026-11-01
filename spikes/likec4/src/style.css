@@ -31,10 +31,9 @@ button:disabled { opacity:.45; cursor:default; }
 [data-theme="dark"] .group-context, [data-theme="dark"] .canvas-hint { background:#1b2b40f5; color:#e3eaf4; }
 .storage-notice { position:absolute; z-index:11; bottom:45px; padding:8px; background:#fff2cc; color:#332900; }
 
-.viewpoint-launch { position:absolute; z-index:18; left:12px; top:58px; box-shadow:0 2px 7px #0002; }
 .current-viewpoint { font-size:13px; color:inherit; }
-.viewpoint-drawer { position:absolute; z-index:30; top:0; bottom:0; left:0; width:min(350px,90%); overflow:auto; padding:16px; background:#f8fafc; border-right:1px solid #9eb0c7; box-shadow:8px 0 24px #0002; transform:translateX(-110%); transition:transform 180ms ease; pointer-events:none; }
-.viewpoint-drawer[data-open="true"] { transform:translateX(0); pointer-events:auto; }
+.diagram-workspace { display:grid; grid-template-columns:280px minmax(0,1fr); min-width:0; min-height:0; }
+.viewpoint-drawer { min-height:0; overflow:auto; padding:16px; background:#f8fafc; border:1px solid #9eb0c7; border-radius:10px 0 0 10px; }
 .drawer-heading { display:flex; align-items:center; gap:8px; position:sticky; top:-16px; padding:12px 0; background:inherit; z-index:1; }
 .drawer-heading strong { flex:1; }
 .drawer-heading button { font-size:12px; padding:5px 8px; }
@@ -44,21 +43,15 @@ button:disabled { opacity:.45; cursor:default; }
 .viewpoint-link { flex:1; text-align:left; border-color:transparent; background:transparent; font-size:13px; padding:8px; overflow-wrap:anywhere; }
 .viewpoint-link[aria-current="page"] { background:#dceafe; border-color:#90b7ee; color:#153e71; }
 .favorite-toggle { border-color:transparent; background:transparent; padding:6px; min-width:32px; color:#967100; }
-.diagram-legend { position:absolute; z-index:16; right:12px; bottom:28px; max-width:calc(100% - 24px); }
-.diagram-legend>button { display:block; margin-left:auto; box-shadow:0 2px 7px #0002; }
-.diagram-legend section { width:340px; max-width:100%; max-height:55dvh; overflow:auto; padding:14px; margin-top:6px; background:#fffffff5; border:1px solid #9eb0c7; border-radius:9px; box-shadow:0 5px 20px #0002; }
+.diagram-legend { display:flex; flex-direction:column; max-height:calc(100% - 48px); position:absolute; z-index:16; right:12px; bottom:28px; max-width:calc(100% - 24px); }
+.diagram-legend>button { flex-shrink:0; display:block; margin-left:auto; box-shadow:0 2px 7px #0002; }
+.diagram-legend section { min-height:0; width:340px; max-width:100%; max-height:55dvh; overflow:auto; padding:14px; margin-top:6px; background:#fffffff5; border:1px solid #9eb0c7; border-radius:9px; box-shadow:0 5px 20px #0002; }
 .diagram-legend h2 { font-size:12px; margin:8px 0; }
 .legend-row { display:flex; align-items:center; gap:9px; font-size:12px; margin:6px 0; }
 .legend-row svg { width:38px; height:24px; flex-shrink:0; }
 .diagram-legend p { font-size:11px; color:#52677f; }
 .legend-symbol { stroke:#60758e; fill:#c9d5e333; }
 .legend-symbol.repository { stroke-dasharray:3 2; }
-.legend-symbol.service { fill:#3b82f6; stroke:#2563eb; }
-.legend-symbol.application { fill:#0284c7; stroke:#0369a1; }
-.legend-symbol.channel { fill:#8b5cf6; stroke:#6d28d9; }
-.legend-symbol.reference { fill:#d99b3a33; stroke:#b97720; stroke-dasharray:3 2; }
-.legend-symbol.sql-model { fill:#d99b3a33; stroke:#b97720; }
-.legend-symbol.sql-object { fill:#b97720; stroke:#925d17; }
 [data-theme="dark"] .viewpoint-drawer { background:#162235; border-color:#41556e; }
 [data-theme="dark"] .viewpoint-link { background:transparent; border-color:transparent; }
 [data-theme="dark"] .viewpoint-link[aria-current="page"] { background:#243f62; border-color:#567eaf; color:#e7f1ff; }
@@ -69,3 +62,9 @@ button:disabled { opacity:.45; cursor:default; }
 @media(max-width:600px) { .canvas-hint { display:none; } .group-context { top:104px; } }
 
 .diagram-surface { position:absolute; inset:0; z-index:0; isolation:isolate; }
+
+.ledger-swatches { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+.ledger-swatch { padding:7px 9px; border:1px solid; border-radius:6px; display:flex; flex-direction:column; font-size:11px; }
+.ledger-swatch span { font-size:10px; margin-top:2px; }
+
+@media(max-width:700px) { .diagram-workspace { grid-template-columns:minmax(0,1fr); grid-template-rows:150px minmax(360px,1fr); overflow:auto; } .viewpoint-drawer { border-radius:10px 10px 0 0; } }

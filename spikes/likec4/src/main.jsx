@@ -93,8 +93,9 @@ function App() {
     </header>
     <div className="notice">Experimental renderer · build-time architecture snapshot · no live refresh or runtime flow claims.{reduced && ' Motion disabled by system preference.'}</div>
     <main className={showSource ? 'with-source' : ''}>
-      <section ref={canvas} className="canvas" aria-label="LikeC4 architecture diagram">
+      <div className="diagram-workspace">
         <ViewpointMenu views={sourceModel.$data.views} current={view} onSelect={switchView} source={source}/>
+      <section ref={canvas} className="canvas" aria-label="LikeC4 architecture diagram">
         <DiagramLegend/>
         <div className="canvas-hint">{editable?'Click a group to manage it · Shift-click nodes to group · edits stay with this snapshot':'Source hierarchy · choose a repository or SQL-resource detail viewpoint to explore its contents'}</div>
         {editable && <GroupControls group={activeGroup} selectedCount={selectedLeaves.length} editing={editing} name={groupName} setName={setGroupName}
@@ -113,7 +114,7 @@ function App() {
             @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
           `}</style>
         </ReactLikeC4></OptionalEditor></LikeC4ModelProvider></div>
-      </section>
+      </section></div>
       {showSource && <aside aria-label="Diagram source"><h2>Reviewable source</h2><p>Labels retain certainty. Browser group edits are saved for this snapshot; this source stays unchanged.</p><pre>{source}</pre></aside>}
     </main>
     <footer>Pan to explore · scroll to zoom · animation is optional decoration, not observed traffic. Source and evidence remain authoritative.</footer>

@@ -8,6 +8,8 @@ const errors = [], external = [], measurements = [];
 try {
   for (const [width,height] of [[5120,2160],[2560,1080],[1920,1080],[390,844]]) {
     const page = await browser.newPage({viewport:{width,height}, reducedMotion:'no-preference'});
+    page.setDefaultTimeout(15000);
+    console.log(`Checking ${width}×${height}`);
     page.on('pageerror',e=>errors.push(e.message));
     page.on('request',r=>{const u=new URL(r.url());if(u.protocol.startsWith('http') && u.hostname!=='host.docker.internal')external.push(r.url());});
     await page.goto('http://host.docker.internal:5091');
@@ -19,7 +21,10 @@ try {
     assert.ok(edgeCount>0&&edgeCount<=12);
     assert.equal(await page.locator('.react-flow__node[data-id^="sql_scope_"]').count(),3,'overview shows logical resources, not SQL objects');
     const canvas=await page.locator('.canvas').boundingBox();
-    assert.ok(canvas.width>width*.9, `spike must use viewport width at ${width}`);
+    const workspace=await page.locator('.diagram-workspace').boundingBox();
+    assert.ok(workspace.width>width*.9, `workspace must use viewport width at ${width}`);
+    const menu=await page.locator('.viewpoint-drawer').boundingBox();
+    assert.ok(width>700?menu.x+menu.width<=canvas.x+1:menu.y+menu.height<=canvas.y+1,'permanent menu must not overlap canvas');
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth), 'spike horizontal page overflow');
     assert.equal(await page.getByRole('checkbox').isChecked(),false);
     const paths=page.locator('.react-flow__edge-path');
@@ -27,19 +32,20 @@ try {
     await page.screenshot({path:`${output}/likec4-${width}.png`});
     const canvasBeforeMenu=await page.locator('.canvas').boundingBox();
     const viewportBefore=await page.locator('.react-flow__viewport').first().getAttribute('style');
-    await page.getByRole('button',{name:'☰ Viewpoints',exact:true}).click();
-    await page.locator('.viewpoint-drawer[data-open="true"]').waitFor();
-    await page.getByRole('button',{name:'Pin menu',exact:true}).click();
-    assert.deepEqual(await page.locator('.canvas').boundingBox(),canvasBeforeMenu,'pinned drawer must overlay, not resize canvas');
-    assert.equal(await page.locator('.react-flow__viewport').first().getAttribute('style'),viewportBefore,'opening drawer must not move diagram');
+    assert.equal(await page.locator('.viewpoint-drawer').getAttribute('data-open'),'true');
     await page.getByRole('button',{name:'Add Messaging dependencies to favorites',exact:true}).click();
     assert.ok((await page.getByRole('region',{name:'Favorite viewpoints'}).innerText()).includes('Messaging dependencies'));
     await page.screenshot({path:`${output}/likec4-menu-${width}.png`});
-    await page.getByRole('button',{name:'Close viewpoints',exact:true}).click();
-    await page.getByRole('button',{name:'Legend +',exact:true}).click();
     assert.ok((await page.getByRole('region',{name:'Diagram legend'}).innerText()).includes('identity not established'));
-    assert.deepEqual(await page.locator('.canvas').boundingBox(),canvasBeforeMenu,'legend overlays canvas');
-    await page.getByRole('button',{name:'Legend −',exact:true}).click();
+    assert.equal(await page.locator('[data-ledger-key]').count(),12,'all authoritative colors visible by default');
+    const swatches=await page.locator('[data-ledger-key]').evaluateAll(es=>es.map(e=>({hex:e.querySelector('span').textContent,color:getComputedStyle(e).backgroundColor})));
+    for(const {hex,color} of swatches){const rgb=hex.slice(1).match(/../g).map(x=>parseInt(x,16));assert.equal(color,`rgb(${rgb.join(', ')})`);}
+    assert.deepEqual(await page.locator('.canvas').boundingBox(),canvasBeforeMenu,'ledger does not resize canvas');
+    await page.getByRole('button',{name:'Minimize ledger',exact:true}).click();
+    assert.equal(await page.getByRole('region',{name:'Diagram legend'}).count(),0);
+    await page.getByRole('button',{name:'Expand ledger',exact:true}).click();
+    await page.getByRole('button',{name:'Minimize ledger',exact:true}).click();
+    assert.equal(await page.locator('.react-flow__viewport').first().getAttribute('style'),viewportBefore,'menu and ledger actions must not move diagram');
     await page.getByRole('checkbox').check();
     assert.ok((await paths.evaluateAll(es=>es.map(e=>getComputedStyle(e).animationName))).some(n=>n==='ce-edge-flow'));
     await page.locator('.ce-motion-particle').first().waitFor();
@@ -101,24 +107,22 @@ try {
       assert.equal(await page.locator('.react-flow__node-view-group').count(),3);
       await page.reload();await page.locator('.react-flow__node').first().waitFor();
       assert.ok((await page.locator('.react-flow__node-view-group').allTextContents()).some(t=>t.toLowerCase().includes('review cluster')),'CRUD persists for same source snapshot');
+      await page.getByRole('button',{name:'Minimize ledger',exact:true}).click();
       for(const viewpoint of ['index','applications','data','messaging','repository_0_detail','objects','sql_scope_0_detail','sql_scope_1_detail','sql_scope_2_detail','vertical','flow']) {
-        await page.getByRole('button',{name:'☰ Viewpoints',exact:true}).click();
         await page.locator(`.viewpoint-drawer [data-view-id="${viewpoint}"]`).first().click();await page.waitForTimeout(400);
         assert.ok(await page.locator('.react-flow__node').count()>0,`${viewpoint} renders`);
         if(viewpoint==='objects'){assert.equal(await page.locator('.react-flow__node[data-id*="sql_scope_"][data-id*=".n"]').count(),5);await page.screenshot({path:`${output}/likec4-sql-objects.png`});}
       }
       assert.ok((await page.locator('.react-flow__node-view-group').allTextContents()).some(t=>t.toLowerCase().includes('review cluster')),'groups survive viewpoint changes');
-      await page.getByRole('button',{name:'☰ Viewpoints',exact:true}).click();
-      await page.getByRole('button',{name:'Pin menu',exact:true}).click();
       await page.locator('.viewpoint-drawer [data-view-id="data"]').first().click();
       assert.equal(await page.locator('.viewpoint-drawer').getAttribute('data-open'),'true','pinned menu stays open after navigation');
       await page.reload();await page.locator('.react-flow__node').first().waitFor();
-      assert.equal(await page.locator('.viewpoint-drawer').getAttribute('data-open'),'true','pin preference persists');
+      assert.equal(await page.locator('.viewpoint-drawer').getAttribute('data-open'),'true','menu remains visible on reload');
       assert.ok((await page.getByRole('region',{name:'Favorite viewpoints'}).innerText()).includes('Messaging dependencies'),'favorite persists');
       await page.getByRole('button',{name:'Remove Messaging dependencies from favorites',exact:true}).first().click();
       assert.ok(!(await page.getByRole('region',{name:'Favorite viewpoints'}).innerText()).includes('Messaging dependencies'),'favorite removable');
       await page.keyboard.press('Escape');
-      assert.equal(await page.locator('.viewpoint-drawer').getAttribute('data-open'),'false','Escape dismisses drawer');
+      assert.equal(await page.locator('.viewpoint-drawer').getAttribute('data-open'),'true','Escape does not hide permanent navigation');
     }
     measurements.push({app:'likec4',width,height,canvasWidth:canvas.width,nodes:10,edges:edgeCount});
     await page.close();

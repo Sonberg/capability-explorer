@@ -1,3 +1,4 @@
+import {ledgerColors} from './ledger-palette.mjs';
 // Decorative particles overlay the paths without changing certainty line styles.
 // SVG motion is created only while enabled; cleanup removes every animation.
 export function animateEdges(container) {
@@ -14,7 +15,7 @@ export function animateEdges(container) {
       let particle=particles.get(path);
       if (!particle || !particle.isConnected) {
         particle=document.createElementNS(ns,'circle');
-        particle.setAttribute('r','3.5');particle.setAttribute('fill','#7dd3fc');
+        particle.setAttribute('r','3.5');particle.setAttribute('fill',ledgerColors.interface);
         particle.setAttribute('class','ce-motion-particle');particle.style.pointerEvents='none';
         const motion=document.createElementNS(ns,'animateMotion');
         motion.setAttribute('dur','4s');motion.setAttribute('repeatCount','indefinite');

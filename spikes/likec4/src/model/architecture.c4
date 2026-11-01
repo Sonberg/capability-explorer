@@ -1,19 +1,30 @@
 // Architecture API snapshot; certainty is not upgraded by visualization.
 specification {
-  color eventColor #8b5cf6
+  color ledgerObjective #CE4F7D
+  color ledgerPlatform #00804D
+  color ledgerInitiative #30C653
+  color ledgerBusinessCapability #0033A0
+  color ledgerBusinessContext #FF5A8C
+  color ledgerOrganization #2783FF
+  color ledgerApplication #0783BD
+  color ledgerInterface #00AFA5
+  color ledgerDataObject #7753CF
+  color ledgerItComponent #D68965
+  color ledgerProvider #FF991B
+  color ledgerTechCategory #A84968
   element repository { style { color slate opacity 12% } }
   element artifact
-  element service { style { color blue } }
-  element application { style { color sky } }
-  element datastore { notation "Data reference" style { color amber } }
-  element sqlObject { notation "SQL object" style { color amber shape rectangle } }
-  element database { notation "Concrete database reference" style { color amber shape storage } }
-  element databaseReference { notation "Unresolved database reference" style { color amber shape component border dashed opacity 12% } }
-  element sqlModel { notation "SQL source model" style { color amber shape component opacity 12% } }
-  element channel { style { color eventColor } }
-  relationship observed { line solid }
-  relationship association { line dashed head none }
-  relationship uncertain { line dashed }
+  element service { style { color ledgerApplication } }
+  element application { style { color ledgerApplication } }
+  element datastore { notation "Data reference" style { color ledgerItComponent } }
+  element sqlObject { notation "SQL object" style { color ledgerDataObject shape rectangle } }
+  element database { notation "Concrete database reference" style { color ledgerItComponent shape storage } }
+  element databaseReference { notation "Unresolved database reference" style { color ledgerItComponent shape component border dashed opacity 12% } }
+  element sqlModel { notation "SQL source model" style { color ledgerItComponent shape component opacity 12% } }
+  element channel { style { color ledgerInterface } }
+  relationship observed { color ledgerInterface line solid }
+  relationship association { color ledgerInterface line dashed head none }
+  relationship uncertain { color ledgerInterface line dashed }
 }
 model {
   repository_0 = repository "api-cs" {
