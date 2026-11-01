@@ -16,7 +16,7 @@ export function layoutLiveView(view:ComputedElementView):LayoutedElementView {
   function arrange(parent:string|null):{width:number;height:number} {
     const siblings=[...(children.get(parent)??[])].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
     // Parallel evidence edges share one layout constraint; evidence remains in view.edges.
-    let graph=new graphlib.Graph().setGraph({rankdir:direction,nodesep:32,ranksep:48,marginx:0,marginy:0,ranker:'network-simplex'}).setDefaultEdgeLabel(()=>({minlen:1,weight:1}));
+    let graph=new graphlib.Graph().setGraph({rankdir:direction,nodesep:64,ranksep:96,marginx:0,marginy:0,ranker:'network-simplex'}).setDefaultEdgeLabel(()=>({minlen:1,weight:1}));
     for(const node of siblings) {
       const compound=(children.get(node.id)?.length??0)>0;
       const nested=compound?arrange(node.id):null;
@@ -27,7 +27,9 @@ export function layoutLiveView(view:ComputedElementView):LayoutedElementView {
     }
     for(const edge of view.edges) {
       const source=branch(edge.source,parent),target=branch(edge.target,parent);
-      if(source&&target&&source!==target)graph.setEdge(source,target,{minlen:1,weight:1});
+      // An undirected association does not impose a direction on the rank graph.
+      // It remains in view.edges for routing, source selection and inspection.
+      if(source&&target&&source!==target&&edge.kind!=='association')graph.setEdge(source,target,{minlen:1,weight:1});
     }
     if(siblings.length&&parent) {
       // Choose a compact orientation inside each container. The view's requested
