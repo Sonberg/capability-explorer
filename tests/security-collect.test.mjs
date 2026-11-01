@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { validateConfig, inventories, dockerArgs, outputDirectory, copySealed, historyInventory, historyCheck } from '../scripts/security-collect.mjs';
+import { validateConfig, inventories, parseVersion, dockerArgs, outputDirectory, copySealed, historyInventory, historyCheck } from '../scripts/security-collect.mjs';
 import { runtimeInventory } from '../scripts/security-collect-inventory.mjs';
 import { sha } from '../scripts/security-audit-lib.mjs';
 const image = `scanner:1@sha256:${'a'.repeat(64)}`;
@@ -84,4 +84,11 @@ test('missing runtime role, stale hardcoded image and changed scanner platform f
 });
 test('runtime env files require manual configuration review', () => {
   assert.ok(inventories([{ path: 'config/runtime/images.env' }]).unsupportedConfiguration.includes('config/runtime/images.env'));
+});
+
+test('actual Gitleaks v-prefixed output and Trivy/Semgrep versions parse without inventing version', () => {
+  assert.equal(parseVersion('v8.30.1\n'), '8.30.1');
+  assert.equal(parseVersion('Version: 0.76.1\n'), '0.76.1');
+  assert.equal(parseVersion('1.183.0\n'), '1.183.0');
+  assert.throws(() => parseVersion('unable to execute scanner'), /missing actual/);
 });

@@ -40,6 +40,10 @@ export function copySealed(root, destination, source) {
     need(sha(fs.readFileSync(output)) === entry.sha256, 'source changed while sealing');
   }
 }
+export function parseVersion(stdout) {
+  const version = /^(?:Version:\s*)?v?(\d+\.\d+\.\d+)\s*$/m.exec(stdout)?.[1];
+  need(version, 'missing actual scanner version'); return version;
+}
 const fileHash = async file => {
   const hash = crypto.createHash('sha256'); for await (const chunk of fs.createReadStream(file)) hash.update(chunk); return hash.digest('hex');
 };
@@ -82,7 +86,7 @@ export async function collect(root, relative, ledgerPath, manualPath, run = runn
     const metadata = JSON.parse(inspected.stdout)[0]; need(`${metadata.Os}/${metadata.Architecture}` === tool.platform, `${name}: installed platform mismatch`);
     const args = dockerArgs({ ...tool, name }, []);
     const version = checked('docker', [...args, tool.image, ...(name === 'gitleaks' ? ['version'] : ['--version'])], `reports/${name}-version.json`);
-    const parsed = /^(?:Version:\s*)?(\d+\.\d+\.\d+)\s*$/m.exec(version.stdout)?.[1]; need(parsed, `${name}: missing actual version`);
+    const parsed = parseVersion(version.stdout);
     tools[name] = { name, ...tool, version: parsed, imageId: metadata.Id };
   }
   // Only the pinned Trivy image can reach the network here, without source/history mounts.
