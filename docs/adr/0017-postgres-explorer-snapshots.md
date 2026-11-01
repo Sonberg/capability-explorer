@@ -46,6 +46,14 @@ Remaining views stay on the existing file mode until migrated; database mode mus
 report unsupported views explicitly rather than silently loading JSONL. The first
 package does not complete issue #28 or switch the project default prematurely.
 
+Search folds and sort bytes are versioned derived metadata, separate from raw
+observations. They are computed using the pinned .NET invariant runtime, not
+PostgreSQL locale casing. A per-artifact completion marker makes startup/request
+readiness a metadata check; rebuilds never scan all nodes in an HTTP request.
+Trusted migration/import work performs bounded resumable backfill from stored
+facts without requiring original JSONL. Runtime/casing upgrades require parity
+validation and a deliberate normalizer version decision.
+
 Pagination changes API contracts. Document compatibility in the changelog and use
 the existing version policy; do not invent a release number during development.
 Keep the original file-mode behavior until the full cutover gate passes.

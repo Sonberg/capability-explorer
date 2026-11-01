@@ -194,13 +194,14 @@ ARTIFACTS ?= fixtures/expected,.sandbox-cache/artifacts
 CAPABILITIES ?= capabilities.json
 GITHUB_AUTH ?= auto
 PORT ?= 5080
+EXPLORER_SOURCE ?= files
 # Human-maintained service map that binds @unbound hints (see schema/README.md). Used by explore and by the optional import in analyze.
 BINDINGS ?= $(wildcard bindings.json)
 explore: fixtures build
 	@echo "Capability Explorer: http://127.0.0.1:$(PORT)"
 	GITHUB_TOKEN="$$(scripts/github-token $(GITHUB_AUTH))" CE_HOST_HOME="$$HOME" \
 	ASPNETCORE_URLS="http://127.0.0.1:$(PORT)" $(DOTNET) platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll \
-	  --artifacts $(ARTIFACTS) --repos fixtures/.repos $(if $(EVALUATION),--evaluation $(EVALUATION)) \
+	  --source $(EXPLORER_SOURCE) --artifacts $(ARTIFACTS) --repos fixtures/.repos $(if $(EVALUATION),--evaluation $(EVALUATION)) \
 	  --capabilities $(CAPABILITIES) --workspace .sandbox-cache/sources $(if $(BINDINGS),--bindings $(BINDINGS)) \
 	  $(if $(INTERPRETATION),--interpretation:provider $(INTERPRETATION) --interpretation:cacheDirectory .sandbox-cache/interpretations) \
 	  $(if $(FOUNDRY_ENDPOINT),--interpretation:endpoint $(FOUNDRY_ENDPOINT)) \

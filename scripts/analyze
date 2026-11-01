@@ -102,9 +102,16 @@ if [[ -n "${CE_DATABASE:-}" ]]; then
   # Import runs on the host after validation; analysed repository code is never loaded or executed here.
   # Embeddings use `make ollama`, the explorer's Settings page, or CE_MODEL_ENDPOINT + CE_EMBEDDING_MODEL.
   embed=0; [[ -n "${CE_MODEL_ENDPOINT:-}" || -f .sandbox-cache/model.json ]] && embed=1
-  dotnet "$ce" migrate
-  if [[ -n "${BINDINGS:-}" ]]; then dotnet "$ce" import --bindings "$BINDINGS" "${imported[@]}"; else dotnet "$ce" import "${imported[@]}"; fi
-  if [[ "$embed" == 1 ]]; then dotnet "$ce" embed || echo "-- embeddings not updated (see above); run ce embed again later"; fi
+  store_command() {
+    if [[ "${CE_STORE_SANDBOX:-0}" == 1 ]]; then
+      SANDBOX_PASS_ENV="CE_DATABASE,CE_MODEL_ENDPOINT,CE_EMBEDDING_MODEL" SANDBOX_SOURCES="" scripts/sandbox dotnet dotnet "$ce" "$@"
+    else
+      dotnet "$ce" "$@"
+    fi
+  }
+  store_command migrate
+  if [[ -n "${BINDINGS:-}" ]]; then store_command publish --scope "$cap" --bindings "$BINDINGS" "${imported[@]}"; else store_command publish --scope "$cap" "${imported[@]}"; fi
+  if [[ "$embed" == 1 ]]; then store_command embed || echo "-- embeddings not updated (see above); run ce embed again later"; fi
 else
   echo "-- not storing: set CE_DATABASE=<Npgsql connection string> to import into PostgreSQL (BINDINGS=bindings.json to bind)"
 fi

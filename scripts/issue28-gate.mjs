@@ -10,7 +10,7 @@ export function validateContract(c) {
   need(c?.scope === 'foundation' && c.issueComplete === false, 'foundation cannot claim full issue completion');
   need(c?.snapshot?.identity === 'immutable-uuid' && c.snapshot.publish === 'compare-and-swap'
     && c.snapshot.pages === 'retained-snapshot', 'snapshot consistency contract missing');
-  for (const key of ['recordBytes', 'responseBytes', 'searchDefault', 'searchMax', 'edgePreview', 'pageMax', 'queryTimeoutSeconds']) {
+  for (const key of ['recordBytes', 'responseBytes', 'projectionRowBytes', 'searchDefault', 'searchMax', 'edgePreview', 'pageMax', 'queryTimeoutSeconds']) {
     need(Number.isSafeInteger(c?.limits?.[key]) && c.limits[key] > 0, `invalid limit ${key}`);
   }
   need(c?.limits?.searchDefault <= c?.limits?.searchMax && c?.limits?.searchMax <= 100, 'search bound invalid');

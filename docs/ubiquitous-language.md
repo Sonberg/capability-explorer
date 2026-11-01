@@ -98,6 +98,19 @@ DDD redesign. Share the ce.v1 language across them; preserve each context's owne
 
 ## Applying the language
 
+The proposed PostgreSQL read model adds precise implementation terms:
+
+* **Analysis snapshot**: one immutable selection of exact artifact IDs and default
+  revisions. It is not a capability's Git acquisition snapshot or a deployment.
+* **Candidate analysis snapshot**: a stored selection not yet visible through the
+  publication pointer. Valid imported facts alone do not publish it.
+* **Published analysis snapshot**: a selection assigned a generation by a successful
+  compare-and-swap publication. Retained published snapshots remain pageable.
+* **Publication generation**: a monotonically increasing counter per capability or
+  workspace scope; it is not a Git revision or a model-training epoch.
+* **Continuation cursor**: signed, expiring page position bound to snapshot and
+  query selection. It never grants authorization or changes the selected facts.
+
 Use these terms in new public interfaces, diagnostics, tests and GitHub work claims.
 A new overloaded term needs a definition and example here before becoming a public
 API. If code/schema meaning changes, update its tests, contract guide and glossary

@@ -3,38 +3,286 @@
   "baseline": "d9421fa046c870df484927c97b786afcbb7d48bb",
   "scope": "foundation",
   "issueComplete": false,
-  "snapshot": {"scope": "capability-or-workspace", "identity": "immutable-uuid", "publish": "compare-and-swap", "pages": "retained-snapshot", "cursorSeconds": 3600, "selectionMax": 100},
-  "limits": {"recordBytes": 8388608, "responseBytes": 1048576, "searchDefault": 50, "searchMax": 100, "edgePreview": 25, "pageMax": 100, "queryTimeoutSeconds": 10},
-  "acceptance": ["invalid-import-preserves-last-good", "concurrent-publish-cas", "cursor-survives-publication", "db-startup-without-artifact-files", "search-rank-parity", "bounded-response-and-cancellation"],
-  "workload": {"seed": 28, "tiers": [1000, 100000, 1000000, 10000000], "defaultNodes": 1000, "largeOptIn": true, "shapes": ["repeated-names", "short-punctuation", "high-degree", "multiple-revisions", "cross-repository", "invalid-and-truncated"]},
-  "budgets": {"status": "provisional", "searchP95Ms": 200, "graphP95Ms": 500, "appIdleMb": 250, "diskReserveGiB": 10, "measure": ["app-rss", "database-memory", "import-peak", "disk-index-wal", "cold-start", "p50-p95-p99", "response-bytes", "ci-seconds"]},
-  "routes": [
-    {"path":"meta", "shape":"detail", "status":"foundation"},
-    {"path":"generation", "shape":"detail", "status":"foundation"},
-    {"path":"view", "shape":"detail", "status":"foundation"},
-    {"path":"revisions", "shape":"page", "max":100, "sort":["repositoryId","commitSha"], "status":"foundation"},
-    {"path":"artifacts", "shape":"page", "max":100, "sort":["repositoryId","commitSha","unitPath","artifactId"], "status":"foundation"},
-    {"path":"search", "shape":"page", "max":100, "sort":["rank","name","symbolKey","artifactId"], "status":"foundation"},
-    {"path":"symbol", "shape":"detail", "status":"foundation"},
-    {"path":"symbol/edges", "shape":"page", "max":100, "sort":["artifactId","localId"], "status":"foundation"},
-    {"path":"symbol/evidence", "shape":"page", "max":100, "sort":["artifactId","localId"], "status":"foundation"},
-    {"path":"calculations", "shape":"page", "max":100, "sort":["name","symbolKey","artifactId"], "status":"foundation"},
-    {"path":"calculation", "shape":"detail", "status":"foundation"},
-    {"path":"source", "shape":"detail", "status":"foundation"},
-    {"path":"integrations", "shape":"page", "max":100, "sort":["group","key"], "status":"remaining"},
-    {"path":"architecture", "shape":"graph", "maxNodes":200, "maxEdges":400, "status":"remaining"},
-    {"path":"changes", "shape":"page", "max":100, "sort":["category","key"], "status":"remaining"},
-    {"path":"compare", "shape":"detail", "status":"remaining"},
-    {"path":"glossary", "shape":"page", "max":100, "sort":["term","key"], "status":"remaining"},
-    {"path":"glossary/concepts", "shape":"page", "max":100, "sort":["score","key"], "status":"remaining"},
-    {"path":"glossary/review", "shape":"page", "max":100, "sort":["id"], "status":"remaining"},
-    {"path":"glossary/observation", "shape":"detail", "status":"remaining"},
-    {"path":"glossary/flow", "shape":"graph", "maxNodes":200, "maxEdges":400, "status":"remaining"},
-    {"path":"binding-preview", "shape":"graph", "maxNodes":200, "maxEdges":400, "status":"remaining"},
-    {"path":"similar", "shape":"page", "max":50, "sort":["distance","key"], "status":"remaining"},
-    {"path":"search/semantic", "shape":"page", "max":50, "sort":["distance","key"], "status":"remaining"},
-    {"path":"chat", "shape":"detail", "status":"remaining"},
-    {"path":"explanations", "shape":"detail", "status":"remaining"}
+  "snapshot": {
+    "scope": "capability-or-workspace",
+    "identity": "immutable-uuid",
+    "publish": "compare-and-swap",
+    "pages": "retained-snapshot",
+    "cursorSeconds": 3600,
+    "selectionMax": 100
+  },
+  "limits": {
+    "recordBytes": 8388608,
+    "responseBytes": 1048576,
+    "searchDefault": 50,
+    "searchMax": 100,
+    "edgePreview": 25,
+    "pageMax": 100,
+    "queryTimeoutSeconds": 10,
+    "projectionRowBytes": 8192
+  },
+  "acceptance": [
+    "invalid-import-preserves-last-good",
+    "concurrent-publish-cas",
+    "cursor-survives-publication",
+    "db-startup-without-artifact-files",
+    "search-rank-parity",
+    "bounded-response-and-cancellation"
   ],
-  "ruvector": {"role":"optional-challenger", "adoption":"owner-decision", "required":["fact-parity", "rollback", "restart", "multi-session", "bounded-memory", "license-security-compatibility", "source-image-identity"], "proposal":{"p95ImprovementPercent":20,"maxResourceRegressionPercent":10}, "paidCalls":0}
+  "workload": {
+    "seed": 28,
+    "tiers": [
+      1000,
+      100000,
+      1000000,
+      10000000
+    ],
+    "defaultNodes": 1000,
+    "largeOptIn": true,
+    "shapes": [
+      "repeated-names",
+      "short-punctuation",
+      "high-degree",
+      "multiple-revisions",
+      "cross-repository",
+      "invalid-and-truncated"
+    ]
+  },
+  "budgets": {
+    "status": "provisional",
+    "searchP95Ms": 200,
+    "graphP95Ms": 500,
+    "appIdleMb": 250,
+    "diskReserveGiB": 10,
+    "measure": [
+      "app-rss",
+      "database-memory",
+      "import-peak",
+      "disk-index-wal",
+      "cold-start",
+      "p50-p95-p99",
+      "response-bytes",
+      "ci-seconds"
+    ]
+  },
+  "routes": [
+    {
+      "path": "meta",
+      "shape": "detail",
+      "status": "foundation"
+    },
+    {
+      "path": "generation",
+      "shape": "detail",
+      "status": "foundation"
+    },
+    {
+      "path": "view",
+      "shape": "detail",
+      "status": "foundation"
+    },
+    {
+      "path": "revisions",
+      "shape": "page",
+      "max": 100,
+      "sort": [
+        "repositoryId",
+        "commitSha"
+      ],
+      "status": "foundation"
+    },
+    {
+      "path": "artifacts",
+      "shape": "page",
+      "max": 100,
+      "sort": [
+        "artifactId"
+      ],
+      "status": "foundation"
+    },
+    {
+      "path": "search",
+      "shape": "page",
+      "max": 100,
+      "sort": [
+        "rank",
+        "nameFold",
+        "symbolKey"
+      ],
+      "status": "foundation"
+    },
+    {
+      "path": "symbol",
+      "shape": "detail",
+      "status": "foundation"
+    },
+    {
+      "path": "symbol/edges",
+      "shape": "page",
+      "max": 100,
+      "sort": [
+        "artifactId",
+        "localId"
+      ],
+      "status": "foundation"
+    },
+    {
+      "path": "symbol/evidence",
+      "shape": "page",
+      "max": 100,
+      "sort": [
+        "artifactId",
+        "localId"
+      ],
+      "status": "foundation"
+    },
+    {
+      "path": "calculations",
+      "shape": "page",
+      "max": 100,
+      "sort": [
+        "artifactId",
+        "localId"
+      ],
+      "status": "foundation"
+    },
+    {
+      "path": "calculation",
+      "shape": "detail",
+      "status": "foundation"
+    },
+    {
+      "path": "source",
+      "shape": "detail",
+      "status": "foundation"
+    },
+    {
+      "path": "integrations",
+      "shape": "page",
+      "max": 100,
+      "sort": [
+        "group",
+        "key"
+      ],
+      "status": "remaining"
+    },
+    {
+      "path": "architecture",
+      "shape": "graph",
+      "maxNodes": 200,
+      "maxEdges": 400,
+      "status": "remaining"
+    },
+    {
+      "path": "changes",
+      "shape": "page",
+      "max": 100,
+      "sort": [
+        "category",
+        "key"
+      ],
+      "status": "remaining"
+    },
+    {
+      "path": "compare",
+      "shape": "detail",
+      "status": "remaining"
+    },
+    {
+      "path": "glossary",
+      "shape": "page",
+      "max": 100,
+      "sort": [
+        "term",
+        "key"
+      ],
+      "status": "remaining"
+    },
+    {
+      "path": "glossary/concepts",
+      "shape": "page",
+      "max": 100,
+      "sort": [
+        "score",
+        "key"
+      ],
+      "status": "remaining"
+    },
+    {
+      "path": "glossary/review",
+      "shape": "page",
+      "max": 100,
+      "sort": [
+        "id"
+      ],
+      "status": "remaining"
+    },
+    {
+      "path": "glossary/observation",
+      "shape": "detail",
+      "status": "remaining"
+    },
+    {
+      "path": "glossary/flow",
+      "shape": "graph",
+      "maxNodes": 200,
+      "maxEdges": 400,
+      "status": "remaining"
+    },
+    {
+      "path": "binding-preview",
+      "shape": "graph",
+      "maxNodes": 200,
+      "maxEdges": 400,
+      "status": "remaining"
+    },
+    {
+      "path": "similar",
+      "shape": "page",
+      "max": 50,
+      "sort": [
+        "distance",
+        "key"
+      ],
+      "status": "remaining"
+    },
+    {
+      "path": "search/semantic",
+      "shape": "page",
+      "max": 50,
+      "sort": [
+        "distance",
+        "key"
+      ],
+      "status": "remaining"
+    },
+    {
+      "path": "chat",
+      "shape": "detail",
+      "status": "remaining"
+    },
+    {
+      "path": "explanations",
+      "shape": "detail",
+      "status": "remaining"
+    }
+  ],
+  "ruvector": {
+    "role": "optional-challenger",
+    "adoption": "owner-decision",
+    "required": [
+      "fact-parity",
+      "rollback",
+      "restart",
+      "multi-session",
+      "bounded-memory",
+      "license-security-compatibility",
+      "source-image-identity"
+    ],
+    "proposal": {
+      "p95ImprovementPercent": 20,
+      "maxResourceRegressionPercent": 10
+    },
+    "paidCalls": 0
+  }
 }

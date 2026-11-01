@@ -52,4 +52,23 @@ public sealed class ExplorerQueryCursorTests
         Assert.Throws<ArgumentException>(() => codec.Decode(Context(), "filter", "bad"));
         Assert.Throws<ArgumentException>(() => new ExplorerQueryCursor(new byte[31]));
     }
+
+    [Fact]
+    public void ExpiredContinuationRequiresRestartWithoutChangingSnapshot()
+    {
+        var time = new Clock();
+        var codec = new ExplorerQueryCursor(new byte[32], time);
+        var context = Context();
+        var token = codec.Encode(context, "search", "last-key");
+        time.Now = time.Now.AddMinutes(59);
+        Assert.Equal(["last-key"], codec.Decode(context, "search", token)!);
+        time.Now = time.Now.AddMinutes(1);
+        Assert.Throws<ArgumentException>(() => codec.Decode(context, "search", token));
+    }
+
+    private sealed class Clock : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = DateTimeOffset.Parse("2026-11-01T00:00:00Z", global::System.Globalization.CultureInfo.InvariantCulture);
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
 }

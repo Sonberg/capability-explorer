@@ -1,5 +1,26 @@
 # Handoff: remaining work
 
+## Issue #28: PostgreSQL foundation in review
+
+Main reconciliation PR #27 merged at `d9421fa046c870df484927c97b786afcbb7d48bb`.
+The isolated `feat/postgres-explorer-snapshots` package implements streamed imports,
+immutable published snapshots with explicit default revisions, bounded core SQL
+queries and an opt-in paged UI. It does **not** complete issue #28 or change the
+default file source. See [execution](plans/issue28-foundation-execution.md),
+[MADR-0017](adr/0017-postgres-explorer-snapshots.md) and
+[RuVector experiment](research/issue28-ruvector-evaluation.md).
+
+No direct main push or owner merge is authorized. Deliver this package against
+current main and reconcile after owner review before the next endpoint families.
+The declared-contract catalog remains separate. The full issue acceptance gate
+fails while architecture/integrations/history/glossary/model/review workflows
+remain unmigrated. Do not substitute fixture parity for large-corpus performance.
+
+Post-merge `make EXECUTION=sandbox dev` built main successfully but stopped before
+analysis because the corporate proxy blocked Ollama's model download. No complete
+shared-analysis receipt exists. Private Glufs and image-audit gaps remain separate
+issues #23/#24; this package does not claim they are resolved.
+
 ## Main-only integration: current directive
 
 [MADR-0016](adr/0016-main-only-pr-integration.md) supersedes the earlier stage-only policy.

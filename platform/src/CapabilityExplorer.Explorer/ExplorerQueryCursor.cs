@@ -8,17 +8,20 @@ namespace CapabilityExplorer.Explorer;
 public sealed class ExplorerQueryCursor
 {
     private readonly byte[] _secret;
+    private readonly TimeProvider _time;
     public ExplorerQueryCursor() : this(RandomNumberGenerator.GetBytes(32)) { }
-    public ExplorerQueryCursor(byte[] secret)
+    public ExplorerQueryCursor(byte[] secret, TimeProvider? time = null)
     {
         ArgumentNullException.ThrowIfNull(secret);
         if (secret.Length < 32) throw new ArgumentException("cursor key must contain at least 32 bytes", nameof(secret));
         _secret = secret.ToArray();
+        _time = time ?? TimeProvider.System;
     }
-    internal sealed record State(int Version, Guid Snapshot, string Scope, string[] Position);
+    internal sealed record State(int Version, Guid Snapshot, string Scope, string[] Position, long Expires);
     internal string Encode(ExplorerQueryContext context, string filter, params string[] position)
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(new State(1, context.SnapshotId, Scope(context, filter), position));
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(new State(2, context.SnapshotId, Scope(context, filter), position,
+            _time.GetUtcNow().AddHours(1).ToUnixTimeSeconds()));
         return Convert.ToBase64String(bytes) + "." + Convert.ToBase64String(HMACSHA256.HashData(_secret, bytes));
     }
     internal string[]? Decode(ExplorerQueryContext context, string filter, string? cursor)
@@ -33,8 +36,10 @@ public sealed class ExplorerQueryCursor
             var mac = Convert.FromBase64String(parts[1]);
             if (!CryptographicOperations.FixedTimeEquals(mac, HMACSHA256.HashData(_secret, bytes))) throw new FormatException();
             var state = JsonSerializer.Deserialize<State>(bytes);
-            if (state is null || state.Version != 1 || state.Snapshot != context.SnapshotId
-                || state.Scope != Scope(context, filter) || state.Position.Length > 8) throw new FormatException();
+            if (state is null || state.Version != 2 || state.Snapshot != context.SnapshotId
+                || state.Expires <= _time.GetUtcNow().ToUnixTimeSeconds()
+                || state.Scope != Scope(context, filter) || state.Position is null || state.Position.Length is < 1 or > 8
+                || state.Position.Any(p => p is null || p.Length > 16384)) throw new FormatException();
             return state.Position;
         }
         catch (Exception e) when (e is FormatException or JsonException)
