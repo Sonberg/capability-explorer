@@ -294,6 +294,7 @@ try {
   equal(await page.getByRole('switch', { name: 'Orthogonal', exact: true }).isChecked(), false, 'routing setting must be interactive');
   await page.getByRole('switch', { name: 'Orthogonal', exact: true }).check();
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.getByText('Animation disabled by reduced-motion preference.', { exact: true }).waitFor();
   check(await page.getByRole('switch', { name: 'Animation', exact: true }).isDisabled(), 'reduced motion must disable animation');
   equal(await page.getByRole('switch', { name: 'Animation', exact: true }).isChecked(), false, 'reduced motion must keep animation off');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
