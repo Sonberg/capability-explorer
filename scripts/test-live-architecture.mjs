@@ -84,6 +84,9 @@ async function sourceDownload(expectedGraph) {
   return source;
 }
 async function groupJourney() {
+  // The ledger is deliberately an overlay. Minimize it before direct manipulation,
+  // and target the scaled title rather than assuming an unscaled header height.
+  await page.getByRole('button', { name: 'Minimize ledger', exact: true }).click();
   const groups = canvas().locator('.react-flow__node[data-presentation-group="true"]');
   check(await groups.count() > 0, 'actual repository ownership must produce identified groups');
   let group, candidates = [];
@@ -98,8 +101,7 @@ async function groupJourney() {
   }
   check(candidates.length === 2, 'identified group must retain two independently selectable original members');
   const selectGroup = async (locator) => {
-    const box = await locator.boundingBox();
-    await page.mouse.click(box.x + Math.min(30, box.width / 3), box.y + 12);
+    await locator.locator('.likec4-compound-title').click();
     await page.getByRole('region', { name: 'Selected group controls' }).waitFor();
   };
   const originalCount = await groups.count();
@@ -116,9 +118,10 @@ async function groupJourney() {
   await custom.waitFor(); receipt.assertions++;
   equal([...JSON.parse(await custom.getAttribute('data-source-node-ids'))].sort(), [...candidates].sort(), 'custom group must preserve exact member source identities');
   const before = await Promise.all(candidates.map((id) => sourceNode(id).boundingBox()));
-  const box = await custom.boundingBox();
-  await page.mouse.move(box.x + 30, box.y + 12); await page.mouse.down();
-  await page.mouse.move(box.x + 85, box.y + 47, { steps: 12 }); await page.mouse.up();
+  const box = await custom.locator('.likec4-compound-title').boundingBox();
+  const dragX = box.x + box.width / 2, dragY = box.y + box.height / 2;
+  await page.mouse.move(dragX, dragY); await page.mouse.down();
+  await page.mouse.move(dragX + 55, dragY + 35, { steps: 12 }); await page.mouse.up();
   const after = await Promise.all(candidates.map((id) => sourceNode(id).boundingBox()));
   const deltas = before.map((value, index) => ({ x: after[index].x - value.x, y: after[index].y - value.y }));
   check(Math.abs(deltas[0].x) > 15, 'whole-group drag must move a member');
@@ -145,6 +148,7 @@ async function groupJourney() {
   equal(await renamed.count(), 0, 'custom presentation group must delete');
   await mapping(currentGraph);
   await sourceDownload(currentGraph);
+  await page.getByRole('button', { name: 'Expand ledger', exact: true }).click();
   receipt.checks.push('identified ownership, group create/rename/membership/delete and whole-group drag');
 }
 let currentGraph;
