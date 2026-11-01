@@ -28,8 +28,9 @@ were introduced. Native session cost is unavailable, so no savings amount is cla
   standalone spike remains a fixture regression harness. Production no longer copies
   its compiled fixture site into wwwroot or offers an iframe experiment tab.
 - A pure validated projection creates typed LikeC4 parsed data and canonical `.c4`
-  from the same input. Public `@likec4/core` computation plus Dagre creates live
-  layouted models in a browser worker. No Node compiler/private runtime API executes
+  from the same input. Public `@likec4/core` computation plus the public Graphviz WASM adapter creates
+  live layouted models in a browser worker. Dagre is a synchronous test adapter;
+  production compilation does not fall back to it. No Node compiler/private runtime API executes
   in the browser; the real Node compiler validates export parity in sandbox tests.
 - Stable source identities, original relationship contributor maps, SQL logical
   resource/detail views and conservative association/uncertainty behavior survive
@@ -62,7 +63,7 @@ source wwwroot is insufficient. Served asset identities are checked after rebuil
 - Explorer backend: 138/138 tests passed after generating fixture repositories and
   building UI assets. Earlier missing fixture/UI failures were setup omissions,
   corrected without changing test assertions.
-- Shared/spike unit suite: 60/60 passed, including model/worker and group tests.
+- Shared/spike unit suite: 68/68 passed, including model/worker and group tests.
   The live model suite also passed against a captured real system-level API graph.
 - Compiler round-trip: exported source preserves node IDs, metadata, labels and
   viewpoint membership. Shuffled input yields identical source and layout; unrelated
@@ -71,7 +72,7 @@ source wwwroot is insufficient. Served asset identities are checked after rebuil
   both at 1440×900, 5120×2160 and 390×844. CRUD, exact occurrence/evidence selection,
   reviewed association arrows, read-only behavior and source provenance passed.
   Simulated 409/503 cases test browser handling, not a real database outage.
-- Architecture browser journey: 178 assertions passed, including exact provenance,
+- Architecture browser journey: 182 assertions passed, including exact provenance,
   live scope/revisions, drills, filtering after group edits, group persistence, real
   label bounds, readable initial zoom and explicit Fit. Worker startup failure/retry
   and late API responses are simulated; all three viewport sizes use Chromium.
@@ -103,8 +104,12 @@ has readable 90 px initial leaves but fails performance parity.
 
 A coordinate-cache search optimization preserved paths but did not reproduce its
 initial microbenchmark gain in the actual module; it was rejected. The public
-Graphviz WASM API already present transitively is being evaluated in the existing
-model worker, without private LikeC4 compiler imports or another service.
+Graphviz WASM API already present transitively is now integrated in the existing
+model worker, without private LikeC4 compiler imports or another service. Its
+production adapter passes six focused tests, including malformed output, hostile
+display strings, compound endpoints and opposite/parallel/self relationships.
+The corrected comparison is reproducible with `make live-architecture-benchmark`,
+using already running accepted/candidate previews; no hosted browser job is added.
 
 ## Remaining gates and limits
 
@@ -114,9 +119,9 @@ fresh `make pr-check`, and create the owner-review PR against stage. Final phase
 scores and gate receipt belong in the completed handoff, not this pending record.
 
 Issue #13's 200 ms p95 final-settling target remains open. The initial bundle adds
-approximately 700 KiB gzip for the lazy shared renderer and a 668 KiB uncompressed
-model worker; the entry bundle stays approximately 97 KiB gzip. No claim is made
+approximately 700 kB gzip for the lazy shared renderer and a 1.49 MB uncompressed
+model worker including embedded Graphviz WASM; the entry bundle stays approximately 97 KiB gzip. No claim is made
 for production-corpus capacity, all-browser support or physical-display paint.
-The first actual visual review found overly small initial fit; readability and layout
-compactness are being corrected before handoff. General extractor fixes (#6) and
+Initial readability, the explicit Fit action, narrow-screen source visibility,
+collapsed source containers and label spacing were corrected during browser review. General extractor fixes (#6) and
 owner-controlled BPMN/DMN scope (#12) remain separate.

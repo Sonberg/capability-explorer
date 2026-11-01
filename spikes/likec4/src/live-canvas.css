@@ -77,3 +77,6 @@
 @media (prefers-reduced-motion:reduce) {
   .live-architecture-canvas .canvas *, .live-architecture-canvas .canvas *::before, .live-architecture-canvas .canvas *::after { animation:none!important; transition:none!important; }
 }
+
+.live-architecture-canvas .live-zoom-controls { position:absolute; z-index:10; left:12px; bottom:12px; display:grid; gap:2px; }
+.live-architecture-canvas .live-zoom-controls button { width:30px; height:30px; padding:0; font-size:20px; line-height:1; }

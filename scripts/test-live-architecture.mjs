@@ -203,6 +203,15 @@ try {
     return !viewport || (box.left >= viewport.left - 2 && box.right <= viewport.right + 2 && box.top >= viewport.top - 2 && box.bottom <= viewport.bottom + 2);
   }));
   check(fitContainsNodes, 'explicit Fit diagram must bring every node inside its viewport');
+  const zoomTarget = canvas().locator('.react-flow__node-element').first();
+  const fitHeight = (await zoomTarget.boundingBox()).height;
+  await page.getByRole('button', { name:'Zoom In', exact:true }).click();
+  check((await zoomTarget.boundingBox()).height > fitHeight, 'embedded Zoom In must change actual rendered geometry');
+  const zoomedHeight = (await zoomTarget.boundingBox()).height;
+  await page.getByRole('button', { name:'Zoom Out', exact:true }).click();
+  check((await zoomTarget.boundingBox()).height < zoomedHeight, 'embedded Zoom Out must change actual rendered geometry');
+  await page.getByRole('button', { name:'Fit View', exact:true }).click();
+
 
   equal(await page.locator('iframe').count(), 0, 'production Architecture must render directly without an experimental iframe');
   equal(await page.getByRole('tab', { name: /experiment/i }).count(), 0, 'obsolete static experiment tab must be retired');

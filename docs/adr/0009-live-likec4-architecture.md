@@ -32,9 +32,10 @@ receipt. Both Architecture and glossary connections use one embedded renderer.
 The fixture experiment remains an isolated regression harness, not production data.
 
 A pure canonical projection supplies both downloadable diagram source and the
-runtime model. Public LikeC4 model/compute APIs and the existing Dagre dependency
-provide initial layout; the existing orthogonal routing worker refines interactive
-geometry. The root LikeC4 compiler requires Node APIs and is not imported into the
+runtime model. Public LikeC4 model/compute APIs and the public Graphviz WASM
+package provide initial layout in the model worker; the existing orthogonal routing
+worker refines interactive geometry. The initial Dagre candidate failed measured
+performance parity, so it is retained only as a synchronous test adapter. The root LikeC4 compiler requires Node APIs and is not imported into the
 browser. No private compiler internals, additional backend service, container image,
 inference provider or vector index is required for drawing a graph.
 
@@ -63,8 +64,12 @@ do not rewrite analyzed artifacts or reviewed assertions.
 ## Consequences and validation
 
 The browser bundle grows and initial layout now has a worker lifecycle to manage.
-Dagre is a deliberately explicit initial layout choice, not a claim of parity with
-Graphviz. Layout quality, hierarchy, labels and interaction require browser checks.
+Graphviz WASM is pinned directly at the already installed transitive version
+1.29.2. Its public `Graphviz.load()`/`layout()` API consumes generated DOT IDs and
+numeric label reservations; user text is not interpolated into DOT or HTML.
+Returned JSON identities, counts and geometry are checked before rendering. Layout
+quality, hierarchy, labels and interaction still require browser checks. See the
+[public package documentation](https://hpcc-systems.github.io/hpcc-js-wasm/packages/graphviz/README.html).
 No artifact schema, extraction behavior or API compatibility change is intended.
 Unreleased notes follow MADR-0006; no product version is published by this change.
 

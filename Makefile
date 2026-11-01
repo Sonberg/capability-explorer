@@ -291,3 +291,8 @@ live-architecture-check: likec4-deps
 LIVE_ARCHITECTURE_URL ?= http://host.docker.internal:5096
 live-architecture-browser-check:
 	CE_LIVE_ARCHITECTURE_BASE_URL='$(LIVE_ARCHITECTURE_URL)' SANDBOX_PASS_ENV=CE_LIVE_ARCHITECTURE_BASE_URL SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node node scripts/test-live-architecture.mjs
+
+# Opt-in source-bound comparison; requires separately running baseline/candidate.
+.PHONY: live-architecture-benchmark
+live-architecture-benchmark:
+	SANDBOX_PASS_ENV=CE_LIVE_BENCHMARK_BASELINE_URL,CE_LIVE_BENCHMARK_CANDIDATE_URL,CE_LIVE_BENCHMARK_SAMPLES SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node node scripts/benchmark-live-architecture.mjs

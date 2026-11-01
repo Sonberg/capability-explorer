@@ -179,6 +179,11 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
       <section ref={canvas} className="canvas" aria-label="Live LikeC4 diagram" data-routing-generation={routing.generation} data-routing-state={routing.state} data-preview-ms={routing.previewMs} data-refinement-ms={routing.refinementMs}
         onPointerDownCapture={event => {const target = event.nativeEvent.composedPath().find((part):part is Element => part instanceof Element && part.matches('.react-flow__node')); if (target) {const node=currentView.nodes.find(node => node.id === target.getAttribute('data-id')); tracePointerDown(node?.children.length ? 'group' : 'node', event.pointerId);}}}>
         <DiagramLegend/>
+        <div className="live-zoom-controls" role="group" aria-label="Diagram zoom">
+          <button aria-label="Zoom In" title="Zoom in" onClick={() => xyflow.current?.zoomIn({duration:0})}>+</button>
+          <button aria-label="Zoom Out" title="Zoom out" onClick={() => xyflow.current?.zoomOut({duration:0})}>−</button>
+          <button aria-label="Fit View" title="Fit diagram" onClick={() => xyflow.current?.fitBounds(currentView.bounds, {duration:0, padding:0.1})}>⛶</button>
+        </div>
         {routing.state === 'pending' && <div className="routing-status" role="status">Refining routes… provisional connectors may cross</div>}
         {routing.state === 'error' && <div className="routing-status" role="alert">Routing refinement failed. Reset layout to retry.</div>}
         <div className="canvas-hint">{editable ? 'Click a group to manage it · Shift-click nodes to group · drag groups together' : 'Source hierarchy · choose a detail viewpoint to explore its contents'}</div>
