@@ -36,6 +36,11 @@ can be deduplicated; conflicting package assemblies cannot be silently chosen by
 filesystem order. Narrow signed shared-framework overlap rules are distinct from
 arbitrary package conflict resolution. This remains bounded static analysis, not a
 replacement for MSBuild or full NuGet restore. Package lock format remains v1.
+Selected framework packs may supply dependencies pruned by .NET restore. Recognize
+that only from the selected pack's versioned PackageOverrides data and supported
+version constraints; hash that metadata with resolution inputs. Missing metadata,
+unknown constraints or requirements above the supplied ceiling remain unresolved.
+Do not infer package coverage merely from an assembly or package name.
 
 Discover static exported Next app-router handlers in app/ or src/app/. Route groups
 are structural, dynamic segments retain parameter metadata, and catch-all versus
@@ -74,6 +79,8 @@ validation and explicit limitations, rather than assuming this decision proves t
 
 ## Primary references
 
+- [.NET package pruning](https://devblogs.microsoft.com/dotnet/nuget-package-pruning-in-dotnet-10/)
+- [SDK package-pruning implementation](https://source.dot.net/Microsoft.NET.Build.Tasks/GetPackagesToPrune.cs.html)
 - [NuGet framework selection](https://learn.microsoft.com/en-us/nuget/reference/target-frameworks)
 - [NuGet.Frameworks package](https://www.nuget.org/packages/NuGet.Frameworks/7.9.0)
 - [Package/framework assembly compatibility](https://learn.microsoft.com/en-us/dotnet/standard/library-guidance/nuget-package-compatibility-rules)

@@ -1,0 +1,191 @@
+{
+  "assertions": [
+    {
+      "baseline": 0,
+      "candidate": 1,
+      "name": "Next endpoint GET /api/items/{}"
+    },
+    {
+      "baseline": 0,
+      "candidate": 1,
+      "name": "Next EXPOSES GET /api/items/{}"
+    },
+    {
+      "baseline": 0,
+      "candidate": 1,
+      "name": "Next HANDLES GET /api/items/{}"
+    },
+    {
+      "baseline": 0,
+      "candidate": 1,
+      "name": "Next endpoint POST /api/items/{}"
+    },
+    {
+      "baseline": 0,
+      "candidate": 1,
+      "name": "Next EXPOSES POST /api/items/{}"
+    },
+    {
+      "baseline": 0,
+      "candidate": 1,
+      "name": "Next HANDLES POST /api/items/{}"
+    },
+    {
+      "baseline": 0,
+      "candidate": 1,
+      "name": "Next endpoint GET /api/files/{*}"
+    },
+    {
+      "baseline": 0,
+      "candidate": 1,
+      "name": "Next EXPOSES GET /api/files/{*}"
+    },
+    {
+      "baseline": 0,
+      "candidate": 1,
+      "name": "Next HANDLES GET /api/files/{*}"
+    },
+    {
+      "baseline": 0,
+      "candidate": 1,
+      "name": "Next endpoint GET /api/search/{**}"
+    },
+    {
+      "baseline": 0,
+      "candidate": 1,
+      "name": "Next EXPOSES GET /api/search/{**}"
+    },
+    {
+      "baseline": 0,
+      "candidate": 1,
+      "name": "Next HANDLES GET /api/search/{**}"
+    },
+    {
+      "baseline": 0,
+      "candidate": 1,
+      "name": "Next service declared"
+    },
+    {
+      "baseline": 0,
+      "candidate": 0,
+      "name": "Unsupported export does not fabricate GET endpoint"
+    },
+    {
+      "baseline": 1,
+      "candidate": 1,
+      "name": "TS absolute host remains configuration uncertainty; scheme captured"
+    },
+    {
+      "baseline": 1,
+      "candidate": 1,
+      "name": "TS relative fetch keeps unresolved origin"
+    },
+    {
+      "baseline": 2,
+      "candidate": 2,
+      "name": "TS compiler fetch calls preserved"
+    },
+    {
+      "baseline": 1,
+      "candidate": 0,
+      "name": "CSharp malformed scheme path removed"
+    },
+    {
+      "baseline": 0,
+      "candidate": 1,
+      "name": "CSharp absolute host and path separated; runtime binding unresolved"
+    },
+    {
+      "baseline": 1,
+      "candidate": 1,
+      "name": "CSharp relative client origin stays unresolved"
+    },
+    {
+      "baseline": 2,
+      "candidate": 2,
+      "name": "CSharp compiler HttpClient calls preserved"
+    }
+  ],
+  "baseline": {
+    "artifacts": {
+      "csharp/HttpFixture.jsonl": "a25b0409918e1651d9677f406e60acfdbf9e9297d980509da3cd50c4192ff03b",
+      "ts/mapping-replay-ts.jsonl": "ae0f289c0f521857a0fdc2a582db991f49e967874235e5e2c548904a18427162"
+    },
+    "buildHash": "0a8f521cf17612da2e9e6fd76e7ee0103fe55d6e1564dd870f9dab41e9b0cdef",
+    "commitHint": "9aa05475848d27328a2253cb66db87fb77975ffe",
+    "identities": [
+      {
+        "artifactLanguage": "typescript",
+        "configHash": "ae9d5fe58eb7a4e104e78f5dc9a9d4bebd71914070207459ba2ff9417cc59e13",
+        "inputHash": "fc2fd0bbd378d99b50fceb749ec3f57e65a1666b11b11dae58aa496d1f404434",
+        "language": "ts",
+        "unit": "ts/tsconfig.json"
+      },
+      {
+        "artifactLanguage": "csharp",
+        "configHash": "2f50a34e45e69a6e1393aaa77df567fdcf534bdf0fd25260d001f0081d03e819",
+        "inputHash": "31122e89480f9119cd1dd6d10932cbd8e94104184678b52a3961176cd49f9f4c",
+        "language": "csharp",
+        "unit": "csharp/HttpFixture.csproj"
+      }
+    ],
+    "sourceSnapshotHash": "4a4e32669b455017dcd7793b28ab914dfa69f802558b43bde21a0adf6a7448e7"
+  },
+  "candidate": {
+    "artifacts": {
+      "csharp/HttpFixture.jsonl": "bf668009d1a7bd9ca10b2978f0f3b9e5e287b2eaf061a588a2cea419d5a3b520",
+      "ts/mapping-replay-ts.jsonl": "140bd6f7fa0086982bdfa5d039d49baed4737bca8f0662b88a7448cc559b5561"
+    },
+    "buildHash": "4570b061f444225baedc5fc7bc33aead18fcb202c6962cd0e699ff45f11f028d",
+    "commitHint": "3b03718bb7eec971cee2a29f663e3d4ad5d64997",
+    "identities": [
+      {
+        "artifactLanguage": "typescript",
+        "configHash": "801af547078046e2a51d243c98490572a89ee4ae5b8859abea0495e37a98a89c",
+        "inputHash": "a1bb745116df8817f19499eda346e726077f311db3f9aaa1f85663a1751de416",
+        "language": "ts",
+        "unit": "ts/tsconfig.json"
+      },
+      {
+        "artifactLanguage": "csharp",
+        "configHash": "9eed5875b785dcf3323c3d01f7775741ea0b58cee6e2b63b58db166cc7997d86",
+        "inputHash": "31122e89480f9119cd1dd6d10932cbd8e94104184678b52a3961176cd49f9f4c",
+        "language": "csharp",
+        "unit": "csharp/HttpFixture.csproj"
+      }
+    ],
+    "sourceSnapshotHash": "997723db76ee28dde8607858ae9dabf797cf109be80fc2152e494931f8e3cb15"
+  },
+  "changedRecords": 17,
+  "evidenceVerified": {
+    "baseline": 17,
+    "candidate": 21
+  },
+  "format": "mapping-replay-report.v1",
+  "inputHash": "93457da2ecaa70e26b3837ce57d43b1c937094c443d7b1a4659f4e91b888c0c3",
+  "inputIdentityTransitions": [
+    {
+      "baseline": "fc2fd0bbd378d99b50fceb749ec3f57e65a1666b11b11dae58aa496d1f404434",
+      "candidate": "a1bb745116df8817f19499eda346e726077f311db3f9aaa1f85663a1751de416",
+      "language": "typescript",
+      "lockedSourceHash": "93457da2ecaa70e26b3837ce57d43b1c937094c443d7b1a4659f4e91b888c0c3",
+      "name": "TypeScript input identity now includes package and compiler configuration",
+      "unit": "ts/tsconfig.json"
+    }
+  ],
+  "inputKind": "synthetic",
+  "limitations": [
+    "Commit hints are caller labels; sourceSnapshotHash and buildHash are authoritative.",
+    "Installed dependencies are sealed by file hash; registry tarball integrity is not independently recomputed.",
+    "Synthetic source only; no private repository fidelity claim.",
+    "C# framework/package asset selection is covered by dedicated extractor tests, not this HTTP replay."
+  ],
+  "manifestHash": "93773b4a4415853c23ec75cc8f0497c6ccae180cd139d0b2cb821c4464758905",
+  "repeatBytesEqual": true,
+  "schemaValidated": true,
+  "runtimeImages": {
+    "dotnet": "sha256:de4fe90a98845d75910b9769662465c84de1a934665c431279d1382b2bddc02b",
+    "node": "sha256:18a6d90fd60542269850c80ca03b29b1d9b14d6b221ac7ee8e35b0d33ef904bd"
+  },
+  "runtimeImageNote": "Both baseline and candidate repeats used these explicit sandbox image overrides; local proof only."
+}

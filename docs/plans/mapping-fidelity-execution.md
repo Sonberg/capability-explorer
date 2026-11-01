@@ -1,6 +1,6 @@
 # Deterministic mapping fidelity: execution evidence
 
-Status: specification accepted; implementation and validation in progress.
+Status: implementation and focused validation complete; exact-HEAD local CI and owner-review PR handoff are the remaining publication gates.
 Approved Brain Prompt: [issue #6](https://github.com/Sonberg/capability-explorer/issues/6#issuecomment-6558155565).
 User invoked Brain Build after this prompt. Sole target:
 `stage-1-contract-and-fixtures`, starting at `9aa05475848d27328a2253cb66db87fb77975ffe`.
@@ -86,8 +86,10 @@ also require primary package/documentation sources. Checkpoint persistence uses
 explicit canonical-path store and exact-key readback; no automatic learning-health
 claim follows from search results or successful CLI exit alone.
 
-Not yet tested: candidate integrated behavior, private Glufs replay, full candidate
-CI/security, served candidate artifacts, performance comparison or remote deployment.
+At the specification checkpoint, candidate integration, private Glufs replay, full
+CI/security and running candidate artifacts were not yet tested. The receipts below
+record subsequent verification; private corpus/performance/remote deployment claims
+remain excluded.
 
 ## Pseudocode and failure paths
 
@@ -162,3 +164,58 @@ verification; these are explicit limits rather than a claim of MSBuild equivalen
 Brain closing pass: `sparc/docs/tutorial.md` again requires independent evidence;
 no additional runtime component was justified. Existing static parsing, NuGet's
 pinned compatibility reducer and native URI parsers implement the chosen contracts.
+
+## Refinement gate and final local evidence
+
+Refinement score: 95/100 (three verification iterations). The first integrated
+C# golden run exposed SDK-pruned dependencies incorrectly reported as missing;
+selected-pack PackageOverrides evidence fixed the cause without suppressing unknown
+packages or changing thresholds. Replay then rejected the intentional TS input-hash
+expansion; an exact, source-manifest-bound transition now permits only that reviewed
+change. Output-path traversal is rejected after path normalization.
+
+Final focused results, all zero failures/skips:
+
+| Command/evidence | Result |
+|---|---|
+| `make test-extractors evaluate-cs` | 74 tests; 10/10 C# goldens; all metrics/coverage at 100% |
+| TS typecheck and `npm test` through sandbox | 122 tests |
+| `make test-contracts` | 105 tests |
+| `make evaluate-ts evaluate-sql` | 3/3 TS and 5/5 SQL goldens, unchanged thresholds |
+| Sandbox Explorer / Interpretation / Capabilities tests | 138 / 28 / 28 tests |
+| `make test-mapping-replay` equivalent sandbox command | 16 tests, including failure paths |
+| `scripts/mapping-replay` with fixed image digests | 21 assertions, 17 exact semantic changes, 38 verified source spans; two byte-identical runs per build |
+
+The committed [replay receipt](../evidence/mapping-fidelity-replay.json) binds the
+source snapshots, executable bytes, synthetic inputs, expected manifest and local
+ARM64 runtime image digests. It records the deliberate input-hash transition and
+limitations. The actual CLI commands ran offline; analyzed code was not executed.
+Fixture sources, revision IDs, golden bytes and thresholds have no diff from stage.
+
+Logs: `.sandbox-cache/mapping-csharp-recheck.log`, `mapping-ts-sql-evaluation.log`,
+`mapping-platform-regression.log`, `ts-integration.log`, `replay-final-tests.log`
+and `replay-final2.log`. Earlier failed logs remain available for diagnosis.
+Independent native reviewers covered resolution/HTTP boundaries and replay integrity.
+Brain closing pass: `sparc/docs/tutorial.md` reconfirmed source-bound independent
+proof; no additional runtime tool was justified. No external inference calls were
+made; native session spend is unavailable and savings are not estimated.
+
+Five points withheld: private Glufs source-to-artifact improvement is unmeasured
+(3), and this focused receipt does not prove every target framework/runtime platform
+or arbitrary MSBuild/NuGet graph behavior (2). These boundaries remain explicit.
+
+## Completion and publication handoff
+
+The full project act/Trivy pre-push gate must pass on the final clean commit, followed
+by fresh `make pr-check` and a PR targeting stage-1-contract-and-fixtures with owner
+review requested and auto-merge disabled. Exact publication SHA/base/gate receipts
+belong in the PR handoff comment and `.sandbox-cache/local-ci/last-success.txt`;
+do not modify tested source merely to transcribe the subsequent publication result.
+Completion is not implied by the focused score above. Main, production databases,
+release tags and deployed artifacts are untouched.
+
+What this work does not prove: real Glufs diagnostic-count reductions, full MSBuild
+or NuGet graph emulation, execution of Next configuration/proxies, deployment service
+identity, a performance target, remote deployment or owner acceptance. Issue #6
+stays open for those remaining investigations. PR #21 remains independent and must
+be reconciled if stage advances before either handoff.
