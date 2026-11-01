@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
 import { request } from "../api";
 import { useFocus } from "../focus";
 import { symbolHref, useRoute, useSelection } from "../state";
@@ -27,15 +28,28 @@ type Chip = "capability" | "view" | "item";
 /** Concepts, integrations and paths are summaries, not a single symbol to open. */
 const isSymbol = (s: Source) => !["Concept", "Integration", "Path"].includes(s.kind);
 
-/** Renders [n] citations as links to the symbol they cite; everything else stays plain text. */
-function Cited({ text, sources }: { text: string; sources: Source[] }) {
-  const parts: ReactNode[] = [];
-  text.split(/(\[\d+\])/).forEach((part, i) => {
-    const source = /^\[(\d+)\]$/.exec(part) && sources.find((s) => s.n === Number(part.slice(1, -1)));
-    parts.push(source && isSymbol(source) ? <a key={i} href={symbolHref(source.key)} title={`${source.kind} ${source.name}`}>{part}</a> : part);
-  });
-  return <p className="whitespace-pre-wrap">{parts}</p>;
+/** [n], [n-m] and [n, m] become markdown links to the symbols they cite; non-symbol sources stay plain text. */
+function linkCitations(text: string, sources: Source[]): string {
+  return text.replace(/\[(\d+(?:\s*[-–,]\s*\d+)*)\]/g, (_, list: string) =>
+    "[" + list.split(",").flatMap((x) => {
+      const [from, to = from] = x.split(/[-–]/).map(Number);
+      return Array.from({ length: Math.min(Math.max(to - from + 1, 1), 20) }, (_, k) => from + k);
+    }).map((n) => {
+      const source = sources.find((s) => s.n === n);
+      return source && isSymbol(source) ? `[${n}](${symbolHref(source.key)} "${source.kind} ${source.name.replace(/"/g, "")}")` : String(n);
+    }).join(", ") + "]");
 }
+
+const markdown: Components = {
+  p: (props) => <p className="my-1.5 first:mt-0 last:mb-0" {...props} />,
+  ol: (props) => <ol className="my-1.5 list-decimal space-y-1 pl-5" {...props} />,
+  ul: (props) => <ul className="my-1.5 list-disc space-y-1 pl-5" {...props} />,
+  h1: (props) => <h3 className="mb-1 mt-3 font-semibold" {...props} />,
+  h2: (props) => <h3 className="mb-1 mt-3 font-semibold" {...props} />,
+  h3: (props) => <h3 className="mb-1 mt-3 font-semibold" {...props} />,
+  code: ({ className, ...props }) => <code className={`rounded bg-zinc-100 px-1 font-mono text-[12.5px] dark:bg-zinc-800 ${className ?? ""}`} {...props} />,
+  pre: (props) => <pre className="my-2 overflow-x-auto rounded bg-zinc-100 p-2 dark:bg-zinc-800 [&>code]:bg-transparent [&>code]:p-0" {...props} />,
+};
 
 /** Cmd/Ctrl+J: ask about the selected capability. Answers cite numbered items retrieved on the server. */
 export function ChatPanel({ onClose }: { onClose: () => void }) {
@@ -116,7 +130,7 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
             <p key={i} className="ml-8 rounded-lg bg-blue-50 px-3 py-2 dark:bg-blue-950/50">{t.content}</p>
           ) : (
             <div key={i} className="space-y-1.5">
-              <Cited text={t.content} sources={t.sources ?? []} />
+              <ReactMarkdown components={markdown}>{linkCitations(t.content, t.sources ?? [])}</ReactMarkdown>
               {t.retrieval?.filter((r) => r.startsWith("semantic search")).map((r) => <Muted key={r} className="text-xs">{r}</Muted>)}
               {t.steps && t.steps.length > 0 && (
                 <details className="text-xs">
