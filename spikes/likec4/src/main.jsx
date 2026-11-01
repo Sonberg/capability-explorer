@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { useLikeC4Model } from 'likec4:single-project';
 import { ReactLikeC4, LikeC4ModelProvider, LikeC4EditorProvider, createLikeC4Editor } from 'likec4/react';
 import { LikeC4Model } from 'likec4/model';
+import {routeOrthogonal} from './orthogonal-routing.mjs';
 import { animateEdges } from './edge-motion.mjs';
 import { automaticGroups, applyGroups, saveGroup, validateGroups } from './grouping.mjs';
 import { GroupControls, SelectionBridge } from './group-controls.jsx';
@@ -38,7 +39,7 @@ function App() {
   const editable=view==='flow'||view==='vertical';
   const generatedView=useMemo(()=>editable?applyGroups(sourceModel.$data.views[view],groups):sourceModel.$data.views[view],[sourceModel,view,groups,editable]);
   const layoutView = editable ? (customView ?? generatedView) : generatedView;
-  const currentView = useMemo(()=>({...layoutView,routing:orthogonal?'ortho':'spline'}),[layoutView,orthogonal]);
+  const currentView = useMemo(()=>orthogonal?routeOrthogonal(layoutView):{...layoutView,routing:'spline'},[layoutView,orthogonal]);
   const model = useMemo(() => LikeC4Model.create({...sourceModel.$data,views:{...sourceModel.$data.views,[view]:currentView},manualLayouts:{}}), [sourceModel,currentView]);
   const editor = useMemo(() => createLikeC4Editor({fetchView: id => model.$data.views[id],handleChange: (id, change) => {if (id === view && change.op === 'save-view-snapshot') setCustomView(change.layout); return {waitForViewSync:false};}}), [model,view]);
   const selectedLeaves=selected.filter(id=>currentView.nodes.some(n=>n.id===id&&n.kind!=='@group'));

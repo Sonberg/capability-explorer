@@ -53,3 +53,21 @@ The renderer's default remote font injection is disabled. The package audit repo
 LikeC4 is useful for architecture views and compound grouping. BPMN/DMN semantics and bpmn.io evaluation belong to issue #12, not this visualization adapter. Keep the existing evidence contract authoritative regardless of renderer.
 
 Settings stay at the bottom of the viewpoint menu: Orthogonal defaults on, Animation defaults off, and Dark mode defaults on. Toggles apply across viewpoints for the current page session. Reduced-motion preferences disable animation. The viewer defaults every viewpoint to orthogonal routing. Build-time source retains spline geometry so switching orthogonal off can restore curves without relayout; the runtime switch preserves node positions and group membership.
+
+Orthogonal routing uses a deterministic 12-unit grid and treats parallel segments less than 24 diagram units apart as clearance collisions. The apparent gap scales with zoom. It spaces and aligns ports, chooses sides from free space between node boundaries, reserves connection exits with clearance in every direction, avoids nodes, and penalizes occupied lanes/crossings. Three fixed routing orders are compared, preferring fewer fallback routes, clearance collisions and crossings before fewer bends/shorter paths. Labels are placed beside segments with node/label collision checks. There are no fixture-specific names, identities or positions in the router.
+
+The generic crossing causes were incompatible far-end bend choices for opposing connections, missing destination approach direction, and paths passing too close to another connection's reserved exit. The router now prefers a common corridor for turning lanes, requires the correct destination approach, and protects future exits. Each connection releases its own reservations while searching, avoiding self-induced zigzags. A clear, aligned connection produces one straight segment. Backward drawing direction preserves semantic arrow endpoints.
+
+Node positions and evidence are preserved; geometry is recomputed after group/layout snapshots. The 24-unit clearance is a scored routing constraint, not a universal guarantee: overlapping nodes, crowded ports, non-planar graphs, unroutable connections and very large layouts can retain collisions or native fallback routing. Relationships are never discarded to improve the score. Orthogonal mode owns route control points; source geometry remains the basis for the initial curved mode.
+
+The browser comparison against `cdde13d` (same fixture, node layout, LikeC4 1.60.0 and 1920×1080 viewport) measured actual rendered SVG straight segments:
+
+| View | Shared segment pairs | Parallel pairs closer than 24 units | Proper crossings | Straight segments |
+|---|---:|---:|---:|---:|
+| Resource overview | 3 → 0 | 3 → 0 | 2 → 0 | 36 → 20 |
+| Vertical resource overview | 5 → 0 | 2 → 0 | 0 → 0 | 39 → 18 |
+| SQL object detail | 3 → 0 | 7 → 0 | 8 → 2 | 54 → 32 |
+
+The comparison excludes rounded corner arcs and endpoint touches; it does not claim universal planar routing. Nineteen focused tests cover evidence/geometry preservation, obstacle avoidance, opposing lanes, deterministic ordering, repeated snapshot bounds, fallback, straight routes, backward arrow direction, mirrored/rotated offset connections with changed identities, and wide nodes with narrow side gaps. The normal browser suite checks four screen sizes, routing toggles and group CRUD/dragging.
+
+The optional `test/routing-benchmark.mjs` compares a separately built baseline supplied through `ROUTING_BASELINE_URL` with the local preview, asserts no shared or too-close parallel segments and no extra crossings for these three fixture views, and writes screenshots and measurements under `.sandbox-cache/likec4-browser`. The baseline was built from the spike at `cdde13d`, with unchanged source/model and dependencies; its entry point was restored into a temporary copy. No additional hosted CI job or dependency was introduced.

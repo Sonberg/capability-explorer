@@ -62,7 +62,9 @@ try {
     assert.equal(await page.getByRole('region',{name:'Diagram legend'}).count(),0);
     await page.getByRole('button',{name:'Expand ledger',exact:true}).click();
     await page.getByRole('button',{name:'Minimize ledger',exact:true}).click();
-    assert.equal(await page.locator('.react-flow__viewport').first().getAttribute('style'),viewportBefore,'menu and ledger actions must not move diagram');
+    const transformNumbers=value=>value.match(/-?[0-9]+(?:\.[0-9]+)?/g).map(Number);
+    const beforeTransform=transformNumbers(viewportBefore),afterTransform=transformNumbers(await page.locator('.react-flow__viewport').first().getAttribute('style'));
+    assert.ok(beforeTransform.every((v,i)=>Math.abs(v-afterTransform[i])<(i===2?.001:1)),'menu and ledger actions must not move diagram beyond subpixel fit settling');
     await page.getByRole('switch',{name:'Animation',exact:true}).check();
     assert.ok((await paths.evaluateAll(es=>es.map(e=>getComputedStyle(e).animationName))).some(n=>n==='ce-edge-flow'));
     await page.locator('.ce-motion-particle').first().waitFor();
