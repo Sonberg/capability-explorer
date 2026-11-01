@@ -101,6 +101,8 @@ async function groupJourney() {
   }
   check(candidates.length === 2, 'identified group must retain two independently selectable original members');
   const selectGroup = async (locator) => {
+    const minimize = page.getByRole('button', { name: 'Minimize ledger', exact: true });
+    if (await minimize.count()) await minimize.click(); // a full reload restores the default open ledger
     await locator.locator('.likec4-compound-title').click();
     await page.getByRole('region', { name: 'Selected group controls' }).waitFor();
   };
