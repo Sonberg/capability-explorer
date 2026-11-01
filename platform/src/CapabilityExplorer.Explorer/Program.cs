@@ -29,6 +29,7 @@ var database = builder.Configuration["database"] ?? Environment.GetEnvironmentVa
 var dataSource = database is { Length: > 0 } ? NpgsqlDataSource.Create(database) : null;
 var intelligence = new Intelligence(interpretation, builder.Configuration["modelSettings"] ?? ModelSettings.DefaultPath, dataSource is null ? null : new EmbeddingStore(dataSource)) { DataSource = dataSource };
 builder.Services.AddSingleton(intelligence);
+builder.Services.AddSingleton(new GlossaryReviewService(dataSource));
 builder.Services.AddTransient(_ => intelligence.Layer);
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
@@ -44,5 +45,6 @@ var app = builder.Build();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapExplorerApi(options.EvaluationReport);
+app.MapGlossaryReviewApi();
 app.MapFallbackToFile("index.html");
 app.Run();
