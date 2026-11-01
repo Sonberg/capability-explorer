@@ -1,3 +1,5 @@
+import {configureTracing,downloadTrace,tracePointerDown,tracePointerUp,traceCancel,traceSnapshot} from './routing-trace.ts';
+import {RoutingTraceBridge} from './routing-trace-bridge.tsx';
 import type {LayoutedView,DiagramNode} from 'likec4/model';
 import type {DiagramApi,LikeC4EditorCallbacks} from 'likec4/react';
 import type {Group} from './types.ts';
@@ -23,6 +25,9 @@ function OptionalEditor({enabled,editor,children}:{enabled:boolean;editor:LikeC4
 const embedded=new URLSearchParams(location.search).get('embed')==='1';
 function App() {
   const sourceModel = useLikeC4Model();
+  const [tracing,setTracing]=useState(()=>new URLSearchParams(location.search).get('routingTrace')==='1');
+  useEffect(()=>{configureTracing(tracing);return ()=>configureTracing(false);},[tracing]);
+  useEffect(()=>{document.addEventListener('pointerup',tracePointerUp,true);document.addEventListener('pointercancel',traceCancel,true);return ()=>{document.removeEventListener('pointerup',tracePointerUp,true);document.removeEventListener('pointercancel',traceCancel,true);};},[]);
   const [orthogonal,setOrthogonal]=useState(true);
   const [view, setView] = useState('flow');
   const [resetKey, setResetKey] = useState(0);
@@ -44,10 +49,10 @@ function App() {
   const editable=view==='flow'||view==='vertical';
   const generatedView=useMemo(()=>editable?applyGroups(sourceModel.$data.views[view],groups):sourceModel.$data.views[view],[sourceModel,view,groups,editable]);
   const layoutView = editable ? (customView ?? generatedView) : generatedView;
-  const routing=useRouting(layoutView,orthogonal,resetKey);
+  const routing=useRouting(layoutView,orthogonal,resetKey,tracing);
   const currentView=routing.view;
   const model = useMemo(() => LikeC4Model.create({...sourceModel.$data,views:{...sourceModel.$data.views,[view]:currentView},manualLayouts:{}}), [sourceModel,currentView]);
-  const editor = useMemo(() => createLikeC4Editor({fetchView: id => model.$data.views[id],handleChange: (id, change) => {if (id === view && change.op === 'save-view-snapshot') setCustomView(change.layout); return {waitForViewSync:false};}}), [model,view]);
+  const editor = useMemo(() => createLikeC4Editor({fetchView: id => model.$data.views[id],handleChange: (id, change) => {if (id === view && change.op === 'save-view-snapshot') {traceSnapshot(change.layout);setCustomView(change.layout);} return {waitForViewSync:false};}}), [model,view]);
   const selectedLeaves=selected.filter(id=>currentView.nodes.some(n=>n.id===id&&n.kind!=='@group'));
   const activeGroup=groups.find(g=>selected.includes(g.id));
   useEffect(()=>{
@@ -102,8 +107,8 @@ function App() {
     <div className="notice">All {Object.keys(selection).length} loaded repositories · build-time fixture snapshot · no live refresh or runtime flow claims.{reduced && ' Motion disabled by system preference.'}</div>
     <main className={showSource ? 'with-source' : ''}>
       <div className="diagram-workspace">
-        <ViewpointMenu views={sourceModel.$data.views} current={view} onSelect={switchView} source={source} coverage={<details><summary>Snapshot coverage · {Object.keys(selection).length} repositories</summary><p>Only analyzed repositories at the revisions below. Missing integrations may be unextracted or unresolved.</p>{Object.entries(selection).map(([id,sha])=><p key={id}><strong>{id}</strong> · {graph.nodes.find(n=>n.id===`repo:${id}`)?.badges?.join(" · ")}<br/><code title={sha}>{sha.slice(0,12)}</code></p>)}{graph.notes.map(note=><p key={note}>{note}</p>)}</details>} settings={{orthogonal,setOrthogonal,motion,setAnimations,reduced,dark,setDark,embedded}}/>
-      <section ref={canvas} data-routing-generation={routing.generation} data-routing-state={routing.state} data-preview-ms={routing.previewMs} data-refinement-ms={routing.refinementMs} className="canvas" aria-label="LikeC4 architecture diagram">
+        <ViewpointMenu views={sourceModel.$data.views} current={view} onSelect={switchView} source={source} coverage={<details><summary>Snapshot coverage · {Object.keys(selection).length} repositories</summary><p>Only analyzed repositories at the revisions below. Missing integrations may be unextracted or unresolved.</p>{Object.entries(selection).map(([id,sha])=><p key={id}><strong>{id}</strong> · {graph.nodes.find(n=>n.id===`repo:${id}`)?.badges?.join(" · ")}<br/><code title={sha}>{sha.slice(0,12)}</code></p>)}{graph.notes.map(note=><p key={note}>{note}</p>)}</details>} settings={{tracing,setTracing,downloadTrace,orthogonal,setOrthogonal,motion,setAnimations,reduced,dark,setDark,embedded}}/>
+      <section onPointerDownCapture={event=>{const target=event.nativeEvent.composedPath().find((part):part is Element=>part instanceof Element&&part.matches('.react-flow__node'));if(target){const node=currentView.nodes.find(n=>n.id===target.getAttribute('data-id'));tracePointerDown(node?.children?.length?'group':'node',event.pointerId);}}} ref={canvas} data-routing-generation={routing.generation} data-routing-state={routing.state} data-preview-ms={routing.previewMs} data-refinement-ms={routing.refinementMs} className="canvas" aria-label="LikeC4 architecture diagram">
         <DiagramLegend/>
         {routing.state==='pending'&&<div className="routing-status" role="status">Refining routes… provisional connectors may cross</div>}
         {routing.state==='error'&&<div className="routing-status" role="status">Routing refinement failed; reset layout to retry.</div>}
@@ -118,6 +123,7 @@ function App() {
           controls={!embedded} mantineTheme={embedded?{fontFamily:'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',colors:{dark:['#fafafa','#f4f4f5','#d4d4d8','#a1a1aa','#71717a','#3f3f46','#27272a','#18181b','#09090b','#09090b']}}:undefined} enableElementDetails enableRelationshipDetails showNavigationButtons={!embedded} background="dots" colorScheme={dark ? 'dark' : 'light'}
           style={{ width: '100%', height: '100%' }}>
           <SelectionBridge onSelection={setSelected}/>
+          <RoutingTraceBridge view={currentView} context={routing.trace} ready={routing.state==='ready'}/>
           <style>{`
             @keyframes ce-edge-flow { 0%, 100% { filter: drop-shadow(0 0 0px currentColor); opacity: .65; } 50% { filter: drop-shadow(0 0 5px currentColor); opacity: 1; } }
             ${motion ? '.react-flow__edge-path { animation: ce-edge-flow 2.4s ease-in-out infinite; } .react-flow__edge:nth-child(3n) .react-flow__edge-path { animation-delay: -.8s; } .react-flow__edge:nth-child(3n + 1) .react-flow__edge-path { animation-delay: -1.6s; }' : '*, *::before, *::after { animation: none !important; transition: none !important; }'}

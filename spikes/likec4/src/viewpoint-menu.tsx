@@ -1,6 +1,6 @@
 import React, {useEffect,useState} from 'react';
 type Views=Record<string,{title?:string|null}>;
-interface Settings {orthogonal:boolean;setOrthogonal:(value:boolean)=>void;motion:boolean;setAnimations:(value:boolean)=>void;reduced:boolean;dark:boolean;setDark:(value:boolean)=>void;embedded:boolean}
+interface Settings {tracing:boolean;setTracing:(value:boolean)=>void;downloadTrace:()=>void;orthogonal:boolean;setOrthogonal:(value:boolean)=>void;motion:boolean;setAnimations:(value:boolean)=>void;reduced:boolean;dark:boolean;setDark:(value:boolean)=>void;embedded:boolean}
 const defaults=['flow','index','data','objects'];
 function preferences(source:string,views:Views) {
   try {
@@ -30,6 +30,8 @@ export function ViewpointMenu({views,current,onSelect,source,settings,coverage}:
         <label><span>Orthogonal</span><input type="checkbox" role="switch" checked={settings.orthogonal} onChange={e=>settings.setOrthogonal(e.target.checked)}/></label>
         <label><span>Animation</span><input type="checkbox" role="switch" checked={settings.motion} disabled={settings.reduced} onChange={e=>settings.setAnimations(e.target.checked)}/></label>
         <label><span>{settings.embedded?'Site theme · dark':'Dark mode'}</span><input type="checkbox" role="switch" checked={settings.dark} disabled={settings.embedded} onChange={e=>settings.setDark(e.target.checked)}/></label>
+        <label><span>Routing diagnostics</span><input type="checkbox" role="switch" checked={settings.tracing} onChange={e=>settings.setTracing(e.target.checked)}/></label>
+        {settings.tracing&&<button onClick={settings.downloadTrace}>Download routing trace</button>}
         {settings.reduced&&<p>Animation disabled by reduced-motion preference.</p>}
       </section>
     </nav>;

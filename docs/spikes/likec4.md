@@ -119,3 +119,5 @@ The Node test/export harness remains JavaScript and explicitly strips TypeScript
 This is isolated to the spike. The extractor still needs the JavaScript TypeScript compiler API (`createProgram`), which TypeScript 7 does not provide. Its compiler dependency and the main Explorer client are unchanged. See the [TypeScript 7 release announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/) and [Vite's separate type-checking requirement](https://vite.dev/guide/features.html#typescript).
 
 The follow-up branch depends on PR #14 (which includes #11), targets `stage-1-contract-and-fixtures`, and leaves both existing PRs available for owner review. No automatic merge is configured. A separate candidate preview may use port 5092; set `LIKEC4_PREVIEW_URL` inside the sandbox when running the browser harness against it.
+
+Routing diagnostics are opt-in under Settings. See [timing boundaries, local benchmark and optional OTel adapter](likec4-routing-diagnostics.md). Instrumentation does not change routing or meet the #13 latency target by itself.

@@ -1,3 +1,5 @@
+export type PhaseReporter=(name:string,start:number,end:number)=>void;
+const clock=()=>performance.timeOrigin+performance.now();
 import type {Point,MutablePoint,Box,DiagramNode,DiagramEdge,DiagramView} from './types.ts';
 // Deterministic presentation routing: no evidence or node positions are changed.
 // Inspired by the supplied HTML: spaced ports, obstacle-aware A*, lane costs.
@@ -153,8 +155,9 @@ function placeLabel(edge:DiagramEdge,points:readonly Point[],occupied:Box[],line
   }
   occupied.push(padded(best));return best!;
 }
-function routeOnce(view:DiagramView,order:number):DiagramView {
+function routeOnce(view:DiagramView,order:number,report?:PhaseReporter):DiagramView {
   if(!view.nodes.length||!view.edges.length||view.edges.length>250)return {...view,routing:'ortho'};
+  const gridStart=report?clock():0;
   const grid=gridFor(view);if(!grid)return {...view,routing:'ortho'};
   const nodes=new Map(view.nodes.map(n=>[n.id,n])),ordered=[...view.edges].sort((a,b)=>compare(a.id,b.id)),endpoints=ports(ordered,nodes),routes=new Map<string,Point[]>();
   // Reserve every endpoint's short exit lane before routing any relationship.
@@ -169,6 +172,8 @@ function routeOnce(view:DiagramView,order:number):DiagramView {
   }};
   for(const ends of endpoints.values())reserve(ends,1);
   ordered.sort((a,b)=>{const length=(e:DiagramEdge)=>{const p=endpoints.get(e.id);return p?.[0]&&p?.[1]?Math.abs(p[0].point[0]-p[1].point[0])+Math.abs(p[0].point[1]-p[1].point[1]):Infinity;};return order===2?compare(a.id,b.id):(order===1?-1:1)*(length(a)-length(b))||compare(a.id,b.id);});
+  report?.(`order${order}.grid-ports`,gridStart,clock());
+  const searchStart=report?clock():0;
   for(const edge of ordered){const ends=endpoints.get(edge.id);if(!ends?.[0]||!ends?.[1])continue;
     const stubBlocked=ends.some((end,i)=>view.nodes.some(n=>!n.children?.length&&n.id!==(i===0?edge.source:edge.target)&&segmentHits(end.point,end.stub,n)));
     if(stubBlocked)continue;
@@ -179,17 +184,22 @@ function routeOnce(view:DiagramView,order:number):DiagramView {
     const points=simplify([ends[0].point,...path,ends[1].point]);routes.set(edge.id,points);
     for(let i=1;i<path.length;i++){const buffer=path[i][1]===path[i-1][1]?grid.horizontal:grid.vertical;for(const p of [path[i-1],path[i]])buffer[Math.round((p[1]-grid.top)/GRID)*grid.width+Math.round((p[0]-grid.left)/GRID)]++;}
   }
+  report?.(`order${order}.search`,searchStart,clock());
+  const labelStart=report?clock():0;
   const fallback=ordered.filter(e=>!routes.has(e.id));
   const occupied=[...grid.obstacles,...grid.titles,...fallback.filter(e=>e.labelBBox).map(e=>padded(e.labelBBox!))];
   // Retained native geometry still occupies space when a route cannot be replaced.
   const lineSegments=[...routes.values(),...fallback.map(e=>(e.points??[]).filter((_,i)=>i%3===0))].flatMap(routeSegments);
   const labels=new Map(ordered.filter(e=>routes.has(e.id)).map(e=>[e.id,placeLabel(e,routes.get(e.id)!,occupied,lineSegments)]));
+  report?.(`order${order}.labels`,labelStart,clock());
+  const applyStart=report?clock():0;
   const edges=view.edges.map(edge=>routes.has(edge.id)?{...edge,points:cubicPoints(edge.dir==='back'?[...routes.get(edge.id)!].reverse():routes.get(edge.id)!),controlPoints:null,labelBBox:labels.get(edge.id),isLabelCustomized:true}:edge);
   const points=edges.flatMap(e=>e.points??[]),boxes=[...view.nodes,...occupied];
   const x=Math.min(...boxes.map(b=>b.x),...points.map(p=>p[0]))-12,y=Math.min(...boxes.map(b=>b.y),...points.map(p=>p[1]))-12;
   const right=Math.max(...boxes.map(b=>b.x+b.width),...points.map(p=>p[0]))+12,bottom=Math.max(...boxes.map(b=>b.y+b.height),...points.map(p=>p[1]))+12;
   const result:DiagramView={...view,routing:'ortho',edges,bounds:{x,y,width:right-x,height:bottom-y}};
   routedCounts.set(result,routes.size);
+  report?.(`order${order}.geometry`,applyStart,clock());
   return result;
 }
 
@@ -205,11 +215,12 @@ function quality(view:DiagramView) {
   }
   return [(view.edges.length-(routedCounts.get(view)??0)),shared+near,crossings,segments.length,length];
 }
-export function routeOrthogonal(view:DiagramView):DiagramView {
+export function routeOrthogonal(view:DiagramView,report?:PhaseReporter):DiagramView {
   if(view.edges.length>250)return {...view,routing:'ortho'};
   // Three bounded, deterministic orders reduce the greedy router's ordering bias.
   let best:DiagramView|null=null,score:number[]|null=null;
-  for(const order of [0,1,2]){const candidate=routeOnce(view,order),next=quality(candidate);
+  for(const order of [0,1,2]){const candidate=routeOnce(view,order,report),qualityStart=report?clock():0,next=quality(candidate);
+    report?.(`order${order}.quality`,qualityStart,clock());
     const diff=score?next.findIndex((n,i)=>n!==score![i]):-1;
     if(!best||(diff>=0&&next[diff]<score![diff])){best=candidate;score=next;}
   }

@@ -22,6 +22,8 @@ The `spike/likec4-stage` workstream includes #11 as an explicit dependency by op
 
 The TypeScript follow-up (`feat/likec4-typescript7`) is based on open PR #14 and keeps stage as its PR target. It adds strict browser/worker checks using pinned TypeScript 7.0.2; the extractor compiler API remains on its existing version. Review its incremental changes relative to #14 until that dependency merges.
 
+PR #15 also adds opt-in [routing lifecycle diagnostics](spikes/likec4-routing-diagnostics.md), kept in a separate commit from the TypeScript migration. It reports editor scheduling, worker phases and native-view/frame opportunities locally; no mandatory OTel SDK or collector. Issue #13 stays open for optimization and final-paint validation.
+
 ## What exists
 
 | Area | Where | State |
