@@ -190,10 +190,13 @@ function layout(graph: Graph, hidden: Set<string>): { nodes: FlowNode[]; edges: 
     const p = g.node(n.id);
     return { id: n.id, type: "arch", position: { x: p.x - NODE_W / 2, y: p.y - NODE_H / 2 }, data: { node: n, selected: false, dimmed: false } satisfies CanvasNodeData };
   });
+  // Leave and enter on the facing sides, so an edge pointing against the layout direction does not loop around its nodes.
+  const x = new Map(nodes.map((n) => [n.id, n.position.x]));
   const flowEdges: FlowEdge[] = edges.map((e) => ({
     id: e.id,
     source: e.from,
     target: e.to,
+    ...((x.get(e.to) ?? 0) < (x.get(e.from) ?? 0) ? { sourceHandle: "sl", targetHandle: "tr" } : { sourceHandle: "sr", targetHandle: "tl" }),
     label: e.label,
     data: { edge: e },
     markerEnd: e.kind === "sameName" ? undefined : { type: MarkerType.ArrowClosed, color: kindColor[e.kind] ?? "#94a3b8", width: 16, height: 16 },
@@ -216,7 +219,9 @@ function ArchNodeView({ data }: NodeProps<FlowNode<CanvasNodeData>>) {
       title={n.drill ? "Double-click to open the next level" : undefined}
       className={`relative flex h-[64px] w-[220px] overflow-hidden rounded-lg border bg-white shadow-sm transition-opacity dark:bg-zinc-900 ${style.box} ${data.selected ? "ring-2 ring-blue-500" : ""} ${data.dimmed ? "opacity-30" : ""}`}
     >
-      <Handle type="target" position={Position.Left} className="!size-1.5 !border-0 !bg-zinc-400" />
+      <Handle id="tl" type="target" position={Position.Left} className="!size-1.5 !border-0 !bg-zinc-400" />
+      <Handle id="tr" type="target" position={Position.Right} className="!size-1.5 !border-0 !bg-zinc-400" />
+      <Handle id="sl" type="source" position={Position.Left} className="!size-1.5 !border-0 !bg-zinc-400" />
       <div className={`w-1.5 shrink-0 ${style.strip}`} />
       <div className="min-w-0 flex-1 px-2.5 py-1.5">
         <div className="flex items-center gap-1">
@@ -241,7 +246,7 @@ function ArchNodeView({ data }: NodeProps<FlowNode<CanvasNodeData>>) {
           ))}
         </div>
       </div>
-      <Handle type="source" position={Position.Right} className="!size-1.5 !border-0 !bg-zinc-400" />
+      <Handle id="sr" type="source" position={Position.Right} className="!size-1.5 !border-0 !bg-zinc-400" />
     </div>
   );
 }

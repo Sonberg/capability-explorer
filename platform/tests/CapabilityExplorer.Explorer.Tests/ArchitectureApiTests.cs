@@ -35,8 +35,10 @@ public sealed class ArchitectureApiTests(ExplorerFactory factory) : IClassFixtur
         var routes = await Graph($"level=requests&focus={Uri.EscapeDataString(group.GetProperty("drill").GetProperty("focus").GetString()!)}");
         Assert.Contains(routes.GetProperty("nodes").EnumerateArray(), n => n.GetProperty("id").GetString() == "unmatched:GET /api/forecasts/{}");
 
-        // Same-named resources are linked only by an explicit "same name" hint.
-        Assert.Contains(Edges(g), e => e.GetProperty("kind").GetString() == "sameName" && e.GetProperty("facts").GetArrayLength() == 0);
+        // Crowded data stores fold into one node, and the same-name hints are dropped at this level.
+        Assert.Contains(nodes.Keys, id => id == "fold:datastore");
+        Assert.DoesNotContain(nodes.Keys, id => id.StartsWith("res:sql|", StringComparison.Ordinal));
+        Assert.DoesNotContain(Edges(g), e => e.GetProperty("kind").GetString() == "sameName");
     }
 
     [Fact]

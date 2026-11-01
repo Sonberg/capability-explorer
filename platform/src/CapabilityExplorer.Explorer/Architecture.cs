@@ -118,9 +118,48 @@ public static class Architecture
         }
 
         SystemEdges(view, b, repo => [$"repo:{repo}"]);
-        b.SameNameLinks();
-        return b.Graph("system", null, title, crumbs,
-            ["Repositories are connected through candidate HTTP route matches until base URLs are bound.", "Resources with the same name but different keys are separate until a binding proves otherwise."]);
+        return Collapse(b.Graph("system", null, title, crumbs,
+            ["Repositories are connected through candidate HTTP route matches until base URLs are bound.",
+             "Data stores, channels and unresolved hosts are summarised per kind once there are more than a few; click a connection to list every underlying fact."]));
+    }
+
+    private const int CollapseAbove = 4;
+
+    /// <summary>
+    /// Folds crowded sinks (data stores, channels, unresolved hosts) into one node per kind, so the system level stays
+    /// a map of repositories. Edges merge per (source, summary): facts, count and the weakest certainty are kept.
+    /// </summary>
+    private static ArchitectureGraph Collapse(ArchitectureGraph g)
+    {
+        var titles = new Dictionary<string, string> { ["datastore"] = "Data stores", ["channel"] = "Channels", ["unmatched"] = "Unresolved hosts" };
+        var folded = titles.Keys.Where(c => g.Nodes.Count(n => n.Category == c) > CollapseAbove).ToHashSet(StringComparer.Ordinal);
+        if (folded.Count == 0)
+        {
+            return g;
+        }
+
+        string Map(string id) => g.Nodes.FirstOrDefault(n => n.Id == id) is { } n && folded.Contains(n.Category) ? $"fold:{n.Category}" : id;
+        var nodes = g.Nodes.Where(n => !folded.Contains(n.Category)).ToList();
+        foreach (var c in folded)
+        {
+            var members = g.Nodes.Where(n => n.Category == c).ToList();
+            var unbound = members.Count(n => n.Badges.Contains("unbound") || n.Badges.Contains("unmatched"));
+            nodes.Add(new ArchNode($"fold:{c}", c, $"{titles[c]} ({members.Count})", string.Join(", ", members.Take(3).Select(n => n.Label)) + (members.Count > 3 ? ", …" : ""),
+                null, null, null, null, unbound > 0 ? [$"{unbound} unbound"] : []));
+        }
+
+        var order = new[] { "proven", "static", "unbound", "bound", "candidate", "unresolved", "broken" };
+        var edges = g.Edges.Where(e => e.Kind != "sameName")
+            .GroupBy(e => (From: Map(e.From), To: Map(e.To), e.Kind))
+            .Select(x =>
+            {
+                var facts = x.SelectMany(e => e.Facts).Take(MaxFactsPerEdge).ToList();
+                var count = x.Sum(e => e.Count);
+                var worst = x.Select(e => e.Certainty).MaxBy(c => Array.IndexOf(order, c))!;
+                var label = x.Select(e => e.Label.Split(" ×")[0]).Distinct().Count() == 1 ? x.First().Label.Split(" ×")[0] : x.Key.Kind;
+                return new ArchEdge($"{x.Key.From}->{x.Key.To}:{x.Key.Kind}", x.Key.From, x.Key.To, x.Key.Kind, count > 1 ? $"{label} ×{count}" : label, count, worst, facts);
+            }).OrderBy(e => e.Id, StringComparer.Ordinal).ToList();
+        return g with { Nodes = nodes.OrderBy(n => n.Id, StringComparer.Ordinal).ToList(), Edges = edges };
     }
 
     /// <summary>Repository-level facts: HTTP between repositories, data and messaging resources. <paramref name="owners"/> maps a repository to its canvas nodes.</summary>
