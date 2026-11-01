@@ -18,11 +18,11 @@ The isolated package pins LikeC4 1.60.0. `make likec4-check` installs the lockfi
 
 The reference HTML's `genC4()` nests elements in model containers and defines collapsed landscape, expanded flow and scoped views. This spike now follows that structure rather than relying only on display rectangles.
 
-The downloaded `.c4` includes thirteen named viewpoints for this fixture: landscape; horizontal/vertical resource overview; SQL-object detail; applications, data and messaging; three repository scopes; and three SQL-resource scopes. Views are compiled from source, not just UI filters. SQL resources collapse at overview level and objects appear only in detail views. See [the SME council findings](likec4-sql-council.md) for the identity/shape decisions.
+The downloaded `.c4` includes eighteen named viewpoints for this fixture: landscape; horizontal/vertical resource overview; SQL-object detail; applications, data and messaging; five repository scopes; and six SQL-resource scopes. Views are compiled from source, not just UI filters. SQL resources collapse at overview level and objects appear only in detail views. See [the SME council findings](likec4-sql-council.md) for the identity/shape decisions.
 
 - **Viewpoints** stays visible in a dedicated left column, with favorites first and clustered navigation below. It cannot cover canvas controls. On narrow screens navigation occupies a bounded row above the diagram. Star/unstar favorites; choices are remembered for this snapshot.
 - **Ledger** starts expanded and can be minimized or expanded. Its twelve category swatches use the exact colors supplied in `ColorLedger.drawio.html`. Applications map to Application, channels to Interface, SQL objects to Data Object, and SQL resources to IT Component. These are visual conventions, not inferred business classifications. Repository/presentation boundaries remain neutral. LikeC4 derives contrasting strokes and translucent boundary tints from these base colors; swatches retain the exact hex values.
-- Explicit repository membership automatically creates initial repository groups. Missing ownership is not guessed. Three separate SQL resources are generated from exact scoped store identities; they are not three proven physical databases.
+- Explicit repository membership automatically creates initial repository groups. Missing ownership is not guessed. Separate SQL resources are generated from exact scoped store identities; they are not automatically proven physical databases.
 - In the resource overview, click a group to rename it, edit membership or ungroup it using controls in the canvas. In membership editing, click nodes to add/remove them. Ungrouping removes the boundary, not its artifacts.
 - Shift-click nodes and choose **Group selection** to create a custom group. Moving a member into another group removes its prior presentation membership. Drag a group header to move its members together.
 - Group names, membership and deletions persist in browser storage for the exact generated source snapshot and survive viewpoint changes. A changed source snapshot restores identified defaults rather than reusing stale IDs. Manual positions remain temporary; reset layout restores the selected view's generated positions while retaining group definitions.
@@ -32,14 +32,14 @@ The downloaded `.c4` includes thirteen named viewpoints for this fixture: landsc
 
 ## Evidence and determinism
 
-`spikes/likec4/test/weekly-sales.graph.json` is the fixture-only architecture API response for `level=system&cap=weekly-sales`, captured on stage baseline `7fd2a2fe0905f20d6da7f2006bd76de5d2197d8c`. It contains nine source artifact nodes and twelve relationships. The generated model adds explicit repository and SQL-scope containers without inventing physical resources. It is not a live connection to an analyzed user repository.
+`spikes/likec4/test/all-repositories.graph.json` is the unscoped architecture API response for `level=system` (omit `cap`), captured from the stage-based Explorer with `ARTIFACTS=fixtures/expected`. It contains 22 source artifact nodes and 31 relationships across all five loaded repositories. `all-repositories.selection.json` records the corresponding `/api/view` revision selection. The original Weekly sales snapshot remains a focused regression fixture. The generated model adds explicit repository and SQL-scope containers without inventing physical resources. It is not a live connection to an analyzed user repository.
 
 The exporter sorts identities, canonicalizes evidence object keys, validates identifiers/endpoints/certainty, quotes source text and retains the complete original node/edge records in LikeC4 metadata. Semantic arrays retain their order. Candidate, unbound and unresolved relationships remain visibly uncertain. Name associations retain an undirected dashed style. No AI, remote data source or business inference is involved.
 
 Regenerate through the sandbox:
 
 ```sh
-scripts/sandbox --offline node sh -c 'cd spikes/likec4 && node scripts/export-graph.mjs test/weekly-sales.graph.json src/model/architecture.c4'
+scripts/sandbox --offline node sh -c 'cd spikes/likec4 && node scripts/export-graph.mjs test/all-repositories.graph.json src/model/architecture.c4'
 ```
 
 The supplied six-language reference HTML informed the comparison. Its LikeC4-looking diagram was hand-rendered SVG; this experiment actually compiles LikeC4 source. The private reference HTML and its generated experiments are not committed.
@@ -71,3 +71,11 @@ The browser comparison against `cdde13d` (same fixture, node layout, LikeC4 1.60
 The comparison excludes rounded corner arcs and endpoint touches; it does not claim universal planar routing. Nineteen focused tests cover evidence/geometry preservation, obstacle avoidance, opposing lanes, deterministic ordering, repeated snapshot bounds, fallback, straight routes, backward arrow direction, mirrored/rotated offset connections with changed identities, and wide nodes with narrow side gaps. The normal browser suite checks four screen sizes, routing toggles and group CRUD/dragging.
 
 The optional `test/routing-benchmark.mjs` compares a separately built baseline supplied through `ROUTING_BASELINE_URL` with the local preview, asserts no shared or too-close parallel segments and no extra crossings for these three fixture views, and writes screenshots and measurements under `.sandbox-cache/likec4-browser`. The baseline was built from the spike at `cdde13d`, with unchanged source/model and dependencies; its entry point was restored into a temporary copy. No additional hosted CI job or dependency was introduced.
+
+## System-wide scope
+
+The default **All repositories · integrations** viewpoint spans api-cs, forecast-cs, pricing-node, web-ts and worker-cs. Repository viewpoints remain available for drill-down. Expand **Snapshot coverage** in the left menu to inspect each selected revision, partial-analysis badges and binding caveats. The default revision selection belongs to the loaded fixture artifacts, not necessarily a repository's current branch tip.
+
+This reuses the existing unscoped Architecture API; no alternate graph service, extraction rules or resource identity scheme were introduced. HTTP, data and messaging integrations are included where supported by the selected evidence. This is not a claim of every code dependency or every repository in an organization. Same-name resources remain distinct; broken bindings and candidate matches are preserved. Evidence lists may be capped at 40 facts per edge by the API while the edge count remains larger.
+
+The earlier routing benchmark applies only to the retained three-repository Weekly sales snapshot at commit d6a7c2f. It does not certify zero crossings or clearance in this larger system snapshot. Browser regression checks now use the five-repository snapshot; no full-project act gate or PR publication is claimed while #11 remains pending.

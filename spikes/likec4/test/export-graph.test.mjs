@@ -54,3 +54,24 @@ test('nested source hierarchy and named viewpoints compile with original evidenc
     assert.equal(JSON.parse(model.element('repository_0.n0').getMetadata('source')).id,'repo:api-cs');
   } finally {await instance.dispose();}
 });
+
+
+test('all-repository snapshot retains cross-repository evidence and selected revisions',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const {LikeC4}=await import('likec4');
+  const snapshot=JSON.parse(readFileSync(new URL('./all-repositories.graph.json',import.meta.url),'utf8'));
+  const selection=JSON.parse(readFileSync(new URL('./all-repositories.selection.json',import.meta.url),'utf8'));
+  assert.deepEqual(snapshot.nodes.filter(n=>n.id.startsWith('repo:')).map(n=>n.repositoryId).sort(),Object.keys(selection).sort());
+  assert.equal(Object.keys(selection).length,5);
+  for(const edge of snapshot.edges)for(const fact of edge.facts??[])for(const evidence of fact.evidence??[])
+    assert.equal(evidence.commitSha,selection[evidence.repositoryId]);
+  assert.ok(snapshot.edges.some(e=>e.from==='repo:api-cs'&&e.to==='repo:pricing-node'||e.to==='repo:api-cs'&&e.from==='repo:pricing-node'));
+  const source=toLikeC4(snapshot);
+  assert.equal(source,toLikeC4({...snapshot,nodes:[...snapshot.nodes].reverse(),edges:[...snapshot.edges].reverse()}));
+  const instance=await LikeC4.fromSource(source,{throwIfInvalid:true,printErrors:false});
+  try {
+    const model=await instance.computedModel();
+    const restored=[...model.relationships()].map(r=>JSON.parse(r.getMetadata('source'))).sort((a,b)=>a.id.localeCompare(b.id));
+    assert.deepEqual(restored,[...snapshot.edges].sort((a,b)=>a.id.localeCompare(b.id)));
+  } finally {await instance.dispose();}
+});

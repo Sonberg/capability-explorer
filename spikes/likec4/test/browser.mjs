@@ -1,6 +1,14 @@
+import graph from './all-repositories.graph.json' with {type:'json'};
+import {automaticGroups,modelIdentities} from '../src/grouping.mjs';
+import {sqlResources} from '../src/sql-resources.mjs';
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
+const groups=automaticGroups(graph), scopes=sqlResources(graph), identities=modelIdentities(graph);
+const worker=groups.find(g=>g.owner==='worker-cs');
+const workerNode=identities.get('repo:worker-cs'), workerChannel=worker.members.find(id=>id!==workerNode);
+const workerSql=scopes.find(s=>s.nodeIds.some(id=>id.includes('worker-cs'))).id;
+const overviewCount=graph.nodes.length-scopes.reduce((n,s)=>n+s.nodeIds.length,0)+scopes.length+groups.length;
 const output = '/work/.sandbox-cache/likec4-browser';
 await mkdir(output, {recursive:true});
 const browser = await chromium.launch({headless:true,args:['--no-sandbox']});
@@ -16,10 +24,10 @@ try {
     await page.locator('.react-flow__node').first().waitFor();
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(500); // allow the renderer's initial fit to settle
-    assert.equal(await page.locator('.react-flow__node').count(), 10);
+    assert.equal(await page.locator('.react-flow__node').count(), overviewCount);
     const edgeCount=await page.locator('.react-flow__edge').count();
-    assert.ok(edgeCount>0&&edgeCount<=12);
-    assert.equal(await page.locator('.react-flow__node[data-id^="sql_scope_"]').count(),3,'overview shows logical resources, not SQL objects');
+    assert.ok(edgeCount>0&&edgeCount<=graph.edges.length);
+    assert.equal(await page.locator('.react-flow__node[data-id^="sql_scope_"]').count(),scopes.length,'overview shows logical resources, not SQL objects');
     const canvas=await page.locator('.canvas').boundingBox();
     const workspace=await page.locator('.diagram-workspace').boundingBox();
     assert.ok(workspace.width>width*.9, `workspace must use viewport width at ${width}`);
@@ -87,50 +95,50 @@ try {
       await page.getByRole('button',{name:'Diagram source',exact:true}).click();
       await page.getByRole('switch',{name:'Dark mode',exact:true}).check();
       assert.equal(await page.locator('.spike').getAttribute('data-theme'),'dark');
-      assert.equal(await page.locator('.react-flow__node-view-group').count(),3,'explicit repositories auto-group');
+      assert.equal(await page.locator('.react-flow__node-view-group').count(),groups.length,'explicit repositories auto-group');
       const node=id=>page.locator(`.react-flow__node[data-id="${id}"]`);
       const clickHeader=async id=>{const box=await node(id).boundingBox();await page.mouse.click(box.x+30,box.y+12);};
       await page.waitForTimeout(500);
-      const group=node('repository_2');
-      const beforeA=await node('repository_2.n2').boundingBox(),beforeB=await node('repository_2.n3').boundingBox();
+      const group=node(worker.id);
+      const beforeA=await node(workerNode).boundingBox(),beforeB=await node(workerChannel).boundingBox();
       const box=await group.boundingBox();
       await page.mouse.move(box.x+box.width/2,box.y+12);await page.mouse.down();
       await page.mouse.move(box.x+box.width/2+80,box.y+62,{steps:12});await page.mouse.up();
       await page.waitForTimeout(400);
-      const afterA=await node('repository_2.n2').boundingBox(),afterB=await node('repository_2.n3').boundingBox();
+      const afterA=await node(workerNode).boundingBox(),afterB=await node(workerChannel).boundingBox();
       assert.ok(Math.abs(afterA.x-beforeA.x)>30,'group drag moves members');
       assert.ok(Math.abs((afterA.x-beforeA.x)-(afterB.x-beforeB.x))<2,'members move as one unit');
-      await clickHeader('repository_2');
+      await clickHeader(worker.id);
       await page.getByRole('button',{name:'Rename',exact:true}).click();
       await page.getByRole('textbox',{name:'Group name'}).fill('Worker context');
       await page.getByRole('button',{name:'Save group',exact:true}).click();
       await page.waitForTimeout(400);
       assert.ok((await group.innerText()).toLowerCase().includes('worker context'));
-      await clickHeader('repository_2');
+      await clickHeader(worker.id);
       await page.getByRole('button',{name:'Edit members',exact:true}).click();
-      await node('sql_scope_2').click();
+      await node(workerSql).click();
       await page.getByRole('button',{name:'Save group',exact:true}).click();
       await page.waitForTimeout(400);
-      await clickHeader('repository_2');
+      await clickHeader(worker.id);
       assert.ok((await page.locator('.group-context').innerText()).includes('3 members'));
       await page.screenshot({path:`${output}/likec4-group-dark.png`});
       await page.getByRole('button',{name:'Ungroup',exact:true}).click();
       await page.waitForTimeout(400);
-      assert.equal(await page.locator('.react-flow__node-view-group').count(),2);
-      await node('repository_2.n2').click();
-      await node('sql_scope_2').click({modifiers:['Shift']});
+      assert.equal(await page.locator('.react-flow__node-view-group').count(),groups.length-1);
+      await node(workerNode).click();
+      await node(workerSql).click({modifiers:['Shift']});
       await page.getByRole('button',{name:'Group selection',exact:true}).click();
       await page.getByRole('textbox',{name:'Group name'}).fill('Review cluster');
       await page.getByRole('button',{name:'Save group',exact:true}).click();
       await page.waitForTimeout(300);
-      assert.equal(await page.locator('.react-flow__node-view-group').count(),3);
+      assert.equal(await page.locator('.react-flow__node-view-group').count(),groups.length);
       await page.reload();await page.locator('.react-flow__node').first().waitFor();
       assert.ok((await page.locator('.react-flow__node-view-group').allTextContents()).some(t=>t.toLowerCase().includes('review cluster')),'CRUD persists for same source snapshot');
       await page.getByRole('button',{name:'Minimize ledger',exact:true}).click();
       for(const viewpoint of ['index','applications','data','messaging','repository_0_detail','objects','sql_scope_0_detail','sql_scope_1_detail','sql_scope_2_detail','vertical','flow']) {
         await page.locator(`.viewpoint-drawer [data-view-id="${viewpoint}"]`).first().click();await page.waitForTimeout(400);
         assert.ok(await page.locator('.react-flow__node').count()>0,`${viewpoint} renders`);
-        if(viewpoint==='objects'){assert.equal(await page.locator('.react-flow__node[data-id*="sql_scope_"][data-id*=".n"]').count(),5);await page.screenshot({path:`${output}/likec4-sql-objects.png`});}
+        if(viewpoint==='objects'){assert.equal(await page.locator('.react-flow__node[data-id*="sql_scope_"][data-id*=".n"]').count(),scopes.reduce((n,s)=>n+s.nodeIds.length,0));await page.screenshot({path:`${output}/likec4-sql-objects.png`});}
       }
       assert.ok((await page.locator('.react-flow__node-view-group').allTextContents()).some(t=>t.toLowerCase().includes('review cluster')),'groups survive viewpoint changes');
       await page.locator('.viewpoint-drawer [data-view-id="data"]').first().click();
@@ -143,7 +151,7 @@ try {
       await page.keyboard.press('Escape');
       assert.equal(await page.locator('.viewpoint-drawer').getAttribute('data-open'),'true','Escape does not hide permanent navigation');
     }
-    measurements.push({app:'likec4',width,height,canvasWidth:canvas.width,nodes:10,edges:edgeCount});
+    measurements.push({app:'likec4',width,height,canvasWidth:canvas.width,nodes:overviewCount,edges:edgeCount});
     await page.close();
 
     const explorer=await browser.newPage({viewport:{width,height}});

@@ -9,7 +9,8 @@ import { automaticGroups, applyGroups, saveGroup, validateGroups } from './group
 import { GroupControls, SelectionBridge } from './group-controls.jsx';
 import {ViewpointMenu,viewpointLabel} from './viewpoint-menu.jsx';
 import {DiagramLegend} from './diagram-legend.jsx';
-import graph from '../test/weekly-sales.graph.json';
+import graph from '../test/all-repositories.graph.json';
+import selection from '../test/all-repositories.selection.json';
 import source from './model/architecture.c4?raw';
 import './style.css';
 
@@ -92,10 +93,10 @@ function App() {
         <button onClick={download}>Download .c4</button>
       </div>
     </header>
-    <div className="notice">Experimental renderer · build-time architecture snapshot · no live refresh or runtime flow claims.{reduced && ' Motion disabled by system preference.'}</div>
+    <div className="notice">All {Object.keys(selection).length} loaded repositories · build-time fixture snapshot · no live refresh or runtime flow claims.{reduced && ' Motion disabled by system preference.'}</div>
     <main className={showSource ? 'with-source' : ''}>
       <div className="diagram-workspace">
-        <ViewpointMenu views={sourceModel.$data.views} current={view} onSelect={switchView} source={source} settings={{orthogonal,setOrthogonal,motion,setAnimations,reduced,dark,setDark}}/>
+        <ViewpointMenu views={sourceModel.$data.views} current={view} onSelect={switchView} source={source} coverage={<details><summary>Snapshot coverage · {Object.keys(selection).length} repositories</summary><p>Only analyzed repositories at the revisions below. Missing integrations may be unextracted or unresolved.</p>{Object.entries(selection).map(([id,sha])=><p key={id}><strong>{id}</strong> · {graph.nodes.find(n=>n.id===`repo:${id}`)?.badges?.join(" · ")}<br/><code title={sha}>{sha.slice(0,12)}</code></p>)}{graph.notes.map(note=><p key={note}>{note}</p>)}</details>} settings={{orthogonal,setOrthogonal,motion,setAnimations,reduced,dark,setDark}}/>
       <section ref={canvas} className="canvas" aria-label="LikeC4 architecture diagram">
         <DiagramLegend/>
         <div className="canvas-hint">{editable?'Click a group to manage it · Shift-click nodes to group · edits stay with this snapshot':'Source hierarchy · choose a repository or SQL-resource detail viewpoint to explore its contents'}</div>
