@@ -31,4 +31,17 @@ public sealed class GlossaryReviewStateTests
         Assert.Equal("orphaned", Assert.Single(GlossaryReviewService.Resolve(view, [link with { SymbolKey = "missing" }])).State);
         Assert.Throws<ArgumentException>(() => GlossaryReviewService.Observe(scoped, occurrence.Id));
     }
+    [Fact]
+    public void Lost_exact_role_is_ambiguous_when_multiple_occurrences_share_the_symbol()
+    {
+        var view = Index().View("api-cs:v1-base");
+        var alternatives = Glossary.Build(view).SelectMany(c => c.Occurrences)
+            .GroupBy(o => (o.RepositoryId, o.UnitPath, o.Key)).First(g => g.Count() > 1).ToList();
+        var observed = GlossaryReviewService.Observe(view, alternatives[0].Id);
+        var link = Link(observed with { OccurrenceId = "glossary:missing-exact-role" });
+        var state = Assert.Single(GlossaryReviewService.Resolve(view, [link]));
+        Assert.Equal("ambiguous", state.State);
+        Assert.Null(state.OccurrenceId);
+    }
+
 }
