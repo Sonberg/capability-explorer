@@ -48,6 +48,9 @@ PostgreSQL stores versioned terms, links and mismatch issues with transactional
 append-only audit events. Create IDs are client-generated for retry identity;
 updates/deletes use expected versions and return conflicts without overwriting.
 Soft deletion preserves history; deleting a term retires its children atomically.
+Terms are global; capability selection scopes source references, not authorization.
+Audit writes are append-only through the application, not tamper-proof against a
+database administrator.
 Reviewer names are supplied attribution, not authenticated identities. Resolving
 a human issue does not fix or rewrite the source facts it concerns.
 
