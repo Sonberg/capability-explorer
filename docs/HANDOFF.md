@@ -1,10 +1,10 @@
 # Handoff: remaining work
 
-Status: reconciliation package prepared for `stage-1-contract-and-fixtures`.
+Status: reconciliation PR #11 merged into `stage-1-contract-and-fixtures` at `db18165`.
 The sole future work/alignment/PR target is that branch; main must remain intact.
 #5/#7/#8 landed on main; #9 landed only on `feat/main-aligned-delivery` after #8.
 This package includes both histories and corrected #10 lifecycle documentation.
-Do not call stage reconciled until the owner actually merges this package.
+The merge was verified on 2026-11-01; it does not imply owner validation of every feature.
 The operator reports notifying the owner; subsequent validation is unconfirmed.
 See [reconciliation and source SHAs](plans/stage-branch-reconciliation.md).
 Environment/IaC binding remains open.
@@ -14,15 +14,26 @@ those fixes are separate from synthetic test coverage.
 
 PR updates and newcomer workflow: [MADR-0005](adr/0005-pr-lifecycle-and-conflict-prevention.md).
 
+Release notes: [changelog](CHANGELOG.md), [MADR-0006](adr/0006-keep-a-changelog.md).
+Compatibility/versioning: [MADR-0007](adr/0007-semantic-versioning.md).
+Next proposed large package: [cross-repository flow and reviewed glossary links](plans/cross-repository-value-flow.md), issue #4 layers 4 and 3. Planning only; implementation ownership is not claimed. BPMN/DMN issue #12 still requires an owner scope decision. LikeC4 PRs #14/#15 are now merged into stage.
+
 ## LikeC4 spike delivery
 
-The `spike/likec4-stage` workstream includes #11 as an explicit dependency by operator approval; its PR still targets `stage-1-contract-and-fixtures`. Review the spike changes relative to #11 until that dependency merges. Do not merge either automatically. The Architecture page adds a site-themed experimental tab, backed by a captured five-repository snapshot with evidence retained. It does not inherit the parent capability/revision selection. See [spike scope and validation](spikes/likec4.md).
+PR #14 merged at `87d310d` and PR #15 at `daf02df` on stage (verified 2026-11-01).
+The Architecture page includes a site-themed LikeC4 experimental tab backed by a
+captured five-repository snapshot, not the parent capability/revision selection.
+See [spike scope](spikes/likec4.md). Strict TypeScript 7.0.2 checks cover the spike;
+the extractor compiler API remains unchanged.
 
-[Issue #13](https://github.com/Sonberg/capability-explorer/issues/13) tracks full settling latency. Provisional connector computation is fast, but complete settling remains roughly 1.4–1.6 seconds in the preliminary harness. The proposed next target is 200 ms p95 with corrected paint/lifecycle instrumentation. Publication requires the full local stage-aligned gate; focused browser results do not substitute for it.
-
-The TypeScript follow-up (`feat/likec4-typescript7`) is based on open PR #14 and keeps stage as its PR target. It adds strict browser/worker checks using pinned TypeScript 7.0.2; the extractor compiler API remains on its existing version. Review its incremental changes relative to #14 until that dependency merges.
-
-PR #15 also adds opt-in [routing lifecycle diagnostics](spikes/likec4-routing-diagnostics.md), kept in a separate commit from the TypeScript migration. It reports editor scheduling, worker phases and native-view/frame opportunities locally; no mandatory OTel SDK or collector. The follow-up captures completed edits immediately while preserving native undo/redo and optimizes exact A* search allocation. A test-only RuVector WASM adapter was slower and changed equal-cost path choices, so it is not shipped. Issue #13 stays open for tail-latency and final-paint validation.
+[Routing diagnostics and measurements](spikes/likec4-routing-diagnostics.md) record
+600 warm drags: release-to-second-frame-opportunity p50/p95 is 130/208 ms at 1920
+and 184/269 ms at 5120. These are not exact-paint or physical-display measurements.
+Immediate completed-edit capture preserves native undo/redo; exact A* scratch
+reuse reduces allocation. The evaluated RuVector WASM adapter was slower and is
+not shipped. Opt-in local tracing supports a host-supplied OTel tracer without a
+mandatory SDK/collector. [Issue #13](https://github.com/Sonberg/capability-explorer/issues/13)
+remains open: the 200 ms p95 target and final-paint validation are not achieved.
 
 ## What exists
 
