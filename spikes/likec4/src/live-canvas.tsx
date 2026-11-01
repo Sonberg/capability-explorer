@@ -2,7 +2,7 @@ import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {LikeC4Model} from 'likec4/model';
 import type {DiagramNode, LayoutedView} from 'likec4/model';
 import {createLikeC4Editor, LikeC4EditorProvider, LikeC4ModelProvider, ReactLikeC4} from 'likec4/react';
-import type {DiagramApi} from 'likec4/react';
+import type {DiagramApi, OnInitialized} from 'likec4/react';
 import type {LiveEdge, LiveGraph, LiveModelResult, LiveNode} from './live-contracts.ts';
 import {useLiveModel} from './live-use-model.ts';
 import {useLiveInitialZoom} from './live-use-initial-zoom.ts';
@@ -75,6 +75,7 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
   const [showSource, setShowSource] = useState(false);
   const [tracing, setTracing] = useState(false);
   const api = useRef<DiagramApi|null>(null);
+  const xyflow = useRef<Parameters<OnInitialized>[0]['xyflow']|null>(null);
   const canvas = useRef<HTMLElement|null>(null);
   const detachImmediate = useRef<(()=>void)|null>(null);
   const acceptedGeometry = useRef<string|null>(null);
@@ -166,7 +167,7 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
     <header className="live-canvas-header"><strong>{graph.title ?? 'Architecture'}</strong><div className="actions">
       <span className="current-viewpoint">{view === 'flow' ? graph.title ?? 'Selected architecture' : viewpointLabel(view, sourceModel.$data.views[view])}</span>
       <button onClick={() => {cancelTraceInteraction(); setCustomView(null); setSelected([]); setEditing(null); clear(); setResetKey(key => key+1);}}>Reset layout</button>
-      <button onClick={() => api.current?.fitDiagram(0)}>Fit diagram</button>
+      <button onClick={() => xyflow.current?.fitBounds(currentView.bounds, {duration:0, padding:0.1})}>Fit diagram</button>
       {editable && <><button onClick={() => api.current?.editorActor().send({type:'undo'})}>Undo layout</button><button onClick={() => api.current?.editorActor().send({type:'redo'})}>Redo layout</button></>}
       <button onClick={() => setShowSource(!showSource)} aria-expanded={showSource}>Diagram source</button><button onClick={download}>Download .c4</button>
     </div></header>
@@ -194,7 +195,7 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
           {initialViewport.ready && <ReactLikeC4 key={`${view}-${resetKey}`} className="ce-live-diagram" viewId={view} initialZoom={initialViewport.zoom} fitView={false} injectFontCss={false} onNodeClick={nodeClick}
             onEdgeClick={edge => {const originals=graph.edges.filter(original => result.edgeSourceIds[edge.id]?.includes(original.id)); setNodeChoices([]); if (originals.length===1) {setEdgeChoices([]); onEdgeSelect(originals[0]);} else setEdgeChoices(originals);}}
             onCanvasClick={() => {if (!editing) {setSelected([]); clear();}}}
-            onInitialized={initialized => {detachImmediate.current?.(); api.current=initialized.diagram; acceptedGeometry.current=null; detachImmediate.current=editable ? attachImmediateLayout(initialized, layout => acceptLayout.current(layout)) : null;}}
+            onInitialized={initialized => {detachImmediate.current?.(); api.current=initialized.diagram; xyflow.current=initialized.xyflow; acceptedGeometry.current=null; detachImmediate.current=editable ? attachImmediateLayout(initialized, layout => acceptLayout.current(layout)) : null;}}
             reactFlowProps={{nodesDraggable:editable, elementsSelectable:true, multiSelectionKeyCode:['Shift','Control','Meta']}}
             onNavigateTo={switchView} pannable zoomable controls keepAspectRatio={false} reduceGraphics={!motion} enableDynamicViewWalkthrough={false}
             enableElementDetails={false} enableRelationshipDetails={false} showNavigationButtons background="dots" colorScheme={dark ? 'dark' : 'light'}

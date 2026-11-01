@@ -1,7 +1,7 @@
 import {useLayoutEffect, useState} from 'react';
 import type {RefObject} from 'react';
 
-/** Prefer readable labels initially; the native Fit control remains unrestricted. */
+/** Prefer readable labels initially; the explicit Fit action remains unrestricted. */
 export function readableInitialZoom(width:number, height:number, bounds:{width:number; height:number}):number {
   const fit = Math.min(Math.max(1, width - 48) / Math.max(1, bounds.width), Math.max(1, height - 48) / Math.max(1, bounds.height));
   return Math.max(0.5, Math.min(1, fit));

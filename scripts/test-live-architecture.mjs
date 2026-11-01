@@ -189,6 +189,14 @@ try {
     return boxes.flatMap((a,index) => boxes.slice(index+1).filter(b => a.box.left < b.box.right && b.box.left < a.box.right && a.box.top < b.box.bottom && b.box.top < a.box.bottom).map(b => [a.id,b.id]));
   });
   equal(labelCollisions, [], 'actual rendered relationship label boxes must not overlap');
+  await fitDiagram();
+  const fitContainsNodes = await canvas().locator('.react-flow__node').evaluateAll(nodes => nodes.every(node => {
+    const box = node.getBoundingClientRect();
+    const viewport = node.getRootNode().host?.getBoundingClientRect();
+    return !viewport || (box.left >= viewport.left - 2 && box.right <= viewport.right + 2 && box.top >= viewport.top - 2 && box.bottom <= viewport.bottom + 2);
+  }));
+  check(fitContainsNodes, 'explicit Fit diagram must bring every node inside its viewport');
+
   equal(await page.locator('iframe').count(), 0, 'production Architecture must render directly without an experimental iframe');
   equal(await page.getByRole('tab', { name: /experiment/i }).count(), 0, 'obsolete static experiment tab must be retired');
   const allIdentity = await canvas().getAttribute('data-input-identity');
