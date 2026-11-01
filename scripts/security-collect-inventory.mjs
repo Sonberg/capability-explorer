@@ -20,7 +20,8 @@ export function inventories(files) {
   return {
     source: names,
     dependencies: names.filter(x => /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|packages\.lock\.json|Directory\.Packages\.props|yarn\.lock|pnpm-lock\.yaml|Cargo\.lock|go\.sum|requirements[^/]*\.txt|poetry\.lock|Gemfile\.lock|composer\.lock)$/.test(x)),
-    sast: names.filter(x => /\.(?:cs|[cm]?js|jsx|ts|tsx|sh|bash)$/.test(x) || x.startsWith('scripts/') && !path.basename(x).includes('.')),
+    sast: names.filter(x => /\.(?:cs|[cm]?js|jsx|ts|tsx|sh|bash)$/.test(x)),
+    unsupportedSast: names.filter(x => !/\.(?:cs|[cm]?js|jsx|ts|tsx|sh|bash)$/.test(x)),
     // This declared first profile deliberately supports Dockerfile/Terraform only.
     // YAML semantics cannot be classified by suffix; all other config requires manual review.
     misconfiguration: names.filter(x => /(?:^|\/)(?:Dockerfile(?:\.[^/]*)?|[^/]+\.tf)$/.test(x)),

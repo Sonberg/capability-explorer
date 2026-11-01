@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { validateConfig, inventories, parseVersion, dockerArgs, outputDirectory, copySealed, historyInventory, historyCheck } from '../scripts/security-collect.mjs';
+import { validateConfig, inventories, parseVersion, recordAttempt, inventoryFindings, dockerArgs, outputDirectory, copySealed, historyInventory, historyCheck } from '../scripts/security-collect.mjs';
 import { runtimeInventory } from '../scripts/security-collect-inventory.mjs';
 import { sha } from '../scripts/security-audit-lib.mjs';
 const image = `scanner:1@sha256:${'a'.repeat(64)}`;
@@ -26,7 +26,7 @@ test('scanner containers receive no Docker socket, credentials or network by def
 test('inventory includes all lockfiles and test source, while labels unsupported configuration explicitly', () => {
   const inv = inventories(['package-lock.json', 'nested/packages.lock.json', 'tests/example.ts', '.github/workflows/ci.yml', 'Dockerfile', 'infra/app.tf', 'scripts/analyze'].map(path => ({ path })));
   assert.deepEqual(inv.dependencies, ['nested/packages.lock.json', 'package-lock.json']);
-  assert.ok(inv.sast.includes('tests/example.ts')); assert.ok(inv.sast.includes('scripts/analyze'));
+  assert.ok(inv.sast.includes('tests/example.ts')); assert.ok(!inv.sast.includes('scripts/analyze')); assert.ok(inv.unsupportedSast.includes('scripts/analyze'));
   assert.deepEqual(inv.misconfiguration, ['Dockerfile', 'infra/app.tf']);
   assert.ok(inv.unsupportedConfiguration.includes('.github/workflows/ci.yml'));
 });
@@ -91,4 +91,18 @@ test('actual Gitleaks v-prefixed output and Trivy/Semgrep versions parse without
   assert.equal(parseVersion('Version: 0.76.1\n'), '0.76.1');
   assert.equal(parseVersion('1.183.0\n'), '1.183.0');
   assert.throws(() => parseVersion('unable to execute scanner'), /missing actual/);
+});
+
+test('a failed scan is retained while independent scans still run, without marking completion', () => {
+  const manifest = { scans: [{ id: 'sast', completed: true }], collectionErrors: [], collectionCompleted: false };
+  let saved = 0, independentRan = false;
+  assert.equal(recordAttempt(manifest, 'sast', () => { throw new Error('partial parser'); }, () => saved++), false);
+  assert.equal(recordAttempt(manifest, 'image-node', () => { independentRan = true; }, () => saved++), true);
+  assert.equal(independentRan, true); assert.equal(manifest.scans[0].completed, false);
+  assert.equal(manifest.collectionCompleted, false); assert.equal(manifest.collectionErrors.length, 1); assert.equal(saved, 1);
+});
+test('partial Semgrep findings retain their partial label and original raw errors', () => {
+  const raw = { errors: [{ type: 'PartialParsing' }], results: [{ check_id: 'sink', path: 'app.cs', start: { line: 1 }, extra: { severity: 'WARNING' } }], paths: { scanned: ['app.cs'] } };
+  const rows = inventoryFindings({ id: 'sast', tool: { name: 'semgrep' } }, raw);
+  assert.equal(rows[0].partial, true); assert.equal(raw.errors.length, 1);
 });

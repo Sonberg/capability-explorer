@@ -40,6 +40,22 @@ export function copySealed(root, destination, source) {
     need(sha(fs.readFileSync(output)) === entry.sha256, 'source changed while sealing');
   }
 }
+export function recordAttempt(manifest, id, action, save) {
+  try { action(); return true; }
+  catch (error) {
+    manifest.collectionErrors.push({ id, error: error.message });
+    const scan = manifest.scans.find(x => x.id === id);
+    if (scan) { scan.completed = false; scan.error = error.message; }
+    save(); return false;
+  }
+}
+export function inventoryFindings(scan, raw) {
+  // Retain usable findings from a partially parsed Semgrep report, explicitly
+  // labelled partial. The original report is unchanged and the audit still fails.
+  if (scan.tool.name === 'semgrep' && Array.isArray(raw.errors) && raw.errors.length && Array.isArray(raw.results))
+    return findings(scan, { ...raw, errors: [] }).map(row => ({ ...row, partial: true }));
+  return findings(scan, raw);
+}
 export function parseVersion(stdout) {
   const version = /^(?:Version:\s*)?v?(\d+\.\d+\.\d+)\s*$/m.exec(stdout)?.[1];
   need(version, 'missing actual scanner version'); return version;
@@ -74,7 +90,7 @@ export async function collect(root, relative, ledgerPath, manualPath, run = runn
   const write = (name, data) => { const file = path.join(out, name); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, typeof data === 'string' ? data : JSON.stringify(data, null, 2) + '\n'); return artifact(file); };
   const source = snapshot(root), inventory = inventories(source.files); copySealed(root, sourceDir, source);
   const history = historyInventory(root, run);
-  const manifest = { schemaVersion: 1, source: write('source.json', source), history: write('history.json', history), inventory: write('inventory.json', inventory), runtimeImages: write('runtime-images.json', runtimeImages), images: config.images, scans: [], collectionCompleted: false };
+  const manifest = { schemaVersion: 1, source: write('source.json', source), history: write('history.json', history), inventory: write('inventory.json', inventory), runtimeImages: write('runtime-images.json', runtimeImages), images: config.images, scans: [], collectionErrors: [], collectionCompleted: false };
   write('manifest.json', manifest); // An interrupted run remains visibly incomplete.
   const checked = (command, args, log, accepted = [0]) => {
     const result = run(command, args); const receipt = write(log, JSON.stringify({ command, args, exitCode: result.status, stdout: result.stdout, stderr: result.stderr }, null, 2));
@@ -117,35 +133,38 @@ export async function collect(root, relative, ledgerPath, manualPath, run = runn
     const file = path.join(reportsDir, `${id}.json`); need(fs.existsSync(file), `${id}: scanner did not create report`);
     const raw = JSON.parse(fs.readFileSync(file));
     const scan = { id, tool, rules: write(`rules/${id}-invocation.json`, { arguments: arguments_, sourceRules: name === 'semgrep' ? artifact(path.join(rulesDir, 'semgrep.yaml')) : name === 'gitleaks' ? artifact(path.join(rulesDir, 'gitleaks.toml')) : { image: tool.image, checksBundle }, disabledInputSuppression: true }), targets: write(`reports/${id}-targets.json`, targets), coverage: [id], skipped: 0, sourceSha256: source.sha256, completedAt: new Date().toISOString(), completed: true, exitCode: result.status, executionLog: result.receipt, report: artifact(file), ...extra };
+    manifest.scans.push(scan); write('manifest.json', manifest);
     findings(scan, raw); // Reject malformed or partial scanner formats immediately.
     if (name === 'semgrep') need(targets.every(x => raw.paths.scanned.includes(x)), 'Semgrep omitted required targets');
     if (name === 'gitleaks') {
       need(/scanned\s+~?[\d.]+\s+bytes/.test(result.stderr) && !/\b(?:ERR|FTL|fatal)\b/.test(result.stderr), `${id}: scanner completion missing or errors reported`);
       need(!/\b(?:skipping|skipped)\b/i.test(result.stderr), `${id}: scanner reports skipped coverage`);
     }
-    manifest.scans.push(scan); write('manifest.json', manifest);
+    write('manifest.json', manifest);
   };
+  const attemptScan = (id, ...args) => recordAttempt(manifest, id, () => addScan(id, ...args), () => write('manifest.json', manifest));
   const common = ['--cache-dir', '/cache', '--skip-db-update', '--skip-check-update', '--offline-scan', '--skip-version-check', '--secret-config', '', '--disable-telemetry', '--config', '', '--ignorefile', '/rules/empty-ignore', '--format', 'json', '--list-all-pkgs', '--severity', 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL', '--include-dev-deps', '--exit-code', '0'];
   need(inventory.dependencies.length && inventory.sast.length, 'required dependency/SAST scope is empty');
-  addScan('dependencies', 'trivy', ['fs', ...common, '--scanners', 'vuln', '--output', '/reports/dependencies.json', '.'], inventory.dependencies, { database, severities: ['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], includeDevDependencies: true });
-  addScan('fs-secrets', 'trivy', ['fs', ...common, '--scanners', 'secret', '--output', '/reports/fs-secrets.json', '.'], inventory.source, { coverageReceipt: { kind: 'sealed-tree-invocation', fileCount: inventory.source.length, sourceSha256: source.sha256 } });
-  addScan('fs-misconfig', 'trivy', ['fs', ...common, '--scanners', 'misconfig', '--misconfig-scanners', 'dockerfile,terraform', '--include-non-failures', '--output', '/reports/fs-misconfig.json', '.'], inventory.misconfiguration, { applicability: inventory.misconfiguration.length ? 'applicable' : 'not-applicable', coverageReceipt: { kind: 'sealed-tree-invocation', fileCount: inventory.source.length, sourceSha256: source.sha256 }, unsupportedTargets: inventory.unsupportedConfiguration });
+  attemptScan('dependencies', 'trivy', ['fs', ...common, '--scanners', 'vuln', '--output', '/reports/dependencies.json', '.'], inventory.dependencies, { database, severities: ['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], includeDevDependencies: true });
+  attemptScan('fs-secrets', 'trivy', ['fs', ...common, '--scanners', 'secret', '--output', '/reports/fs-secrets.json', '.'], inventory.source, { coverageReceipt: { kind: 'sealed-tree-invocation', fileCount: inventory.source.length, sourceSha256: source.sha256 } });
+  attemptScan('fs-misconfig', 'trivy', ['fs', ...common, '--scanners', 'misconfig', '--misconfig-scanners', 'dockerfile,terraform', '--include-non-failures', '--output', '/reports/fs-misconfig.json', '.'], inventory.misconfiguration, { applicability: inventory.misconfiguration.length ? 'applicable' : 'not-applicable', coverageReceipt: { kind: 'sealed-tree-invocation', fileCount: inventory.source.length, sourceSha256: source.sha256 }, unsupportedTargets: inventory.unsupportedConfiguration });
   const leak = ['--config', '/rules/gitleaks.toml', '--gitleaks-ignore-path', '/rules/empty-ignore', '--ignore-gitleaks-allow', '--redact=100', '--no-banner', '--no-color', '--report-format', 'json', '--timeout', '600'];
-  addScan('source-secrets', 'gitleaks', ['dir', ...leak, '--report-path', '/reports/source-secrets.json', '.'], inventory.source);
+  attemptScan('source-secrets', 'gitleaks', ['dir', ...leak, '--report-path', '/reports/source-secrets.json', '.'], inventory.source);
   const historyDir = path.join(out, 'history.git');
   checked('git', ['clone', '--mirror', '--no-hardlinks', root, historyDir], 'reports/history-clone.log');
   need(JSON.stringify(historyInventory(root, run)) === JSON.stringify(history), 'history changed during snapshot');
   need(JSON.stringify(historyInventory(historyDir, run)) === JSON.stringify(history), 'sealed history refs or commits differ');
   mounts.push({ source: historyDir, target: '/history' });
-  addScan('history-secrets', 'gitleaks', ['git', ...leak, '--log-opts=--all --full-history', '--report-path', '/reports/history-secrets.json', '/history'], history.refs.map(x => `${x.name}@${x.sha}`), { historySha256: manifest.history.sha256 });
+  attemptScan('history-secrets', 'gitleaks', ['git', ...leak, '--log-opts=--all --full-history', '--report-path', '/reports/history-secrets.json', '/history'], history.refs.map(x => `${x.name}@${x.sha}`), { historySha256: manifest.history.sha256 });
   const semgrepRoot = path.join(out, 'semgrep-source'); fs.mkdirSync(semgrepRoot); copySealed(root, semgrepRoot, source);
   // Only the SAST copy changes suppression controls; secret scans saw original bytes.
   for (const entry of source.files) if (path.basename(entry.path) === '.semgrepignore') fs.unlinkSync(path.join(semgrepRoot, entry.path));
   fs.writeFileSync(path.join(semgrepRoot, '.semgrepignore'), '');
   mounts[0] = { source: semgrepRoot, target: '/source' };
-  addScan('sast', 'semgrep', ['scan', '--config', '/rules/semgrep.yaml', '--metrics', 'off', '--disable-version-check', '--disable-nosem', '--no-git-ignore', '--scan-unknown-extensions', '--max-target-bytes', '0', '--json', '--output', '/reports/sast.json', ...inventory.sast], inventory.sast);
+  attemptScan('sast', 'semgrep', ['scan', '--config', '/rules/semgrep.yaml', '--metrics', 'off', '--disable-version-check', '--disable-nosem', '--no-git-ignore', '--max-target-bytes', '0', '--json', '--output', '/reports/sast.json', ...inventory.sast], inventory.sast);
   mounts[0] = { source: sourceDir, target: '/source' };
   for (const image of config.images) {
+    try {
     const inspected = checked('docker', ['image', 'inspect', image.reference], `reports/${image.id}-metadata.json`);
     const info = JSON.parse(inspected.stdout)[0]; need(`${info.Os}/${info.Architecture}` === image.platform, `${image.id}: target platform mismatch`);
     const archiveDirectory = path.join(root, '.sandbox-cache/security-image-archives'); fs.mkdirSync(archiveDirectory, { recursive: true });
@@ -162,25 +181,29 @@ export async function collect(root, relative, ledgerPath, manualPath, run = runn
     }
     const archiveHash = await fileHash(archive);
     mounts.push({ source: archiveDirectory, target: '/archives' });
-    addScan(image.id, 'trivy', ['image', ...common, '--scanners', 'vuln', '--input', `/archives/${archiveName}`, '--output', `/reports/${image.id}.json`], [image.reference], { targetImage: image.reference, targetPlatform: image.platform, archiveSha256: archiveHash, database, severities: ['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], includeDevDependencies: true });
+    attemptScan(image.id, 'trivy', ['image', ...common, '--scanners', 'vuln', '--input', `/archives/${archiveName}`, '--output', `/reports/${image.id}.json`], [image.reference], { targetImage: image.reference, targetPlatform: image.platform, archiveSha256: archiveHash, database, severities: ['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], includeDevDependencies: true });
     mounts.pop(); // Reuse exact image bytes on later DB snapshots; no daemon socket reaches scanners.
+    } catch (error) {
+      if (mounts.at(-1)?.target === '/archives') mounts.pop();
+      manifest.collectionErrors.push({ id: image.id, error: error.message }); write('manifest.json', manifest);
+    }
   }
   need(snapshot(root).sha256 === source.sha256, 'source changed during collection');
   need(JSON.stringify(historyInventory(root, run)) === JSON.stringify(history), 'history changed during collection');
   need(await fileHash(databasePath) === database.sha256, 'database changed during scan');
-  manifest.collectionCompleted = true;
+  manifest.collectionCompleted = manifest.collectionErrors.length === 0;
   if (ledgerPath) { readJson(root, ledgerPath); manifest.ledger = artifact(path.join(root, ledgerPath)); }
   if (manualPath) { readJson(root, manualPath); manifest.manualReview = artifact(path.join(root, manualPath)); }
   write('manifest.json', manifest);
-  const all = manifest.scans.flatMap(scan => findings(scan, readJson(root, scan.report.path)));
+  const all = manifest.scans.flatMap(scan => inventoryFindings(scan, readJson(root, scan.report.path)));
   write('findings.json', all);
-  return { manifest: `${relative}/manifest.json`, findings: all.length, triageAttached: Boolean(ledgerPath && manualPath) };
+  return { manifest: `${relative}/manifest.json`, findings: all.length, collectionErrors: manifest.collectionErrors, triageAttached: Boolean(ledgerPath && manualPath) };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const [command, ...args] = process.argv.slice(2);
     if (command === 'history-check' && args.length === 1) historyCheck(process.cwd(), args[0]);
-    else if (command === 'run' && [1, 3].includes(args.length)) console.log(JSON.stringify(await collect(process.cwd(), args[0], args[1], args[2]), null, 2));
+    else if (command === 'run' && [1, 3].includes(args.length)) { const result = await collect(process.cwd(), args[0], args[1], args[2]); console.log(JSON.stringify(result, null, 2)); if (result.collectionErrors.length) process.exitCode = 1; }
     else throw new Error('usage: security-collect run <new-cache-directory> [ledger.json manual-review.json] | history-check <manifest.json>');
   } catch (error) { console.error(`security-collect: ${error.message}`); process.exitCode = 1; }
 }
