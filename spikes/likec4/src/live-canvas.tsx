@@ -197,7 +197,7 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
             onCanvasClick={() => {if (!editing) {setSelected([]); clear();}}}
             onInitialized={initialized => {detachImmediate.current?.(); api.current=initialized.diagram; xyflow.current=initialized.xyflow; acceptedGeometry.current=null; detachImmediate.current=editable ? attachImmediateLayout(initialized, layout => acceptLayout.current(layout)) : null;}}
             reactFlowProps={{nodesDraggable:editable, elementsSelectable:true, multiSelectionKeyCode:['Shift','Control','Meta']}}
-            onNavigateTo={switchView} pannable zoomable controls keepAspectRatio={false} reduceGraphics={!motion} enableDynamicViewWalkthrough={false}
+            onNavigateTo={switchView} pannable zoomable controls={false} keepAspectRatio={false} reduceGraphics={!motion} enableDynamicViewWalkthrough={false}
             enableElementDetails={false} enableRelationshipDetails={false} showNavigationButtons background="dots" colorScheme={dark ? 'dark' : 'light'}
             mantineTheme={{fontFamily:'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'}} style={{width:'100%', height:'100%'}}>
             <SelectionBridge onSelection={setSelected}/><LiveSourceBridge graph={visibleGraph} result={result} selectedId={selectedId}/>

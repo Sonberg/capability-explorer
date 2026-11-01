@@ -50,3 +50,25 @@ test('invalid and overlapping memberships fail before presentation geometry chan
   assert.throws(()=>applyLiveGroups(flow,[{id:'presentation_group_100',title:'A',members:[member],origin:'user'},{id:'presentation_group_101',title:'B',members:[member],origin:'user'}]),/overlapping/);
   assert.equal(JSON.stringify(flow),original,'failed edits must leave source geometry unchanged');
 });
+
+
+test('explicit source groups with empty repository IDs preserve all endpoints',()=>{
+  const graph={nodes:[{id:'a',category:'component',group:'A',repositoryId:''},{id:'b',category:'component',group:'B',repositoryId:'repo-b'}],edges:[{id:'a-b',from:'a',to:'b',kind:'data'}]};
+  const result=buildLiveModel({graph,snapshot:'empty-repository',associationIds:[]});
+  assert.equal(result.groups.length,2);
+  for(const name of ['flow','vertical','index']) {
+    const view=result.modelData.views[name];
+    const visible=new Set(view.nodes.map(node=>node.id));
+    const groups=result.groups.filter(group=>group.members.every(id=>visible.has(id)));
+    const updated=applyLiveGroups(view,groups),ids=new Set(updated.nodes.map(node=>node.id));
+    assert.deepEqual(updated.edges.map(edge=>edge.id),view.edges.map(edge=>edge.id));
+    for(const edge of updated.edges)assert.ok(ids.has(edge.source)&&ids.has(edge.target));
+  }
+});
+
+
+test('collapsed isolated source containers survive grouping without edges',()=>{
+  const result=buildLiveModel({graph:{nodes:[{id:'a',category:'service',repositoryId:'repo-a'}],edges:[]},snapshot:'isolated',associationIds:[]});
+  const view=result.modelData.views.index,updated=applyLiveGroups(view,[]);
+  assert.deepEqual(updated.nodes.map(node=>node.id),view.nodes.map(node=>node.id));
+});

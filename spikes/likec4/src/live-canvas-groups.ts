@@ -5,12 +5,17 @@ import type {Group} from './types.ts';
 /** Presentation groups may change parents; source SQL hierarchy remains in the model. */
 export function applyLiveGroups(view:LayoutedView, groups:Group[]):LayoutedView {
   const validated = validateGroups(groups, view);
-  const presentation = new Set(view.nodes.filter(node => node.kind === 'repository' || node.kind === '@group').map(node => node.id));
+  const endpoints = new Set(view.edges.flatMap(edge => [edge.source, edge.target]));
+  // A collapsed source container can itself be an evidence endpoint. Keep it as
+  // a source node; presentation edits must never discard or retarget its edges.
+  const retained = new Set<string>(view.nodes.filter(node => node.kind === 'repository' && (!node.children.length || endpoints.has(node.id))).map(node => node.id));
+  const presentation = new Set(view.nodes.filter(node => !retained.has(node.id) && (node.kind === 'repository' || node.kind === '@group')).map(node => node.id));
   const nodes:DiagramNode[] = view.nodes.filter(node => !presentation.has(node.id)).map(node => ({
     ...node, parent:node.parent && !presentation.has(node.parent) ? node.parent : null,
     children:[...node.children],
   }));
   for (const group of validated) {
+    if (retained.has(group.id)) continue;
     const members = nodes.filter(node => group.members.includes(node.id));
     const x = Math.min(...members.map(node => node.x)) - 32;
     const y = Math.min(...members.map(node => node.y)) - 64;
@@ -34,6 +39,7 @@ export function applyLiveGroups(view:LayoutedView, groups:Group[]):LayoutedView 
     node.level = ancestors(node.id).length;
   }
   const edges = view.edges.map(edge => {
+    if (!byId.has(edge.source) || !byId.has(edge.target)) throw new Error('Presentation grouping would remove a source relationship endpoint');
     const targets = new Set(ancestors(edge.target));
     return {...edge, parent:ancestors(edge.source).find(id => targets.has(id)) ?? null};
   });

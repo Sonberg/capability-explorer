@@ -303,6 +303,12 @@ try {
     const menu = page.getByRole('navigation', { name: 'Viewpoints', exact: true });
     check(await menu.isVisible(), `permanent viewpoints menu must be usable at ${viewport.width}`);
     check(await canvas().isVisible(), `live canvas must be visible at ${viewport.width}`);
+    const sourceToggle = page.getByRole('button', { name: 'Diagram source', exact: true });
+    await sourceToggle.click();
+    const sourcePanel = await page.getByRole('complementary', { name: 'Diagram source', exact: true }).boundingBox();
+    const canvasBox = await canvas().boundingBox();
+    check(sourcePanel.height >= 100 && sourcePanel.y >= canvasBox.y && sourcePanel.y + sourcePanel.height <= canvasBox.y + canvasBox.height + 2, `source panel must fit inside its unclipped frame at ${viewport.width}`);
+    await sourceToggle.click();
     check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `page must not overflow horizontally at ${viewport.width}`);
     check((await canvas().boundingBox()).width > Math.min(250, viewport.width * .6), 'canvas must retain usable width');
     equal(await page.getByRole('switch', { name: 'Orthogonal', exact: true }).isChecked(), true, 'orthogonal routing must default on');

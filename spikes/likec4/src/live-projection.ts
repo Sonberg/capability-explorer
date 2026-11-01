@@ -55,7 +55,7 @@ export function projectLiveGraph(input:LiveModelInput):LiveProjection {
       owners.set(key,owner);
     } else if(codeLike(node)) {
       const key=`source-group:${canonical([node.repositoryId??null,node.group])}`;
-      owner=owners.get(key)??{id:identity('repository',key),title:node.group!.slice(0,80),kind:'repository',description:`Explicit source group: ${node.group}`,owner:node.repositoryId??node.group!,members:[]};
+      owner=owners.get(key)??{id:identity('repository',key),title:node.group!.slice(0,80),kind:'repository',description:`Explicit source group: ${node.group}`,owner:node.repositoryId?.trim()||node.group!,members:[]};
       owners.set(key,owner);
     } else if(node.repositoryId?.trim()) {
       const key=`repo:${node.repositoryId}`;
