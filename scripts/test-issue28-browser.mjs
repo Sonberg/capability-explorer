@@ -58,6 +58,9 @@ try {
   const cards = () => list().locator('div[aria-busy] > button');
   await cards().nth(49).waitFor();
   check(await cards().count() === 50, 'the DOM holds only one search page');
+  const migrationStatus = page.getByRole('heading', { name: 'Migration status', exact: true });
+  const statusBounds = await migrationStatus.boundingBox();
+  check(statusBounds && statusBounds.y >= 0 && statusBounds.y + statusBounds.height <= 1080, 'migration availability is visible in the initial viewport above the result list');
   const firstNames = await cards().allTextContents();
 
   const nextResponse = responseFor('/api/search', query => query.has('cursor'));

@@ -52,6 +52,10 @@ function DatabaseWorkspace({ meta }: { meta: DatabaseMeta }) {
         <RevisionChooser scope={scope} selection={selection} change={resetSelection} />
       </details>
     </div>
+    <Card><h2 className="font-semibold">Migration status</h2>
+      <Muted>Available: bounded symbol search, symbol and evidence detail, adjacency, calculations and artifact metadata.</Muted>
+      <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">Architecture, integrations, glossary, changes, binding review and model features are not yet available in PostgreSQL mode. They are not silently reconstructed from JSONL.</p>
+    </Card>
     <nav aria-label="Database views" className="flex gap-2">{(["explore", "calculations", "artifacts"] as Tab[]).map((id) =>
       <button key={id} type="button" aria-current={tab === id ? "page" : undefined} className={`${button} ${tab === id ? "bg-blue-50 font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300" : ""}`} onClick={() => { setTab(id); setKey(null); }}>{id[0].toUpperCase() + id.slice(1)}</button>)}</nav>
     <div className={`grid min-w-0 gap-4 ${key ? "xl:grid-cols-[minmax(0,1fr)_minmax(340px,40%)]" : "grid-cols-1"}`}>
@@ -68,10 +72,6 @@ function DatabaseWorkspace({ meta }: { meta: DatabaseMeta }) {
       </section>
       {key && <DatabaseInspector key={`${scope}|${key}`} scope={scope} symbolKey={key} close={() => setKey(null)} />}
     </div>
-    <Card><h2 className="font-semibold">Migration status</h2>
-      <Muted>Available: bounded symbol search, symbol and evidence detail, adjacency, calculations and artifact metadata.</Muted>
-      <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">Architecture, integrations, glossary, changes, binding review and model features are not yet available in PostgreSQL mode. They are not silently reconstructed from JSONL.</p>
-    </Card>
   </>;
 }
 
