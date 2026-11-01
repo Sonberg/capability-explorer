@@ -21,6 +21,9 @@ const ready = async () => {
   await canvas().locator('.react-flow__node[data-source-node-ids]').first().waitFor();
   await canvas().locator('[data-routing-state="ready"]').waitFor();
 };
+const fitDiagram = async () => {
+  await page.getByRole('button', { name: /^(Fit diagram|Fit View)$/ }).first().click();
+};
 const graphResponse = (predicate = () => true) => page.waitForResponse((response) => {
   const url = new URL(response.url());
   return url.pathname === '/api/architecture' && response.ok() && predicate(url.searchParams);
@@ -103,6 +106,7 @@ async function groupJourney() {
   const selectGroup = async (locator) => {
     const minimize = page.getByRole('button', { name: 'Minimize ledger', exact: true });
     if (await minimize.count()) await minimize.click(); // a full reload restores the default open ledger
+    await fitDiagram();
     await locator.locator('.likec4-compound-title').click();
     await page.getByRole('region', { name: 'Selected group controls' }).waitFor();
   };
@@ -111,6 +115,7 @@ async function groupJourney() {
   check((await page.getByRole('region', { name: 'Selected group controls' }).innerText()).includes('identified repository ownership'), 'automatic groups must disclose identified ownership');
   await page.getByRole('button', { name: 'Ungroup', exact: true }).click();
   equal(await groups.count(), originalCount - 1, 'ungroup must remove the presentation group');
+  await fitDiagram();
   await sourceNode(candidates[0]).click({ force: true });
   await sourceNode(candidates[1]).click({ modifiers: ['Shift'], force: true });
   await page.getByRole('button', { name: 'Group selection', exact: true }).click();
@@ -119,6 +124,7 @@ async function groupJourney() {
   const custom = groups.filter({ hasText: 'Browser parity group' });
   await custom.waitFor(); receipt.assertions++;
   equal([...JSON.parse(await custom.getAttribute('data-source-node-ids'))].sort(), [...candidates].sort(), 'custom group must preserve exact member source identities');
+  await fitDiagram();
   const before = await Promise.all(candidates.map((id) => sourceNode(id).boundingBox()));
   const box = await custom.locator('.likec4-compound-title').boundingBox();
   const dragX = box.x + box.width / 2, dragY = box.y + box.height / 2;
@@ -175,6 +181,9 @@ try {
   check(meta.capabilities.length > 0 && meta.revisions.length > 0, 'preview must contain analyzed capability/revision fixtures');
   currentGraph = await navigate('system');
   check(currentGraph.nodes.length > 0 && currentGraph.edges.length > 0, 'actual all-repositories graph must be nonempty');
+  const initialHeights = await canvas().locator('.react-flow__node:not(.react-flow__node-view-group)').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().height));
+  receipt.initialMeanLeafHeight = initialHeights.reduce((sum, height) => sum + height, 0) / initialHeights.length;
+  check(receipt.initialMeanLeafHeight >= 40, 'initial diagram must keep average leaf height at least 40px before any explicit Fit action');
   equal(await page.locator('iframe').count(), 0, 'production Architecture must render directly without an experimental iframe');
   equal(await page.getByRole('tab', { name: /experiment/i }).count(), 0, 'obsolete static experiment tab must be retired');
   const allIdentity = await canvas().getAttribute('data-input-identity');
@@ -261,8 +270,7 @@ try {
 
   for (const viewport of [{ width: 1440, height: 900 }, { width: 5120, height: 2160 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport); await ready();
-    const fit = page.getByRole('button', { name: 'Fit View', exact: true });
-    if (await fit.count()) await fit.click();
+    await fitDiagram();
     const menu = page.getByRole('navigation', { name: 'Viewpoints', exact: true });
     check(await menu.isVisible(), `permanent viewpoints menu must be usable at ${viewport.width}`);
     check(await canvas().isVisible(), `live canvas must be visible at ${viewport.width}`);
