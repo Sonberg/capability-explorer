@@ -180,6 +180,31 @@ evidence described in MADR-0017/0018. Brain source review included the RuVector
 graph implementation and compatibility documentation; actual image tests take
 precedence over its broad compatibility claims. No new library is added.
 
+### Foundation refinement gate: 95/100; full-issue completion remains pending
+
+The combined final Store suite passed 131 tests with zero skips. Earlier combined
+Explorer/Contracts runs passed 232/108, and the first full local act run passed at
+`5f05302`. Subsequent binding-identity and pager changes have their own passing
+regressions; the final pushed commit must obtain a fresh ordinary pre-push receipt.
+The final served application passed 31 uninjected browser checks and a separate
+15-check recovery test with exactly one injected 503. Both 1K/100K sequential HTTP
+runs covered ten workloads each, including empty-query first and continuation
+pages, and passed the provisional p95 targets. See the benchmark report for exact
+source/build identities, variance, query plans and remaining database scan costs.
+
+Refinement corrected Unicode casing/order, rollback/retry edge cases, immutable
+default selection, legacy binding-upgrade reuse and failed-navigation page state.
+Five points are deducted for the explicitly unmeasured larger-tier/import-peak
+and controlled-cache evidence above. Formal phase iteration counts were not
+reliably recorded and are not reconstructed from commit counts. Independent
+native workers reviewed Store/CLI and query/UI; root integrated shared files.
+
+The full `issue28-acceptance` target was actually executed and returned nonzero:
+`completion: executable evidence not implemented; gate remains incomplete`.
+This is a foundation checkpoint, not a completed issue or a passed full completion
+gate. The closing Brain pass checked Ruflo SPARC refinement/evidence guidance;
+remaining endpoint coverage cannot be waived by passing core tests.
+
 One root integrator owns shared migrations/manifests/CLI/API registration; isolated
 native workers own Store/query/UI, independent tests and the RuVector experiment.
 Actual session capacity is root plus three workers; Ruflo records a hierarchical
