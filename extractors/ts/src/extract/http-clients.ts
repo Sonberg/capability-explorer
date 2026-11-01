@@ -216,4 +216,3 @@ function findConstruction(ctx: Ctx, classSym: ts.Symbol | undefined): ts.NewExpr
   }
   return undefined;
 }
-
