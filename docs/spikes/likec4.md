@@ -1,6 +1,6 @@
 # LikeC4 architecture visualization spike
 
-This isolated experiment renders a deterministic architecture graph snapshot with the real LikeC4 renderer. It does not replace the production React Flow view or introduce process/decision extraction. Work and the eventual PR target `stage-1-contract-and-fixtures`; publication waits for reconciliation PR #11 to merge and the stage-based local CI gate to pass.
+This isolated experiment renders a deterministic architecture graph snapshot with the real LikeC4 renderer. It does not replace the production React Flow view or introduce process/decision extraction. Work and the eventual PR target `stage-1-contract-and-fixtures`; PR #11 is an explicit dependency, included with operator approval before publication. The stage-based local CI gate must pass before pushing; only the owner may merge.
 
 ## Run locally
 
@@ -78,7 +78,7 @@ The default **All repositories · integrations** viewpoint spans api-cs, forecas
 
 This reuses the existing unscoped Architecture API; no alternate graph service, extraction rules or resource identity scheme were introduced. HTTP, data and messaging integrations are included where supported by the selected evidence. This is not a claim of every code dependency or every repository in an organization. Same-name resources remain distinct; broken bindings and candidate matches are preserved. Evidence lists may be capped at 40 facts per edge by the API while the edge count remains larger.
 
-The earlier routing benchmark applies only to the retained three-repository Weekly sales snapshot at commit d6a7c2f. It does not certify zero crossings or clearance in this larger system snapshot. Browser regression checks now use the five-repository snapshot; no full-project act gate or PR publication is claimed while #11 remains pending.
+The earlier routing benchmark applies only to the retained three-repository Weekly sales snapshot at commit d6a7c2f. It does not certify zero crossings or clearance in this larger system snapshot. Browser regression checks now use the five-repository snapshot; full-project act validation is required before publication; #11 is included as an explicit dependency.
 
 ## Long associations and label clearance
 
@@ -107,3 +107,5 @@ Full three-pass routing no longer runs during React rendering. The immediate upd
 `make likec4-interaction-check` measures twelve real node drags inside the embedded tab, checks actual movement, follows each new routing generation to completion, and records preview computation, worker computation and end-to-end settling separately in `.sandbox-cache/likec4-browser/interaction-performance.json`. Its 5 ms assertion applies only to provisional route computation. It does not assert a 5 ms paint, event-to-paint latency, serialization time or complete collision-aware optimization. The worker remains a several-hundred-millisecond operation for this fixture; worker isolation improves responsiveness rather than claiming that computation disappeared.
 
 Measured in the final embedded dark-theme run (12 moves, headless Chromium at 1920×1080): provisional computation maximum/p95 1.6 ms. This is a local fixture result, not a universal performance guarantee. Full worker and end-to-end timings are retained separately in the interaction receipt.
+
+Follow-up performance work is tracked in [issue #13](https://github.com/Sonberg/capability-explorer/issues/13): proposed 200 ms p95 final settling with separately measured immediate feedback, based on cited interaction research. This spike does not close that issue. Its captured pricing revisions predate the fixture dependency patch included by #11; the snapshot remains historical evidence, not a live view of the new fixture selection.
