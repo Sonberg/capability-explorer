@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Compatibility entrypoint: the only delivery target is the stage branch.
+set -euo pipefail
+exec "$(dirname "$0")/check-target-alignment" "$@"

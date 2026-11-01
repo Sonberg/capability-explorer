@@ -1,5 +1,5 @@
 {
-  "$comment": "Graph gate for the extractors (`make evaluate-sql`, and the base for the per-language files evaluation.csharp.json and evaluation.extractors.ts.json, which also gate calculations), each scored only on the golden units of its own languages. Same scope as evaluation.json. Raise, never lower, without review.",
+  "$comment": "Graph and calculation gate for the extractors (`make evaluate-sql`, and the base for the per-language files evaluation.csharp.json and evaluation.extractors.ts.json, which also gate calculations), each scored only on the golden units of its own languages. Same scope as evaluation.json. Raise, never lower, without review.",
   "scope": {
     "exhaustiveRelations": [
       {
@@ -36,6 +36,9 @@
     ]
   },
   "thresholds": {
+    "calculationRecall": 1.0,
+    "attributeAccuracy": 1.0,
+    "irHashMatch": 1.0,
     "nodeRecall": 1.0,
     "edgeRecall": 1.0,
     "edgeAccuracy": 1.0,

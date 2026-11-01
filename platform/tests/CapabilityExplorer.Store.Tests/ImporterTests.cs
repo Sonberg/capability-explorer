@@ -10,7 +10,7 @@ namespace CapabilityExplorer.Tests;
 /// <summary>One disposable PostgreSQL (with pgvector) per test run, started by Testcontainers. Never a shared or local database.</summary>
 public sealed class PostgresFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("pgvector/pgvector:pg17").Build();
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("pgvector/pgvector:0.8.6-pg17").Build();
 
     public NpgsqlDataSource DataSource { get; private set; } = null!;
 

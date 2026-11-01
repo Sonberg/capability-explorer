@@ -16,7 +16,7 @@
     "v2-contract": "78bf6a26336545c017efe3aef2cfdb8a6bdb0f98"
   },
   "pricing-node": {
-    "v1-base": "8b7d01815e5a0a49707b81c339278bae0bd18307",
-    "v2-move": "a0807a96e86264b9765e365721395176aafbe0ce"
+    "v1-base": "e6583f75188438fead9b0c086ee018ddab65cc16",
+    "v2-move": "9c937002dda4434ef8d8fd036089a5ecfb02e26e"
   }
 }

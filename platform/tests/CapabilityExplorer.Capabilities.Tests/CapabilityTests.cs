@@ -145,10 +145,11 @@ public sealed class SourceSyncTests
         }
 
         var sync = new SourceSync(Directory.CreateTempSubdirectory().FullName);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var source = new RepositorySource("empty", repo, SourceKind.Local);
         var head = await sync.LockAsync(source);
         var destination = Path.Combine(Directory.CreateTempSubdirectory().FullName, "out");
-        var result = await sync.ExportAsync(source, head.CommitSha!, destination);
+        var result = await sync.ExportAsync(source, head.CommitSha!, destination, deadline.Token);
         Assert.Equal(2, result.Files);
         Assert.Equal(0, new FileInfo(Path.Combine(destination, ".gitkeep")).Length);
     }

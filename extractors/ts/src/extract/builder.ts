@@ -1,8 +1,25 @@
 import { createHash } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { Span, ToolRef } from "../contracts/records.ts";
 
 export const sha256 = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
+
 const short = (s: string) => sha256(s).slice(0, 16);
+
+/**
+ * The extractors' own source (they run from source), part of every config hash: a changed extractor gets a new
+ * analysis key instead of colliding with what an earlier version stored (the store refuses different content per key).
+ */
+const src = fileURLToPath(new URL("..", import.meta.url));
+export const BUILD = short(
+  readdirSync(src, { recursive: true, encoding: "utf8" })
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => f.replaceAll("\\", "/"))
+    .sort()
+    .map((f) => `${f}\0${sha256(readFileSync(src + f, "utf8"))}\n`)
+    .join(""),
+);
 
 type Json = string | number | boolean | null | Json[] | { [k: string]: Json | undefined };
 export type Props = Record<string, Json | undefined>;

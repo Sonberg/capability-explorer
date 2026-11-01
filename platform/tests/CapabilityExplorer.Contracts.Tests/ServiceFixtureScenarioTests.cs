@@ -151,6 +151,21 @@ public sealed class ServiceFixtureScenarioTests
         Assert.Equal(3, ratio.Evidence.Count);
     }
 
+    [Theory]
+    [InlineData("v1-base")]
+    [InlineData("v2-move")]
+    public void Sql_names_and_scaling_do_not_establish_currency_or_output_unit(string revision)
+    {
+        var calc = Calc(A($"pricing-node/{revision}/pricing-db.jsonl"),
+            "sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.weekly_revenue");
+        var currency = Attribute(calc, "currency");
+        var unit = calc.GetProperty("output").GetProperty("unit");
+        Assert.Equal("unknown", currency.GetProperty("status").GetString());
+        Assert.Equal("unknown", unit.GetProperty("status").GetString());
+        Assert.False(currency.TryGetProperty("value", out _));
+        Assert.False(unit.TryGetProperty("value", out _));
+    }
+
     public static TheoryData<string, string, string, string> SpecialCases => new()
     {
         // file, symbol, attribute, planted value
@@ -158,7 +173,6 @@ public sealed class ServiceFixtureScenarioTests
         { "forecast-cs/v1-base/Forecast.Api.jsonl", Forecast + "M:Forecast.Api.Forecasting.MovingAverageStrategy.Forecast(System.Collections.Generic.IReadOnlyList{System.Int32})", "zeroDenominator", "throws" },
         { "forecast-cs/v1-base/Forecast.Api.jsonl", Forecast + "M:Forecast.Api.Forecasting.WeeklySeries.TotalUnits", "overflow", "wraps" },
         { "pricing-node/v1-base/pricing-db.jsonl", "sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.weekly_revenue", "overflow", "throws" },
-        { "pricing-node/v1-base/pricing-db.jsonl", "sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.weekly_revenue", "currency", "mixedCurrenciesSummed" },
         { "pricing-node/v1-base/_fixture_pricing.jsonl", Pricing + "src/legacy/revenue.js|weeklyRevenueSek#value", "currency", "convertedToSek" },
         { "pricing-node/v1-base/_fixture_pricing.jsonl", Pricing + "src/legacy/revenue.js|weeklyRevenueSek#value", "denominatorSource", "parameter" },
         { "pricing-node/v1-base/_fixture_pricing.jsonl", Pricing + "src/pricing/priceForDemand.ts|priceForDemand#value", "rounding", "truncate" },

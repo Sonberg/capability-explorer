@@ -1,5 +1,7 @@
 # ce.v1 extractor contract
 
+See the [ubiquitous language](../docs/ubiquitous-language.md) for shared domain terms.
+
 Every extractor (Roslyn, TypeScript, SQL, config) writes the same format: one **JSONL artifact per
 analysis unit** (one project) at one exact revision. The platform only accepts artifacts that pass
 both validators:

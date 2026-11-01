@@ -1,4 +1,5 @@
 import { isIdent, isKw, isP, tokenize, upper, type Dialect, type Tok } from "./lexer.ts";
+import type { SqlDataType, SqlParameter } from "./calculation-types.ts";
 
 /** A source range in one file (absolute offsets). */
 export interface Range { path: string; start: number; end: number }
@@ -12,6 +13,9 @@ export interface RoutineDef {
   volatility?: string;
   at: Range;
   params: Set<string>;
+  /** Typed declarations for calculation analysis; params retains graph lookup compatibility. */
+  parameterTypes?: SqlParameter[];
+  returnType?: SqlDataType;
   /** Tokens of the body to analyse for reads and writes. */
   body: Tok[];
   path: string;
@@ -105,6 +109,37 @@ function renderType(tokens: Tok[]): string {
   return s.replace(/,\s{2,}/g, ", ");
 }
 
+/** A bounded scalar type declaration, excluding defaults, modes and arbitrary SQL. */
+export function parseSqlDataType(tokens: Tok[], dialect: Dialect): SqlDataType | undefined {
+  const first = tokens[0];
+  if (!first || first.kind !== "word") return undefined;
+  let i = 1;
+  let name = identValue(first, dialect).toLowerCase();
+  if (name === "double" && isKw(tokens[i], "PRECISION")) { name = "double precision"; i++; }
+  let precision: number | undefined;
+  let scale: number | undefined;
+  if (isP(tokens[i], "(")) {
+    i++;
+    const size = tokens[i++];
+    if (!size || size.kind !== "number" || !/^\d{1,4}$/.test(size.value)) return undefined;
+    precision = Number(size.value);
+    if (isP(tokens[i], ",")) {
+      i++;
+      const places = tokens[i++];
+      if (!places || places.kind !== "number" || !/^\d{1,4}$/.test(places.value)) return undefined;
+      scale = Number(places.value);
+    }
+    if (!isP(tokens[i++], ")")) return undefined;
+  }
+  if ((name === "timestamp" || name === "time") && isKw(tokens[i], "WITH", "WITHOUT")) {
+    if (!isKw(tokens[i + 1], "TIME") || !isKw(tokens[i + 2], "ZONE")) return undefined;
+    name += ` ${tokens[i]!.value.toLowerCase()} time zone`;
+    i += 3;
+  }
+  if (i !== tokens.length) return undefined;
+  return { name, ...(precision !== undefined ? { precision } : {}), ...(scale !== undefined ? { scale } : {}), at: { start: first.start, end: tokens.at(-1)!.end } };
+}
+
 /** One column definition: `name type [constraints]`. Returns undefined for table constraints. */
 function parseColumn(el: Tok[], path: string, dialect: Dialect): ColumnDef | undefined {
   if (el.length < 2 || !isIdent(el[0])) return undefined;
@@ -156,6 +191,25 @@ function matching(t: Tok[], open: number): number {
     else if (isP(t[i], ")") && --depth === 0) return i;
   }
   return t.length;
+}
+
+/** Comments are discarded by the permissive lexer; validate the gaps it skipped. */
+function unterminatedComment(text: string, dialect: Dialect, from = 0, to = text.length): boolean {
+  let previous = from;
+  const unclosedGap = (start: number, end: number) => {
+    let depth = 0;
+    for (let i = start; i < end; i++) {
+      if (depth === 0 && text.startsWith("--", i)) { while (i < end && text[i] !== "\n") i++; }
+      else if (text.startsWith("/*", i)) { depth++; i++; }
+      else if (depth > 0 && text.startsWith("*/", i)) { depth--; i++; }
+    }
+    return depth > 0;
+  };
+  for (const tok of tokenize(text, dialect, from, to)) {
+    if (unclosedGap(previous, tok.start)) return true;
+    previous = tok.end;
+  }
+  return unclosedGap(previous, to);
 }
 
 const skipIfNotExists = (t: Tok[], i: number) => (isKw(t[i], "IF") && isKw(t[i + 1], "NOT") && isKw(t[i + 2], "EXISTS") ? i + 3 : i);
@@ -286,16 +340,29 @@ function createRoutine(cat: Catalog, t: Tok[], i: number, path: string, text: st
   const name = qualify(n.parts, d);
   const at = { path, start: t[0]!.start, end: t[n.next - 1]!.end };
   const params = new Set<string>();
+  const parameterTypes: SqlParameter[] = [];
+  let signatureSafe = true;
+  let bodyRange: [number, number] | undefined;
   let j = n.next;
 
   if (isP(t[j], "(")) {
     const close = matching(t, j);
+    if (isP(t[close - 1], ",")) signatureSafe = false;
     for (const el of splitTopLevel(t, j + 1, close)) {
       let k = 0;
-      while (isKw(el[k], "IN", "OUT", "INOUT", "VARIADIC")) k++;
+      while (isKw(el[k], "IN", "OUT", "INOUT", "VARIADIC")) {
+        if (!isKw(el[k], "IN")) signatureSafe = false;
+        k++;
+      }
       const first = el[k];
-      if (first && (first.kind === "var" || isIdent(first))) params.add(first.value.toLowerCase());
+      if (first && (first.kind === "var" || isIdent(first))) {
+        params.add(first.value.toLowerCase());
+        const type = parseSqlDataType(el.slice(k + 1), d);
+        if (type && (d === "tsql" ? first.kind === "var" : isIdent(first))) parameterTypes.push({ name: identValue(first, d), type, at: { start: first.start, end: el.at(-1)!.end } });
+        else signatureSafe = false;
+      } else signatureSafe = false;
     }
+    if (close === t.length) signatureSafe = false;
     j = close + 1;
   } else if (d === "tsql") {
     // Procedures may declare parameters without parentheses: CREATE PROCEDURE p @a int, @b int AS …
@@ -303,9 +370,11 @@ function createRoutine(cat: Catalog, t: Tok[], i: number, path: string, text: st
       if (t[j]!.kind === "var" && !isKw(t[j - 1], "=")) params.add(t[j]!.value.toLowerCase());
       j++;
     }
-  }
+    signatureSafe = false;
+  } else signatureSafe = false;
 
-  const routine: RoutineDef = { kind: "Routine", name, at, params, body: [], path };
+  if (params.size !== parameterTypes.length) signatureSafe = false;
+  const routine: RoutineDef = { kind: "Routine", name, at, params, parameterTypes, body: [], path };
   if (d === "tsql") {
     let k = j;
     const returns: Tok[] = [];
@@ -314,22 +383,40 @@ function createRoutine(cat: Catalog, t: Tok[], i: number, path: string, text: st
       while (m < t.length && !isKw(t[m], "AS", "WITH")) { returns.push(t[m]!); m++; }
       k = m;
     }
-    if (isKw(t[k], "WITH")) { while (k < t.length && !isKw(t[k], "AS")) k++; }
+    if (isKw(t[k], "WITH")) { signatureSafe = false; while (k < t.length && !isKw(t[k], "AS")) k++; }
     routine.body = t.slice(k + 1);
+    if (signatureSafe && isKw(t[k], "AS")) routine.returnType = parseSqlDataType(returns, d);
     if (isProc) routine.routineKind = "stored-procedure";
     else if (isKw(returns[0], "TABLE")) routine.routineKind = "inline-table-valued-function";
     else if (returns.some((r) => isKw(r, "TABLE"))) routine.routineKind = "multi-statement-table-valued-function";
     else routine.routineKind = "scalar-function";
   } else {
     let language = "";
+    let returnEnd = -1;
+    const returnsAt = t.findIndex((tok, index) => index >= j && isKw(tok, "RETURNS"));
+    if (returnsAt >= 0) {
+      let end = returnsAt + 1;
+      while (end < t.length && !isKw(t[end], "LANGUAGE", "AS", "STABLE", "IMMUTABLE", "VOLATILE", "STRICT", "CALLED", "RETURNS", "SECURITY", "PARALLEL", "COST", "ROWS", "SET", "SUPPORT", "LEAKPROOF", "NOT", "RETURN", "BEGIN")) end++;
+      returnEnd = end;
+      if (signatureSafe && !t.slice(end).some((tok) => isKw(tok, "SET", "SUPPORT"))) routine.returnType = parseSqlDataType(t.slice(returnsAt + 1, end), d);
+    }
     for (let k = j; k < t.length; k++) {
       const tok = t[k]!;
       if (isKw(tok, "LANGUAGE") && t[k + 1]) language = t[k + 1]!.value.toLowerCase();
       else if (isKw(tok, "STABLE", "IMMUTABLE", "VOLATILE")) routine.volatility = tok.value.toUpperCase();
       else if (isKw(tok, "AS") && (t[k + 1]?.kind === "dollar" || t[k + 1]?.kind === "string")) {
         const body = t[k + 1]!;
-        if (body.kind === "dollar") routine.body = tokenize(text, d, body.inner![0], body.inner![1]);
-        else if (!body.value.includes("\\") && !body.text.includes("''")) routine.body = tokenize(text, d, body.start + 1, body.end - 1);
+        if (body.kind === "dollar") {
+          bodyRange = body.inner!;
+          routine.body = tokenize(text, d, body.inner![0], body.inner![1]);
+          const delimiter = text.slice(body.start, body.inner![0]);
+          if (text.slice(body.inner![1], body.end) !== delimiter) signatureSafe = false;
+        }
+        else if (!body.value.includes("\\") && !body.text.includes("''")) {
+          if (!body.text.endsWith("'") || body.text.length < 2) signatureSafe = false;
+          bodyRange = [body.start + 1, body.end - 1];
+          routine.body = tokenize(text, d, ...bodyRange);
+        }
         else routine.dynamic = "the body is a string literal with escapes";
       }
       if (isKw(tok, "BEGIN") && isKw(t[k + 1], "ATOMIC")) routine.body = t.slice(k + 2);
@@ -337,6 +424,23 @@ function createRoutine(cat: Catalog, t: Tok[], i: number, path: string, text: st
     }
     if (isProc) routine.routineKind = "procedure";
     else routine.routineKind = language ? (language === "sql" ? "sql-function" : `${language}-function`) : "function";
+    // Accept only the declaration options whose semantics are represented here.
+    const options = new Set<string>();
+    for (let k = j; k < t.length; k++) {
+      if (k === returnsAt) { k = returnEnd - 1; continue; }
+      if ((isKw(t[k], "LANGUAGE") && isKw(t[k + 1], "SQL")) || (isKw(t[k], "AS") && ["dollar", "string"].includes(t[k + 1]?.kind ?? ""))) {
+        const option = upper(t[k]);
+        if (options.has(option)) signatureSafe = false;
+        options.add(option); k++; continue;
+      }
+      if (isKw(t[k], "STABLE", "IMMUTABLE", "VOLATILE")) {
+        if (options.has("volatility")) signatureSafe = false;
+        options.add("volatility"); continue;
+      }
+      signatureSafe = false;
+    }
+    if (!signatureSafe) routine.returnType = undefined;
   }
+  if (routine.returnType && (unterminatedComment(text, d) || (bodyRange && unterminatedComment(text, d, ...bodyRange)))) routine.returnType = undefined;
   cat.routines.set(lookupKey(d, name), routine);
 }

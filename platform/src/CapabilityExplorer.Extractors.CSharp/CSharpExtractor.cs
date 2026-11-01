@@ -18,6 +18,13 @@ public sealed class CSharpExtractor(ExtractorOptions options)
 {
     public static readonly Tool Tool = new("roslyn", "0.2.0");
 
+    /// <summary>
+    /// This build (deterministic, so it changes only with the code) and the Roslyn it runs on. Part of every config hash:
+    /// a changed extractor gets a new analysis key instead of colliding with what an earlier build stored.
+    /// </summary>
+    internal static readonly string Build = ArtifactBuilder.Sha256(
+        $"{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(typeof(CSharpExtractor).Assembly.Location)))}|roslyn={typeof(CSharpCompilation).Assembly.GetName().Version}")[..16];
+
     /// <summary>Errors that only mean "a source generator would have produced this".</summary>
     private static readonly HashSet<string> GeneratorDependent = ["CS8795", "CS8796", "CS8797"];
 
@@ -54,7 +61,8 @@ public sealed class CSharpExtractor(ExtractorOptions options)
 
                 var dep = Build(target, visiting);
                 references.Add(dep.Compilation.ToMetadataReference());
-                references.AddRange(dep.Compilation.References.Where(x => x is PortableExecutableReference pe && packageAssemblies.All(a => a != pe.FilePath)));
+                references.AddRange(dep.Compilation.References.Where(x => x is CompilationReference
+                    || x is PortableExecutableReference pe && packageAssemblies.All(a => a != pe.FilePath)));
             }
 
             var parse = new CSharpParseOptions(LanguageVersion.Latest);
@@ -65,7 +73,13 @@ public sealed class CSharpExtractor(ExtractorOptions options)
                 trees.Add(CSharpSyntaxTree.ParseText(string.Concat(usings.Select(u => $"global using global::{u};\n")), parse, path: "<implicit-usings>"));
             }
 
-            var compilation = CSharpCompilation.Create(p.AssemblyName, trees, references.DistinctBy(r => r.Display),
+            // Compilation references can share a display name; cached compilation identity also deduplicates diamonds.
+            var referencedCompilations = new HashSet<Compilation>(ReferenceEqualityComparer.Instance);
+            var referenceDisplays = new HashSet<string?>(StringComparer.Ordinal);
+            var distinctReferences = references.Where(r => r is CompilationReference cr
+                ? referencedCompilations.Add(cr.Compilation)
+                : referenceDisplays.Add(r.Display)).ToList();
+            var compilation = CSharpCompilation.Create(p.AssemblyName, trees, distinctReferences,
                 new CSharpCompilationOptions(p.IsExecutable ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: p.Nullable ? NullableContextOptions.Enable : NullableContextOptions.Disable, checkOverflow: p.CheckedArithmetic));
             var unit = new Unit(p, compilation, missingPackages, missingProjects, resolution.Resolved);
             compilations[p.FullPath] = unit;
@@ -186,7 +200,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             .Select(f => $"{Relative(f)}\0{ArtifactBuilder.Sha256(File.ReadAllText(f))}\n")));
         // The exact package set is part of the configuration: a different set is a different analysis, never silently different bytes.
         var packageSet = string.Concat(unit.ResolvedPackages.Select(r => $"{r.Id.ToLowerInvariant()}@{r.Version.ToLowerInvariant()}\n"));
-        var configHash = ArtifactBuilder.Sha256($"{Tool.Name}/{Tool.Version}|packages={(options.PackagesRoot is null ? "none" : options.Lock is null ? "folder" : "lock")}\n{packageSet}");
+        var configHash = ArtifactBuilder.Sha256($"{Tool.Name}/{Tool.Version}|build={Build}|packages={(options.PackagesRoot is null ? "none" : options.Lock is null ? "folder" : "lock")}\n{packageSet}");
         var jsonl = b.ToJsonl(p.RelativePath, p.AssemblyName, "csharp", Rules.Tools, configHash, inputHash, p.SourceFiles.Count);
         return new UnitResult(p.RelativePath, p.AssemblyName, jsonl);
     }

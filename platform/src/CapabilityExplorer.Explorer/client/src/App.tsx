@@ -4,6 +4,7 @@ import { href, SelectionProvider, useApi, useRoute, useSelection } from "./state
 import { lazy, Suspense, useEffect, useState } from "react";
 import { CommandPalette } from "./components/CommandPalette";
 import { Artifacts } from "./views/Artifacts";
+import { Glossary } from "./views/Glossary";
 import { Calculations } from "./views/Calculations";
 import { Capabilities } from "./views/Capabilities";
 import { Changes } from "./views/Changes";
@@ -20,6 +21,7 @@ const VIEWS = [
   ["architecture", "Architecture"],
   ["integrations", "Integrations"],
   ["calculations", "Calculations"],
+  ["glossary", "Glossary"],
   ["changes", "Changes"],
   ["capabilities", "Capabilities"],
   ["artifacts", "Artifacts"],
@@ -129,6 +131,8 @@ function Routed({ path, params }: { path: string; params: URLSearchParams }) {
       return <Integrations />;
     case "calculations":
       return <Calculations params={params} />;
+    case "glossary":
+      return <Glossary params={params} />;
     case "changes":
       return <Changes params={params} />;
     case "capabilities":
