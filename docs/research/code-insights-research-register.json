@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "trackingIssue": "https://github.com/Sonberg/capability-explorer/issues/31",
+  "scope": "research execution plan; not candidate adoption or completed experimental research",
+  "baseline": "1e1122b62587eda7f3e2817c1619ba29ce292923",
+  "createdAt": "2026-11-01T23:33:24.126944+00:00",
+  "localResearchDate": "2026-11-02 Europe/Stockholm",
+  "existingReport": "docs/research/code-analysis-options.md",
+  "historicalAssessmentBaseline": "3698e04",
+  "historicalAssessmentDate": "2026-11-01",
+  "weights": {
+    "D": 25,
+    "F": 20,
+    "S": 20,
+    "I": 15,
+    "C": 10,
+    "M": 10
+  },
+  "ratingRange": [
+    0,
+    5
+  ],
+  "formula": "sum(weight * rating / 5), compared within role; unknowns remain unknown",
+  "historicalModes": [
+    {"mode": "Existing Roslyn + TS + ce.v1", "role": "semantic baseline", "historicalRatings": {"D": 5, "F": 4, "S": 4, "I": 5, "C": 4, "M": 3}, "historicalDeskScore": 86, "rationale": "R01; strongest current contract fit; static build/config gaps and maintenance remain", "confidence": "historical desk assessment; not candidate runtime evidence", "runtimeStatus": "not tested by this research plan"},
+    {"mode": "Existing bounded SQL parser", "role": "SQL facts", "historicalRatings": {"D": 5, "F": 3, "S": 5, "I": 5, "C": 5, "M": 2}, "historicalDeskScore": 86, "rationale": "R01; cheap/offline, incomplete dialects and dynamic SQL", "confidence": "historical desk assessment; not candidate runtime evidence", "runtimeStatus": "not tested by this research plan"},
+    {"mode": "Tree-sitter adapter", "role": "syntax inventory", "historicalRatings": {"D": 3, "F": 3, "S": 5, "I": 3, "C": 5, "M": 4}, "historicalDeskScore": 74, "rationale": "R08; broad syntax, semantic/domain adapter needed", "confidence": "historical desk assessment; not candidate runtime evidence", "runtimeStatus": "not tested by this research plan"},
+    {"mode": "Universal Ctags JSON", "role": "declaration inventory", "historicalRatings": {"D": 3, "F": 2, "S": 5, "I": 3, "C": 5, "M": 4}, "historicalDeskScore": 70, "rationale": "R03; cheap scoped tags, not resolved call semantics; GPL distribution review", "confidence": "historical desk assessment; not candidate runtime evidence", "runtimeStatus": "not tested by this research plan"},
+    {"mode": "SCIP prebuilt-index import", "role": "symbol navigation", "historicalRatings": {"D": 4, "F": 4, "S": 4, "I": 3, "C": 3, "M": 4}, "historicalDeskScore": 75, "rationale": "R09; require sealed source/index match; indexer execution is a separate gate", "confidence": "historical desk assessment; not candidate runtime evidence", "runtimeStatus": "not tested by this research plan"},
+    {"mode": "Graphify code-only", "role": "supplementary graph", "historicalRatings": {"D": 3, "F": 4, "S": 4, "I": 3, "C": 4, "M": 4}, "historicalDeskScore": 72, "rationale": "R06; explicit uncertainty, new runtime/adaptation and benchmark unknowns", "confidence": "historical desk assessment; not candidate runtime evidence", "runtimeStatus": "not tested by this research plan"},
+    {"mode": "Joern", "role": "dataflow/security complement", "historicalRatings": {"D": 3, "F": 4, "S": 4, "I": 2, "C": 2, "M": 3}, "historicalDeskScore": 63, "rationale": "R11; graph/query overhead; C# maturity limitation", "confidence": "historical desk assessment; not candidate runtime evidence", "runtimeStatus": "not tested by this research plan"},
+    {"mode": "CodeQL no-build where supported", "role": "security/dataflow complement", "historicalRatings": {"D": 4, "F": 4, "S": 3, "I": 2, "C": 2, "M": 3}, "historicalDeskScore": 64, "rationale": "R10; licensing/coverage and query cost need verification", "confidence": "historical desk assessment; not candidate runtime evidence", "runtimeStatus": "not tested by this research plan"},
+    {"mode": "Repomix trusted-config local mode", "role": "context packaging", "historicalRatings": {"D": 3, "F": 2, "S": 3, "I": 4, "C": 4, "M": 4}, "historicalDeskScore": 63, "rationale": "R02; useful selection/security checks; executable config/processors need isolation", "confidence": "historical desk assessment; not candidate runtime evidence", "runtimeStatus": "not tested by this research plan"},
+    {"mode": "code2prompt local mode", "role": "context packaging", "historicalRatings": {"D": 3, "F": 2, "S": 3, "I": 3, "C": 4, "M": 4}, "historicalDeskScore": 60, "rationale": "R04; templates/token accounting; traversal and output parity untested", "confidence": "historical desk assessment; not candidate runtime evidence", "runtimeStatus": "not tested by this research plan"},
+    {"mode": "scc local JSON", "role": "metrics/inventory", "historicalRatings": {"D": 4, "F": 2, "S": 5, "I": 4, "C": 5, "M": 4}, "historicalDeskScore": 78, "rationale": "R05; low-cost inventory, complexity/cost estimates not business semantics", "confidence": "historical desk assessment; not candidate runtime evidence", "runtimeStatus": "not tested by this research plan"},
+    {"mode": "cloc local output", "role": "metrics/inventory", "historicalRatings": {"D": 4, "F": 2, "S": 5, "I": 3, "C": 4, "M": 4}, "historicalDeskScore": 73, "rationale": "R12; alternative counter; no need to adopt both", "confidence": "historical desk assessment; not candidate runtime evidence", "runtimeStatus": "not tested by this research plan"},
+    {"mode": "ast-grep local rules", "role": "syntax query", "historicalRatings": {"D": 3, "F": 3, "S": 5, "I": 3, "C": 5, "M": 4}, "historicalDeskScore": 74, "rationale": "R13; structural matching, not compiler-bound whole-program resolution", "confidence": "historical desk assessment; not candidate runtime evidence", "runtimeStatus": "not tested by this research plan"},
+    {"mode": "Understand-Anything full workflow", "role": "mixed syntax + LLM graph", "historicalRatings": {"D": 2, "F": 3, "S": 2, "I": 2, "C": 2, "M": 4}, "historicalDeskScore": 48, "rationale": "R07; missing mandatory edge evidence, worktree redirect and model cost", "confidence": "historical desk assessment; not candidate runtime evidence", "runtimeStatus": "not tested by this research plan"},
+    {"mode": "Existing ExplanationService", "role": "model explanation", "historicalRatings": {"D": 2, "F": 3, "S": 3, "I": 5, "C": 2, "M": 3}, "historicalDeskScore": 59, "rationale": "R01; cited IDs checked, free-text truth not proved; provider egress/cost", "confidence": "historical desk assessment; not candidate runtime evidence", "runtimeStatus": "not tested by this research plan"},
+    {"mode": "Existing embeddings", "role": "model retrieval", "historicalRatings": {"D": 2, "F": 2, "S": 3, "I": 4, "C": 2, "M": 3}, "historicalDeskScore": 52, "rationale": "R01; ranking only, no binding proof; provider/version dependency", "confidence": "historical desk assessment; not candidate runtime evidence", "runtimeStatus": "not tested by this research plan"},
+    {"mode": "Existing Trivy/Gitleaks/Semgrep gate", "role": "security analysis", "historicalRatings": {"D": 4, "F": 3, "S": 4, "I": 5, "C": 4, "M": 4}, "historicalDeskScore": 79, "rationale": "R01; complementary scopes; completion must be evidenced, sink rules not taint analysis", "confidence": "historical desk assessment; not candidate runtime evidence", "runtimeStatus": "not tested by this research plan"}
+  ],
+  "inheritedReferences": [
+    {"id": "R01", "references": "Local source paths above, baseline `3698e04`", "urls": [], "useAndLimitations": "Implemented behavior and known limits, not independent real-corpus proof", "evidenceDate": "2026-11-01", "status": "inherited from prior desk report; refresh before execution"},
+    {"id": "R02", "references": "[Repomix](https://repomix.com/), [security](https://repomix.com/guide/security), [compression](https://repomix.com/guide/code-compress)", "urls": ["https://repomix.com/", "https://repomix.com/guide/security", "https://repomix.com/guide/code-compress"], "useAndLimitations": "Packing, config execution, lossy compression; docs advertise MIT", "evidenceDate": "2026-11-01", "status": "inherited from prior desk report; refresh before execution"},
+    {"id": "R03", "references": "[Ctags repository](https://github.com/universal-ctags/ctags), [JSON format](https://docs.ctags.io/en/latest/man/ctags-json-output.5.html), [manual](https://docs.ctags.io/en/latest/man/ctags.1.html)", "urls": ["https://github.com/universal-ctags/ctags", "https://docs.ctags.io/en/latest/man/ctags-json-output.5.html", "https://docs.ctags.io/en/latest/man/ctags.1.html"], "useAndLimitations": "Tags, limitations, GPL-2.0; initial `/output-json.html` URL inaccessible, corrected to manual", "evidenceDate": "2026-11-01", "status": "inherited from prior desk report; refresh before execution"},
+    {"id": "R04", "references": "[code2prompt README](https://raw.githubusercontent.com/mufeedvh/code2prompt/main/README.md), [repository/license](https://github.com/mufeedvh/code2prompt)", "urls": ["https://raw.githubusercontent.com/mufeedvh/code2prompt/main/README.md", "https://github.com/mufeedvh/code2prompt"], "useAndLimitations": "Local context tooling, MIT; no local test", "evidenceDate": "2026-11-01", "status": "inherited from prior desk report; refresh before execution"},
+    {"id": "R05", "references": "[scc README](https://raw.githubusercontent.com/boyter/scc/master/README.md)", "urls": ["https://raw.githubusercontent.com/boyter/scc/master/README.md"], "useAndLimitations": "Metrics, local container mode, MIT; upstream speed claims unverified", "evidenceDate": "2026-11-01", "status": "inherited from prior desk report; refresh before execution"},
+    {"id": "R06", "references": "[Graphify pinned README](https://github.com/Graphify-Labs/graphify/blob/f5155badddaa3286c78a51653791131e9e2e4d29/README.md), [architecture](https://github.com/Graphify-Labs/graphify/blob/f5155badddaa3286c78a51653791131e9e2e4d29/ARCHITECTURE.md), [manifest](https://github.com/Graphify-Labs/graphify/blob/f5155badddaa3286c78a51653791131e9e2e4d29/pyproject.toml), [NOTICE](https://github.com/Graphify-Labs/graphify/blob/f5155badddaa3286c78a51653791131e9e2e4d29/NOTICE)", "urls": ["https://github.com/Graphify-Labs/graphify/blob/f5155badddaa3286c78a51653791131e9e2e4d29/README.md", "https://github.com/Graphify-Labs/graphify/blob/f5155badddaa3286c78a51653791131e9e2e4d29/ARCHITECTURE.md", "https://github.com/Graphify-Labs/graphify/blob/f5155badddaa3286c78a51653791131e9e2e4d29/pyproject.toml", "https://github.com/Graphify-Labs/graphify/blob/f5155badddaa3286c78a51653791131e9e2e4d29/NOTICE"], "useAndLimitations": "Mixed pipeline, protocol and dependencies; no execution", "evidenceDate": "2026-11-01", "status": "inherited from prior desk report; refresh before execution"},
+    {"id": "R07", "references": "[Understand-Anything README](https://github.com/Egonex-AI/Understand-Anything/blob/4e6d3299017a7432da15957874992837a315c5b4/README.md), [skill](https://github.com/Egonex-AI/Understand-Anything/blob/4e6d3299017a7432da15957874992837a315c5b4/understand-anything-plugin/skills/understand/SKILL.md), [schema](https://github.com/Egonex-AI/Understand-Anything/blob/4e6d3299017a7432da15957874992837a315c5b4/understand-anything-plugin/packages/core/src/schema.ts)", "urls": ["https://github.com/Egonex-AI/Understand-Anything/blob/4e6d3299017a7432da15957874992837a315c5b4/README.md", "https://github.com/Egonex-AI/Understand-Anything/blob/4e6d3299017a7432da15957874992837a315c5b4/understand-anything-plugin/skills/understand/SKILL.md", "https://github.com/Egonex-AI/Understand-Anything/blob/4e6d3299017a7432da15957874992837a315c5b4/understand-anything-plugin/packages/core/src/schema.ts"], "useAndLimitations": "Isolation and graph-evidence gaps; no execution", "evidenceDate": "2026-11-01", "status": "inherited from prior desk report; refresh before execution"},
+    {"id": "R08", "references": "[Tree-sitter](https://tree-sitter.github.io/tree-sitter/)", "urls": ["https://tree-sitter.github.io/tree-sitter/"], "useAndLimitations": "Syntax parsing; grammar/license review per chosen parser still needed", "evidenceDate": "2026-11-01", "status": "inherited from prior desk report; refresh before execution"},
+    {"id": "R09", "references": "[SCIP](https://github.com/scip-code/scip), [TS indexer](https://raw.githubusercontent.com/sourcegraph/scip-typescript/main/README.md), [dotnet indexer](https://github.com/sourcegraph/scip-dotnet)", "urls": ["https://github.com/scip-code/scip", "https://raw.githubusercontent.com/sourcegraph/scip-typescript/main/README.md", "https://github.com/sourcegraph/scip-dotnet"], "useAndLimitations": "Protocol versus indexer side effects; individual dependency/license review pending", "evidenceDate": "2026-11-01", "status": "inherited from prior desk report; refresh before execution"},
+    {"id": "R10", "references": "[CodeQL CLI](https://docs.github.com/en/code-security/concepts/code-scanning/codeql/codeql-cli), [build modes](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/manage-your-configuration/codeql-for-compiled-languages)", "urls": ["https://docs.github.com/en/code-security/concepts/code-scanning/codeql/codeql-cli", "https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/manage-your-configuration/codeql-for-compiled-languages"], "useAndLimitations": "No-build coverage; private-source licensing eligibility not established", "evidenceDate": "2026-11-01", "status": "inherited from prior desk report; refresh before execution"},
+    {"id": "R11", "references": "[Joern](https://docs.joern.io/)", "urls": ["https://docs.joern.io/"], "useAndLimitations": "Property graphs/dataflow, language maturity; full license/dependency audit pending", "evidenceDate": "2026-11-01", "status": "inherited from prior desk report; refresh before execution"},
+    {"id": "R12", "references": "[cloc](https://github.com/AlDanial/cloc)", "urls": ["https://github.com/AlDanial/cloc"], "useAndLimitations": "Alternative source counter; not benchmarked", "evidenceDate": "2026-11-01", "status": "inherited from prior desk report; refresh before execution"},
+    {"id": "R13", "references": "[ast-grep](https://github.com/ast-grep/ast-grep)", "urls": ["https://github.com/ast-grep/ast-grep"], "useAndLimitations": "Structural search/lint; not benchmarked", "evidenceDate": "2026-11-01", "status": "inherited from prior desk report; refresh before execution"},
+    {"id": "R14", "references": "[Knolli alternatives](https://www.knolli.ai/post/graphify-alternatives)", "urls": ["https://www.knolli.ai/post/graphify-alternatives"], "useAndLimitations": "Discovery only; technical recommendations checked against primary sources", "evidenceDate": "2026-11-01", "status": "inherited from prior desk report; refresh before execution"}
+  ],
+  "refreshedUpstreamPins": [
+    {"repo": "yamadashy/repomix", "url": "https://github.com/yamadashy/repomix", "defaultBranch": "main", "sourceSha": "fe02ab760f14cc2b22123597cb46b37fc52144e7", "declaredLicense": "MIT", "archived": false, "checkedAt": "2026-11-01T23:29:10.971507+00:00", "sourceUrl": "https://github.com/yamadashy/repomix/tree/fe02ab760f14cc2b22123597cb46b37fc52144e7", "evidence": "GitHub repository metadata and default-branch commit; not execution proof"},
+    {"repo": "universal-ctags/ctags", "url": "https://github.com/universal-ctags/ctags", "defaultBranch": "master", "sourceSha": "692cde832a9b0bc74ad5bebdbed4768b00435436", "declaredLicense": "GPL-2.0", "archived": false, "checkedAt": "2026-11-01T23:29:10.992021+00:00", "sourceUrl": "https://github.com/universal-ctags/ctags/tree/692cde832a9b0bc74ad5bebdbed4768b00435436", "evidence": "GitHub repository metadata and default-branch commit; not execution proof"},
+    {"repo": "mufeedvh/code2prompt", "url": "https://github.com/mufeedvh/code2prompt", "defaultBranch": "main", "sourceSha": "66585136062c04275ddd5a01c5518a4d78c4aa76", "declaredLicense": "MIT", "archived": false, "checkedAt": "2026-11-01T23:29:11.018808+00:00", "sourceUrl": "https://github.com/mufeedvh/code2prompt/tree/66585136062c04275ddd5a01c5518a4d78c4aa76", "evidence": "GitHub repository metadata and default-branch commit; not execution proof"},
+    {"repo": "boyter/scc", "url": "https://github.com/boyter/scc", "defaultBranch": "master", "sourceSha": "44b15f47bbe6a5888c8ecd47f027edd41aabefd4", "declaredLicense": "MIT", "archived": false, "checkedAt": "2026-11-01T23:29:11.985589+00:00", "sourceUrl": "https://github.com/boyter/scc/tree/44b15f47bbe6a5888c8ecd47f027edd41aabefd4", "evidence": "GitHub repository metadata and default-branch commit; not execution proof"},
+    {"repo": "Egonex-AI/Understand-Anything", "url": "https://github.com/Egonex-AI/Understand-Anything", "defaultBranch": "main", "sourceSha": "4e6d3299017a7432da15957874992837a315c5b4", "declaredLicense": "MIT", "archived": false, "checkedAt": "2026-11-01T23:29:12.067373+00:00", "sourceUrl": "https://github.com/Egonex-AI/Understand-Anything/tree/4e6d3299017a7432da15957874992837a315c5b4", "evidence": "GitHub repository metadata and default-branch commit; not execution proof"},
+    {"repo": "Graphify-Labs/graphify", "url": "https://github.com/Graphify-Labs/graphify", "defaultBranch": "v8", "sourceSha": "32e5efe935e6844ef39a5e33409e4efe848f2172", "declaredLicense": "Apache-2.0", "archived": false, "checkedAt": "2026-11-01T23:29:12.068817+00:00", "sourceUrl": "https://github.com/Graphify-Labs/graphify/tree/32e5efe935e6844ef39a5e33409e4efe848f2172", "evidence": "GitHub repository metadata and default-branch commit; not execution proof"}
+  ],
+  "planningReferences": [
+    {"id": "L01", "url": "https://repomix.com/guide/security", "kind": "primary documentation", "claim": "Executable configuration/processors require trusted explicit configuration; secret scanning is defense in depth", "status": "read during planning; mutable page; not runtime proof", "accessedAt": "2026-11-01T23:33:24.126944+00:00"},
+    {"id": "L02", "url": "https://docs.ctags.io/en/latest/man/ctags-json-output.5.html", "kind": "primary documentation", "claim": "JSON Lines tags require a build with JSON/libjansson support; tags are not resolved program semantics", "status": "read during planning; mutable page; not runtime proof", "accessedAt": "2026-11-01T23:33:24.126944+00:00"},
+    {"id": "L03", "url": "https://github.com/boyter/scc", "kind": "primary documentation", "claim": "Counts and complexity/effort estimates require role-specific interpretation; README performance is not local measurement", "status": "read during planning; see pinned repo identity", "accessedAt": "2026-11-01T23:33:24.126944+00:00"},
+    {"id": "L04", "url": "https://raw.githubusercontent.com/Graphify-Labs/graphify/v8/README.md", "kind": "primary documentation", "claim": "Code-only and backend-none differ from mixed-document model processing; derived edge labels do not imply model execution", "status": "read during planning; branch is mutable; refresh pinned implementation before trials", "accessedAt": "2026-11-01T23:33:24.126944+00:00"},
+    {"id": "L05", "url": "https://raw.githubusercontent.com/Egonex-AI/Understand-Anything/main/README.md", "kind": "primary documentation", "claim": "Describes structural parsing plus model-based summaries/domain/layer outputs; inspect each mode separately", "status": "read during planning; use upstream pin for future implementation checks", "accessedAt": "2026-11-01T23:33:24.126944+00:00"},
+    {"id": "L06", "url": "https://www.knolli.ai/post/graphify-alternatives", "kind": "secondary vendor discovery", "claim": "Candidate discovery only; competitive comparisons must be verified independently", "status": "read during planning; not technical authority", "accessedAt": "2026-11-01T23:33:24.126944+00:00"},
+    {"id": "L07", "url": "https://github.com/scip-code/scip", "kind": "primary protocol source", "claim": "Include prebuilt symbol-index ingestion in the comparison, separately from indexer execution", "status": "read during planning; no index imported", "accessedAt": "2026-11-01T23:33:24.126944+00:00"},
+    {"id": "L08", "url": "https://ast-grep.github.io/guide/introduction.html", "kind": "primary documentation", "claim": "Structural search/rule candidate, separate from compiler-backed whole-program resolution", "status": "read during planning; no rules executed", "accessedAt": "2026-11-01T23:33:24.126944+00:00"},
+    {"id": "L09", "url": "https://repomix.com/", "kind": "primary product documentation", "claim": "User-supplied context-packaging candidate", "status": "read during planning; no packing executed", "accessedAt": "2026-11-01T23:33:24.126944+00:00"},
+    {"id": "L10", "url": "https://github.com/mufeedvh/code2prompt", "kind": "primary product source", "claim": "User-supplied context-packaging candidate; compare as an alternative rather than a mandatory duplicate", "status": "read during planning; no packing executed", "accessedAt": "2026-11-01T23:33:24.126944+00:00"},
+    {"id": "L11", "url": "https://raw.githubusercontent.com/Graphify-Labs/graphify/32e5efe935e6844ef39a5e33409e4efe848f2172/README.md", "kind": "primary pinned documentation", "claim": "Confirms code-only/backend-none distinction at the newly observed source revision; performance claims remain unreproduced", "status": "read during planning; no runtime trial", "accessedAt": "2026-11-01T23:34:17.106830+00:00"}
+  ],
+  "executionAxes": [
+    "compiler/parser",
+    "deterministic heuristic",
+    "context packaging",
+    "model inference",
+    "human review"
+  ],
+  "epistemicAxes": [
+    "observed",
+    "derived",
+    "candidate",
+    "unresolved",
+    "reviewed"
+  ],
+  "hardGates": [
+    "authorized offline execution and no source writes",
+    "license and redistribution review",
+    "immutable source/index identity",
+    "bounded resources and preserved disk reserve",
+    "evidence and uncertainty semantics",
+    "no unauthorized model calls or source disclosure"
+  ],
+  "trialBudget": {
+    "maxFirstRoundCandidates": 3,
+    "minutesPerSmallTrial": 20,
+    "packersAtOnce": 1,
+    "concurrentTimedTrials": 1,
+    "actualDiskReserveGiB": 10,
+    "externalPaidModelCalls": 0
+  },
+  "trialStatus": "not started; no candidate installed or executed in this planning task",
+  "phaseValidators": "proposed deliverables in the master prompt, not implemented or passed yet",
+  "candidateAdoption": "requires separate evidence-backed implementation decision",
+  "insightQuestions": [
+    "language/framework and inventory coverage",
+    "declarations, resolved references and dependency topology",
+    "cross-repository HTTP/event/data-store integration with scope",
+    "calculation IR, units and explicit unknown semantics",
+    "dataflow/security findings with rule scope",
+    "authored integration/process/decision contracts versus code-derived proposals",
+    "revision-bound change impact and provenance",
+    "analyzed-repository domain concepts distinct from project glossary",
+    "bounded context retention, tokenizer costs and compression losses"
+  ],
+  "brainSources": [
+    {"repo": "sparc", "path": "docs/adrs/ADR-001-sparc-metaharness.md", "kind": "retrieved methodology documentation; not installed-runtime evidence"}
+  ]
+}
