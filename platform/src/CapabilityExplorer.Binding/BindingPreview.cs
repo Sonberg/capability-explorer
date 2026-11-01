@@ -40,8 +40,11 @@ public static class BindingPreview
                 g.Select(x => x.Occurrence).OrderBy(x => x.Source.RepositoryId, StringComparer.Ordinal)
                     .ThenBy(x => x.Source.UnitPath, StringComparer.Ordinal).ThenBy(x => x.EdgeId, StringComparer.Ordinal).ToList())).ToList();
         if (hints.Count > 1000) throw new ArgumentException("Too many hints; select a smaller capability.");
-        var targets = list.SelectMany(x => x.Artifact.Nodes).Select(n => n.SymbolKey.Split('|'))
-            .Where(p => p.Length >= 3 && p[0] is "http" or "sql" or "msg" && !p[1].StartsWith('@'))
+        // Only HTTP Endpoint declarations establish a service-ref suggestion. SQL object keys
+        // do not establish database resources; chan/store use different segment positions.
+        // Named resources remain explicit manual assertions until a typed resource adapter exists.
+        var targets = list.SelectMany(x => x.Artifact.Nodes).Where(n => n.NodeKind == "Endpoint").Select(n => n.SymbolKey.Split('|'))
+            .Where(p => p.Length == 3 && p[0] == "http" && !p[1].StartsWith('@'))
             .Select(p => p[1]).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
         var fingerprint = Hash(JsonSerializer.Serialize(new { Sources = sources, ExistingBindings = existing.Sha256 }, Json));
         return new(fingerprint, sources, hints, targets);

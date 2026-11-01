@@ -38,6 +38,40 @@ public sealed class BindingPreviewTests
         Assert.Contains(Target, first.Targets);
     }
     [Fact]
+    public void Target_suggestions_are_declared_http_services_not_sql_resource_guesses()
+    {
+        var input = Inputs();
+        var sqlText = Fixtures.GoldenFiles.Where(f => f.Contains("/v1-base/", StringComparison.Ordinal)).Select(Fixtures.Golden)
+            .First(text => ArtifactValidator.Validate(text).Artifact!.Nodes.Any(n => n.SymbolKey.StartsWith("sql|@unbound:", StringComparison.Ordinal)));
+        var original = ArtifactValidator.Validate(sqlText).Artifact!;
+        var hint = original.Nodes.First(n => n.SymbolKey.StartsWith("sql|@unbound:", StringComparison.Ordinal)).SymbolKey.Split('|')[1];
+        var changed = ArtifactValidator.Validate(sqlText.Replace(hint, "explicit-sql-store", StringComparison.Ordinal));
+        Assert.True(changed.IsValid);
+        var sql = changed.Artifact!;
+        // Use only SQL input plus the declared forecast service to avoid duplicate repository/unit inputs.
+        input = [input[1], (new(sql.Header.RepositoryId, sql.Header.CommitSha, sql.Header.Unit.Path), sql)];
+        var catalog = BindingPreview.Catalog(input, BindingFile.Empty);
+        Assert.Contains(Target, catalog.Targets); Assert.DoesNotContain("explicit-sql-store", catalog.Targets);
+        Assert.All(catalog.Targets, target => Assert.Contains(input.SelectMany(x => x.Item2.Nodes), n =>
+            n.NodeKind == "Endpoint" && n.SymbolKey.StartsWith($"http|{target}|", StringComparison.Ordinal)));
+    }
+    [Fact]
+    public void Null_entry_or_list_is_rejected_as_invalid_input()
+    {
+        var input = Inputs(); var request = Request(input);
+        Assert.Throws<ArgumentException>(() => BindingPreview.Preview(input, BindingFile.Empty, request with { Entries = [null!] }));
+        Assert.Throws<ArgumentException>(() => BindingPreview.Preview(input, BindingFile.Empty, request with { Entries = null! }));
+    }
+    [Theory]
+    [InlineData(0)]
+    [InlineData(201)]
+    public void Request_entry_bounds_fail_closed(int count)
+    {
+        var input = Inputs(); var request = Request(input);
+        Assert.Throws<ArgumentException>(() => BindingPreview.Preview(input, BindingFile.Empty, request with
+            { Entries = Enumerable.Repeat(request.Entries[0], count).ToList() }));
+    }
+    [Fact]
     public void Preview_preserves_extractor_facts_and_requires_human_review()
     {
         var input = Inputs(); var original = input[0].Item2.Edges.ToArray();
