@@ -20,7 +20,7 @@ export function policy(root) {
   const p = readJson(root, 'config/security/audit-scope.json');
   need(p.schemaVersion === 1 && nonempty(p.exclusionReason), 'invalid audit scope');
   const allowedDirectories = ['.git', '.sandbox-cache', 'node_modules', 'bin', 'obj', 'TestResults'];
-  const allowedPaths = ['fixtures/.repos', 'fixtures/.work', 'platform/src/CapabilityExplorer.Explorer/wwwroot'];
+  const allowedPaths = ['fixtures/.repos', 'fixtures/.work', 'spikes/likec4/dist', 'platform/src/CapabilityExplorer.Explorer/wwwroot'];
   const allowedGeneratedFiles = ['agentdb-memory.db', 'memory.db'].flatMap(name => ['', '.ruvector', '-wal', '-shm'].map(suffix => `.swarm/${name}${suffix}`));
   need(Array.isArray(p.excludedGeneratedFiles) && p.excludedGeneratedFiles.every(x => allowedGeneratedFiles.includes(x)), 'unreviewed generated file exclusion');
   need(Array.isArray(p.excludedDirectoryNames) && p.excludedDirectoryNames.every(x => allowedDirectories.includes(x)) &&
@@ -66,6 +66,7 @@ export function findings(scan, raw) {
   if (scan.tool.name === 'trivy') {
     const emptySupported = ['fs-secrets', 'fs-misconfig'].includes(scan.id) && scan.coverageReceipt?.kind === 'sealed-tree-invocation' &&
       typeof raw.ArtifactName === 'string' && raw.ArtifactType === 'filesystem';
+    if (scan.id.startsWith('image-')) need(Array.isArray(raw.Results) && raw.Results.length > 0, `${scan.id}: unsupported image package inventory coverage; scanner identified no package results`);
     need(raw.SchemaVersion === 2 && (Array.isArray(raw.Results) || (emptySupported && raw.Results === undefined)), `${scan.id}: invalid Trivy JSON`);
     const results = raw.Results ?? [];
     need(!raw.Errors?.length, `${scan.id}: Trivy scan errors`);

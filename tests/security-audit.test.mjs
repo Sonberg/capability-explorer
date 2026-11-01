@@ -168,3 +168,16 @@ test('generated exclusions cannot hide directories, symlinks or arbitrary .swarm
   policy.excludedGeneratedFiles.push('.swarm/config.json'); fs.writeFileSync(file, JSON.stringify(policy));
   assert.throws(() => snapshot(f.root), /unreviewed generated/);
 });
+
+test('only the reviewed LikeC4 build directory is excluded from source identity', t => {
+  const f = fixture(t), before = snapshot(f.root);
+  fs.mkdirSync(path.join(f.root, 'spikes/likec4/dist/assets'), { recursive: true });
+  fs.writeFileSync(path.join(f.root, 'spikes/likec4/dist/index.html'), 'generated');
+  fs.writeFileSync(path.join(f.root, 'spikes/likec4/dist/assets/bundle.js'), 'generated');
+  assert.equal(snapshot(f.root).sha256, before.sha256);
+  for (const name of ['other/dist/source.js', 'spikes/likec4/src/source.ts']) {
+    fs.mkdirSync(path.dirname(path.join(f.root, name)), { recursive: true });
+    fs.writeFileSync(path.join(f.root, name), 'source');
+    assert.ok(snapshot(f.root).files.some(x => x.path === name));
+  }
+});

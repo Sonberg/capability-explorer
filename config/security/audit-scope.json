@@ -11,6 +11,7 @@
   "excludedPaths": [
     "fixtures/.repos",
     "fixtures/.work",
+    "spikes/likec4/dist",
     "platform/src/CapabilityExplorer.Explorer/wwwroot"
   ],
   "exclusionReason": "Caches and generated outputs are not source inputs. Runtime/container images are separate required scan targets; fixture source and dependency locks remain included. Only the explicitly named Ruflo/AgentDB local database files and SQLite sidecars are excluded; all other .swarm files remain source inputs.",

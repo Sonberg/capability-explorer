@@ -81,7 +81,13 @@ export function inventoryFindings(scan, raw) {
   // labelled partial. The original report is unchanged and the audit still fails.
   if (scan.tool.name === 'semgrep' && Array.isArray(raw.errors) && raw.errors.length && Array.isArray(raw.results))
     return findings(scan, { ...raw, errors: [] }).map(row => ({ ...row, partial: true }));
-  return findings(scan, raw);
+  try { return findings(scan, raw); }
+  catch (error) {
+    // A recorded failed scan is not a clean scan. Preserve its raw report and
+    // collection error while allowing other scanners' findings to be finalized.
+    if (scan.completed === false && typeof scan.error === 'string' && scan.error.length) return [];
+    throw error;
+  }
 }
 export function parseVersion(stdout) {
   const version = /^(?:Version:\s*)?v?(\d+\.\d+\.\d+)\s*$/m.exec(stdout)?.[1];

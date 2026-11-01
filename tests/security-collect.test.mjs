@@ -138,3 +138,18 @@ test('filesystem dev dependency flag is never sent to image scanner', () => {
   assert.ok(trivyScanArgs('image').includes('--list-all-pkgs'));
   assert.throws(() => trivyScanArgs('unknown'), /unsupported/);
 });
+
+test('unsupported image inventory preserves explicit failure while finalizing other findings', () => {
+  const raw = { SchemaVersion: 2, ArtifactType: 'container_image', Metadata: {} };
+  const scan = { id: 'image-ryuk', tool: { name: 'trivy' }, completed: true };
+  const manifest = { scans: [scan], collectionErrors: [], collectionCompleted: false };
+  assert.equal(recordAttempt(manifest, scan.id, () => inventoryFindings(scan, raw), () => {}), false);
+  assert.match(scan.error, /unsupported image package inventory coverage/);
+  assert.equal(scan.completed, false);
+  assert.deepEqual(inventoryFindings(scan, raw), []);
+  assert.equal(manifest.collectionErrors.length, 1);
+  assert.equal(manifest.collectionCompleted, false);
+  assert.equal(raw.Results, undefined);
+  assert.throws(() => inventoryFindings({ ...scan, completed: true }, raw), /unsupported image/);
+  assert.throws(() => inventoryFindings({ ...scan, error: '' }, raw), /unsupported image/);
+});
