@@ -16,7 +16,7 @@ export function automaticGroups(graph:Pick<SourceGraph,'nodes'>):Group[] {
   }
   const repositoryNames=[...new Set(graph.nodes.map(n=>n.repositoryId).filter((id):id is string=>typeof id==='string'&&!!id.trim()))].sort();
   return [...owners].sort(([a],[b])=>a<b?-1:a>b?1:0)
-    .map(([owner,members],i)=>({id:`repository_${repositoryNames.indexOf(owner)}`,title:owner.slice(0,80),members,origin:'repository',owner}));
+    .map(([owner,members])=>({id:`repository_${repositoryNames.indexOf(owner)}`,title:owner.slice(0,80),members,origin:'repository',owner}));
 }
 const isContainer = (n:DiagramNode) => n.kind==='@group'||n.kind==='repository';
 export function validateGroups(groups:unknown, view:DiagramView):Group[] {

@@ -1,5 +1,5 @@
 import { ApiError, request, type Evidence } from "./api";
-import type { Graph } from "./views/Architecture";
+import type { Graph } from "./architecture-types";
 
 export interface FlowOptions { direction: "both" | "forward" | "backward"; maxHops: number; maxNodes: number; maxEdges: number }
 export interface FlowNode {

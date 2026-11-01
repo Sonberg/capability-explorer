@@ -4,8 +4,9 @@ Status: implementation and focused validation complete; exact-HEAD local CI and 
 Approved Brain Prompt: [issue #6](https://github.com/Sonberg/capability-explorer/issues/6#issuecomment-6558155565).
 User invoked Brain Build after this prompt. Sole target:
 `stage-1-contract-and-fixtures`, starting at `9aa05475848d27328a2253cb66db87fb77975ffe`.
-Integration branch: `feat/deterministic-mapping-fidelity`. PR #21 remains independent,
-with successful hosted CI and owner review pending. Its canvas paths are excluded.
+Integration branch: `feat/deterministic-mapping-fidelity`. PR #21 was independent
+at the starting checkpoint; it merged into stage at `5ce7f21` during final local CI.
+Its canvas changes are now inherited from stage, not authored by this package.
 
 ## Contract and ownership
 
@@ -217,5 +218,7 @@ release tags and deployed artifacts are untouched.
 What this work does not prove: real Glufs diagnostic-count reductions, full MSBuild
 or NuGet graph emulation, execution of Next configuration/proxies, deployment service
 identity, a performance target, remote deployment or owner acceptance. Issue #6
-stays open for those remaining investigations. PR #21 remains independent and must
-be reconciled if stage advances before either handoff.
+stays open for those remaining investigations. PR #21 merged during the first full
+act run: CI passed, but the final stage check blocked the push. Integrating stage
+preserved both changelog entries and requires a fresh full gate on the merge commit.
+This is observed stale-base rejection, not an inferred protection claim.

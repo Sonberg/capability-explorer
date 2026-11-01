@@ -21,6 +21,12 @@ history or imply that existing private package versions are product releases.
 - Source-bound baseline/candidate replay with repeatability, source evidence and reviewed semantic-delta checks.
 - MADR-0010 documenting conservative framework resolution and cross-repository mapping evidence.
 
+### Changed
+
+- Architecture and glossary connection diagrams use a shared live LikeC4 canvas instead of a separate fixture iframe, with original source evidence and reviewed association semantics retained.
+- Diagram inputs follow selected capability/revisions and analysis generation; obsolete layouts are discarded. Viewpoints, grouping, routing controls and diagram-source download share the selected snapshot.
+- MADR-0009 records the live renderer boundary and validation requirements. The standalone spike remains a regression harness; the 200 ms p95 settling target remains open.
+
 ### Fixed
 
 - HTTP request identities now separate absolute hosts from routes and exclude credentials, query values and fragments from derived URL metadata.

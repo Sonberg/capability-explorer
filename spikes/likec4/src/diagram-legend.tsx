@@ -1,4 +1,4 @@
-import React,{useState} from 'react';
+import {useState} from 'react';
 import {ledgerPalette,ledgerColors} from './ledger-palette.ts';
 function Symbol({kind}:{kind:string}) {
   const categories:Record<string,string>={service:'application',application:'application',channel:'interface',reference:'itComponent','sql-model':'itComponent','sql-object':'dataObject'};

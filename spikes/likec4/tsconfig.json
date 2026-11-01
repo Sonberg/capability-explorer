@@ -26,6 +26,7 @@
     "src"
   ],
   "exclude": [
-    "src/routing.worker.ts"
+    "src/routing.worker.ts",
+    "src/live-model.worker.ts"
   ]
 }
