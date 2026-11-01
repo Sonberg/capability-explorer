@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "tools": {
+    "trivy": {"image": "aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c", "platform": "linux/arm64"},
+    "gitleaks": {"image": "ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f", "platform": "linux/arm64"},
+    "semgrep": {"image": "semgrep/semgrep:1.183.0@sha256:2e45517a85e13a9cca14a2a00df6bb48affd66b8ebfae1b0991cd57578362fb0", "platform": "linux/arm64"}
+  },
+  "images": [
+    {"id":"image-dotnet","reference":"mcr.microsoft.com/dotnet/sdk:10.0-azurelinux3.0@sha256:ffd76bb46785445d2d029809009d35b522619b97df88c0abaa05d549db697b43","platform":"linux/arm64"},
+    {"id":"image-node","reference":"node:22-bookworm@sha256:18a6d90fd60542269850c80ca03b29b1d9b14d6b221ac7ee8e35b0d33ef904bd","platform":"linux/arm64"},
+    {"id":"image-postgres","reference":"pgvector/pgvector:0.8.6-pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f","platform":"linux/arm64"},
+    {"id":"image-act","reference":"catthehacker/ubuntu:act-24.04@sha256:c58e2b364da03b0c804c7d660f2ecbedf2f221a382b9baa0b344b0144780ff43","platform":"linux/arm64"},
+    {"id":"image-browser","reference":"mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea","platform":"linux/arm64"},
+    {"id":"image-trivy","reference":"aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c","platform":"linux/arm64"},
+    {"id":"image-gitleaks","reference":"ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f","platform":"linux/arm64"},
+    {"id":"image-semgrep","reference":"semgrep/semgrep:1.183.0@sha256:2e45517a85e13a9cca14a2a00df6bb48affd66b8ebfae1b0991cd57578362fb0","platform":"linux/arm64"},
+    {"id":"image-ollama","reference":"ollama/ollama:0.40.5@sha256:5d3a2f25f9825628daba94dc0b1d421c7d57d6c03ae5faa9ba050e058bab8241","platform":"linux/arm64"},
+    {"id":"image-ryuk","reference":"testcontainers/ryuk:0.14.0@sha256:7c1a8a9a47c780ed0f983770a662f80deb115d95cce3e2daa3d12115b8cd28f0","platform":"linux/arm64"}
+  ]
+}

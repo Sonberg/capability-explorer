@@ -59,5 +59,6 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapExplorerApi(options.EvaluationReport);
 app.MapGlossaryReviewApi();
+app.MapBindingPreviewApi();
 app.MapFallbackToFile("index.html");
 app.Run();

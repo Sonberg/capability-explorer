@@ -49,9 +49,10 @@ done
 [[ $# -ge 2 ]] || { echo "usage: scripts/sandbox [--offline] [--docker] [--port N] <dotnet|node> <command...>" >&2; exit 2; }
 profile="$1"; shift
 
+source "$root/config/runtime/images.env"
 case "$profile" in
-  dotnet) image="${SANDBOX_DOTNET_IMAGE:-mcr.microsoft.com/dotnet/sdk:10.0}" ;;
-  node)   image="${SANDBOX_NODE_IMAGE:-node:22-bookworm}" ;;
+  dotnet) image="${SANDBOX_DOTNET_IMAGE:-$DOTNET_IMAGE}" ;;
+  node)   image="${SANDBOX_NODE_IMAGE:-$NODE_IMAGE}" ;;
   *) echo "unknown profile: $profile" >&2; exit 2 ;;
 esac
 

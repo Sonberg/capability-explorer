@@ -44,7 +44,7 @@ SANDBOX_SOURCES="$(scripts/capability-sources "$capabilities")" \
 if [[ "${PACKAGES:-1}" != 0 ]]; then
   echo "== 2/3 fetch referenced NuGet packages (data only: nuspec + reference assemblies)"
   rm -rf "$locks"; mkdir -p "$locks"
-  SANDBOX_PASS_ENV="${NUGET_PASS_ENV:-}" SANDBOX_SOURCES="" scripts/sandbox dotnet bash -c '
+  SANDBOX_PASS_ENV="CE_NUGET_ALLOWED_ORIGINS${NUGET_PASS_ENV:+,$NUGET_PASS_ENV}" SANDBOX_SOURCES="" scripts/sandbox dotnet bash -c '
     set -euo pipefail
     while IFS=$'"'"'\t'"'"' read -r repo sha path; do
       dotnet "$1" fetch-packages --source "$2/$path" --packages "$3" --lock "$4/$repo.json" </dev/null | sed "s#^#  $repo  #"

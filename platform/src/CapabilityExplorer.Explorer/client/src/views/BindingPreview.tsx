@@ -45,6 +45,7 @@ export function BindingPreview() {
     <p className="my-3 text-sm">Snapshot <code title={data.fingerprint}>{data.fingerprint.slice(0, 16)}</code> · {data.sources.length} source units. Changing revisions clears this review.</p>
     {error && <ErrorBox message={error} />}
     <datalist id="binding-preview-targets">{data.targets.map(t => <option key={t} value={t} />)}</datalist>
+    <Muted>Suggestions list declared HTTP services. Other resources require an explicit manual name and remain human assertions.</Muted>
     <div className="space-y-4">
       {data.hints.map(h => {
         const entry = draft[h.hint];
