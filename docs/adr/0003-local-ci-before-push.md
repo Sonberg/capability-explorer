@@ -98,14 +98,29 @@ integration-worktree path. A missing tracked hook fails closed.
 Before starting the runner, the wrapper fetches `origin/main` and requires it to
 be an ancestor of the checked-out HEAD. Fetch failure or an unintegrated main
 blocks the run. It fetches again after CI; a changed main invalidates the run.
-The success receipt records both source HEAD and main. `make pr-check` repeats the
-fresh-main check and validates that receipt immediately before PR creation/update.
+The success receipt records `head`, `target=main` and
+`base` (the freshly fetched stage SHA). Legacy `main=` receipts are rejected. `make pr-check` repeats the
+fresh-target check and validates that receipt before PR creation, base changes or
+review handoff. Code pushes are gated by the hook; discussion comments need no CI.
+See [MADR-0005](0005-pr-lifecycle-and-conflict-prevention.md) for the complete
+sequence and human merge authority.
 Integrate changes explicitly and rerun CI; guards never rewrite branch history.
 An update arriving after the final check still requires hosted mergeability/CI.
 
 Each check runs the full gate; package/image/database caches are reused, but old
 success receipts do not bypass execution. The wrapper detects source changes
 during verification and serializes runs. A hook is cooperative local enforcement:
+The hook rejects every outgoing update or deletion of `refs/heads/main`, even
+when included with another ref. Local checks reject work on a checkout of main.
+Hosted pull-request CI rechecks base changes (`edited` events) and requires
+`main`. GitHub groups base, title and body changes under
+`edited`, so those edits also rerun CI. Do not mark the required CI job skipped
+for metadata edits: a skipped success could conceal an earlier failed run.
+Minimize post-publication metadata edits and keep the existing caches/concurrency.
+Push CI
+continues to cover main and also covers stage. This preserves existing main CI
+without authorizing delivery there. `scripts/check-main-alignment` remains only
+as a compatibility alias to the stage check; it no longer fetches main.
 Git allows bypassing hooks, so remote CI remains required.
 
 ## Consequences

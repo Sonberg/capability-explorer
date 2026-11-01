@@ -1,0 +1,259 @@
+# Coordinate PR updates and preserve review context
+
+* Status: applied to this operator's agent-assisted work; proposed for repository-wide adoption
+* Date: 2026-10-31
+* Decision owner: repository owner and contributors
+* Coordination: [issue #3](https://github.com/Sonberg/capability-explorer/issues/3)
+* Related: [MADR-0001](0001-github-work-coordination.md), [MADR-0003](0003-local-ci-before-push.md)
+
+## Context and problem statement
+
+Several contributors and agents can prepare correct changes against different
+versions of main. Individually green PRs can conflict when combined, duplicate
+work, or invalidate review context when their base changes. New contributors
+need a repeatable delivery process rather than session-specific instructions.
+
+The earlier stage-only instruction is historical. On 2026-11-01 the operator
+superseded it with a hard rule: PRs merge only into `main`. Align with current
+`origin/main` before CI and owner review. [MADR-0016](0016-main-only-pr-integration.md)
+is authoritative; earlier checkpoints and plans cannot restore the stage policy.
+
+Historical destinations matter: #5/#7/#8 merged into main. #9 merged into
+`feat/main-aligned-delivery` after #8, so #9's changes did not reach main through
+that merge. #10 proposed the earlier main-based lifecycle. The reconciliation
+package preserves those commits on a feature branch targeting stage, without
+reverting or rewriting main. See [the reconciliation record](../plans/stage-branch-reconciliation.md).
+The operator reports informing the owner for subsequent validation; that validation
+is not independently confirmed. A human merge does not grant agents merge authority.
+
+## Decision drivers
+
+* Keep the owner's review and merge decisions explicit.
+* Avoid overlapping writers and unnecessary stacks of pending PRs.
+* Validate current combined source, not stale branch or CI evidence.
+* Preserve published history and explain changes to reviewers.
+* Use existing Git/GitHub and local checks without a new coordination service.
+
+## Considered options
+
+1. Independent long-lived branches, refreshing only when GitHub reports conflict.
+2. Explicit ownership/dependencies, regular main integration, exact-source checks,
+   and human-controlled review and merge.
+3. Agents automatically rebase, force-push and merge whenever checks pass.
+
+## Decision outcome
+
+Choose option 2. This ADR extends MADR-0001's work claims and MADR-0003's validation
+policy. It does not change branch protection, GitHub permissions or hooks.
+Repository-wide adoption requires explicit owner/contributor review recorded
+here; committing or merging the document alone must not be called acceptance.
+
+### Authority and responsibilities
+
+**Delivery target: `main`, exclusively.** Start isolated
+feature branches from its freshly fetched state, integrate that target before CI,
+and explicitly pass `--base main` when creating PRs.
+Integrate freshly fetched main changes before validation. Any future target-policy change
+requires an explicit operator decision; old checkpoints cannot override this one.
+
+Preserve main through owner-reviewed PRs. Agents must not directly push, reset,
+force-push, revert or delete main, or merge PRs without explicit authority. Local
+integration of `origin/main` into an isolated feature branch is required before
+validation. The pre-push hook rejects outgoing `refs/heads/main`; hosted PR CI
+rejects every base except main. These are local/workflow guardrails, not a claim
+of server-side branch protection.
+
+The default is owner review before the owner merges. Agents may implement,
+independently review, reconcile conflicts, and update authorized feature branches;
+they must not merge PRs, enable auto-merge, rewrite published history or delete
+branches/worktrees without explicit authorization for that action. A passed check,
+claim, review recommendation or earlier human merge is not such authorization.
+
+A human exception records who merged, which SHA, why the normal review order
+changed, how the owner was informed, and any outstanding validation. Do not invent
+missing reasons or imply post-merge review has occurred. No standing merge
+permission follows from that exception.
+
+Each package has one integration owner. Workers use separate worktrees with
+acknowledged, disjoint paths. The integration owner alone changes shared contracts,
+manifests/locks, pipeline wiring, HANDOFF and common documentation. Review feedback
+that overlaps a worker claim is sequenced or explicitly handed over first.
+
+### New contributor workflow
+
+1. Read README, HANDOFF, MADR-0001 and this ADR. Use your own authorized GitHub
+   account; Tigon32 is the configured account for this operator, not a shared login.
+2. Fetch main, inspect open PRs and issue claims, then create a clean isolated
+   branch/worktree from the fetched base. Record base SHA, exact scope, dependency
+   PRs, integration owner and checks in the issue before editing.
+3. Freeze shared interfaces before parallel work. Prefer focused new modules and
+   avoid incidental formatting in files another contributor is reviewing.
+4. Commit logical changes and run focused tests as implementation evolves. Explain
+   behavior, compatibility and tests in the review guide; worker commits normally
+   integrate into one cohesive package PR rather than one public PR per agent.
+5. Reconcile main and dependency branches before full CI and before requesting
+   review. Follow the validation sequence below. Pushes/PRs still require the
+   operator's authorization; this workflow does not grant release authority.
+6. Request human review with exact source/base evidence, dependencies, known limits
+   and unresolved questions. Address feedback through additional commits and
+   describe what changed; do not silently dismiss or resolve another reviewer's
+   concern. Release implementation claims explicitly at handoff.
+
+### Target-branch alignment and validation sequence
+
+Run from a clean feature worktree; preserve unrelated contributor changes.
+
+```sh
+git fetch origin main
+git merge origin/main
+# Resolve any conflicts semantically, test them, then commit the resolution.
+# Once the intended source is committed and clean:
+git push -u origin <feature-branch>  # installed hook runs full local CI
+make pr-check
+# Only then create a PR with the explicit target:
+gh pr create --base main
+# Or hand the existing stage-targeted PR back for review.
+```
+
+`local-check` fetches main and requires it in HEAD before CI, fetches again afterward,
+and records exact HEAD/target-name/target-SHA on success. Code pushes to existing PRs are gated by
+that same pre-push hook; `make pr-check` then verifies the receipt before review
+handoff. It also runs immediately before PR creation or base/metadata changes
+that affect review. Routine issue/PR discussion comments do not require a CI run.
+
+If main advances or source changes, integrate and repeat validation. Never reuse
+a receipt from another HEAD/base, skip hooks, weaken a gate, or run local-check
+and then immediately push unchanged HEAD just to duplicate the same full gate.
+Manual `make local-check` is available when no push is intended. Contributors
+must install the hook in their own clone; tracked documentation cannot do that.
+
+Remote CI and mergeability must be checked separately against the latest PR head
+and base. A local text merge simulation does not prove the combined code builds.
+A main update after the last check can still occur; these controls reduce conflicts
+but are not an atomic remote merge lock. Before the human merge, recheck the actual
+target state and refresh the branch if the evidence has become stale.
+
+### Dependencies and bounded PR queues
+
+Prefer independent PRs against main. Use one integration PR per coherent package,
+with logical reviewable commits. Do not create more overlapping public PRs while
+an earlier owner review is unresolved; independent local work may continue.
+
+A dependent PR must name its parent, base branch, exact dependency SHA and required
+merge order. A stack is an explicit coordination choice, not a default way to keep
+all workers publishing. Avoid stacks deeper than one pending parent; deeper stacks
+require an explicit maintainer decision recorded in the issue. Do not change a
+parent's overlapping files from a child without an acknowledged handoff.
+
+After the parent is merged by a human:
+
+1. Fetch main and the parent/child states. Record the actual merge SHA and method
+   if known; never infer ancestry from similar commit messages.
+2. Integrate current main into the child without rewriting its published history.
+   A squash/rebase merge may contain the same content under different ancestry:
+   inspect the net diff and resolve duplicate/conflicting content intentionally.
+   Do not blindly cherry-pick the parent again or assume it can be dropped safely.
+3. Run focused integration checks, commit, and push through full local CI. Run
+   `make pr-check`, retarget to main when appropriate, and inspect Files changed
+   for leaked parent changes or missing child changes. Do not assume automatic
+   GitHub retargeting produces the intended review diff.
+4. Explain the old/new base and resolution to reviewers, then verify hosted checks
+   and mergeability on the new base. Retargeting can make review comments outdated;
+   preserve their context and re-request review of affected changes.
+
+### Resolving conflicts
+
+The integration owner reconciles both branches' intended behavior, coordinating
+with authors when intent is unclear. Preserve distinct requirements from both
+sides; never use wholesale ours/theirs as a substitute for review. Do not resolve
+conflicts by lowering thresholds or deleting another contributor's work.
+
+For generated files or locks, resolve their source inputs first and regenerate
+with repository commands through the sandbox. Preserve fixture revision contracts;
+announce any necessary exception before regenerating source-bound artifacts.
+After a resolution, review the actual diff and run relevant tests plus the required
+full local gate before publishing the new commit. Explain the resolution in the PR.
+
+### Handoff, merge and follow-up
+
+Use this compact PR handoff (fill with real observations, not desired results):
+
+```text
+Source HEAD / verified target SHA / target branch (main):
+Depends on: none | PR number + dependency SHA + merge order
+Changed behavior and reviewer guide:
+Local checks: command, exit status, receipt HEAD/target-name/target-SHA
+Hosted checks: current head/base, observed status
+Conflict/base updates: none | old/new base and semantic resolution
+Not tested / unresolved review or validation:
+Claims released / remaining owner:
+Merge authority: repository owner; auto-merge disabled
+```
+
+After a human merge, record its actual SHA and outstanding owner validation, release
+remaining claims, and refresh dependent branches/HANDOFF. Plan the next package
+from current main and current issues rather than the previous feature branch.
+Do not start another implementation merely because an old checkpoint says next.
+Apply [MADR-0014](0014-pr-publication-worktree-retention.md) at PR publication:
+remove recoverable inactive worktrees after a verified handoff, without waiting
+for merge. Keep branch refs. Defer removal while a checkout is active or uncertain.
+
+Owner-review publication follows MADR-0011's scoped evidence policy. An inaccessible
+external corpus is recorded as not assessed, not a prerequisite for opening a PR.
+Preserve unresolved security findings and incomplete coverage in the review; a draft
+PR does not establish release readiness or authorize owner-only merge actions.
+
+### Authorized worktree cleanup
+
+Inventory linked worktrees and disk use periodically; retaining a checkout can
+duplicate large scanner, package and build caches. MADR-0014 records the operator's
+standing authorization for qualifying project worktrees after PR publication.
+Other cleanup still requires explicit authorization; a successful test or merge
+does not grant it.
+
+For merged-worktree cleanup, verify the exact HEAD is contained in the intended integration
+target (`main` here), the working tree is clean, and the
+worktree is neither primary nor locked. A squash/cherry-pick resemblance alone is
+not ancestry proof. For an open PR, instead verify the published remote feature
+head and recoverability as required by MADR-0014. Record the target SHA and ref
+freshness. Check current process
+directories, open files, container mounts and collaboration claims for activity;
+absence of observed activity is not proof that another contributor has finished.
+
+Review ignored files separately. Preserve local notes, evidence, environment files
+and agent memory in private, verified backups before removing a checkout. A clean
+Git status says nothing about those files. Document any discarded reproducible
+dependency, scanner or build caches. Keep secrets out of public receipts.
+
+Recheck source, ancestry, activity and backup integrity immediately before using
+`git worktree remove` without force. Retain branch refs unless their deletion is
+separately authorized. Skip a changed, active, locked or uncertain worktree; never
+escalate to force to finish a cleanup list. Record actual free space afterward:
+summed worktree allocations can overstate recoverable space on shared/clone filesystems.
+Missing paths and stale worktree metadata require their own review, not blanket pruning.
+
+## Consequences
+
+Positive: newcomers can reproduce the same workflow, dependent PRs have visible
+ordering, and reviewers can assess tested source and conflict decisions.
+Negative: synchronizing branches and re-running mandatory gates takes time;
+cooperative claims cannot eliminate races or guarantee conflict-free merges.
+The default owner review can limit publication throughput; parallel local work
+and bounded public queues keep that limit visible rather than bypassing it.
+
+## Validation and adoption
+
+Review the workflow against an independent PR, a dependent PR, a parent squash
+merge, a main update during CI, and a human-performed merge exception. Existing
+local CI harness tests cover stale main, failed refreshes, changed source and
+receipt identity; no automated test can prove a human review occurred.
+
+Owner/contributor adoption: pending. Record the explicit review decision and date
+here before changing the repository-wide status. Historical merges #7/#8/#9 do
+not serve as approval of a document written afterward.
+
+## References
+
+* [GitHub: keep a PR in sync](https://docs.github.com/en/pull-requests/how-tos/create-pull-requests/keeping-your-pull-request-in-sync-with-the-base-branch)
+* [GitHub: change a PR base](https://docs.github.com/en/pull-requests/how-tos/create-pull-requests/changing-the-base-branch-of-a-pull-request)
+* [Operator merge protocol](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6550082487)

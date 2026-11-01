@@ -24,10 +24,11 @@ if (args.FirstOrDefault() == "fetch-packages")
     }
 
     var models = ProjectModel.Discover(Path.GetFullPath(fetchSource), Has("include-tests"));
-    var feeds = NuGetConfig.Discover(Path.GetFullPath(fetchSource), models.Select(m => Path.GetDirectoryName(m.FullPath)!), Environment.GetEnvironmentVariable);
+    var policy = new PackageFeedPolicy(Environment.GetEnvironmentVariable("CE_NUGET_ALLOWED_ORIGINS"));
+    var feeds = NuGetConfig.Discover(Path.GetFullPath(fetchSource), models.Select(m => Path.GetDirectoryName(m.FullPath)!), Environment.GetEnvironmentVariable, policy);
     using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(2) };
     http.DefaultRequestHeaders.UserAgent.ParseAdd("capability-explorer/0.1");
-    var fetched = await new PackageFetcher(Path.GetFullPath(into), http, feeds).FetchAsync(models.Select(m => (m.RelativePath, m.PackageRoots())));
+    var fetched = await new PackageFetcher(Path.GetFullPath(into), http, feeds, policy).FetchAsync(models);
     Console.WriteLine($"packages: {fetched.Fetched} downloaded, {fetched.Present} already present, {fetched.Failed.Count} unavailable; feeds: {string.Join(", ", feeds.Select(f => f.Name + (f.Credentials is null ? "" : " (authenticated)")))}");
     foreach (var f in fetched.Failed)
     {

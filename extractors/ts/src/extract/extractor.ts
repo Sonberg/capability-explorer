@@ -1,20 +1,30 @@
-import { readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import ts from "typescript";
+import { containedSource, readSource, sourceCompilerHost, sourceSystem } from "./source-files.ts";
 import type { ToolRef } from "../contracts/records.ts";
-import { ArtifactBuilder, BUILD, sha256 } from "./builder.ts";
+import { ArtifactBuilder, BUILD, canonicalJson, sha256 } from "./builder.ts";
 import { calls, HANDLER_MAP } from "./calls.ts";
 import { calculations } from "./calculations.ts";
 import { Ctx } from "./context.ts";
 import { declare, detectGenerated } from "./declarations.ts";
-import { discoverUnits, isTestPath, posix, type UnitConfig } from "./project.ts";
+import { discoverUnits, isFile, isTestPath, posix, type UnitConfig } from "./project.ts";
 import { nextRoutes } from "./next.ts";
-import { axiosRule, express, fetchRule, openApiRule, pgRule, projectNode, serviceBusRule, serviceNode } from "./rules.ts";
+import { express, pgRule, projectNode, serviceBusRule, serviceNode } from "./rules.ts";
+import { axiosRule, fetchRule, openApiRule } from "./http-clients.ts";
 
 export const EXTRACTOR: ToolRef = { name: "ts-compiler", version: "0.1.0" };
 
 export interface ExtractOptions { source: string; repository: string; commit: string; includeTests?: boolean }
 export interface UnitResult { unitPath: string; unitName: string; jsonl: string; language: "typescript" | "javascript" }
+
+/** Compiler options contain absolute config/root paths; checkout location is not an analysis input. */
+function portableOptions(value: unknown, root: string): unknown {
+  if (typeof value === "string" && (value === root || value.startsWith(root + "/"))) return "$REPOSITORY" + posix(value.slice(root.length));
+  if (Array.isArray(value)) return value.map((v) => portableOptions(v, root));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, portableOptions(v, root)]));
+  return value;
+}
 
 /** Module specifiers that did not resolve: packages that are not installed (nothing is ever installed). */
 function missingModules(program: ts.Program, files: readonly ts.SourceFile[]): string[] {
@@ -33,7 +43,10 @@ export function extract(options: ExtractOptions): UnitResult[] {
   const root = resolve(options.source);
   const units = discoverUnits(root, options.includeTests ?? false);
   const programs = new Map<UnitConfig, ts.Program>();
-  for (const unit of units) programs.set(unit, ts.createProgram({ rootNames: unit.rootNames, options: unit.options }));
+  for (const unit of units) {
+    const host = sourceCompilerHost(root, unit.options);
+    programs.set(unit, ts.createProgram({ rootNames: unit.rootNames, options: unit.options, host }));
+  }
 
   // Each file belongs to the deepest unit whose program includes it, so overlapping configs never duplicate symbols.
   const ownerOf = new Map<string, UnitConfig>();
@@ -47,7 +60,12 @@ export function extract(options: ExtractOptions): UnitResult[] {
     }
   }
 
-  const fileText = (path: string) => readFileSync(resolve(root, path), "utf8").replace(/\r\n/g, "\n");
+  const inputText = (file: string) => {
+    const text = readSource(root, file);
+    if (text === undefined) throw new Error("Analysis input is unavailable within the selected source boundary.");
+    return text;
+  };
+  const fileText = (path: string) => inputText(resolve(root, path)).replace(/\r\n/g, "\n");
   const results: UnitResult[] = [];
   for (const [unit, program] of programs) {
     const owned = new Set([...ownerOf].filter(([, u]) => u === unit).map(([f]) => f));
@@ -55,6 +73,25 @@ export function extract(options: ExtractOptions): UnitResult[] {
     const b = new ArtifactBuilder(options.repository, options.commit, EXTRACTOR, fileText);
     const ctx = new Ctx(root, options.repository, unit, program, b, owned, (f) => ownerOf.get(f));
     const rules = new Set<ToolRef>();
+    const referenceSystem = sourceSystem(root);
+    for (const sf of ctx.files) {
+      const references = [
+        ...sf.referencedFiles.map(ref => ref.fileName),
+        ...sf.statements.flatMap(statement => {
+          const spec = (ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement)) && statement.moduleSpecifier;
+          return spec && ts.isStringLiteral(spec) && spec.text.startsWith(".") ? [spec.text] : [];
+        }),
+      ];
+      for (const reference of references) {
+        const target = resolve(dirname(sf.fileName), reference);
+        const resolved = ts.resolveModuleName(reference, sf.fileName, unit.options, referenceSystem).resolvedModule;
+        if ((resolved && containedSource(root, resolved.resolvedFileName)) || referenceSystem.fileExists(target)) continue;
+        const path = ctx.rel(sf.fileName);
+        b.diagnostic("warning", "SOURCE_REFERENCE_UNAVAILABLE", "A source reference is unavailable within the selected source boundary.", path, true);
+        b.markIncomplete(path);
+      }
+    }
+
 
     projectNode(ctx);
     serviceNode(ctx);
@@ -89,8 +126,21 @@ export function extract(options: ExtractOptions): UnitResult[] {
     for (const e of unit.configErrors) b.diagnostic("warning", "CONFIG", e, ctx.rel(unit.configFile));
 
     const language = ctx.files.some((f) => /\.(m|c)?tsx?$/.test(f.fileName)) ? "typescript" : "javascript";
-    const inputs = [...owned].sort().map((f) => `${posix(f.slice(root.length + 1))}\0${sha256(readFileSync(f, "utf8"))}\n`).join("");
-    const configHash = sha256(`build=${BUILD}|typescript=${ts.version}|includeTests=${options.includeTests === true}|` + JSON.stringify(Object.keys(unit.options).sort().map((k) => [k, unit.options[k]])));
+    const inputFiles = new Set([...owned, unit.configFile, ...(unit.packageJson ? [unit.packageJson] : [])]);
+    for (const name of ["next.config.ts", "next.config.js", "next.config.mjs", "next.config.cjs"]) {
+      const file = resolve(unit.packageRoot, name);
+      if (!containedSource(root, file)) {
+        if (existsSync(file)) {
+          const path = ctx.rel(unit.configFile);
+          b.diagnostic("warning", "CONFIG_SOURCE_UNAVAILABLE", "Framework configuration is unavailable within the selected source boundary.", path, true);
+          b.markIncomplete(path);
+        }
+        continue;
+      }
+      if (isFile(file)) inputFiles.add(file);
+    }
+    const inputs = [...inputFiles].sort().map((f) => `${posix(f.slice(root.length + 1))}\0${sha256(inputText(f))}\n`).join("");
+    const configHash = sha256(`build=${BUILD}|typescript=${ts.version}|includeTests=${options.includeTests === true}|appRoot=${existsSync(resolve(unit.packageRoot, "app"))}|` + canonicalJson(portableOptions(unit.options, root)));
     const ordered = [...rules].sort((a, b2) => a.name.localeCompare(b2.name));
     const unitPath = ctx.rel(unit.configFile);
     results.push({ unitPath, unitName: unit.packageName, language, jsonl: b.toJsonl({ path: unitPath, name: unit.packageName }, language, ordered, configHash, sha256(inputs), owned.size) });

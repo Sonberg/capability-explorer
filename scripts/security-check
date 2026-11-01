@@ -11,11 +11,11 @@ command -v docker >/dev/null || { echo 'Docker is required for the vulnerability
 cache="$root/.sandbox-cache/trivy"
 mkdir -p "$cache"
 if ! docker image inspect "$image" >/dev/null 2>&1; then docker pull "$image"; fi
-printf 'Scanning project dependencies with %s (High/Critical findings fail)\n' "$image"
+printf 'Scanning project dependencies with %s (all severities fail)\n' "$image"
 exec docker run --rm --user "$(id -u):$(id -g)" --read-only \
   --tmpfs /tmp:rw,nosuid,size=2g --cap-drop ALL --security-opt no-new-privileges \
   --pids-limit 512 -v "$root:/work:ro" -v "$cache:/cache" -w /work \
-  "$image" fs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 \
+  "$image" fs --scanners vuln --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 1 \
   --include-dev-deps --disable-telemetry --cache-dir /cache \
   --config '' --ignorefile '' \
   --skip-dirs .git --skip-dirs .sandbox-cache \

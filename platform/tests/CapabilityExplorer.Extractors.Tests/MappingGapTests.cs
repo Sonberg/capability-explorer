@@ -57,26 +57,26 @@ public sealed class MappingGapTests : IDisposable
 
     // ------------------------------------------------------------ gap 3: older frameworks
 
-    [Fact]
-    public void Frameworks_cover_net5_netcoreapp_and_netstandard1()
+    [Theory]
+    [InlineData("net5.0")]
+    [InlineData("netcoreapp3.0")]
+    [InlineData("netcoreapp2.1")]
+    [InlineData("netstandard1.6")]
+    [InlineData("netstandard1.1")]
+    [InlineData("netstandard1.0")]
+    public void Compatible_older_assets_use_the_actual_target_framework_reducer(string asset)
     {
-        foreach (var tfm in new[] { "net5.0", "netcoreapp3.0", "netcoreapp2.1", "netstandard1.6", "netstandard1.1", "netstandard1.0" })
-        {
-            Assert.Contains(tfm, PackageResolver.Frameworks);
-        }
-
-        // Newer assets still win over older ones.
-        Assert.True(Array.IndexOf(PackageResolver.Frameworks, "net8.0") < Array.IndexOf(PackageResolver.Frameworks, "net5.0"));
-        Assert.True(Array.IndexOf(PackageResolver.Frameworks, "netstandard2.0") < Array.IndexOf(PackageResolver.Frameworks, "netstandard1.1"));
+        Assert.Equal(asset, FrameworkSelection.Nearest("net10.0", [asset]));
+        Assert.Equal("net8.0", FrameworkSelection.Nearest("net10.0", [asset, "net8.0"]));
     }
 
     [Theory]
     [InlineData(".NETCoreApp3.1", "netcoreapp3.1")]
     [InlineData(".NETStandard1.1", "netstandard1.1")]
     [InlineData("net5.0", "net5.0")]
-    [InlineData(".NETFramework4.8", ".netframework4.8")]
-    public void Nuspec_framework_names_normalise(string nuspec, string expected) =>
-        Assert.Equal(expected, PackageResolver.Normalise(nuspec));
+    [InlineData(".NETFramework4.8", "net48")]
+    public void Nuspec_framework_names_use_the_same_nuget_parser_as_resolution(string nuspec, string expected) =>
+        Assert.Equal(expected, FrameworkSelection.Parse(nuspec)?.GetShortFolderName());
 
     [Fact]
     public void Package_with_only_a_net5_asset_contributes_it_and_its_net5_dependency_group()
@@ -91,7 +91,7 @@ public sealed class MappingGapTests : IDisposable
         Assert.Equal(["easy.abstractions", "easy.core"], result.Resolved.Select(r => r.Id.ToLowerInvariant()).Order(StringComparer.Ordinal));
         Assert.Empty(result.Unselected);
 
-        var locked = new PackageResolver(packages).Resolve([], [new LockedPackage("easy.core", "1.0.0"), new LockedPackage("easy.abstractions", "1.0.0")]);
+        var locked = new PackageResolver(packages).Resolve([new PackageRef("easy.core", "1.0.0", 1)], [new LockedPackage("easy.core", "1.0.0"), new LockedPackage("easy.abstractions", "1.0.0")]);
         Assert.Equal(2, locked.Assemblies.Count);
     }
 
@@ -101,7 +101,7 @@ public sealed class MappingGapTests : IDisposable
         var packages = Path.Combine(_root, "packages");
         Package(packages, "xunit.extensibility.core", "2.9.0", ["lib/netstandard1.1/xunit.core.dll"]);
 
-        var result = new PackageResolver(packages).Resolve([], [new LockedPackage("xunit.extensibility.core", "2.9.0")]);
+        var result = new PackageResolver(packages).Resolve([new PackageRef("xunit.extensibility.core", "2.9.0", 1)], [new LockedPackage("xunit.extensibility.core", "2.9.0")]);
 
         Assert.Equal(["xunit.core.dll"], result.Assemblies.Select(Path.GetFileName));
     }
@@ -113,7 +113,7 @@ public sealed class MappingGapTests : IDisposable
         Package(packages, "legacy.lib", "1.0.0", ["lib/net45/Legacy.dll", "lib/net461/Legacy.dll"]);
         Package(packages, "meta.only", "1.0.0", []);
 
-        var result = new PackageResolver(packages).Resolve([], [new LockedPackage("legacy.lib", "1.0.0"), new LockedPackage("meta.only", "1.0.0")]);
+        var result = new PackageResolver(packages).Resolve([new PackageRef("legacy.lib", "1.0.0", 1), new PackageRef("meta.only", "1.0.0", 1)], [new LockedPackage("legacy.lib", "1.0.0"), new LockedPackage("meta.only", "1.0.0")]);
 
         Assert.Empty(result.Assemblies);
         var unselected = Assert.Single(result.Unselected);
@@ -123,7 +123,7 @@ public sealed class MappingGapTests : IDisposable
     }
 
     [Fact]
-    public void Unselected_package_surfaces_as_an_info_diagnostic_without_affecting_coverage()
+    public void Unselected_package_surfaces_as_info_while_incompatible_assets_remain_a_coverage_gap()
     {
         var packages = Path.Combine(_root, "packages");
         Package(packages, "legacy.lib", "1.0.0", ["lib/net45/Legacy.dll"]);
@@ -138,6 +138,7 @@ public sealed class MappingGapTests : IDisposable
         Assert.Equal("info", diagnostic.GetProperty("severity").GetString());
         Assert.Contains("lib/net45", diagnostic.GetProperty("message").GetString(), StringComparison.Ordinal);
         Assert.False(diagnostic.TryGetProperty("affectsCoverage", out var affects) && affects.GetBoolean());
+        Assert.Contains(Records(result.Jsonl), r => r.GetProperty("kind").GetString() == "diagnostic" && r.GetProperty("code").GetString() == "PACKAGE_NO_COMPATIBLE_ASSETS" && r.GetProperty("affectsCoverage").GetBoolean());
     }
 
     // ------------------------------------------------------------ helpers

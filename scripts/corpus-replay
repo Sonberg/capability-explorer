@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Locked data-only corpus extraction. No arbitrary command or production import.
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+[[ $# == 2 ]] || { echo 'usage: scripts/corpus-replay validate-plan|run <local-plan>' >&2; exit 2; }
+case "$1" in
+  validate-plan) exec scripts/sandbox --offline node node scripts/corpus-replay.mjs validate-plan "$2" ;;
+  run) ;;
+  *) echo 'unknown corpus command' >&2; exit 2 ;;
+esac
+out="$(scripts/sandbox --offline node node scripts/corpus-replay.mjs prepare-run "$2")"
+[[ "$out" == .sandbox-cache/corpus-replay/* && "$out" != *$'\n'* ]] || { echo 'invalid output receipt' >&2; exit 1; }
+while IFS=$'\t' read -r command image bundle source repository commit destination packages lock; do
+  case "$command" in
+    csharp)
+      SANDBOX_DOTNET_IMAGE="$image" SANDBOX_SOURCES="" SANDBOX_PASS_ENV="" scripts/sandbox --offline dotnet \
+        dotnet "/work/$bundle/csharp/ce-cs.dll" extract --source "/work/$source" --repository "$repository" \
+        --commit "$commit" --out "/work/$destination" --packages "/work/$packages" --lock "/work/$lock" >"$destination.log" 2>&1 ;;
+    ts|sql)
+      subcommand=extract; [[ "$command" == sql ]] && subcommand=extract-sql
+      SANDBOX_NODE_IMAGE="$image" SANDBOX_SOURCES="" SANDBOX_PASS_ENV="" scripts/sandbox --offline node \
+        node "/work/$bundle/ts/extractors/ts/src/cli.ts" "$subcommand" --source "/work/$source" \
+        --repository "$repository" --commit "$commit" --out "/work/$destination" >"$destination.log" 2>&1 ;;
+    *) echo 'unknown fixed extraction command' >&2; exit 1 ;;
+  esac
+done < "$out/commands.tsv"
+scripts/sandbox --offline node node scripts/corpus-replay.mjs verify "$2"

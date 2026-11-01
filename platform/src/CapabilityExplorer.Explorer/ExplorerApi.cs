@@ -94,8 +94,8 @@ public static class ExplorerApi
             chatModel = o.Deployment,
             embeddingModel = o.EmbeddingModel,
             ollamaEndpoint = ModelSettings.OllamaEndpoint,
-            hasApiKey = intelligence.Saved?.ApiKey is { Length: > 0 } || Environment.GetEnvironmentVariable(o.ApiKeyVariable) is { Length: > 0 },
-            apiKeySource = intelligence.Saved?.ApiKey is { Length: > 0 } ? "saved" : Environment.GetEnvironmentVariable(o.ApiKeyVariable) is { Length: > 0 } ? o.ApiKeyVariable : "none",
+            hasApiKey = intelligence.Saved?.ApiKey is { Length: > 0 } || o.UseEnvironmentApiKey && Environment.GetEnvironmentVariable(o.ApiKeyVariable) is { Length: > 0 },
+            apiKeySource = intelligence.Saved?.ApiKey is { Length: > 0 } ? "saved" : o.UseEnvironmentApiKey && Environment.GetEnvironmentVariable(o.ApiKeyVariable) is { Length: > 0 } ? o.ApiKeyVariable : "none",
             database = intelligence.Store is not null,
             problem = intelligence.Problem,
         };

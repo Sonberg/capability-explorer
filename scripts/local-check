@@ -6,6 +6,8 @@ fail() { echo "local-check: $*" >&2; exit 1; }
 [[ $# -eq 0 ]] || fail 'usage: scripts/local-check (no extra act flags are accepted)'
 root="$(git rev-parse --show-toplevel)" || fail 'run inside a Git checkout'
 cd "$root"
+[[ "$(git symbolic-ref --quiet --short HEAD || true)" != main ]] ||
+  fail 'work on a feature branch targeting main; do not work directly on main'
 [[ -f .github/workflows/ci.yml ]] || fail '.github/workflows/ci.yml is missing'
 head="$(git rev-parse --verify HEAD)"
 [[ -z "${LOCAL_CI_EXPECTED_HEAD:-}" || "$head" == "$LOCAL_CI_EXPECTED_HEAD" ]] || fail 'HEAD changed after outgoing refs were validated'
@@ -28,8 +30,8 @@ trap 'exit 143' TERM
 # A failed or interrupted check must never leave a previous success looking current.
 rm -f "$receipt"
 
-# Fail before spending runner time when this source omits current main.
-base="$("$root/scripts/check-main-alignment")"
+# Fail before spending runner time when this source omits current main target.
+base="$("$root/scripts/check-target-alignment")"
 
 command -v gh >/dev/null || fail 'install GitHub CLI and the nektos/gh-act extension'
 command -v docker >/dev/null || fail 'Docker is required'
@@ -79,12 +81,15 @@ docker image inspect "$runner" >/dev/null 2>&1 || fail "pull the local runner im
 # The Actions auditor needs the existing host GitHub login; never mount it in act.
 "$root/scripts/actions-audit" audit
 
+# Give act the same explicit target checked by hosted PR CI.
+printf '%s\n' '{"action":"synchronize","pull_request":{"base":{"ref":"main"}}}' > "$cache/event.json"
+
 # No arguments are forwarded, and dotenv/secret/variable/input files are disabled.
 # Explicitly empty GITHUB_TOKEN also disables act's automatic gh-auth token lookup.
 echo "local-check: running complete CI for $head ($version)"
 (
   unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
-  gh act pull_request -W .github/workflows/ci.yml -j ci --bind \
+  gh act pull_request --eventpath "$cache/event.json" -W .github/workflows/ci.yml -j ci --bind \
     -P "ubuntu-24.04=$runner" --pull=false \
     --env-file /dev/null --secret-file /dev/null --var-file /dev/null --input-file /dev/null \
     --secret GITHUB_TOKEN= --no-cache-server --container-daemon-socket /var/run/docker.sock
@@ -92,15 +97,16 @@ echo "local-check: running complete CI for $head ($version)"
 [[ "$(git rev-parse --verify HEAD)" == "$head" ]] || fail 'HEAD changed during CI; rerun against the intended commit'
 clean || fail 'working tree changed during CI; commit or stash changes and rerun'
 
-latest_base="$("$root/scripts/check-main-alignment")"
-[[ "$latest_base" == "$base" ]] || fail 'main changed during CI; integrate it and rerun'
+latest_base="$("$root/scripts/check-target-alignment")"
+[[ "$latest_base" == "$base" ]] || fail 'target branch changed during CI; integrate it and rerun'
 [[ "$(git rev-parse --verify HEAD)" == "$head" ]] && clean || fail 'source changed during final alignment check'
 
 # Evidence only: this receipt is never reused to skip a later run. Package and
 # Docker caches reduce work without trusting an incomplete environment fingerprint.
 {
   echo "head=$head"
-  echo "main=$base"
+  echo "target=main"
+  echo "base=$base"
   echo "runner=$version"
   echo "runner-image=$runner"
   echo "finished=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"

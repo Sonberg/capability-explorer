@@ -1,0 +1,288 @@
+{
+  "format": "mapping-replay-input.v1",
+  "inputKind": "synthetic",
+  "repositoryId": "mapping-replay",
+  "commitSha": "93457da2ecaa70e26b3837ce57d43b1c937094c4",
+  "inputHash": "93457da2ecaa70e26b3837ce57d43b1c937094c443d7b1a4659f4e91b888c0c3",
+  "inputIdentityTransitions": [
+    {
+      "name": "TypeScript input identity now includes package and compiler configuration",
+      "language": "typescript",
+      "unit": "ts/tsconfig.json",
+      "baseline": "fc2fd0bbd378d99b50fceb749ec3f57e65a1666b11b11dae58aa496d1f404434",
+      "candidate": "a1bb745116df8817f19499eda346e726077f311db3f9aaa1f85663a1751de416",
+      "lockedSourceHash": "93457da2ecaa70e26b3837ce57d43b1c937094c443d7b1a4659f4e91b888c0c3"
+    }
+  ],
+  "files": {
+    "csharp/HttpFixture.cs": "7bf8654735034d84fde2d00ec2b27cc5f291af6bd018e06708f6d674697c4cad",
+    "csharp/HttpFixture.csproj": "067f99fbc27d1722f2e9c303971c4b3385db2ac7a7fcdd986fac6e29879d78b9",
+    "ts/package.json": "0ff88068051bcdd19c1a1f72b4acbcdaf2ed5e8d07513e47dd2af82fa86b5f98",
+    "ts/src/app/api/(group)/items/[id]/route.ts": "32eebf64bcd6378420361acdd8ec3825b504f486d24686db094ccecca48df24c",
+    "ts/src/app/api/files/[...parts]/route.ts": "f5da968c946ff2089dd3811ba6b8e714d1f65c9da903c6ee32f8f12186a11bfa",
+    "ts/src/app/api/search/[[...parts]]/route.ts": "7441e86d95cc0163b0b111dd8f1cabce5d72b310107952d07356db81b013287a",
+    "ts/src/app/api/unsupported/route.ts": "51f66fac9c44a5c3f9769fcf0115628971a0826922e47d3f8d8cb96e2d9a2c4c",
+    "ts/tsconfig.json": "5429049c4a9f645aae56d39709457bc9275d1b53afc8a74891a3ddaff3a33f13"
+  },
+  "assertions": [
+    {
+      "name": "Next endpoint GET /api/items/{}",
+      "selector": {
+        "kind": "node",
+        "symbolKey": "http|mapping-replay/mapping-replay-ts|GET /api/items/{}",
+        "nodeKind": "Endpoint"
+      },
+      "baseline": 0,
+      "candidate": 1
+    },
+    {
+      "name": "Next EXPOSES GET /api/items/{}",
+      "selector": {
+        "kind": "edge",
+        "relation": "EXPOSES",
+        "to": "http|mapping-replay/mapping-replay-ts|GET /api/items/{}",
+        "resolution": "resolved"
+      },
+      "baseline": 0,
+      "candidate": 1
+    },
+    {
+      "name": "Next HANDLES GET /api/items/{}",
+      "selector": {
+        "kind": "edge",
+        "relation": "HANDLES",
+        "to": "http|mapping-replay/mapping-replay-ts|GET /api/items/{}",
+        "resolution": "resolved"
+      },
+      "baseline": 0,
+      "candidate": 1
+    },
+    {
+      "name": "Next endpoint POST /api/items/{}",
+      "selector": {
+        "kind": "node",
+        "symbolKey": "http|mapping-replay/mapping-replay-ts|POST /api/items/{}",
+        "nodeKind": "Endpoint"
+      },
+      "baseline": 0,
+      "candidate": 1
+    },
+    {
+      "name": "Next EXPOSES POST /api/items/{}",
+      "selector": {
+        "kind": "edge",
+        "relation": "EXPOSES",
+        "to": "http|mapping-replay/mapping-replay-ts|POST /api/items/{}",
+        "resolution": "resolved"
+      },
+      "baseline": 0,
+      "candidate": 1
+    },
+    {
+      "name": "Next HANDLES POST /api/items/{}",
+      "selector": {
+        "kind": "edge",
+        "relation": "HANDLES",
+        "to": "http|mapping-replay/mapping-replay-ts|POST /api/items/{}",
+        "resolution": "resolved"
+      },
+      "baseline": 0,
+      "candidate": 1
+    },
+    {
+      "name": "Next endpoint GET /api/files/{*}",
+      "selector": {
+        "kind": "node",
+        "symbolKey": "http|mapping-replay/mapping-replay-ts|GET /api/files/{*}",
+        "nodeKind": "Endpoint"
+      },
+      "baseline": 0,
+      "candidate": 1
+    },
+    {
+      "name": "Next EXPOSES GET /api/files/{*}",
+      "selector": {
+        "kind": "edge",
+        "relation": "EXPOSES",
+        "to": "http|mapping-replay/mapping-replay-ts|GET /api/files/{*}",
+        "resolution": "resolved"
+      },
+      "baseline": 0,
+      "candidate": 1
+    },
+    {
+      "name": "Next HANDLES GET /api/files/{*}",
+      "selector": {
+        "kind": "edge",
+        "relation": "HANDLES",
+        "to": "http|mapping-replay/mapping-replay-ts|GET /api/files/{*}",
+        "resolution": "resolved"
+      },
+      "baseline": 0,
+      "candidate": 1
+    },
+    {
+      "name": "Next endpoint GET /api/search/{**}",
+      "selector": {
+        "kind": "node",
+        "symbolKey": "http|mapping-replay/mapping-replay-ts|GET /api/search/{**}",
+        "nodeKind": "Endpoint"
+      },
+      "baseline": 0,
+      "candidate": 1
+    },
+    {
+      "name": "Next EXPOSES GET /api/search/{**}",
+      "selector": {
+        "kind": "edge",
+        "relation": "EXPOSES",
+        "to": "http|mapping-replay/mapping-replay-ts|GET /api/search/{**}",
+        "resolution": "resolved"
+      },
+      "baseline": 0,
+      "candidate": 1
+    },
+    {
+      "name": "Next HANDLES GET /api/search/{**}",
+      "selector": {
+        "kind": "edge",
+        "relation": "HANDLES",
+        "to": "http|mapping-replay/mapping-replay-ts|GET /api/search/{**}",
+        "resolution": "resolved"
+      },
+      "baseline": 0,
+      "candidate": 1
+    },
+    {
+      "name": "Next service declared",
+      "selector": {
+        "kind": "node",
+        "symbolKey": "svc|mapping-replay|mapping-replay-ts",
+        "nodeKind": "Service"
+      },
+      "baseline": 0,
+      "candidate": 1
+    },
+    {
+      "name": "Unsupported export does not fabricate GET endpoint",
+      "selector": {
+        "kind": "node",
+        "symbolKey": "http|mapping-replay/mapping-replay-ts|GET /api/unsupported"
+      },
+      "baseline": 0,
+      "candidate": 0
+    },
+    {
+      "name": "TS absolute host remains configuration uncertainty; scheme captured",
+      "selector": {
+        "kind": "edge",
+        "relation": "REQUESTS",
+        "to": "http|@unbound:mapping-replay/mapping-replay-ts:host=api.example.test|GET /v1/items",
+        "resolution": "unresolved",
+        "unresolvedReason": "configuration"
+      },
+      "baseline": 1,
+      "candidate": 1
+    },
+    {
+      "name": "TS relative fetch keeps unresolved origin",
+      "selector": {
+        "kind": "edge",
+        "relation": "REQUESTS",
+        "to": "http|@unbound:mapping-replay/mapping-replay-ts:base=origin|GET /local",
+        "resolution": "unresolved"
+      },
+      "baseline": 1,
+      "candidate": 1
+    },
+    {
+      "name": "TS compiler fetch calls preserved",
+      "selector": {
+        "kind": "edge",
+        "relation": "CALLS",
+        "to": "ts|@ext|typescript|lib.dom.d.ts|fetch#value",
+        "resolution": "resolved"
+      },
+      "baseline": 2,
+      "candidate": 2
+    },
+    {
+      "name": "CSharp malformed scheme path removed",
+      "selector": {
+        "kind": "edge",
+        "relation": "REQUESTS",
+        "to": "http|@unbound:mapping-replay/HttpFixture:client=HttpFixture|GET /https:/graph.example/v1/{}/events"
+      },
+      "baseline": 1,
+      "candidate": 0
+    },
+    {
+      "name": "CSharp absolute host and path separated; runtime binding unresolved",
+      "selector": {
+        "kind": "edge",
+        "relation": "REQUESTS",
+        "to": "http|@unbound:mapping-replay/HttpFixture:host=graph.example|GET /v1/{}/events",
+        "resolution": "unresolved",
+        "unresolvedReason": "configuration",
+        "props": {
+          "scheme": "https",
+          "query": [
+            "token"
+          ]
+        }
+      },
+      "baseline": 0,
+      "candidate": 1
+    },
+    {
+      "name": "CSharp relative client origin stays unresolved",
+      "selector": {
+        "kind": "edge",
+        "relation": "REQUESTS",
+        "to": "http|@unbound:mapping-replay/HttpFixture:client=HttpFixture|GET /relative",
+        "resolution": "unresolved",
+        "props": {
+          "query": [
+            "limit"
+          ]
+        }
+      },
+      "baseline": 1,
+      "candidate": 1
+    },
+    {
+      "name": "CSharp compiler HttpClient calls preserved",
+      "selector": {
+        "kind": "edge",
+        "relation": "CALLS",
+        "to": "cs|@ext|System.Net.Http|M:System.Net.Http.HttpClient.GetAsync(System.String)",
+        "resolution": "resolved"
+      },
+      "baseline": 2,
+      "candidate": 2
+    }
+  ],
+  "expectedChanges": {
+    "removed": [
+      {"schema":"ce.v1","kind":"edge","from":"ts|mapping-replay|mapping-replay-ts|src/app/api/(group)/items/[id]/route.ts|GET#value","relation":"REQUESTS","to":"http|@unbound:mapping-replay/mapping-replay-ts:host=api.example.test|GET /v1/items","derivation":"rule","resolution":"unresolved","unresolvedReason":"configuration","rule":{"name":"web.fetch","version":"1"},"props":{"method":"GET","normalizedRoute":"/v1/items","baseUrl":"https://api.example.test","query":["secret"]}},
+      {"schema":"ce.v1","kind":"edge","from":"cs|mapping-replay|HttpFixture|M:HttpFixture.Read(System.Net.Http.HttpClient,System.String)","relation":"REQUESTS","to":"http|@unbound:mapping-replay/HttpFixture:client=HttpFixture|GET /https:/graph.example/v1/{}/events","derivation":"rule","resolution":"unresolved","unresolvedReason":"configuration","rule":{"name":"dotnet.httpclient","version":"1"},"props":{"method":"GET","normalizedRoute":"/https:/graph.example/v1/{}/events","query":["token"]}}
+    ],
+    "added": [
+      {"schema":"ce.v1","kind":"node","symbolKey":"svc|mapping-replay|mapping-replay-ts","nodeKind":"Service","name":"mapping-replay-ts","props":{"framework":"next"}},
+      {"schema":"ce.v1","kind":"node","symbolKey":"http|mapping-replay/mapping-replay-ts|GET /api/files/{*}","nodeKind":"Endpoint","name":"GET /api/files/[...parts]","props":{"method":"GET","route":"/api/files/[...parts]","normalizedRoute":"/api/files/{*}","style":"next-app-router","routeParameterNames":["parts"],"routeParameterKinds":["catch-all"]}},
+      {"schema":"ce.v1","kind":"node","symbolKey":"http|mapping-replay/mapping-replay-ts|GET /api/search/{**}","nodeKind":"Endpoint","name":"GET /api/search/[[...parts]]","props":{"method":"GET","route":"/api/search/[[...parts]]","normalizedRoute":"/api/search/{**}","style":"next-app-router","routeParameterNames":["parts"],"routeParameterKinds":["optional-catch-all"]}},
+      {"schema":"ce.v1","kind":"node","symbolKey":"http|mapping-replay/mapping-replay-ts|GET /api/items/{}","nodeKind":"Endpoint","name":"GET /api/items/[id]","props":{"method":"GET","route":"/api/items/[id]","normalizedRoute":"/api/items/{}","style":"next-app-router","routeParameterNames":["id"],"routeParameterKinds":["dynamic"]}},
+      {"schema":"ce.v1","kind":"node","symbolKey":"http|mapping-replay/mapping-replay-ts|POST /api/items/{}","nodeKind":"Endpoint","name":"POST /api/items/[id]","props":{"method":"POST","route":"/api/items/[id]","normalizedRoute":"/api/items/{}","style":"next-app-router","routeParameterNames":["id"],"routeParameterKinds":["dynamic"]}},
+      {"schema":"ce.v1","kind":"edge","from":"ts|mapping-replay|mapping-replay-ts|src/app/api/files/[...parts]/route.ts|GET#value","relation":"HANDLES","to":"http|mapping-replay/mapping-replay-ts|GET /api/files/{*}","derivation":"rule","resolution":"resolved","rule":{"name":"next.app-router","version":"1"}},
+      {"schema":"ce.v1","kind":"edge","from":"svc|mapping-replay|mapping-replay-ts","relation":"EXPOSES","to":"http|mapping-replay/mapping-replay-ts|GET /api/items/{}","derivation":"rule","resolution":"resolved","rule":{"name":"next.app-router","version":"1"}},
+      {"schema":"ce.v1","kind":"edge","from":"svc|mapping-replay|mapping-replay-ts","relation":"EXPOSES","to":"http|mapping-replay/mapping-replay-ts|GET /api/files/{*}","derivation":"rule","resolution":"resolved","rule":{"name":"next.app-router","version":"1"}},
+      {"schema":"ce.v1","kind":"edge","from":"ts|mapping-replay|mapping-replay-ts|src/app/api/(group)/items/[id]/route.ts|GET#value","relation":"REQUESTS","to":"http|@unbound:mapping-replay/mapping-replay-ts:host=api.example.test|GET /v1/items","derivation":"rule","resolution":"unresolved","unresolvedReason":"configuration","rule":{"name":"web.fetch","version":"1"},"props":{"method":"GET","normalizedRoute":"/v1/items","baseUrl":"https://api.example.test","scheme":"https","query":["secret"]}},
+      {"schema":"ce.v1","kind":"edge","from":"ts|mapping-replay|mapping-replay-ts|src/app/api/search/[[...parts]]/route.ts|GET#value","relation":"HANDLES","to":"http|mapping-replay/mapping-replay-ts|GET /api/search/{**}","derivation":"rule","resolution":"resolved","rule":{"name":"next.app-router","version":"1"}},
+      {"schema":"ce.v1","kind":"edge","from":"ts|mapping-replay|mapping-replay-ts|src/app/api/(group)/items/[id]/route.ts|POST#value","relation":"HANDLES","to":"http|mapping-replay/mapping-replay-ts|POST /api/items/{}","derivation":"rule","resolution":"resolved","rule":{"name":"next.app-router","version":"1"}},
+      {"schema":"ce.v1","kind":"edge","from":"ts|mapping-replay|mapping-replay-ts|src/app/api/(group)/items/[id]/route.ts|GET#value","relation":"HANDLES","to":"http|mapping-replay/mapping-replay-ts|GET /api/items/{}","derivation":"rule","resolution":"resolved","rule":{"name":"next.app-router","version":"1"}},
+      {"schema":"ce.v1","kind":"edge","from":"svc|mapping-replay|mapping-replay-ts","relation":"EXPOSES","to":"http|mapping-replay/mapping-replay-ts|GET /api/search/{**}","derivation":"rule","resolution":"resolved","rule":{"name":"next.app-router","version":"1"}},
+      {"schema":"ce.v1","kind":"edge","from":"svc|mapping-replay|mapping-replay-ts","relation":"EXPOSES","to":"http|mapping-replay/mapping-replay-ts|POST /api/items/{}","derivation":"rule","resolution":"resolved","rule":{"name":"next.app-router","version":"1"}},
+      {"schema":"ce.v1","kind":"edge","from":"cs|mapping-replay|HttpFixture|M:HttpFixture.Read(System.Net.Http.HttpClient,System.String)","relation":"REQUESTS","to":"http|@unbound:mapping-replay/HttpFixture:host=graph.example|GET /v1/{}/events","derivation":"rule","resolution":"unresolved","unresolvedReason":"configuration","rule":{"name":"dotnet.httpclient","version":"1"},"props":{"method":"GET","normalizedRoute":"/v1/{}/events","scheme":"https","query":["token"]}}
+    ]
+  }
+}

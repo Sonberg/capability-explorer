@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": [
+      "ES2023",
+      "WebWorker"
+    ],
+    "types": []
+  },
+  "include": [
+    "src/routing.worker.ts",
+    "src/live-model.worker.ts"
+  ],
+  "exclude": []
+}
