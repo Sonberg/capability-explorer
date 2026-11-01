@@ -11,6 +11,9 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Opt-in PostgreSQL Explorer foundation: streamed validated imports, immutable CAS-published analysis snapshots, explicit default revisions, bounded SQL projections and paged core browsing. File mode remains the default; remaining database views and full issue #28 cutover are not complete.
+- Proposed MADR-0017/0018, deterministic opt-in workload tooling and an executable RuVector compatibility/recovery experiment. The tested RuVector image failed adoption prerequisites; no extension is adopted.
+
 - Revision-bound binding preview and reviewed JSON export, with stale-input/conflict checks and explicit separation from adoption.
 - Local source/history/SAST/image audit collection and fail-closed evidence verification, with source, rules, database and platform identities.
 - Locked offline corpus replay harness; unavailable private-corpus acceptance remains explicitly unverified.

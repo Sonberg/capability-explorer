@@ -42,12 +42,14 @@ export function useApi<T>(path: string | null) {
       return;
     }
     let live = true;
+    const controller = new AbortController();
     setState((s) => ({ data: s.data, loading: true }));
-    request<T>(path)
+    request<T>(path, { signal: controller.signal })
       .then((data) => live && setState({ data, loading: false }))
       .catch((e: Error) => live && setState({ error: e.message, loading: false }));
     return () => {
       live = false;
+      controller.abort();
     };
   }, [path, tick]);
   const reload = useCallback(() => setTick((t) => t + 1), []);

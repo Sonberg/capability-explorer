@@ -5,6 +5,7 @@ using CapabilityExplorer.Evaluation;
 using CapabilityExplorer.Interpretation;
 using CapabilityExplorer.Store;
 using Npgsql;
+using CapabilityExplorer.Cli;
 
 // ce validate <artifact.jsonl...>
 // ce verify-evidence --repo <git dir> <artifact.jsonl...>
@@ -20,6 +21,7 @@ const string Usage = """
       ce verify-evidence --repo <git dir> <artifact.jsonl...>
       ce migrate [--connection <connection string>]
       ce import [--connection <connection string>] [--bindings <bindings.json>] <artifact.jsonl...>  (--bindings also saves the bound edges)
+      ce publish [--scope <capability-id|*>] [--view <repo:full-sha,...>] [--bindings <bindings.json>] [--expected-generation <n>] <artifact.jsonl...>
       ce embed [--connection <connection string>] [--settings <model.json>]  (model from CE_MODEL_ENDPOINT + CE_EMBEDDING_MODEL, else the saved settings: make ollama / explorer Settings)
       ce export --capability <id> --out <dir> [--capabilities <file>] [--workspace <dir>] [--locked 1]  (1 = use the last check instead of re-checking)
       ce evaluate --expected <dir> --actual <dir> [--config <evaluation.json>] [--repos <dir>] [--repository <id[,id]>] [--language <csharp,typescript,...>] [--json <report.json>] [--max-findings <n>]
@@ -96,50 +98,10 @@ switch (command)
     }
 
     case "import":
+    case "publish":
     {
-        // Parse the bindings first: a bad file must fail before anything is written.
-        BindingFile? bindings;
-        try
-        {
-            bindings = options.TryGetValue("bindings", out var bindingsPath) ? BindingFile.Load(bindingsPath) : null;
-        }
-        catch (Exception e) when (e is FormatException or IOException)
-        {
-            Console.Error.WriteLine($"bindings: {e.Message}");
-            return 2;
-        }
-
         await using var db = OpenDatabase();
-        var importer = new ArtifactImporter(db);
-        var failed = 0;
-        var stored = new List<(long ArtifactId, Artifact Artifact)>();
-        foreach (var file in files)
-        {
-            try
-            {
-                var text = await File.ReadAllTextAsync(file);
-                var result = await importer.ImportAsync(text);
-                Console.WriteLine($"{(result.Outcome == ImportOutcome.Imported ? "imported " : "unchanged")} {file} (artifact {result.ArtifactId})");
-                stored.Add((result.ArtifactId, ArtifactValidator.Validate(text).Artifact!));
-            }
-            catch (Exception e) when (e is InvalidArtifactException or ArtifactConflictException)
-            {
-                failed++;
-                Console.WriteLine($"FAIL      {file}: {e.Message}");
-            }
-        }
-
-        if (bindings is not null && stored.Count > 0)
-        {
-            var saved = await new BindingStore(db).SaveAsync(stored, bindings);
-            Console.WriteLine($"bindings  {(saved.Created ? "saved" : "unchanged")} snapshot {saved.SnapshotId[..12]}: {saved.BoundEdges} bound, {saved.BrokenEdges} broken");
-            foreach (var unused in saved.UnusedBindings)
-            {
-                Console.WriteLine($"          unused binding {unused.Hint} (no analysed edge uses it)");
-            }
-        }
-
-        return failed == 0 ? 0 : 1;
+        return await ImportCommand.RunAsync(db, files, options, command == "publish");
     }
 
     case "embed":

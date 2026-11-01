@@ -1,13 +1,34 @@
 # Handoff: remaining work
 
+## Issue #28: PostgreSQL foundation in review
+
+Main reconciliation PR #27 merged at `d9421fa046c870df484927c97b786afcbb7d48bb`.
+The isolated `feat/postgres-explorer-snapshots` package implements streamed imports,
+immutable published snapshots with explicit default revisions, bounded core SQL
+queries and an opt-in paged UI. It does **not** complete issue #28 or change the
+default file source. See [execution](plans/issue28-foundation-execution.md),
+[MADR-0017](adr/0017-postgres-explorer-snapshots.md) and
+[RuVector experiment](research/issue28-ruvector-evaluation.md).
+
+No direct main push or owner merge is authorized. Deliver this package against
+current main and reconcile after owner review before the next endpoint families.
+The declared-contract catalog remains separate. The full issue acceptance gate
+fails while architecture/integrations/history/glossary/model/review workflows
+remain unmigrated. Do not substitute fixture parity for large-corpus performance.
+
+Post-merge `make EXECUTION=sandbox dev` built main successfully but stopped before
+analysis because the corporate proxy blocked Ollama's model download. No complete
+shared-analysis receipt exists. Private Glufs and image-audit gaps remain separate
+issues #23/#24; this package does not claim they are resolved.
+
 ## Main-only integration: current directive
 
 [MADR-0016](adr/0016-main-only-pr-integration.md) supersedes the earlier stage-only policy.
-All PRs target main. Existing owner PR #27 reconciles stage into main; prepare its
-head with both histories preserved, ordinary exact-main local CI and owner review.
+All PRs target main. Owner PR #27 merged stage into main at `d9421fa`; preserve
+both histories and require ordinary exact-main local CI and owner review.
 Do not merge or enable auto-merge. Earlier stage receipts below are historical.
-After the owner merges #27, verify the main SHA and run `make EXECUTION=sandbox dev`
-with re-analysis enabled (the default). Compare the private analysis receipt
+The post-merge sandbox development attempt and its model-download limitation are
+recorded above. On a successful rerun, compare the private analysis receipt
 (application/repository SHAs and artifact hashes), not just localhost URLs.
 The declared-contract catalog is committed separately on feat/declared-integration-contracts
 at 8a8a6b9 and preview port5110; it is excluded from reconciliation and must be ported

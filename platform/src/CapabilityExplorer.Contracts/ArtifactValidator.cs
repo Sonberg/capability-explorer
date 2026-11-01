@@ -53,7 +53,7 @@ public sealed record ValidationReport(Artifact? Artifact, IReadOnlyList<Problem>
 /// Validates an artifact against the ce.v1 contract: JSON Schema per line, then the rules from schema/README.md
 /// that JSON Schema cannot express (ordering, identity, references, counts, coverage, relation catalogue).
 /// </summary>
-public static class ArtifactValidator
+public static partial class ArtifactValidator
 {
     private static readonly Dictionary<string, string> IdPrefix = new(StringComparer.Ordinal)
     {
@@ -152,6 +152,8 @@ public static class ArtifactValidator
                 problems.Add(new Problem(line, $"{kind} id must start with '{IdPrefix[kind]}'"));
             }
 
+            problems.AddRange(ValidateRecordSemantics(element, header).Select(message => new Problem(line, message)));
+
             switch (kind)
             {
                 case "node": nodes.Add((line, element.Deserialize<NodeRecord>(Json.Options)!)); break;
@@ -171,13 +173,6 @@ public static class ArtifactValidator
             {
                 problems.Add(new Problem(line, $"duplicate node symbolKey {node.SymbolKey}"));
             }
-
-            CheckKey(problems, line, node.SymbolKey, header.RepositoryId);
-            var owner = SymbolKey.OwningRepository(node.SymbolKey);
-            if (owner is not null && owner != header.RepositoryId)
-            {
-                problems.Add(new Problem(line, $"node {node.SymbolKey} is declared in {header.RepositoryId} but its key names repository '{owner}'"));
-            }
         }
 
         // 4. Evidence belongs to this exact revision.
@@ -185,16 +180,6 @@ public static class ArtifactValidator
         foreach (var (line, ev) in evidence)
         {
             evidenceIds.Add(ev.Id);
-            if (ev.RepositoryId != header.RepositoryId || ev.CommitSha != header.CommitSha)
-            {
-                problems.Add(new Problem(line, "evidence must reference the header's repository and commitSha"));
-            }
-
-            var s = ev.Span;
-            if (s.EndLine < s.StartLine || (s.EndLine == s.StartLine && s.EndColumn < s.StartColumn))
-            {
-                problems.Add(new Problem(line, "span ends before it starts"));
-            }
         }
 
         void RequireEvidence(int line, IReadOnlyList<string>? refs, string what, bool mandatory)
@@ -228,11 +213,6 @@ public static class ArtifactValidator
         foreach (var (line, edge) in edges)
         {
             RequireEvidence(line, edge.Evidence, "edge", mandatory: true);
-            CheckKey(problems, line, edge.From, header.RepositoryId);
-            if (edge.To is not null)
-            {
-                CheckKey(problems, line, edge.To, header.RepositoryId);
-            }
 
             if (!nodeKinds.TryGetValue(edge.From, out var fromKind))
             {
@@ -263,57 +243,13 @@ public static class ArtifactValidator
             {
                 RequireEvidence(line, Refs(attribute.Value), $"attribute {attribute.Name}", mandatory: false);
             }
-
-            var inputs = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var input in raw.GetProperty("inputs").EnumerateArray())
-            {
-                if (!inputs.Add(input.GetProperty("ref").GetString()!))
-                {
-                    problems.Add(new Problem(line, $"duplicate input {input.GetProperty("ref").GetString()}"));
-                }
-            }
-
-            foreach (var unbound in UnboundPlaceholders(raw.GetProperty("expr"), inputs))
-            {
-                problems.Add(new Problem(line, $"expression uses {unbound} which is neither an input nor bound by an enclosing agg"));
-            }
         }
 
         // 7. Counts and coverage.
         var actual = new Counts(nodes.Count, edges.Count, evidence.Count, calculations.Count, diagnostics.Count);
-        if (actual != complete.Counts)
-        {
-            problems.Add(new Problem(count, $"complete.counts {complete.Counts} does not match records {actual}"));
-        }
-
-        var coverage = complete.Coverage;
-        var incomplete = coverage.IncompletePaths?.Count ?? 0;
-        if (coverage.FilesAnalyzed > coverage.FilesTotal)
-        {
-            problems.Add(new Problem(count, "filesAnalyzed exceeds filesTotal"));
-        }
-
-        if (complete.Status == "full" && (coverage.FilesAnalyzed != coverage.FilesTotal || incomplete > 0))
-        {
-            problems.Add(new Problem(count, "status 'full' requires every file to be analysed"));
-        }
-
-        if (complete.Status == "partial" && coverage.FilesAnalyzed == coverage.FilesTotal && incomplete == 0
-            && !diagnostics.Any(d => d.Diagnostic.AffectsCoverage == true))
-        {
-            problems.Add(new Problem(count, "status 'partial' must say what is incomplete (incompletePaths or a coverage diagnostic)"));
-        }
-
-        if (complete.Status == "full" && diagnostics.Any(d => d.Diagnostic.AffectsCoverage == true))
-        {
-            problems.Add(new Problem(count, "a diagnostic affects coverage but status is 'full'"));
-        }
-
-        var unresolved = edges.Count(e => e.Edge.Resolution == "unresolved");
-        if (coverage.UnresolvedEdges is { } reported && reported != unresolved)
-        {
-            problems.Add(new Problem(count, $"coverage.unresolvedEdges is {reported}, artifact has {unresolved}"));
-        }
+        problems.AddRange(ValidateCompletion(complete, actual,
+            diagnostics.Any(d => d.Diagnostic.AffectsCoverage == true),
+            edges.Count(e => e.Edge.Resolution == "unresolved")).Select(message => new Problem(count, message)));
 
         if (problems.Count > 0)
         {

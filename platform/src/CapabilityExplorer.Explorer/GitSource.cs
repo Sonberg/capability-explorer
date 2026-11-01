@@ -21,12 +21,16 @@ public sealed class GitSource(Func<string, string?> locate, CapabilityExplorer.C
     private string? Locate(string repositoryId) =>
         IsSafeSegment(repositoryId) && locate(repositoryId) is { } dir && (Directory.Exists(Path.Combine(dir, ".git")) || File.Exists(Path.Combine(dir, "HEAD"))) ? dir : null;
 
-    public string? ReadFile(string repositoryId, string commitSha, string path)
+    public string? ReadFile(string repositoryId, string commitSha, string path) =>
+        ReadFileAsync(repositoryId, commitSha, path).GetAwaiter().GetResult();
+
+    public async Task<string?> ReadFileAsync(string repositoryId, string commitSha, string path, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (!Commit(commitSha) || !SafePath(path)) return null;
         var key = (repositoryId, commitSha, path);
         lock (_cacheLock) { if (_files.TryGetValue(key, out var cached)) return cached; }
-        var (ok, output) = Git(repositoryId, "show", $"{commitSha}:{path}");
+        var (ok, output) = await GitAsync(repositoryId, cancellationToken, "show", $"{commitSha}:{path}");
         var result = ok ? output.Replace("\r\n", "\n", StringComparison.Ordinal) : null;
         lock (_cacheLock)
         {
@@ -63,7 +67,10 @@ public sealed class GitSource(Func<string, string?> locate, CapabilityExplorer.C
 
     internal static bool IsSafeSegment(string s) => s.Length is > 0 and <= 200 && !s.Any(char.IsControl) && !s.Contains('/', StringComparison.Ordinal) && !s.Contains('\\', StringComparison.Ordinal) && s != "." && s != "..";
 
-    private (bool Ok, string Output) Git(string repositoryId, params string[] args)
+    private (bool Ok, string Output) Git(string repositoryId, params string[] args) =>
+        GitAsync(repositoryId, CancellationToken.None, args).GetAwaiter().GetResult();
+
+    private async Task<(bool Ok, string Output)> GitAsync(string repositoryId, CancellationToken cancellationToken, params string[] args)
     {
         if (Locate(repositoryId) is not { } directory)
         {
@@ -101,17 +108,19 @@ public sealed class GitSource(Func<string, string?> locate, CapabilityExplorer.C
             return (false, "");
         }
 
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(15));
         try
         {
             var output = ReadBounded(process.StandardOutput, timeout.Token);
             var error = ReadBounded(process.StandardError, timeout.Token);
-            Task.WhenAll(output, error, process.WaitForExitAsync(timeout.Token)).GetAwaiter().GetResult();
-            return (process.ExitCode == 0, output.Result);
+            await Task.WhenAll(output, error, process.WaitForExitAsync(timeout.Token));
+            return (process.ExitCode == 0, await output);
         }
         catch (Exception e) when (e is OperationCanceledException or IOException)
         {
             if (!process.HasExited) process.Kill(entireProcessTree: true);
+            cancellationToken.ThrowIfCancellationRequested();
             return (false, "");
         }
     }

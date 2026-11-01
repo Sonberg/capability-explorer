@@ -12,7 +12,7 @@ public sealed record BindingSaveResult(string SnapshotId, bool Created, int Boun
 /// <summary>
 /// Persists the result of binding already-imported artifacts. Only new rows are written, and only to the binding tables.
 /// </summary>
-public sealed class BindingStore(NpgsqlDataSource dataSource)
+public sealed partial class BindingStore(NpgsqlDataSource dataSource)
 {
     public async Task<BindingSaveResult> SaveAsync(
         IEnumerable<(long ArtifactId, Artifact Artifact)> artifacts,

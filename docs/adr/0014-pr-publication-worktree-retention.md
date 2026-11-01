@@ -82,7 +82,7 @@ git fetch origin <feature-branch> main
 git worktree add <new-path> <feature-branch>
 ```
 
-Check claims and PR feedback before writing. Integrate freshly fetched stage and
+Check claims and PR feedback before writing. Integrate freshly fetched main and
 run the ordinary exact-source checks and pre-push gate for review fixes. Historic
 receipts remain evidence for their recorded source; recreating a checkout does not
 make them valid for changed source or a changed base. Repeat cleanup at the next

@@ -7,3 +7,4 @@ include config/build/native.mk
 else
 $(error EXECUTION must be native or sandbox)
 endif
+include config/build/issue28.mk

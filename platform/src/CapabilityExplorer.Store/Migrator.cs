@@ -45,6 +45,10 @@ public static class Migrator
         }
 
         await tx.CommitAsync(cancellationToken);
+        // Explicit trusted migration/import work, not Explorer request-time work.
+        // Return this connection first: callers may deliberately budget a one-connection pool.
+        await connection.CloseAsync();
+        await NodeSearchNormalization.EnsureAsync(dataSource, cancellationToken: cancellationToken);
         return applied;
     }
 

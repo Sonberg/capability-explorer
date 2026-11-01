@@ -31,10 +31,10 @@ public sealed class CapabilityStore : IDisposable
         _document = document;
     }
 
-    public static CapabilityStore Open(string definitionsPath, string snapshotsPath)
+    public static CapabilityStore Open(string definitionsPath, string snapshotsPath, bool loadSnapshots = true)
     {
         var definitions = File.Exists(definitionsPath) ? JsonSerializer.Deserialize<Definitions>(File.ReadAllText(definitionsPath), Json) ?? new Definitions() : new Definitions();
-        var snapshots = File.Exists(snapshotsPath) ? JsonSerializer.Deserialize<Dictionary<string, CapabilitySnapshot>>(File.ReadAllText(snapshotsPath), Json) ?? [] : [];
+        var snapshots = loadSnapshots && File.Exists(snapshotsPath) ? JsonSerializer.Deserialize<Dictionary<string, CapabilitySnapshot>>(File.ReadAllText(snapshotsPath), Json) ?? [] : [];
         return new CapabilityStore(definitionsPath, snapshotsPath, new Document { Capabilities = definitions.Capabilities, Snapshots = snapshots });
     }
 
