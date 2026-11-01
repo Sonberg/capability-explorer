@@ -9,7 +9,7 @@ const need = (ok, message) => { if (!ok) throw new Error(message); };
 export { validateConfig, inventories } from './security-collect-inventory.mjs';
 import { validateConfig, inventories, runtimeInventory } from './security-collect-inventory.mjs';
 export function dockerArgs(tool, mounts, network = 'none') {
-  const args = ['run', '--rm', '--pull=never', '--platform', tool.platform, '--network', network, '--user', `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`, '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--pids-limit', '512', '--memory', '2g', '--cpus', '2', '--tmpfs', '/tmp:rw,nosuid,size=1g', '-e', 'HOME=/tmp', '-e', 'SEMGREP_SEND_METRICS=off', '-e', 'SEMGREP_ENABLE_VERSION_CHECK=0', '-e', 'GIT_CONFIG_NOSYSTEM=1', '-e', 'GIT_CONFIG_GLOBAL=/dev/null'];
+  const args = ['run', '--rm', '--pull=missing', '--platform', tool.platform, '--network', network, '--user', `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`, '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--pids-limit', '512', '--memory', '2g', '--cpus', '2', '--tmpfs', '/tmp:rw,nosuid,size=1g', '-e', 'HOME=/tmp', '-e', 'SEMGREP_SEND_METRICS=off', '-e', 'SEMGREP_ENABLE_VERSION_CHECK=0', '-e', 'GIT_CONFIG_NOSYSTEM=1', '-e', 'GIT_CONFIG_GLOBAL=/dev/null'];
   if (tool.name) { need(['trivy', 'gitleaks', 'semgrep'].includes(tool.name), 'invalid tool entrypoint'); args.push('--entrypoint', tool.name); }
   for (const mount of mounts) {
     need(path.isAbsolute(mount.source) && !mount.source.includes(',') && /^\/[a-z][a-z/-]*$/.test(mount.target), 'invalid container mount');
@@ -38,6 +38,28 @@ export function copySealed(root, destination, source) {
     bytes += stat.size; need(bytes <= 512 * 1024 * 1024, 'source byte limit exceeded');
     fs.mkdirSync(path.dirname(output), { recursive: true }); fs.copyFileSync(input, output, fs.constants.COPYFILE_EXCL);
     need(sha(fs.readFileSync(output)) === entry.sha256, 'source changed while sealing');
+  }
+}
+export function ensureImage(reference, targetPlatform, run, record) {
+  need(typeof reference === 'string' && /^[\w./:-]+@sha256:[a-f0-9]{64}$/.test(reference) && /^linux\/(arm64|amd64)$/.test(targetPlatform), 'image acquisition requires a digest pin and explicit platform');
+  const invoke = (suffix, args) => { const result = run('docker', args); record(suffix, { command: 'docker', args, ...result }); return result; };
+  let inspected = invoke('inspect-before', ['image', 'inspect', reference]);
+  if (inspected.status !== 0) {
+    const pulled = invoke('pull', ['pull', '--platform', targetPlatform, reference]);
+    need(pulled.status === 0, 'pinned image acquisition failed');
+    inspected = invoke('inspect-after', ['image', 'inspect', reference]);
+  }
+  need(inspected.status === 0, 'pinned image unavailable after bounded acquisition');
+  const metadata = JSON.parse(inspected.stdout)[0];
+  need(metadata && /^sha256:[a-f0-9]{64}$/.test(metadata.Id) && `${metadata.Os}/${metadata.Architecture}` === targetPlatform, 'acquired image identity/platform mismatch');
+  return metadata;
+}
+export function copyCacheSnapshot(source, destination) {
+  for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
+    need(!entry.isSymbolicLink(), 'cache snapshot rejects symlinks');
+    const from = path.join(source, entry.name), to = path.join(destination, entry.name);
+    if (entry.isDirectory()) { fs.mkdirSync(to, { recursive: true }); copyCacheSnapshot(from, to); }
+    else { need(entry.isFile(), 'cache snapshot rejects non-files'); fs.copyFileSync(from, to, fs.constants.COPYFILE_FICLONE); }
   }
 }
 export function recordAttempt(manifest, id, action, save) {
@@ -98,20 +120,27 @@ export async function collect(root, relative, ledgerPath, manualPath, run = runn
   };
   const tools = {};
   for (const [name, tool] of Object.entries(config.tools)) {
-    const inspected = checked('docker', ['image', 'inspect', tool.image], `reports/${name}-image.json`);
-    const metadata = JSON.parse(inspected.stdout)[0]; need(`${metadata.Os}/${metadata.Architecture}` === tool.platform, `${name}: installed platform mismatch`);
+    const metadata = ensureImage(tool.image, tool.platform, run, (suffix, result) => write(`reports/${name}-${suffix}.json`, result));
     const args = dockerArgs({ ...tool, name }, []);
     const version = checked('docker', [...args, tool.image, ...(name === 'gitleaks' ? ['version'] : ['--version'])], `reports/${name}-version.json`);
     const parsed = parseVersion(version.stdout);
     tools[name] = { name, ...tool, version: parsed, imageId: metadata.Id };
   }
+  // Shared download cache avoids re-fetching a fresh DB on retries. Every run
+  // receives its own byte-bound snapshot after the scanner's normal update check.
+  const sharedCache = path.join(root, '.sandbox-cache/security-trivy-cache');
+  fs.mkdirSync(sharedCache, { recursive: true, mode: 0o700 });
+  need(!fs.lstatSync(sharedCache).isSymbolicLink(), 'shared scanner cache symlink');
+  const priorCache = path.join(root, '.sandbox-cache/trivy');
+  if (!fs.existsSync(path.join(sharedCache, 'db/metadata.json')) && fs.existsSync(priorCache)) copyCacheSnapshot(priorCache, sharedCache);
   // Only the pinned Trivy image can reach the network here, without source/history mounts.
-  checked('docker', [...dockerArgs(tools.trivy, [{ source: cacheDir, target: '/cache', write: true }], 'bridge'), tools.trivy.image, 'image', '--download-db-only', '--cache-dir', '/cache', '--disable-telemetry'], 'reports/database-download.log');
+  checked('docker', [...dockerArgs(tools.trivy, [{ source: sharedCache, target: '/cache', write: true }], 'bridge'), tools.trivy.image, 'image', '--download-db-only', '--cache-dir', '/cache', '--disable-telemetry'], 'reports/database-download.log');
+  // Download built-in checks separately, without exposing repository bytes to a networked scanner.
+  checked('docker', [...dockerArgs(tools.trivy, [{ source: sharedCache, target: '/cache', write: true }], 'bridge'), tools.trivy.image, 'fs', '--scanners', 'misconfig', '--cache-dir', '/cache', '--disable-telemetry', '--config', '', '--ignorefile', '', '/tmp'], 'reports/checks-download.log');
+  copyCacheSnapshot(sharedCache, cacheDir);
   const databasePath = path.join(cacheDir, 'db/trivy.db'), dbMetadata = JSON.parse(fs.readFileSync(path.join(cacheDir, 'db/metadata.json')));
   const database = { sha256: await fileHash(databasePath), version: String(dbMetadata.Version), updatedAt: dbMetadata.UpdatedAt };
   write('database.json', { ...database, metadata: dbMetadata });
-  // Download built-in checks separately, without exposing repository bytes to a networked scanner.
-  checked('docker', [...dockerArgs(tools.trivy, [{ source: cacheDir, target: '/cache', write: true }], 'bridge'), tools.trivy.image, 'fs', '--scanners', 'misconfig', '--cache-dir', '/cache', '--disable-telemetry', '--config', '', '--ignorefile', '', '/tmp'], 'reports/checks-download.log');
   const checkFiles = [];
   const walkChecks = directory => {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
@@ -165,8 +194,7 @@ export async function collect(root, relative, ledgerPath, manualPath, run = runn
   mounts[0] = { source: sourceDir, target: '/source' };
   for (const image of config.images) {
     try {
-    const inspected = checked('docker', ['image', 'inspect', image.reference], `reports/${image.id}-metadata.json`);
-    const info = JSON.parse(inspected.stdout)[0]; need(`${info.Os}/${info.Architecture}` === image.platform, `${image.id}: target platform mismatch`);
+    const info = ensureImage(image.reference, image.platform, run, (suffix, result) => write(`reports/${image.id}-${suffix}.json`, result));
     const archiveDirectory = path.join(root, '.sandbox-cache/security-image-archives'); fs.mkdirSync(archiveDirectory, { recursive: true });
     need(!fs.lstatSync(archiveDirectory).isSymbolicLink(), 'archive cache symlink');
     const archiveName = `${image.reference.split('@sha256:')[1]}-${image.platform.replace('/', '-')}.tar`;

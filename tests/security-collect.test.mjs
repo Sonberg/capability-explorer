@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { validateConfig, inventories, parseVersion, recordAttempt, inventoryFindings, dockerArgs, outputDirectory, copySealed, historyInventory, historyCheck } from '../scripts/security-collect.mjs';
+import { validateConfig, inventories, parseVersion, ensureImage, copyCacheSnapshot, recordAttempt, inventoryFindings, dockerArgs, outputDirectory, copySealed, historyInventory, historyCheck } from '../scripts/security-collect.mjs';
 import { runtimeInventory } from '../scripts/security-collect-inventory.mjs';
 import { sha } from '../scripts/security-audit-lib.mjs';
 const image = `scanner:1@sha256:${'a'.repeat(64)}`;
@@ -105,4 +105,28 @@ test('partial Semgrep findings retain their partial label and original raw error
   const raw = { errors: [{ type: 'PartialParsing' }], results: [{ check_id: 'sink', path: 'app.cs', start: { line: 1 }, extra: { severity: 'WARNING' } }], paths: { scanned: ['app.cs'] } };
   const rows = inventoryFindings({ id: 'sast', tool: { name: 'semgrep' } }, raw);
   assert.equal(rows[0].partial, true); assert.equal(raw.errors.length, 1);
+});
+
+test('missing cached pinned image is acquired once then its actual identity/platform verified', () => {
+  const calls = [], receipts = [];
+  const run = (command, args) => { calls.push([command, ...args]); return { status: calls.length === 1 ? 1 : 0, stdout: args[0] === 'image' && calls.length > 1 ? JSON.stringify([{ Id: `sha256:${'b'.repeat(64)}`, Os: 'linux', Architecture: 'arm64' }]) : '', stderr: '' }; };
+  assert.equal(ensureImage(image, 'linux/arm64', run, (...receipt) => receipts.push(receipt)).Architecture, 'arm64');
+  assert.equal(calls.filter(x => x[1] === 'pull').length, 1); assert.equal(receipts.length, 3);
+  assert.deepEqual(calls[1], ['docker', 'pull', '--platform', 'linux/arm64', image]);
+  assert.throws(() => ensureImage('scanner:latest', 'linux/arm64', run, () => {}), /digest pin/);
+});
+test('image acquisition is bounded and rejects wrong-platform cache contents', () => {
+  let attempts = 0;
+  assert.throws(() => ensureImage(image, 'linux/arm64', () => { attempts++; return { status: 1, stdout: '', stderr: 'unavailable' }; }, () => {}), /acquisition failed/);
+  assert.equal(attempts, 2);
+  assert.throws(() => ensureImage(image, 'linux/arm64', () => ({ status: 0, stdout: JSON.stringify([{ Id: `sha256:${'b'.repeat(64)}`, Os: 'linux', Architecture: 'amd64' }]) }), () => {}), /platform mismatch/);
+  assert.ok(dockerArgs(config().tools.trivy, []).includes('--pull=missing'));
+});
+test('per-run database snapshot preserves bytes without writable sharing and rejects symlinks', t => {
+  const root = temp(t), source = path.join(root, 'source'), target = path.join(root, 'snapshot');
+  fs.mkdirSync(source); fs.mkdirSync(target); fs.writeFileSync(path.join(source, 'db'), 'original');
+  copyCacheSnapshot(source, target); fs.writeFileSync(path.join(source, 'db'), 'changed');
+  assert.equal(fs.readFileSync(path.join(target, 'db'), 'utf8'), 'original');
+  fs.symlinkSync('/etc/passwd', path.join(source, 'link'));
+  assert.throws(() => copyCacheSnapshot(source, target), /symlink/);
 });
