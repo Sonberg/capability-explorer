@@ -78,7 +78,7 @@ internal static class ImportCommand
             }
             if (publish)
             {
-                var identity = await Identity(database, ids, bindings?.Sha256 ?? BindingFile.Empty.Sha256, defaults, cancellationToken);
+                var identity = await Identity(database, ids, bound?.SnapshotId ?? "no-bindings", defaults, cancellationToken);
                 var candidate = await snapshots.CreateAsync(scope, identity, ids, defaults, cancellationToken);
                 if (bound is not null)
                 {
@@ -105,10 +105,12 @@ internal static class ImportCommand
         }
     }
 
-    private static async Task<string> Identity(NpgsqlDataSource database, long[] ids, string bindingHash, IReadOnlyDictionary<string, string> defaults, CancellationToken ct)
+    private static async Task<string> Identity(NpgsqlDataSource database, long[] ids, string bindingIdentity, IReadOnlyDictionary<string, string> defaults, CancellationToken ct)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        hash.AppendData(Encoding.UTF8.GetBytes("ce-analysis-snapshot.v1\nservice-map.1\n" + bindingHash + "\n"));
+        // Bind the actual versioned derived snapshot, so upgrading occurrence semantics
+        // cannot reuse an immutable analysis linked to an incomplete legacy binding.
+        hash.AppendData(Encoding.UTF8.GetBytes("ce-analysis-snapshot.v2\n" + bindingIdentity + "\n"));
         foreach (var pair in defaults.OrderBy(p => p.Key, StringComparer.Ordinal))
             hash.AppendData(Encoding.UTF8.GetBytes(pair.Key + ":" + pair.Value + "\n"));
         await using var command = database.CreateCommand("select content_sha256 from artifact where id=any($1) order by content_sha256");

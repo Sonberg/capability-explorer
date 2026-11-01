@@ -24,11 +24,11 @@ issues #23/#24; this package does not claim they are resolved.
 ## Main-only integration: current directive
 
 [MADR-0016](adr/0016-main-only-pr-integration.md) supersedes the earlier stage-only policy.
-All PRs target main. Existing owner PR #27 reconciles stage into main; prepare its
-head with both histories preserved, ordinary exact-main local CI and owner review.
+All PRs target main. Owner PR #27 merged stage into main at `d9421fa`; preserve
+both histories and require ordinary exact-main local CI and owner review.
 Do not merge or enable auto-merge. Earlier stage receipts below are historical.
-After the owner merges #27, verify the main SHA and run `make EXECUTION=sandbox dev`
-with re-analysis enabled (the default). Compare the private analysis receipt
+The post-merge sandbox development attempt and its model-download limitation are
+recorded above. On a successful rerun, compare the private analysis receipt
 (application/repository SHAs and artifact hashes), not just localhost URLs.
 The declared-contract catalog is committed separately on feat/declared-integration-contracts
 at 8a8a6b9 and preview port5110; it is excluded from reconciliation and must be ported

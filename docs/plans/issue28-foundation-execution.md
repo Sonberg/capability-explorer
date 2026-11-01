@@ -18,6 +18,9 @@ It does not close issue #28. Main remains the only PR base and the owner merges.
   and import time never stand in for chronological source evidence.
 * Binding edge identity includes artifact occurrence in the database key. The same
   local derived ID at two revisions no longer silently drops one provenance row.
+  Imported binding identities are versioned and analysis identities include their
+  actual binding snapshot. Upgrades therefore create complete new snapshots instead
+  of reusing an incomplete legacy binding; retained historical snapshots stay unchanged.
 * PostgreSQL mode registers no ExplorerState or whole-corpus file index. Core reads
   use SQL projections and stable keyset pages: metadata, revisions, artifacts,
   search, symbol, evidence, adjacency and calculation metadata/body.
@@ -31,6 +34,9 @@ It does not close issue #28. Main remains the only PR base and the owner merges.
   incorrect for Greek/Turkish/Kelvin/sharp-S cases; even the initial UTF-16 sort
   hypothesis failed the supplementary-character oracle and was corrected before
   delivery. Per-artifact completion markers keep request readiness metadata-only.
+  Equal-name results use an explicit unique symbol-key order under PostgreSQL `C`
+  collation. File search had no explicit key tie-breaker; filesystem insertion order
+  is deliberately not a pagination contract.
 * Requests/pages pin an immutable snapshot, selection, filters and query version.
   Signed cursors expire after one hour and after a server key change. Retained
   snapshots remain usable after publication; current capability definitions are
@@ -38,6 +44,8 @@ It does not close issue #28. Main remains the only PR base and the owner merges.
   query/source work has a 10-second cancellation budget.
 * The UI preserves the existing theme/full width, cancels obsolete requests,
   exposes explicit pagination and permits loading a newer snapshot deliberately.
+  Failed navigation preserves the successful page, counter and history, disables
+  advancement and offers an explicit retry of the same failed cursor.
   Unsupported database views return visible `501 pending`, never a file fallback.
   File mode retains existing behavior and remains the default.
 
@@ -104,6 +112,11 @@ pagination, filters and detail/edge/evidence pages. It records actual served ass
 hashes and screenshots privately; no API responses or model calls are fabricated.
 Final exact-candidate local/hosted CI and browser receipts are recorded in the PR
 handoff, not inferred from earlier worktree checks.
+
+`scripts/test-issue28-pager-failure.mjs` separately injects one clearly labelled
+HTTP 503 to exercise navigation recovery. Its successful initial/retry pages use
+the actual application/database; it is not substituted for the uninjected browser
+journey or performance measurements.
 
 The seeded generator and [benchmark protocol](issue28-benchmark-protocol.md) support
 1K/100K and explicitly opt-in larger tiers. Generated facts are synthetic and have
