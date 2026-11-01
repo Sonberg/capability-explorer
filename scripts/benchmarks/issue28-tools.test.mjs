@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import path from 'node:path';
-import {hash,options,records,safeOutput,generate,root} from './issue28-generate.mjs';
+import {hash,options,records,safeOutput,generate,root,DISK_RESERVE_GIB} from './issue28-generate.mjs';
 import http from 'node:http';
 import {localUrl,percentile,validateResponse,benchmark} from './issue28-http.mjs';
 
@@ -16,6 +16,7 @@ test('seeded streamed records reproduce identities, counts and high-degree/repea
  assert.notEqual(a[0].commitSha,[...records({...args,revision:2})][0].commitSha);
 });
 test('large generation requires explicit opt-in; unsupported dimensions rejected',()=>{
+ assert.equal(DISK_RESERVE_GIB,10);
  assert.throws(()=>options(['--nodes','100001']),/--large/);assert.equal(options(['--nodes','100001','--large']).large,true);
  for(const args of [['--nodes','10000001','--large'],['--seed','NaN'],['--repos','5','--nodes','1']])assert.throws(()=>options(args));
 });

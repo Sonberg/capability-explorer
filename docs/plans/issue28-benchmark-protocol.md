@@ -21,7 +21,7 @@ Symbol keys remain stable across revisions. There are no cross-repository edges
 in this initial workload; that is an explicit coverage gap.
 
 Only real directories below `.sandbox-cache/issue28-bench` are accepted. Existing
-artifacts are never overwritten. An 8 GiB host reserve plus an estimated 1,200
+artifacts are never overwritten. A 10 GiB host reserve plus an estimated 1,200
 bytes per generated node is required; database tables, indexes and WAL need a
 separate disk budget. Above 100K nodes requires `--large`, with a hard 10M-node
 limit. Generated file hashes/counts/selection and generator hash are in

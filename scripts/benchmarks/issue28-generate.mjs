@@ -7,6 +7,7 @@ import {Readable, Transform} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 import {execFileSync} from 'node:child_process';
 
+export const DISK_RESERVE_GIB=10;
 export const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 export function sourceIdentity(){try{return execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();}catch{return null;}}
 export const hash=(s,algorithm='sha256')=>createHash(algorithm).update(s).digest('hex');
@@ -49,7 +50,7 @@ export function* records({count,repo,revision,seed}) {
 export async function generate(o) {
   const target=safeOutput(o.out), disk=fs.statfsSync(root);
   // Conservative encoded-data estimate; DB import/index/WAL require a separate budget.
-  if(disk.bavail*disk.bsize<8*1024**3+o.nodes*1200) throw Error('Need 8GiB reserve plus estimated JSONL bytes');
+  if(disk.bavail*disk.bsize<DISK_RESERVE_GIB*1024**3+o.nodes*1200) throw Error('Need 10GiB reserve plus estimated JSONL bytes');
   fs.mkdirSync(target,{recursive:true});
   const files=[],selection={}; let remaining=o.nodes;
   for(let r=0;r<o.repos;r++) for(let v=0;v<o.revisions;v++) {
