@@ -17,6 +17,7 @@ export function GlossaryFlow({ occurrence, scope, reviewGeneration }: { occurren
   // A new request never presents the old graph as current evidence.
   const flow = loading ? undefined : data;
   const edge = selected?.type === "edge" ? flow?.edges.find((item) => item.id === selected.id) : undefined;
+  // Canvas IDs resolve through the exact flow metadata, never the generic symbol drawer.
   const node = selected?.type === "node" ? flow?.nodes.find((item) => item.id === selected.id) : undefined;
   return <Card>
     <H2>Connections for {occurrence.name}</H2>
