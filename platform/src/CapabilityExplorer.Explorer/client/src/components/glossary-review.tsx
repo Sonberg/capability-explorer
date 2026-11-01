@@ -97,7 +97,7 @@ export function GlossaryReview({ scope, occurrence, occurrences, onChanged }: {
   </Card>;
 }
 function TextField({ label, value, onChange, multiline = false, required = true, maxLength }: { label: string; value: string; onChange: (value: string) => void; multiline?: boolean; required?: boolean; maxLength: number }) {
-  const props = { value, required, maxLength, className: `${inputClass} mt-1`, onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange(event.target.value) };
+  const props = { "aria-label": label, value, required, maxLength, className: `${inputClass} mt-1`, onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange(event.target.value) };
   return <label className="block text-xs font-semibold">{label}{multiline ? <textarea {...props} rows={3} /> : <input {...props} />}</label>;
 }
 function Attribution({ reviewer, version }: { reviewer: string; version: number }) {

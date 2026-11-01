@@ -31,6 +31,11 @@ try {
   check(flow.seeds[0].occurrenceId === candidate.occurrences[0].id, 'initial seed must be exact selected occurrence');
   check(flow.coverage.valueFlowComplete === false, 'context fixture must not claim complete value flow');
   await page.getByText('field/value flow incomplete', { exact: true }).waitFor(); receipt.assertions++;
+  const notices = page.locator('details').filter({ has: page.locator('summary', { hasText: 'coverage notices' }) });
+  check(await notices.getAttribute('open') === null, 'coverage notices must start collapsed while incomplete status stays visible');
+  await notices.locator('summary').click();
+  await notices.getByText(/unsupported-field-mapping/).waitFor(); receipt.assertions++;
+  await notices.locator('summary').click();
   await page.getByRole('heading', { name: 'Selection and revision coverage', exact: true }).waitFor(); receipt.assertions++;
   await page.getByText(/The reviewed glossary is a global registry across repositories/).waitFor(); receipt.assertions++;
   check(flow.selection.length > 0, 'flow must disclose selected revisions');
@@ -140,9 +145,9 @@ try {
     await page.setViewportSize(viewport);
     check(await page.getByRole('heading', { name: 'Reviewed glossary', exact: true }).isVisible(), 'review UI must remain available at viewport');
     check(await page.getByRole('button', { name: 'Apply flow limits', exact: true }).isVisible(), 'flow controls must remain available at viewport');
-    await page.getByRole('heading', { name: /^Connections for/ }).scrollIntoViewIfNeeded();
+    await page.locator('[aria-label="Glossary connection canvas"]').evaluate((element) => window.scrollTo({ top: element.getBoundingClientRect().top + window.scrollY - 80 }));
     await page.screenshot({ path: `${artifactDirectory}/flow-${viewport.width}.png` });
-    await page.getByRole('heading', { name: 'Reviewed glossary', exact: true }).scrollIntoViewIfNeeded();
+    await page.getByRole('heading', { name: 'Reviewed glossary', exact: true }).evaluate((element) => window.scrollTo({ top: element.getBoundingClientRect().top + window.scrollY - 80 }));
     await page.screenshot({ path: `${artifactDirectory}/review-${viewport.width}.png` });
     receipt.viewports.push(viewport);
   }
