@@ -65,3 +65,13 @@ test('HTTP measurement runner consumes real HTTP test-double pages with bounded 
   assert.ok(result.notMeasured.includes('full issue28 endpoint coverage'));
  }finally{await new Promise(resolve=>server.close(resolve));}
 });
+
+test('EXPLAIN replay preserves captured SQL and ordered parameters, rejecting absent or write statements',async()=>{
+ const {capturedQueries}=await import('./issue28-explain.mjs');
+ const log="2026-11-01 UTC [1] LOG: duration: 1 ms execute <unnamed>: with selected as (\n\t select 1\n\t) select * from selected a join node n on n.artifact_id=$1\n2026-11-01 UTC [1] DETAIL:  Parameters: $1 = '28'";
+ const parsed=capturedQueries(log);assert.equal(parsed.length,1);assert.equal(parsed[0].kind,'symbol');assert.deepEqual(parsed[0].values,["'28'"]);
+ assert.ok(parsed[0].sql.includes('\n select 1\n'));
+ assert.throws(()=>capturedQueries(log.replace('select 1','delete from artifact')),/read statement/);
+ assert.throws(()=>capturedQueries(log.replace(/DETAIL:.*$/,'')),/parameters/);
+ assert.throws(()=>capturedQueries('unrelated log'),/No exact/);
+});

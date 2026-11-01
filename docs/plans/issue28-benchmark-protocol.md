@@ -137,3 +137,31 @@ was corrected to one-based span columns and the actual validation reran green.
 A real imported/published PostgreSQL HTTP benchmark must be run by integration
 against the exact combined application build; no performance result is claimed
 by this tooling commit.
+
+## Exact query-plan replay
+
+`issue28-explain.mjs` accepts a **private synthetic-only PostgreSQL query log**
+and replays verbatim captured application projection SQL plus its logged
+positional values. It does not reconstruct or simplify query text from source.
+Capture logging is a separate, explicitly authorized operation on a disposable
+issue28-labelled container only; it may expose parameters, so never collect
+production/private-source logs. Restore the prior log setting immediately after
+capturing representative requests and do not mix logging overhead into HTTP
+measurements. Retain the log only in ignored private evidence storage.
+
+```sh
+node scripts/benchmarks/issue28-explain.mjs \
+  --log .sandbox-cache/issue28-bench/medium/exact-query-capture.log \
+  --container ce-issue28-preview-db --database ce_issue28_scale \
+  --out .sandbox-cache/issue28-bench/medium/exact-plans.json
+```
+
+The tool restricts container/database names, verifies the issue28 workstream
+label, rejects writes/multiple statements, and uses a read-only transaction with
+five-second statement and one-second lock budgets. Output includes verbatim SQL,
+its digest, logged values, inferred `PREPARE` parameter types and JSON
+`EXPLAIN (ANALYZE, BUFFERS)` output. This is a separate custom-plan replay;
+parameter types are inferred and recorded. It is **not** the exact original
+Npgsql execution plan, connection/pool behavior or automatic proof that the
+source file matches the running binary. The additional parser test covers exact
+statement preservation, parameter order and missing/write-statement rejection.
