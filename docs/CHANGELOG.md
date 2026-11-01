@@ -11,6 +11,11 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Revision-bound binding preview and reviewed JSON export, with stale-input/conflict checks and explicit separation from adoption.
+- Local source/history/SAST/image audit collection and fail-closed evidence verification, with source, rules, database and platform identities.
+- Locked offline corpus replay harness; unavailable private-corpus acceptance remains explicitly unverified.
+- MADR-0011/0012 documenting source-bound security validation and binding review.
+
 - Proposed integration-contract standards MADR covering versioned OpenAPI/AsyncAPI and evidence-preserving adjacent standards; parser implementation remains future work.
 - Referenced, weighted comparison of deterministic analysis, context packaging and model inference tools, including the existing implementation.
 
@@ -26,12 +31,22 @@ history or imply that existing private package versions are product releases.
 
 ### Changed
 
+- Pin CI actions and runtime images; the compatible .NET Azure Linux SDK reduces reported OS findings compared with the previous Ubuntu image. Remaining container findings are tracked in issue #24; no security-complete claim is made.
+- Dependency scanning now includes all severities. NuGet destinations require an operator-controlled exact HTTPS origin allowlist, forwarded only to package fetching.
 - Architecture and glossary connection diagrams use a shared live LikeC4 canvas instead of a separate fixture iframe, with original source evidence and reviewed association semantics retained.
 - Diagram inputs follow selected capability/revisions and analysis generation; obsolete layouts are discarded. Viewpoints, grouping, routing controls and diagram-source download share the selected snapshot.
 - MADR-0009 records the live renderer boundary and validation requirements. The standalone spike remains a regression harness; the 200 ms p95 settling target remains open.
 
+### Security
+
+- Validate source records, package identifiers and Git revisions; bound process/archive output and reject unsafe export/cache paths.
+- Disable source-view Git transport helpers and lazy fetching. Restrict package redirects and credential forwarding.
+- Protect API routes with trusted-local browser checks; these do not provide authentication for remote deployments.
+- Prevent model credentials or ambient Azure identity from silently following saved endpoint changes; restrict default model transport and create settings files exclusively with owner-only permissions.
+
 ### Fixed
 
+- Normalize request header names so reviewed binding previews send one valid JSON Content-Type header.
 - HTTP request identities now separate absolute hosts from routes and exclude credentials, query values and fragments from derived URL metadata.
 - C# package/reference visibility follows the analyzed target framework and reports incompatible assets or conflicting assembly identities.
 - Cached C# packages must satisfy complete version bounds; incompatible repeated requests omit package assets instead of silently selecting an invalid version.
