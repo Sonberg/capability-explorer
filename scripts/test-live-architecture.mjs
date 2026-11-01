@@ -155,7 +155,7 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('request', (request) => {
     const url = new URL(request.url());
-    if (url.pathname.includes('/likec4/index.html') || /all-repositories\.graph\.json|architecture\.c4$/.test(url.pathname)) forbidden.push(request.url());
+    if (url.pathname.includes('/likec4/index.html') || /all-repositories\.graph\.json|architecture\.c4$/.test(url.pathname) || (/^https?:$/.test(url.protocol) && url.origin !== new URL(base).origin)) forbidden.push(request.url());
   });
   await page.addInitScript(() => {
     if (!sessionStorage.getItem('ce.live-browser-initialized')) {
@@ -332,7 +332,7 @@ try {
   receipt.simulated.push('generation polling, changed graph and delayed obsolete-response race at browser boundary; filesystem watcher not exercised');
   await page.unroute('**/api/meta'); await page.unroute('**/api/generation'); await page.unroute('**/api/architecture?*');
   equal(errors, [], 'browser must have no uncaught exceptions');
-  equal(forbidden, [], 'production architecture must not fetch a static LikeC4 fixture or iframe');
+  equal(forbidden, [], 'production architecture must not fetch a static LikeC4 fixture, iframe or third-party resource');
   check(receipt.assertions > 40 && receipt.viewports.length === 3, 'browser gate must execute nonzero substantive assertions at all required sizes');
   receipt.passed = true;
 } catch (error) {
