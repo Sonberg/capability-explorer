@@ -1,4 +1,6 @@
 import { request, type Meta } from "./api";
+import { isDatabaseMeta, type DatabaseMeta } from "./database-api";
+import { DatabaseExplorer } from "./views/DatabaseExplorer";
 import { ErrorBox, Loading } from "./components/ui";
 import { href, SelectionProvider, useApi, useRoute, useSelection } from "./state";
 import { lazy, Suspense, useEffect, useState } from "react";
@@ -34,10 +36,11 @@ const VIEWS = [
 ] as const;
 
 export function App() {
-  const meta = useApi<Meta>("/api/meta");
-  useLiveReload(meta.data?.generation, meta.reload);
+  const meta = useApi<Meta | DatabaseMeta>("/api/meta");
+  useLiveReload(isDatabaseMeta(meta.data) ? undefined : meta.data?.generation, meta.reload);
   if (meta.error) return <main className="p-5"><ErrorBox message={meta.error} /></main>;
   if (!meta.data) return <main className="p-5"><Loading /></main>;
+  if (isDatabaseMeta(meta.data)) return <DatabaseExplorer meta={meta.data} reload={meta.reload} />;
   return (
     <SelectionProvider meta={meta.data} reloadMeta={meta.reload}>
       <FocusProvider>
