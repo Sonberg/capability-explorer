@@ -28,7 +28,10 @@ public sealed class CSharpExtractor(ExtractorOptions options)
     /// <summary>Errors that only mean "a source generator would have produced this".</summary>
     private static readonly HashSet<string> GeneratorDependent = ["CS8795", "CS8796", "CS8797"];
 
-    internal sealed record Unit(ProjectModel Project, CSharpCompilation Compilation, IReadOnlyList<PackageRef> MissingPackages, IReadOnlyList<ProjectRef> MissingProjects, IReadOnlyList<LockedPackage> ResolvedPackages);
+    internal sealed record Unit(ProjectModel Project, CSharpCompilation Compilation, IReadOnlyList<PackageRef> MissingPackages, IReadOnlyList<ProjectRef> MissingProjects, IReadOnlyList<LockedPackage> ResolvedPackages)
+    {
+        public IReadOnlyList<UnselectedPackage> UnselectedPackages { get; init; } = [];
+    }
 
     public IReadOnlyList<UnitResult> Extract()
     {
@@ -74,7 +77,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
 
             var compilation = CSharpCompilation.Create(p.AssemblyName, trees, references.DistinctBy(r => r.Display),
                 new CSharpCompilationOptions(p.IsExecutable ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: p.Nullable ? NullableContextOptions.Enable : NullableContextOptions.Disable, checkOverflow: p.CheckedArithmetic));
-            var unit = new Unit(p, compilation, missingPackages, missingProjects, resolution.Resolved);
+            var unit = new Unit(p, compilation, missingPackages, missingProjects, resolution.Resolved) { UnselectedPackages = resolution.Unselected };
             compilations[p.FullPath] = unit;
             visiting.Remove(p.FullPath);
             return unit;
@@ -127,6 +130,12 @@ public sealed class CSharpExtractor(ExtractorOptions options)
         foreach (var r in unit.MissingPackages.Where(m => m.Line > 0))
         {
             b.Diagnostic("warning", "UNRESOLVED_PACKAGE", $"Package {r.Id} {r.Version} is not in the packages folder; symbols from it are unresolved", p.RelativePath, true, b.LineEvidence(p.RelativePath, r.Line, projectText));
+        }
+
+        foreach (var u in unit.UnselectedPackages)
+        {
+            // Not a coverage problem: the package may only matter at run time. It explains why its types are unresolved.
+            b.Diagnostic("info", "PACKAGE_ASSEMBLIES_NOT_SELECTED", $"Package {u.Id} {u.Version} ships assemblies only for unsupported target frameworks ({string.Join(", ", u.Folders)}); none was referenced", p.RelativePath, false);
         }
 
         foreach (var r in p.ProjectReferences.Where(r => r.ResolvedPath is not null))

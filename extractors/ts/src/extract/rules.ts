@@ -271,9 +271,10 @@ export function serviceNode(ctx: Ctx) {
   if (!ctx.unit.packageJson) return;
   const path = ctx.rel(ctx.unit.packageJson);
   const text = ctx.readRepoFile(path);
-  const m = /"express"\s*:\s*"[^"]*"/.exec(text);
-  if (!m) return;
-  ctx.b.node(`svc|${ctx.repo}|${ctx.pkg}`, "Service", ctx.pkg, [ctx.textEv(path, text, m.index, m[0].length)], { props: { framework: "express" } });
+  const framework = ["express", "next"].find((f) => new RegExp(`"${f}"\\s*:\\s*"[^"]*"`).test(text));
+  if (!framework) return;
+  const m = new RegExp(`"${framework}"\\s*:\\s*"[^"]*"`).exec(text)!;
+  ctx.b.node(`svc|${ctx.repo}|${ctx.pkg}`, "Service", ctx.pkg, [ctx.textEv(path, text, m.index, m[0].length)], { props: { framework } });
 }
 
 export function projectNode(ctx: Ctx) {
