@@ -46,6 +46,7 @@ public sealed partial class ArtifactImporter(NpgsqlDataSource dataSource)
     public async Task<ImportResult> ImportAsync(Artifact artifact, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(artifact);
+        NodeSearchNormalization.CheckRuntime();
         var h = artifact.Header;
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var tx = await connection.BeginTransactionAsync(cancellationToken);
@@ -101,15 +102,19 @@ public sealed partial class ArtifactImporter(NpgsqlDataSource dataSource)
             var sha = reader.GetString(1);
             await reader.DisposeAsync();
             await tx.RollbackAsync(cancellationToken);
-            return sha == artifact.ContentSha256
-                ? new ImportResult(id, ImportOutcome.AlreadyImported)
-                : throw new ArtifactConflictException(
+            if (sha == artifact.ContentSha256)
+            {
+                await NodeSearchNormalization.EnsureOnConnectionAsync(connection,[id],cancellationToken);
+                return new ImportResult(id, ImportOutcome.AlreadyImported);
+            }
+            throw new ArtifactConflictException(
                     $"artifact {id} already holds {h.RepositoryId}@{h.CommitSha[..12]} {h.Unit.Path} ({h.Extractor.Name} {h.Extractor.Version}) with different content; extractor output is not deterministic");
         }
 
         var artifactId = inserted.Value;
         await CopyEvidence(connection, artifactId, artifact.Evidence, cancellationToken);
         await CopyNodes(connection, artifactId, artifact.Nodes, cancellationToken);
+        await NodeSearchNormalization.WriteImportedAsync(connection,tx,artifactId,artifact.Nodes,cancellationToken);
         await CopyEdges(connection, artifactId, artifact.Edges, cancellationToken);
         await CopyCalculations(connection, artifactId, artifact.Calculations, cancellationToken);
         await CopyDiagnostics(connection, artifactId, artifact.Diagnostics, cancellationToken);

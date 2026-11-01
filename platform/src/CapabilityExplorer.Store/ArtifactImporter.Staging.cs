@@ -40,8 +40,9 @@ public sealed partial class ArtifactImporter
             var same = reader.GetString(1) == sha;
             await reader.DisposeAsync();
             await tx.RollbackAsync(ct);
-            return same ? new ImportResult(id,ImportOutcome.AlreadyImported)
-                : throw new ArtifactConflictException($"artifact {id} has different content for the same analysis key");
+            if(!same) throw new ArtifactConflictException($"artifact {id} has different content for the same analysis key");
+            await NodeSearchNormalization.EnsureOnConnectionAsync(c,[id],ct);
+            return new ImportResult(id,ImportOutcome.AlreadyImported);
         }
         var artifactId = inserted.Value;
         // SQL projections preserve the exact normalized schema used by the materialized importer.
@@ -67,6 +68,11 @@ public sealed partial class ArtifactImporter
             """;
         foreach (var statement in projectionSql.Split(';',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries))
             await Exec(c,tx,statement,ct,artifactId);
+        await Exec(c,tx,"""
+            insert into node_search(artifact_id,local_id,normalizer_id,name_fold,symbol_fold,name_sort)
+            select $1,id,$2,name_fold,symbol_fold,name_sort from ce_import_record where kind='node'
+            """,ct,artifactId,NodeSearchNormalization.NormalizerId);
+        await Exec(c,tx,"insert into artifact_search_projection(artifact_id,normalizer_id) values($1,$2)",ct,artifactId,NodeSearchNormalization.NormalizerId);
         await tx.CommitAsync(ct);
         return new ImportResult(artifactId,ImportOutcome.Imported);
     }

@@ -17,17 +17,19 @@ public sealed partial class ArtifactImporter
     public async Task<ImportResult> ImportAsync(Stream utf8Jsonl, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(utf8Jsonl);
+        NodeSearchNormalization.CheckRuntime();
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var tx = await connection.BeginTransactionAsync(cancellationToken);
         await Exec(connection, tx, """
-            create temp table ce_import_record (line int not null,kind text not null,id text,body jsonb not null) on commit drop;
+            create temp table ce_import_record (line int not null,kind text not null,id text,body jsonb not null,
+                name_fold text,symbol_fold text,name_sort bytea) on commit drop;
             """, cancellationToken);
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         HeaderRecord? header = null;
         CompleteRecord? complete = null;
         var line = 0;
         await using (var writer = await connection.BeginBinaryImportAsync(
-            "copy ce_import_record(line,kind,id,body) from stdin (format binary)", cancellationToken))
+            "copy ce_import_record(line,kind,id,body,name_fold,symbol_fold,name_sort) from stdin (format binary)", cancellationToken))
         {
             await foreach (var bytes in ReadLinesAsync(utf8Jsonl, hash, cancellationToken))
             {
@@ -59,6 +61,19 @@ public sealed partial class ArtifactImporter
                     await writer.WriteAsync(kind, NpgsqlDbType.Text, cancellationToken);
                     await WriteNullable(writer, record.TryGetProperty("id", out var id) ? id.GetString() : null, NpgsqlDbType.Text, cancellationToken);
                     await writer.WriteAsync(record.GetRawText(), NpgsqlDbType.Jsonb, cancellationToken);
+                    if(kind=="node")
+                    {
+                        var folded=NodeSearchNormalization.Fold(record.GetProperty("name").GetString()!);
+                        await writer.WriteAsync(folded,NpgsqlDbType.Text,cancellationToken);
+                        await writer.WriteAsync(NodeSearchNormalization.Fold(record.GetProperty("symbolKey").GetString()!),NpgsqlDbType.Text,cancellationToken);
+                        await writer.WriteAsync(Encoding.UTF8.GetBytes(folded),NpgsqlDbType.Bytea,cancellationToken);
+                    }
+                    else
+                    {
+                        await writer.WriteNullAsync(cancellationToken);
+                        await writer.WriteNullAsync(cancellationToken);
+                        await writer.WriteNullAsync(cancellationToken);
+                    }
                 }
             }
             await writer.CompleteAsync(cancellationToken);

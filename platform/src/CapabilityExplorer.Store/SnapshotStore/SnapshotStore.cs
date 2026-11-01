@@ -37,6 +37,7 @@ public sealed partial class SnapshotStore(NpgsqlDataSource dataSource)
         var ids = artifactIds.Order().ToArray();
         if (ids.Any(id => id <= 0) || ids.Distinct().Count() != ids.Length)
             throw new ArgumentException("Artifact IDs must be positive and unique", nameof(artifactIds));
+        await NodeSearchNormalization.EnsureAsync(dataSource,ids,cancellationToken);
         await using var c = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var tx = await c.BeginTransactionAsync(cancellationToken);
         await LockAsync(c, tx, "create:" + capabilityId + ":" + inputIdentity, cancellationToken);
