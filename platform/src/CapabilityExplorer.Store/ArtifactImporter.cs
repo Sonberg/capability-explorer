@@ -30,7 +30,7 @@ public sealed class ArtifactConflictException(string message) : Exception(messag
 /// Imports validated artifacts. All rows of one artifact are written in a single transaction: either the whole
 /// artifact is visible or none of it is. Re-importing identical content is a no-op, so retries are safe.
 /// </summary>
-public sealed class ArtifactImporter(NpgsqlDataSource dataSource)
+public sealed partial class ArtifactImporter(NpgsqlDataSource dataSource)
 {
     public Task<ImportResult> ImportAsync(string jsonl, CancellationToken cancellationToken = default)
     {
