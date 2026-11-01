@@ -38,8 +38,33 @@ Keep raw findings and private source in ignored local storage. Publish only reda
 metadata and bounded outcomes. A false positive requires finding-specific evidence
 and a separate reviewer. No blanket suppressions or severity-based silent exclusion.
 Confirmed findings remain open until a source-bound fix and passing retest exist.
-Unavailable upstream fixes remain explicit blockers; scan completion, lack of
-network exposure and non-production use alone are not waivers.
+Unavailable upstream fixes remain blockers to a security-complete claim; scan
+completion, lack of network exposure and non-production use alone are not waivers.
+
+### Owner-review publication versus security assurance
+
+On 2026-11-01 the operator clarified that repositories we cannot access must not
+prevent a review PR: access may never become available. This supersedes the batch's
+earlier requirement for a complete zero-unresolved audit before any PR publication.
+
+An owner-review PR requires fresh stage alignment, the unchanged ordinary pre-push
+CI/dependency gate, relevant regression evidence, and explicit disclosure of audited
+inputs, unavailable inputs, incomplete coverage and unresolved findings. It may be
+published as a draft while those limitations remain open. Publication is code review,
+not security certification, release approval, deployment or permission to auto-merge.
+
+Unavailable private repositories are `not assessed`, with the reason and follow-up
+issue recorded. They are not scanner failures in our accessible project, and obtaining
+access is not a prerequisite for a PR. Use controlled, pinned fixtures to verify the
+generic implementation and bound all corpus claims to the inputs actually examined.
+
+Known image advisories and parser/inventory gaps remain visible in issue #24 and the
+review description; they are not silently resolved or suppressed. The strict
+`security-baseline`/`security-verify` commands retain their failure behavior for missing
+coverage or unresolved findings. A review PR does not require those strict assurance
+commands to turn green. Mandatory local tests and the existing all-severity project
+dependency gate remain unchanged. Any future security-complete/release claim requires
+its own explicitly scoped evidence and authority.
 
 ## Boundary controls
 
@@ -83,4 +108,5 @@ waivers. Full audit, integration CI and running-browser proof are separate gates
 this decision is not evidence those gates have passed.
 
 Research/runtime records belong in the execution handoff. Real Glufs acceptance
-remains blocked by issue #23. Owner review and the stage-only branch policy apply.
+remains unassessed under issue #23, independently of review publication. Owner review
+and the stage-only branch policy apply.

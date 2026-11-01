@@ -192,18 +192,29 @@ After a human merge, record its actual SHA and outstanding owner validation, rel
 remaining claims, and refresh dependent branches/HANDOFF. Plan the next package
 from current stage-1-contract-and-fixtures and current issues rather than the previous feature branch.
 Do not start another implementation merely because an old checkpoint says next.
-Do not automatically delete worktrees or branches at handoff.
+Apply [MADR-0014](0014-pr-publication-worktree-retention.md) at PR publication:
+remove recoverable inactive worktrees after a verified handoff, without waiting
+for merge. Keep branch refs. Defer removal while a checkout is active or uncertain.
+
+Owner-review publication follows MADR-0011's scoped evidence policy. An inaccessible
+external corpus is recorded as not assessed, not a prerequisite for opening a PR.
+Preserve unresolved security findings and incomplete coverage in the review; a draft
+PR does not establish release readiness or authorize owner-only merge actions.
 
 ### Authorized worktree cleanup
 
-Inventory linked worktrees and disk use periodically; retaining a merged checkout
-can duplicate large scanner, package and build caches. Cleanup is a separate,
-explicitly authorized action, not a consequence of a successful merge or test.
+Inventory linked worktrees and disk use periodically; retaining a checkout can
+duplicate large scanner, package and build caches. MADR-0014 records the operator's
+standing authorization for qualifying project worktrees after PR publication.
+Other cleanup still requires explicit authorization; a successful test or merge
+does not grant it.
 
-Before removal, verify the exact HEAD is contained in the intended integration
+For merged-worktree cleanup, verify the exact HEAD is contained in the intended integration
 target (`stage-1-contract-and-fixtures` here), the working tree is clean, and the
 worktree is neither primary nor locked. A squash/cherry-pick resemblance alone is
-not ancestry proof. Record the target SHA and ref freshness. Check current process
+not ancestry proof. For an open PR, instead verify the published remote feature
+head and recoverability as required by MADR-0014. Record the target SHA and ref
+freshness. Check current process
 directories, open files, container mounts and collaboration claims for activity;
 absence of observed activity is not proof that another contributor has finished.
 

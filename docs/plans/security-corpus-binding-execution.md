@@ -1,6 +1,6 @@
 # Security, corpus replay and binding review: execution record
 
-Status: local implementation; final security validation incomplete; no PR or push. Target only
+Status: owner-review delivery; complete security assurance remains unavailable. Target only
 `stage-1-contract-and-fixtures`. Last checked base: `d4389b4` (2026-11-01).
 No merge, release or change to main is authorized by this record.
 
@@ -95,8 +95,12 @@ Finish isolated boundary fixes and independent review, restore Docker, integrate
 against current stage, then run focused regressions, unchanged golden gates,
 ordinary local act CI and fresh complete audit collection. Hold Git refs stable
 while sealing reachable history. Record unresolved findings individually; no
-blanket waiver or lowering of thresholds. Only publish an owner-review PR after
-the agreed publication gates are satisfied or the user explicitly revises them.
+blanket waiver or lowering of thresholds. The operator subsequently revised the
+publication requirement: inaccessible private inputs must not prevent review.
+MADR-0011 now separates owner-review publication from complete security assurance.
+Publish the current batch as a draft after fresh stage alignment and the ordinary
+pre-push gate, with all unresolved findings and coverage limits disclosed. Strict
+audit verification remains failed; it is not relabelled green.
 
 Keep parser coverage, upstream image remediation and unavailable Glufs acceptance
 separate from product implementation. No claim that the project is vulnerability

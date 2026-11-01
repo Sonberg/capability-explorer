@@ -21,6 +21,7 @@ history or imply that existing private package versions are product releases.
 
 - Contributor policies for curated release notes and explicit product compatibility/versioning.
 - Authorized worktree cleanup guidance covers target ancestry, active-use checks, private backup verification, retained branches and measured disk recovery.
+- MADR-0014 makes verified PR publication the default worktree cleanup checkpoint, preserving remote code and private evidence without waiting for merge.
 - Revision-bound glossary connection graphs with bounded traversal, explicit source/binding evidence, calculation-input dependencies and visible coverage gaps.
 - PostgreSQL-backed reviewed terms, occurrence assertions and mismatch issues, with optimistic concurrency, audit attribution and stale-source detection.
 - Integrated glossary flow/review UI, including a read-only mode without a database. Human assertions remain distinct from source facts and do not establish field-level value propagation.
@@ -32,6 +33,7 @@ history or imply that existing private package versions are product releases.
 
 ### Changed
 
+- Separate owner-review PR publication from complete security assurance; unavailable external repositories are explicitly not assessed, while strict audit failures and open findings remain visible.
 - Pin CI actions and runtime images; the compatible .NET Azure Linux SDK reduces reported OS findings compared with the previous Ubuntu image. Remaining container findings are tracked in issue #24; no security-complete claim is made.
 - Dependency scanning now includes all severities. NuGet destinations require an operator-controlled exact HTTPS origin allowlist, forwarded only to package fetching.
 - Architecture and glossary connection diagrams use a shared live LikeC4 canvas instead of a separate fixture iframe, with original source evidence and reviewed association semantics retained.

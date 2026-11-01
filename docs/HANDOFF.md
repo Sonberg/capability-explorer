@@ -9,9 +9,11 @@ locally. [MADR-0011](adr/0011-source-bound-security-validation.md) and
 Live binding review passed nine browser assertions on loopback port 5108.
 The [execution record](plans/security-corpus-binding-execution.md) records passed
 focused checks and failed/incomplete gates. After Docker restoration, full local
-act CI passed exact source `80a8dcb`, and the binding UI passed nine browser checks.
-Later collector changes need their own exact-source receipts. The complete security
-audit and PR remain blocked by image findings and scanner coverage gaps. Container findings
+act CI and nine binding browser checks passed exact source `09737b0`.
+Subsequent commits need their own exact-source receipts. The complete security
+audit remains incomplete. The operator clarified that unavailable private inputs
+must not block a review PR; MADR-0011 now permits draft publication with scoped
+evidence and disclosed findings, while strict security verification remains failed. Container findings
 remain tracked in [issue #24](https://github.com/Sonberg/capability-explorer/issues/24);
 private Glufs validation remains blocked in [issue #23](https://github.com/Sonberg/capability-explorer/issues/23).
 Do not mistake passing dependency scans or synthetic replay for those missing gates.
@@ -35,6 +37,9 @@ Shared terminology: [ubiquitous language](ubiquitous-language.md),
 those fixes are separate from synthetic test coverage.
 
 PR updates and newcomer workflow: [MADR-0005](adr/0005-pr-lifecycle-and-conflict-prevention.md).
+Disk retention: [MADR-0014](adr/0014-pr-publication-worktree-retention.md) makes
+verified PR publication the cleanup checkpoint, without waiting for merge.
+Preserve private evidence outside the checkout and defer active worktrees until handoff.
 
 Release notes: [changelog](CHANGELOG.md), [MADR-0006](adr/0006-keep-a-changelog.md).
 Compatibility/versioning: [MADR-0007](adr/0007-semantic-versioning.md).
