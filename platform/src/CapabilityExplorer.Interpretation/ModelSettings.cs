@@ -21,15 +21,20 @@ public sealed record ModelSettings(string? Endpoint, string? ChatModel, string? 
     public void Save(string path)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        var temp = path + ".tmp";
-        using (var stream = OperatingSystem.IsWindows()
-                   ? new FileStream(temp, FileMode.Create)
-                   : new FileStream(temp, new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write, UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite }))
+        var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
         {
-            JsonSerializer.Serialize(stream, this, Json);
+            using (var stream = OperatingSystem.IsWindows()
+                ? new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None)
+                : new FileStream(temp, new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None,
+                    UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite }))
+            {
+                JsonSerializer.Serialize(stream, this, Json);
+                stream.Flush(flushToDisk: true);
+            }
+            File.Move(temp, path, overwrite: true);
         }
-
-        File.Move(temp, path, overwrite: true);
+        finally { if (File.Exists(temp)) File.Delete(temp); }
     }
 
     /// <summary>Settings win over the configured provider; caches and recordings are kept.</summary>
@@ -40,5 +45,6 @@ public sealed record ModelSettings(string? Endpoint, string? ChatModel, string? 
         Deployment = ChatModel is { Length: > 0 } ? ChatModel : null,
         EmbeddingModel = EmbeddingModel is { Length: > 0 } ? EmbeddingModel : null,
         ApiKey = ApiKey,
+        UseEnvironmentApiKey = false,
     };
 }

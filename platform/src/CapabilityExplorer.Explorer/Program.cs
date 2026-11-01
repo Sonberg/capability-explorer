@@ -42,6 +42,19 @@ if (builder.Configuration["urls"] is null && Environment.GetEnvironmentVariable(
 }
 
 var app = builder.Build();
+app.Use(async (context, next) =>
+{
+    if (!LocalRequestGuard.Allowed(context.Request))
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await context.Response.WriteAsync("Only trusted local requests are supported.");
+        return;
+    }
+    context.Response.Headers.XContentTypeOptions = "nosniff";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    context.Response.Headers["X-Frame-Options"] = "DENY";
+    await next(context);
+});
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapExplorerApi(options.EvaluationReport);

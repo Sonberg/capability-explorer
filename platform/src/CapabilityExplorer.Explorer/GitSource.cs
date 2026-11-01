@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 
 namespace CapabilityExplorer.Explorer;
@@ -12,40 +11,57 @@ public sealed class GitSource(Func<string, string?> locate, CapabilityExplorer.C
     {
     }
 
-    private readonly ConcurrentDictionary<(string, string, string), string?> _files = new();
+    private const int MaxCachedFiles = 16;
+    private readonly Dictionary<(string, string, string), string?> _files = new();
+    private readonly object _cacheLock = new();
 
     public bool HasRepository(string repositoryId) => Locate(repositoryId) is not null;
 
     /// <summary>A git directory (working copy or bare) for the repository, or null.</summary>
     private string? Locate(string repositoryId) =>
-        locate(repositoryId) is { } dir && (Directory.Exists(Path.Combine(dir, ".git")) || File.Exists(Path.Combine(dir, "HEAD"))) ? dir : null;
+        IsSafeSegment(repositoryId) && locate(repositoryId) is { } dir && (Directory.Exists(Path.Combine(dir, ".git")) || File.Exists(Path.Combine(dir, "HEAD"))) ? dir : null;
 
-    public string? ReadFile(string repositoryId, string commitSha, string path) =>
-        _files.GetOrAdd((repositoryId, commitSha, path), key =>
+    public string? ReadFile(string repositoryId, string commitSha, string path)
+    {
+        if (!Commit(commitSha) || !SafePath(path)) return null;
+        var key = (repositoryId, commitSha, path);
+        lock (_cacheLock) { if (_files.TryGetValue(key, out var cached)) return cached; }
+        var (ok, output) = Git(repositoryId, "show", $"{commitSha}:{path}");
+        var result = ok ? output.Replace("\r\n", "\n", StringComparison.Ordinal) : null;
+        lock (_cacheLock)
         {
-            var (ok, output) = Git(key.Item1, "show", $"{key.Item2}:{key.Item3}");
-            return ok ? output.Replace("\r\n", "\n", StringComparison.Ordinal) : null;
-        });
+            if (_files.Count >= MaxCachedFiles) _files.Clear();
+            _files[key] = result;
+        }
+        return result;
+    }
+
+    private static bool Commit(string value) => value.Length is 40 or 64 && value.All(char.IsAsciiHexDigit);
+    private static bool SafePath(string value) => value.Length is > 0 and <= 4096 && !value.StartsWith('/')
+        && !value.Contains('\\') && !value.Any(char.IsControl) && !value.Split('/').Any(p => p is ".." or "." or "");
 
     public DateTimeOffset? CommitTime(string repositoryId, string commitSha)
     {
-        var (ok, output) = Git(repositoryId, "show", "-s", "--format=%ct", commitSha);
+        if (!Commit(commitSha)) return null;
+        var (ok, output) = Git(repositoryId, "show", "-s", "--format=%ct", commitSha, "--");
         return ok && long.TryParse(output.Trim(), out var seconds) ? DateTimeOffset.FromUnixTimeSeconds(seconds) : null;
     }
 
     public IReadOnlyList<string> Tags(string repositoryId, string commitSha)
     {
+        if (!Commit(commitSha)) return [];
         var (ok, output) = Git(repositoryId, "tag", "--points-at", commitSha);
         return ok ? output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Order(StringComparer.Ordinal).ToList() : [];
     }
 
     public string? Subject(string repositoryId, string commitSha)
     {
-        var (ok, output) = Git(repositoryId, "show", "-s", "--format=%s", commitSha);
+        if (!Commit(commitSha)) return null;
+        var (ok, output) = Git(repositoryId, "show", "-s", "--format=%s", commitSha, "--");
         return ok ? output.Trim() : null;
     }
 
-    internal static bool IsSafeSegment(string s) => s.Length > 0 && !s.Contains('/', StringComparison.Ordinal) && !s.Contains('\\', StringComparison.Ordinal) && s != "." && s != "..";
+    internal static bool IsSafeSegment(string s) => s.Length is > 0 and <= 200 && !s.Any(char.IsControl) && !s.Contains('/', StringComparison.Ordinal) && !s.Contains('\\', StringComparison.Ordinal) && s != "." && s != "..";
 
     private (bool Ok, string Output) Git(string repositoryId, params string[] args)
     {
@@ -71,9 +87,30 @@ public sealed class GitSource(Func<string, string?> locate, CapabilityExplorer.C
             return (false, "");
         }
 
-        var output = process.StandardOutput.ReadToEnd();
-        process.StandardError.ReadToEnd();
-        process.WaitForExit();
-        return (process.ExitCode == 0, output);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        try
+        {
+            var output = ReadBounded(process.StandardOutput, timeout.Token);
+            var error = ReadBounded(process.StandardError, timeout.Token);
+            Task.WhenAll(output, error, process.WaitForExitAsync(timeout.Token)).GetAwaiter().GetResult();
+            return (process.ExitCode == 0, output.Result);
+        }
+        catch (Exception e) when (e is OperationCanceledException or IOException)
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            return (false, "");
+        }
+    }
+    private static async Task<string> ReadBounded(StreamReader reader, CancellationToken ct)
+    {
+        var result = new System.Text.StringBuilder();
+        var buffer = new char[8192];
+        int count;
+        while ((count = await reader.ReadAsync(buffer.AsMemory(), ct)) > 0)
+        {
+            if (result.Length + count > 2 * 1024 * 1024) throw new IOException("Git output exceeds source limit");
+            result.Append(buffer, 0, count);
+        }
+        return result.ToString();
     }
 }

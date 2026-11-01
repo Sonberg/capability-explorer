@@ -40,7 +40,7 @@ public sealed class DeterministicPackagesTests : IDisposable
     {
         using var http = new HttpClient(handler);
         var models = ProjectModel.Discover(source);
-        return await new PackageFetcher(cache, http, feeds).FetchAsync(models.Select(m => (m.RelativePath, m.PackageRoots())));
+        return await new PackageFetcher(cache, http, feeds, new PackageFeedPolicy("https://feed.test,https://private.test,https://cdn.test")).FetchAsync(models.Select(m => (m.RelativePath, m.PackageRoots())));
     }
 
     private static IReadOnlyList<UnitResult> Extract(string source, string cache, PackageLock? lockFile) =>
@@ -149,7 +149,7 @@ public sealed class DeterministicPackagesTests : IDisposable
             """;
         var source = Source("1.0.0", config);
         var env = new Dictionary<string, string> { ["CORP_USER"] = user, ["CORP_TOKEN"] = secret };
-        var feeds = NuGetConfig.Discover(source, ProjectModel.Discover(source).Select(m => Path.GetDirectoryName(m.FullPath)!), k => env.GetValueOrDefault(k));
+        var feeds = NuGetConfig.Discover(source, ProjectModel.Discover(source).Select(m => Path.GetDirectoryName(m.FullPath)!), k => env.GetValueOrDefault(k), new PackageFeedPolicy("https://private.test"));
         var feedConfig = Assert.Single(feeds);
         Assert.Equal("corp", feedConfig.Name);
         Assert.DoesNotContain(secret, feedConfig.Credentials!.ToString() + feedConfig);
@@ -173,7 +173,7 @@ public sealed class DeterministicPackagesTests : IDisposable
     {
         var config = """<configuration><packageSources><clear /><add key="corp" value="https://private.test/v3/index.json" /></packageSources></configuration>""";
         var source = Source("1.0.0", config);
-        var feeds = NuGetConfig.Discover(source, ProjectModel.Discover(source).Select(m => Path.GetDirectoryName(m.FullPath)!), _ => null);
+        var feeds = NuGetConfig.Discover(source, ProjectModel.Discover(source).Select(m => Path.GetDirectoryName(m.FullPath)!), _ => null, new PackageFeedPolicy("https://private.test,https://corp.test"));
         var priv = new FakeFeed("private.test", requiredBasic: "u:p").Add("Fake.Lib", "1.0.0", "namespace Fake { public static class Lib { public static int Value() => 1; } }");
         var cache = Path.Combine(_root, "cache");
         var fetched = await Fetch(source, cache, new FeedRouter(priv), feeds);
@@ -194,7 +194,7 @@ public sealed class DeterministicPackagesTests : IDisposable
             </packageSources></configuration>
             """;
         var source = Source("1.0.0", config);
-        var feeds = NuGetConfig.Discover(source, ProjectModel.Discover(source).Select(m => Path.GetDirectoryName(m.FullPath)!), _ => null);
+        var feeds = NuGetConfig.Discover(source, ProjectModel.Discover(source).Select(m => Path.GetDirectoryName(m.FullPath)!), _ => null, new PackageFeedPolicy("https://private.test,https://corp.test"));
         Assert.Equal(["nuget.org", "corp"], feeds.Select(f => f.Name));
     }
 }
