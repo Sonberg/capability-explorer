@@ -60,9 +60,10 @@ test('HTTP measurement runner consumes real HTTP test-double pages with bounded 
  fs.writeFileSync(metadata,JSON.stringify({appSourceSha:'a'.repeat(40),sourceState:'dirty',databaseImage:'test/fixture@sha256:'+'b'.repeat(64)}));
  try {
   const result=await benchmark({baseUrl:`http://127.0.0.1:${server.address().port}`,manifest,metadata,samples:5,warmup:0});
-  assert.equal(result.status,'MEASURED_FOUNDATION_ONLY');assert.equal(result.results.length,6);
+  assert.equal(result.status,'MEASURED_FOUNDATION_ONLY');assert.equal(result.results.length,7);
   assert.equal(result.results[0].name,'search:');
   assert.equal(result.results.filter(r=>r.name==='search:').length,1);
+  assert.ok(result.results.some(r=>r.name==='search:x:continuation'));
   assert.ok(result.results.every(r=>r.samples===5&&r.maxRows===1&&r.p99Ms>=r.p50Ms));
   assert.ok(result.notMeasured.includes('full issue28 endpoint coverage'));
  }finally{await new Promise(resolve=>server.close(resolve));}

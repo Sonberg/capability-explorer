@@ -55,7 +55,7 @@ export async function benchmark(o) {
   work.push({name:'symbol',endpoint:'symbol',params:{...common,key},kind:'symbol',key});
   work.push({name:'hub-outgoing',endpoint:'symbol/edges',params:{...common,key,direction:'outgoing'},kind:'page'});
   const notMeasured=['process startup duration','app peak/idle memory unless supplied separately','DB pool wait','import peak/WAL/disk','query plans unless supplied separately','file baseline','cold OS cache','large-corpus latency','full issue28 endpoint coverage'];
-  for(const entry of [work[0],work.at(-1)]) {
+  for(const entry of [work[0],work.find(e=>e.endpoint==='search'&&e.params.q!==''),work.at(-1)].filter(Boolean)) {
     const {body,bytes}=await request(entry.endpoint,entry.params);validateResponse(body,bytes,{...entry,snapshot:meta.snapshotId});
     if(body.nextCursor)work.push({...entry,name:entry.name+':continuation',params:{...entry.params,cursor:body.nextCursor},previousIds:new Set(body.items.map(r=>r.key??`${r.artifactId}|${r.localId}`))});
     else notMeasured.push(entry.name+' continuation: no second page at this tier');

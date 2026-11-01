@@ -93,7 +93,8 @@ pins the immutable snapshot on every query, requests 50 rows and identity
 encoding, and aborts each request after 10 seconds. It always measures the empty search used by the initial UI plus the manifest
 search terms (deduplicated), symbol detail, hub outgoing adjacency and second
 pages when available. The empty-search first page and continuation are therefore
-covered even when the corpus manifest omits the empty term.
+covered even when the corpus manifest omits the empty term. The existing first
+nonempty search continuation is retained as well.
 Rows must be stable across repeats, unique within each page, disjoint from the
 first page on continuation, within the row limit and below 1 MiB per response.
 It reports nearest-rank p50/p95/p99, min/max, row counts and bytes. Small sample
