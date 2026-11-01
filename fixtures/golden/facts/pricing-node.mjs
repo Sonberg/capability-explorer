@@ -345,7 +345,7 @@ function database(repo) {
   );
   a.calc({
     key: d.weeklyRevenue,
-    output: { type: "numeric", unit: { status: "partial", value: "major currency unit", detail: { note: "öre / 100; currency not fixed" }, at: [m2, "/ 100.0"] } },
+    output: { type: "numeric", unit: { status: "unknown" } },
     inputs: [
       { ref: "$0", type: "text" },
       { ref: "$1", type: "date" },
@@ -388,12 +388,8 @@ function database(repo) {
       numericType: { status: "known", value: "numeric", detail: { inputs: "bigint * integer, divided by numeric 100.0" }, at: [m2, "RETURNS numeric"] },
       nullHandling: { status: "known", value: "notApplicable", detail: { reason: "all inputs are NOT NULL columns" }, at: [m1, "amount_ore bigint     NOT NULL", 2] },
       zeroDenominator: { status: "known", value: "returnsNull", at: [m2, "NULLIF(COUNT(DISTINCT date_trunc('week', s.sold_at)), 0)"] },
-      // The ledger has a currency column; the function sums across it.
-      currency: {
-        status: "known", value: "mixedCurrenciesSummed",
-        detail: { column: d.ledgerCurrency, note: "no filter or conversion on currency" },
-        at: [[m1, "currency   char(3)    NOT NULL", 2], [m2, "SUM(s.amount_ore * s.quantity)"]],
-      },
+      // Names and scaling do not establish a currency domain or monetary unit.
+      currency: { status: "unknown" },
       overflow: { status: "known", value: "throws", detail: { expression: "bigint * integer", error: "bigint out of range" }, at: [m2, "s.amount_ore * s.quantity"] },
     },
     at: [m2, "CREATE FUNCTION pricing.weekly_revenue"],

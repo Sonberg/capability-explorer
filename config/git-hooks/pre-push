@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Git supplies one line per outgoing ref on stdin.
+set -euo pipefail
+fail() { echo "pre-push: $*" >&2; exit 1; }
+root="$(git rev-parse --show-toplevel)" || fail 'no working checkout is available'
+cd "$root"
+head=""
+check=0
+while read -r local_ref local_sha remote_ref remote_sha extra || [[ -n "$local_ref" ]]; do
+  [[ -n "$local_ref" && -n "$local_sha" && -n "$remote_ref" && -n "$remote_sha" && -z "$extra" ]] || fail 'malformed outgoing ref description'
+  [[ "$local_sha" =~ ^[0-9a-fA-F]+$ && "$remote_sha" =~ ^[0-9a-fA-F]+$ ]] || fail 'invalid outgoing object ID'
+  [[ "$remote_ref" != refs/heads/main ]] || fail 'updates to main are prohibited; use a feature branch and a PR targeting stage-1-contract-and-fixtures'
+  [[ "$local_sha" =~ ^0+$ ]] && continue
+  [[ -n "$head" ]] || head="$(git rev-parse --verify HEAD)"
+  commit="$(git rev-parse --verify "${local_sha}^{commit}")" || fail "$local_ref does not point to a commit"
+  [[ "$commit" == "$head" ]] || fail "$local_ref points to $commit, not checked-out HEAD $head; check out and push one source commit at a time"
+  check=1
+done
+# Ref deletion has no source tree to validate.
+[[ $check -eq 1 ]] || exit 0
+[[ -x scripts/local-check ]] || fail 'scripts/local-check is missing or not executable'
+LOCAL_CI_EXPECTED_HEAD="$head" exec scripts/local-check

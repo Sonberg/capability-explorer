@@ -2,27 +2,54 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, stage-1-contract-and-fixtures]
   pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   ci:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
+      - name: Require the stage PR target
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          PR_BASE: ${{ github.base_ref }}
+        run: |
+          test "$PR_BASE" = stage-1-contract-and-fixtures || {
+            echo 'PRs must target stage-1-contract-and-fixtures; main is not a delivery target.' >&2
+            exit 1
+          }
       - uses: actions/checkout@v4
       # Builds and tests run inside scripts/sandbox containers; the runner only needs Docker.
       - name: Cache sandbox packages
+        if: ${{ !env.ACT }}
         uses: actions/cache@v4
         with:
-          path: .sandbox-cache
-          key: sandbox-${{ hashFiles('platform/**/packages.lock.json', 'extractors/ts/package-lock.json', 'platform/src/CapabilityExplorer.Explorer/client/package-lock.json', 'fixtures/src/**/*.csproj', 'fixtures/src/**/package-lock.json') }}
+          path: |
+            .sandbox-cache/nuget
+            .sandbox-cache/nuget-http
+            .sandbox-cache/npm
+            .sandbox-cache/trivy
+            .sandbox-cache/tools
+          key: sandbox-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('platform/**/packages.lock.json', 'extractors/ts/package-lock.json', 'platform/src/CapabilityExplorer.Explorer/client/package-lock.json', 'fixtures/src/**/*.csproj', 'fixtures/src/**/package-lock.json') }}
+      - name: Audit action dependencies
+        if: ${{ !env.ACT }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/actions-audit audit
       - name: Pull sandbox images
         run: |
-          docker pull mcr.microsoft.com/dotnet/sdk:10.0
-          docker pull node:22-bookworm
-          docker pull postgres:17-alpine
+          for image in mcr.microsoft.com/dotnet/sdk:10.0 node:22-bookworm pgvector/pgvector:0.8.6-pg17; do
+            if [ "${ACT:-}" != "true" ] || ! docker image inspect "$image" >/dev/null 2>&1; then
+              docker pull "$image"
+            fi
+          done
       - run: make ci

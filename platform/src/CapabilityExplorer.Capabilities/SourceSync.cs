@@ -202,6 +202,9 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
                 }
             }
 
+            // TarReader stops at the end marker before Git's block padding ends.
+            // Drain the pipe before waiting, or a small pipe can block Git's exit.
+            await process.StandardOutput.BaseStream.CopyToAsync(Stream.Null, timeout.Token);
             await process.WaitForExitAsync(timeout.Token);
         }
         catch (OperationCanceledException)

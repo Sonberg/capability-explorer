@@ -2,6 +2,8 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
+    <!-- Exercise culture-independent projections under real alternate cultures. Production remains invariant. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
     <!-- xUnit1051 asks for TestContext cancellation tokens everywhere; not worth the noise here. CA2007: no sync context in tests. -->
     <NoWarn>$(NoWarn);xUnit1051;CA2007;CA1001;CA1852;CA1062;CA1861;CA1711;CA2100</NoWarn>
   </PropertyGroup>

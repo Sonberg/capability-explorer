@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Runs the explorer's "Analyze code" requests on the host, where scripts/analyze can start its sandboxes; the explorer
+# itself never gets Docker. The explorer writes .sandbox-cache/requests/<id>.request; this loop renames it to
+# <id>.running, runs scripts/analyze with the output in <id>.log and writes the exit code to <id>.exit.
+# Stop in the explorer writes <id>.cancel: the run and its labelled containers are killed (a killed step fails
+# scripts/analyze through set -e) and <id>.exit says "stopped". One analysis at a time.
+# No job control (set -m) here: as a background job of make dev it would fight the explorer for the terminal.
+#
+#   scripts/analyze-worker [capabilities.json]     (CE_DATABASE, BINDINGS, GITHUB_AUTH, ... pass through to scripts/analyze)
+set -uo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+capabilities="${1:-capabilities.json}"
+requests=".sandbox-cache/requests"
+mkdir -p "$requests"
+pid=""; id=""
+
+stop_run() {
+  [[ -n "$pid" ]] && kill -TERM "$pid" 2>/dev/null
+  # Killing the docker client does not always stop its container; the label does.
+  [[ -n "$id" ]] && docker ps -q --filter "label=ce-analyze=$id" | xargs docker kill >/dev/null 2>&1
+}
+trap 'stop_run; [[ -n "$id" ]] && { echo stopped > "$requests/$id.exit"; rm -f "$requests/$id.running"; }; exit 130' INT TERM
+
+# A run killed together with an earlier loop never wrote its exit code.
+for f in "$requests"/*.running; do [[ -e "$f" ]] && { echo stopped > "${f%.running}.exit"; rm -f "$f"; }; done
+rm -f "$requests"/*.cancel
+echo "analyze-worker: waiting for requests in $requests"
+while true; do
+  for f in "$requests"/*.request; do
+    [[ -e "$f" ]] || continue
+    id="$(basename "$f" .request)"
+    mv "$f" "$requests/$id.running" || { id=""; continue; }
+    echo "analyze-worker: analysing '$id' (log: $requests/$id.log)"
+    SANDBOX_LABEL="ce-analyze=$id" scripts/analyze "$id" "$capabilities" > "$requests/$id.log" 2>&1 </dev/null &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+      if [[ -e "$requests/$id.cancel" ]]; then stop_run; echo "-- stopped from the explorer" >> "$requests/$id.log"; break; fi
+      sleep 1
+    done
+    wait "$pid"; code=$?
+    if [[ -e "$requests/$id.cancel" ]]; then code=stopped; rm -f "$requests/$id.cancel"; fi
+    echo "$code" > "$requests/$id.exit"; rm -f "$requests/$id.running"
+    echo "analyze-worker: '$id' finished: $code"
+    pid=""; id=""
+  done
+  sleep 2
+done

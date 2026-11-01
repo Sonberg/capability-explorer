@@ -9,9 +9,16 @@ OFFLINE := $(SANDBOX) --offline
 
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
         restore ui build test-ts test-contracts test-evaluation test-extractors test-explorer test-store evaluate evaluate-golden \
-        extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze explore ollama clean
+        extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze analyze-worker explore ollama postgres dev dev-data dev-down clean local-check pr-check install-git-hooks actions-audit test-local-ci security-check
 
 help:
+	@echo "make local-check     run the full GitHub CI workflow locally through nektos/gh-act before pushing"
+	@echo "make install-git-hooks  install this repository pre-push gate (preserves existing hooks)"
+	@echo "make actions-audit   audit workflow dependencies with Wayne Ashley Berry gh-act (separate tool)"
+	@echo "make dev             local environment: PostgreSQL (pgvector) + Ollama, import + embed the artifacts, then explore"
+	@echo "     PG_PORT=5433 OLLAMA_CHAT=none (skip the chat model) and every explore option; make dev-down stops the containers"
+	@echo "make dev-data        only the import + embed step of make dev (e.g. while the explorer runs)"
+	@echo "make analyze-worker  runs the explorer's Analyze code requests on the host (make dev starts one; CE_DATABASE='...' to store)"
 	@echo "make ci              everything CI runs: fixture compile checks + all tests"
 	@echo "make test            golden check + TS tests + .NET contract tests + store tests (Testcontainers)"
 	@echo "make fixtures        rebuild fixture git repos (fixtures/.repos) and verify revisions.lock.json"
@@ -31,14 +38,32 @@ help:
 	@echo "     private NuGet feeds: nuget.config in the repo, credentials via %VAR% + NUGET_PASS_ENV=VAR,VAR (only the packages step sees them)"
 	@echo "     CE_DATABASE='Host=...;Database=...;...' also imports into PostgreSQL (off otherwise); BINDINGS=bindings.json binds @unbound hints"
 	@echo "     with CE_DATABASE and a model (make ollama, the Settings page, or CE_MODEL_ENDPOINT + CE_EMBEDDING_MODEL) it also embeds for similarity search"
-	@echo "     PostgreSQL needs pgvector: docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=ce pgvector/pgvector:pg17"
+	@echo "     PostgreSQL needs pgvector: make postgres starts one and prints its CE_DATABASE"
 	@echo "make evaluate-cs     run the C# extractor over every fixture revision and gate it on the csharp golden units"
 	@echo "make evaluate-ts     same for the TypeScript/JavaScript extractor"
 	@echo "make evaluate-sql    same for the SQL extractor (T-SQL projects, PostgreSQL migrations)"
 
-ci: fixtures-compile test
+local-check:
+	scripts/local-check
 
-test: golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
+pr-check:
+	scripts/pr-check
+
+install-git-hooks:
+	scripts/install-git-hooks
+
+actions-audit:
+	scripts/actions-audit audit
+
+test-local-ci:
+	$(OFFLINE) node bash tests/local-ci.test.sh
+
+security-check:
+	scripts/security-check
+
+ci: security-check fixtures-compile test
+
+test: test-local-ci golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
 
 fixtures:
 	$(OFFLINE) node scripts/build-fixtures.sh
@@ -184,6 +209,45 @@ ollama:
 	  mkdir -p .sandbox-cache && (umask 077 && printf '{\n  "endpoint": "http://host.docker.internal:11434/v1",\n  "chatModel": %s,\n  "embeddingModel": "%s"\n}\n' \
 	    "$$chat" '$(OLLAMA_EMBED)' > .sandbox-cache/model.json) && \
 	  echo "saved .sandbox-cache/model.json: a running explorer picks it up on restart (or Save on the Settings page)"; fi
+
+# Local PostgreSQL with pgvector, on the host's 127.0.0.1 only (dev credentials, never a shared database). The sandbox
+# reaches it as host.docker.internal. Data survives restarts in the ce-postgres volume (docker volume rm ce-postgres resets).
+# ponytail: on Linux, host.docker.internal is the bridge gateway, which a 127.0.0.1-only port does not answer; set SANDBOX_NETWORK=host there.
+PG_IMAGE ?= pgvector/pgvector:0.8.6-pg17
+PG_PORT ?= 5433
+DEV_DATABASE = Host=host.docker.internal;Port=$(PG_PORT);Database=ce;Username=ce;Password=ce
+comma := ,
+postgres:
+	@docker start ce-postgres >/dev/null 2>&1 || docker run -d --name ce-postgres -p 127.0.0.1:$(PG_PORT):5432 \
+	  -e POSTGRES_USER=ce -e POSTGRES_PASSWORD=ce -e POSTGRES_DB=ce -v ce-postgres:/var/lib/postgresql/data $(PG_IMAGE) >/dev/null
+	@# Over TCP: during first-time init the server only listens on its socket, so a socket check is ready too early.
+	@for i in $$(seq 60); do docker exec ce-postgres pg_isready -h 127.0.0.1 -U ce -d ce >/dev/null 2>&1 && break; sleep 1; done
+	@docker exec ce-postgres pg_isready -h 127.0.0.1 -U ce -d ce >/dev/null || { echo "PostgreSQL did not start: docker logs ce-postgres"; exit 1; }
+	@echo "PostgreSQL ready: CE_DATABASE='$(DEV_DATABASE)'"
+
+# Everything for local development. Imports what explore shows ($(ARTIFACTS)) and embeds it (unchanged artifacts and
+# symbols are skipped, so a second run is quick), then runs the explorer with the database. Analyse more with
+# make analyze CAPABILITY=<id> CE_DATABASE='...' (printed above) while it runs; the explorer reloads by itself.
+# The explorer's Analyze code button queues a request that the analyze worker, started next to it, runs on the host.
+dev: dev-data
+	@CE_DATABASE='$(DEV_DATABASE)' GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) scripts/analyze-worker $(CAPABILITIES) </dev/null & \
+	  trap "kill $$! 2>/dev/null" EXIT; \
+	  $(MAKE) --no-print-directory explore CE_DATABASE='$(DEV_DATABASE)'
+
+analyze-worker: build
+	GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) scripts/analyze-worker $(CAPABILITIES)
+
+dev-data: build postgres ollama
+	@mkdir -p .sandbox-cache && find $(subst $(comma), ,$(ARTIFACTS)) -name '*.jsonl' 2>/dev/null | sort > .sandbox-cache/dev-artifacts.txt
+	@echo "== import $$(wc -l < .sandbox-cache/dev-artifacts.txt | tr -d ' ') artifact(s) and embed"
+	@CE_DATABASE='$(DEV_DATABASE)' SANDBOX_PASS_ENV=CE_DATABASE SANDBOX_SOURCES="" $(DOTNET) bash -c '\
+	  ce=platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll; \
+	  dotnet $$ce migrate; \
+	  xargs dotnet $$ce import < .sandbox-cache/dev-artifacts.txt | grep -v "^unchanged" || true; \
+	  dotnet $$ce embed || echo "-- embeddings not updated (see above); similarity search uses what is stored"'
+
+dev-down:
+	-docker stop ce-postgres ce-ollama
 
 clean:
 	rm -rf fixtures/.repos fixtures/.work extractors/ts/node_modules $(UI)/node_modules platform/src/CapabilityExplorer.Explorer/wwwroot

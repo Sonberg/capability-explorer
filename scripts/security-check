@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Full-project lockfile vulnerability gate; no credentials or Docker socket in scanner.
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+[[ $# -eq 0 ]] || { echo 'usage: scripts/security-check' >&2; exit 2; }
+image="$(cat "$root/config/security/trivy-image")"
+[[ "$image" =~ ^aquasec/trivy:[0-9]+\.[0-9]+\.[0-9]+@sha256:[a-f0-9]{64}$ ]] || {
+  echo 'Invalid pinned Trivy image' >&2; exit 2;
+}
+command -v docker >/dev/null || { echo 'Docker is required for the vulnerability check' >&2; exit 1; }
+cache="$root/.sandbox-cache/trivy"
+mkdir -p "$cache"
+if ! docker image inspect "$image" >/dev/null 2>&1; then docker pull "$image"; fi
+printf 'Scanning project dependencies with %s (High/Critical findings fail)\n' "$image"
+exec docker run --rm --user "$(id -u):$(id -g)" --read-only \
+  --tmpfs /tmp:rw,nosuid,size=2g --cap-drop ALL --security-opt no-new-privileges \
+  --pids-limit 512 -v "$root:/work:ro" -v "$cache:/cache" -w /work \
+  "$image" fs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 \
+  --include-dev-deps --disable-telemetry --cache-dir /cache \
+  --config '' --ignorefile '' \
+  --skip-dirs .git --skip-dirs .sandbox-cache \
+  --skip-dirs fixtures/.repos --skip-dirs fixtures/.work \
+  --skip-dirs '**/node_modules' --skip-dirs '**/bin' --skip-dirs '**/obj' \
+  --skip-dirs platform/src/CapabilityExplorer.Explorer/wwwroot .
