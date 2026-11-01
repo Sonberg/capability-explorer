@@ -12,10 +12,11 @@ export interface FlowEdge {
   resolution: string; derivation: string; rule: string | null; unresolvedReason: string | null;
   evidence: Evidence[]; bindingHint?: string; bindingTarget?: string; bindingNote?: string;
   assertionId?: string; termId?: string; reviewer?: string; rationale?: string;
+  occurrenceId?: string | null; inputRef?: string | null; originalRecordId?: string | null;
 }
 export interface FlowResult {
   graph: Graph;
-  selection: { repositoryId: string; commitSha: string; unit: string; unitPath: string; analysisStatus: string; filesTotal: number; filesAnalyzed: number; unresolvedEdges: number }[];
+  selection: { repositoryId: string; commitSha: string; unit: string; unitPath: string; analysisStatus: string; filesTotal: number; filesAnalyzed: number; unresolvedEdges: number | null }[];
   seeds: { occurrenceId: string; nodeId: string }[];
   nodes: FlowNode[]; edges: FlowEdge[];
   coverage: { complete: boolean; truncated: boolean; valueFlowComplete: boolean; reasons: { code: string; message: string; nodeId?: string; edgeId?: string }[] };
