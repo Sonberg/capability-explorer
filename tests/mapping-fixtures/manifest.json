@@ -4,6 +4,16 @@
   "repositoryId": "mapping-replay",
   "commitSha": "93457da2ecaa70e26b3837ce57d43b1c937094c4",
   "inputHash": "93457da2ecaa70e26b3837ce57d43b1c937094c443d7b1a4659f4e91b888c0c3",
+  "inputIdentityTransitions": [
+    {
+      "name": "TypeScript input identity now includes package and compiler configuration",
+      "language": "typescript",
+      "unit": "ts/tsconfig.json",
+      "baseline": "fc2fd0bbd378d99b50fceb749ec3f57e65a1666b11b11dae58aa496d1f404434",
+      "candidate": "a1bb745116df8817f19499eda346e726077f311db3f9aaa1f85663a1751de416",
+      "lockedSourceHash": "93457da2ecaa70e26b3837ce57d43b1c937094c443d7b1a4659f4e91b888c0c3"
+    }
+  ],
   "files": {
     "csharp/HttpFixture.cs": "7bf8654735034d84fde2d00ec2b27cc5f291af6bd018e06708f6d674697c4cad",
     "csharp/HttpFixture.csproj": "067f99fbc27d1722f2e9c303971c4b3385db2ac7a7fcdd986fac6e29879d78b9",

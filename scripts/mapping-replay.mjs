@@ -1,7 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { canonical, checkAssertions, equalRuns, hash, inside, inventory, replayOutputPath, requireThat, verifyEvidence, verifyLockedFiles } from './mapping-replay-lib.mjs';
+import { canonical, checkAssertions, checkInputIdentities, equalRuns, hash, inside, inventory, replayOutputPath, requireThat, verifyEvidence, verifyLockedFiles } from './mapping-replay-lib.mjs';
 
 const root = process.cwd();
 const input = 'tests/mapping-fixtures/source';
@@ -98,7 +98,7 @@ async function artifacts(directory, manifest) {
       requireThat(!units.has(header.unit.path), `duplicate output unit: ${header.unit.path}`); units.add(header.unit.path);
       if (complete.coverage.unresolvedEdges !== undefined) requireThat(complete.coverage.unresolvedEdges === records.filter((r) => r.kind === 'edge' && r.resolution === 'unresolved').length, 'incorrect unresolved edge count');
       evidence += verifyEvidence(records, inside(root, input), manifest);
-      identities.push({ language, unit: header.unit.path, configHash: header.configHash, inputHash: header.inputHash });
+      identities.push({ language, artifactLanguage: header.language, unit: header.unit.path, configHash: header.configHash, inputHash: header.inputHash });
       all.push(...records); hashes[`${language}/${file}`] = hash(bytes);
     }
   }
@@ -111,10 +111,9 @@ async function verify(baselineName, candidateName, manifestName, outputName) {
   const before = await artifacts(resolve(out, 'baseline/1'), manifest), beforeAgain = await artifacts(resolve(out, 'baseline/2'), manifest);
   const after = await artifacts(resolve(out, 'candidate/1'), manifest), afterAgain = await artifacts(resolve(out, 'candidate/2'), manifest);
   equalRuns(before.hashes, beforeAgain.hashes); equalRuns(after.hashes, afterAgain.hashes);
-  requireThat(before.identities.length === after.identities.length, 'unit set changed unexpectedly');
+  const inputIdentityTransitions = checkInputIdentities(before.identities, after.identities, manifest.inputIdentityTransitions ?? [], manifest.inputHash);
   for (let i = 0; i < before.identities.length; i++) {
     const a = before.identities[i], b = after.identities[i];
-    requireThat(a.language === b.language && a.unit === b.unit && a.inputHash === b.inputHash, 'input/unit identity changed');
     if (baseline[`${a.language}Build`] !== candidate[`${a.language}Build`]) requireThat(a.configHash !== b.configHash, 'changed extractor build collides with baseline configHash');
   }
   const delta = checkAssertions(before.all, after.all, manifest.assertions, manifest.expectedChanges);
@@ -123,7 +122,7 @@ async function verify(baselineName, candidateName, manifestName, outputName) {
     manifestHash: hash(readFileSync(inside(root, manifestName))),
     baseline: { commitHint: baseline.commitHint, sourceSnapshotHash: baseline.sourceSnapshotHash, buildHash: baseline.buildHash, artifacts: before.hashes, identities: before.identities },
     candidate: { commitHint: candidate.commitHint, sourceSnapshotHash: candidate.sourceSnapshotHash, buildHash: candidate.buildHash, artifacts: after.hashes, identities: after.identities },
-    repeatBytesEqual: true, schemaValidated: true, evidenceVerified: { baseline: before.evidence, candidate: after.evidence }, ...delta,
+    repeatBytesEqual: true, schemaValidated: true, evidenceVerified: { baseline: before.evidence, candidate: after.evidence }, inputIdentityTransitions, ...delta,
     limitations: ["Commit hints are caller labels; sourceSnapshotHash and buildHash are authoritative.", "Installed dependencies are sealed by file hash; registry tarball integrity is not independently recomputed.", 'Synthetic source only; no private repository fidelity claim.', 'C# framework/package asset selection is covered by dedicated extractor tests, not this HTTP replay.'],
   };
   save(resolve(out, 'report.json'), report);

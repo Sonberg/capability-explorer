@@ -138,3 +138,30 @@ export function checkAssertions(before, after, assertions, expectedChanges = { r
 export function equalRuns(first, second) {
   requireThat(Object.keys(first).length > 0 && canonical(first) === canonical(second), 'missing artifacts or nondeterministic replay bytes');
 }
+
+/** Input-hash algorithm changes require an exact transition bound to the unchanged physical source lock. */
+export function checkInputIdentities(before, after, transitions, lockedSourceHash) {
+  requireThat(Array.isArray(transitions), 'input identity transitions must be an array');
+  requireThat(before.length === after.length, 'unit set changed unexpectedly');
+  const names = new Set(), used = new Set();
+  for (const transition of transitions) {
+    requireThat(typeof transition.name === 'string' && transition.name.length > 0 && !names.has(transition.name)
+      && typeof transition.language === 'string' && typeof transition.unit === 'string'
+      && /^[0-9a-f]{64}$/.test(transition.baseline) && /^[0-9a-f]{64}$/.test(transition.candidate)
+      && transition.baseline !== transition.candidate && transition.lockedSourceHash === lockedSourceHash,
+    'invalid or unbound input identity transition');
+    names.add(transition.name);
+  }
+  for (let i = 0; i < before.length; i++) {
+    const a = before[i], b = after[i];
+    requireThat(a.language === b.language && a.artifactLanguage === b.artifactLanguage && a.unit === b.unit,
+      'input/unit identity changed');
+    if (a.inputHash === b.inputHash) continue;
+    const matches = transitions.filter((t) => t.language === a.artifactLanguage && t.unit === a.unit
+      && t.baseline === a.inputHash && t.candidate === b.inputHash);
+    requireThat(matches.length === 1, 'unexpected input hash change without one exact locked transition');
+    used.add(matches[0].name);
+  }
+  requireThat(used.size === transitions.length, 'unused input identity transition');
+  return transitions.map((t) => ({ name: t.name, language: t.language, unit: t.unit, baseline: t.baseline, candidate: t.candidate, lockedSourceHash: t.lockedSourceHash }));
+}

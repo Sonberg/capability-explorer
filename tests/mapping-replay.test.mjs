@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import test from 'node:test';
-import { canonical, checkAssertions, equalRuns, hash, inside, inventory, replayOutputPath, semanticRecord, snippet, verifyEvidence, verifyLockedFiles } from '../scripts/mapping-replay-lib.mjs';
+import { canonical, checkAssertions, checkInputIdentities, equalRuns, hash, inside, inventory, replayOutputPath, semanticRecord, snippet, verifyEvidence, verifyLockedFiles } from '../scripts/mapping-replay-lib.mjs';
 
 const oldNode = { kind: 'node', id: 'n:old', nodeKind: 'http-endpoint', symbolKey: 'http|old', name: 'old', evidence: ['ev:old'] };
 const newNode = { kind: 'node', id: 'n:new', nodeKind: 'http-endpoint', symbolKey: 'http|new', name: 'new', evidence: ['ev:new'] };
@@ -102,4 +102,20 @@ test('source evidence validates exact UTF-16 spans, revision, path and snippet',
 });
 test('canonical inventories do not depend on property insertion order', () => {
   assert.equal(canonical({ z: 1, a: { y: 2, b: 3 } }), canonical({ a: { b: 3, y: 2 }, z: 1 }));
+});
+test('only an exact reviewed input identity transition bound to locked physical source is accepted', () => {
+  const sourceHash = 'c'.repeat(64);
+  const before = { language: 'ts', artifactLanguage: 'typescript', unit: 'ts/tsconfig.json', inputHash: 'a'.repeat(64) };
+  const after = { ...before, inputHash: 'b'.repeat(64) };
+  const transition = { name: 'include static config', language: 'typescript', unit: before.unit,
+    baseline: before.inputHash, candidate: after.inputHash, lockedSourceHash: sourceHash };
+  assert.equal(checkInputIdentities([before], [after], [transition], sourceHash).length, 1);
+  assert.deepEqual(checkInputIdentities([before], [before], [], sourceHash), []);
+  assert.throws(() => checkInputIdentities([before], [after], [], sourceHash), /unexpected input hash change/);
+  for (const change of [{ inputHash: 'd'.repeat(64) }, { unit: 'other/tsconfig.json' }, { artifactLanguage: 'javascript' }]) {
+    assert.throws(() => checkInputIdentities([before], [{ ...after, ...change }], [transition], sourceHash));
+  }
+  assert.throws(() => checkInputIdentities([before], [after], [transition], 'd'.repeat(64)), /unbound/);
+  assert.throws(() => checkInputIdentities([before], [before], [transition], sourceHash), /unused/);
+  assert.throws(() => checkInputIdentities([after], [before], [transition], sourceHash), /unexpected input hash change/);
 });
