@@ -16,7 +16,7 @@ PR updates and newcomer workflow: [MADR-0005](adr/0005-pr-lifecycle-and-conflict
 
 Release notes: [changelog](CHANGELOG.md), [MADR-0006](adr/0006-keep-a-changelog.md).
 Compatibility/versioning: [MADR-0007](adr/0007-semantic-versioning.md).
-Next proposed large package: [cross-repository flow and reviewed glossary links](plans/cross-repository-value-flow.md), issue #4 layers 4 and 3. Planning only; implementation ownership is not claimed. BPMN/DMN issue #12 still requires an owner scope decision. LikeC4 PRs #14/#15 are now merged into stage.
+Current owner-review package: [cross-repository flow and reviewed glossary links](plans/cross-repository-value-flow.md), issue #4 layers 4 and 3. Implementation and validation are recorded in [the execution receipt](plans/glossary-flow-execution.md); see [MADR-0008](adr/0008-glossary-flow-and-reviewed-assertions.md). BPMN/DMN issue #12 still requires an owner scope decision. LikeC4 PRs #14/#15 are now merged into stage.
 
 ## LikeC4 spike delivery
 
@@ -148,15 +148,34 @@ Implemented in `Calculations.cs`, `CalculationAttributes.cs`, `CalculationIr.cs`
 - Remaining: environment/IaC files as a second binding source (Kubernetes/compose/appsettings), a UI to edit the map,
   and reading analyses from the database in the explorer (it still reads artifact files).
 
-## Glossary: issue #4 first slice
+## Glossary: issue #4 candidates, connections and reviewed assertions
 
 Read-only deterministic candidates and the Glossary tab are implemented in the
 stacked glossary workstream. Names group only by explicit normalization; calendar
 and active qualifiers remain distinct. Source occurrences retain revision/unit/record
 identity, unknowns remain unknown, and comparison completeness is explicit.
 See [MADR-0004](adr/0004-glossary-candidates.md) and
-[build evidence](plans/glossary-build-evidence.md). Flow tracing, persistent reviewed
-terms/same-value links, and LLM proposals remain separate unimplemented layers.
+[candidate build evidence](plans/glossary-build-evidence.md).
+
+The current package adds bounded exact-occurrence source/binding navigation and
+separately attributed human term assertions. PostgreSQL migration 0004 persists
+terms, links and mismatch issues with version conflicts and transactional audit
+writes. Links retain the exact observed commit, unit, occurrence and artifact hash;
+changed inputs require explicit re-review. The Glossary tab uses the existing
+Architecture canvas and source viewer. Without `CE_DATABASE`, source navigation
+works and review is read-only; a configured but unavailable database is an error.
+
+Review terms are global. Capability/revision selection constrains source references
+and their state; it is not an access-control boundary. Term deletion retires its
+links/issues across repositories. The trusted-local write guard is browser request
+protection, not authentication. Audit history is append-only through the application;
+database administrators can still alter storage. No release version is assigned.
+
+Field-level value propagation, runtime traffic, inferred equivalence and LLM
+proposals remain unimplemented. Calls, bindings and shared term hubs must not be
+reported as proof of value equality. #6 extractor gaps, live LikeC4 integration,
+#13 settling performance and owner-controlled #12 BPMN/DMN scope remain separate.
+See [execution evidence and commands](plans/glossary-flow-execution.md).
 
 ## Smaller follow-ups
 

@@ -24,7 +24,7 @@ import { href, symbolHref, useApi, useSelection } from "../state";
 
 // ---------------------------------------------------------------- API shapes
 
-interface ArchNode {
+export interface ArchNode {
   id: string;
   category: string;
   label: string;
@@ -36,7 +36,7 @@ interface ArchNode {
   badges: string[];
 }
 
-interface ArchFact {
+export interface ArchFact {
   relation: string;
   from: SymbolRef;
   to?: SymbolRef;
@@ -47,19 +47,19 @@ interface ArchFact {
   evidence: Evidence[];
 }
 
-interface ArchEdge {
+export interface ArchEdge {
   id: string;
   from: string;
   to: string;
   kind: string;
   label: string;
   count: number;
-  certainty: "proven" | "static" | "bound" | "broken" | "unbound" | "candidate" | "unresolved";
+  certainty: "human" | "proven" | "static" | "bound" | "broken" | "unbound" | "candidate" | "unresolved";
   facts: ArchFact[];
 }
 
-interface Graph {
-  level: "landscape" | "system" | "repository" | "component" | "requests";
+export interface Graph {
+  level: "landscape" | "system" | "repository" | "component" | "requests" | "glossary-flow";
   focus?: string;
   title: string;
   breadcrumbs: { label: string; level: string; focus?: string }[];
@@ -96,6 +96,7 @@ const kindColor: Record<string, string> = {
   handles: "#10b981",
   declares: "#a1a1aa",
   sameName: "#fb7185",
+  "human-assertion": "#a855f7",
   shares: "#6366f1",
 };
 
@@ -109,10 +110,12 @@ const kindLabel: Record<string, string> = {
   handles: "handles endpoint",
   declares: "declares",
   sameName: "same name (unproven)",
+  "human-assertion": "human assertion",
   shares: "shares repository",
 };
 
 const certaintyDash: Record<ArchEdge["certainty"], string | undefined> = {
+  human: "8 3 2 3",
   proven: undefined,
   static: undefined,
   bound: undefined,
@@ -123,6 +126,7 @@ const certaintyDash: Record<ArchEdge["certainty"], string | undefined> = {
 };
 
 const certaintyText: Record<ArchEdge["certainty"], { label: string; tone: Tone; title: string }> = {
+  human: { label: "human assertion", tone: "info", title: "Reviewed assertion of intended meaning with a self-reported reviewer label; no observed runtime value equality is implied" },
   proven: { label: "proven", tone: "ok", title: "Every underlying fact is resolved" },
   static: { label: "static target", tone: "info", title: "Static target proven; the runtime target is not (interface dispatch, DI)" },
   bound: { label: "bound", tone: "ok", title: "Bound by the service map to a declared endpoint (human-derived link; extractor output unchanged)" },
@@ -137,10 +141,10 @@ const certaintyText: Record<ArchEdge["certainty"], { label: string; tone: Tone; 
 const NODE_W = 220;
 const NODE_H = 64;
 
-type CanvasNodeData = { node: ArchNode; selected: boolean; dimmed: boolean };
+export type CanvasNodeData = { node: ArchNode; selected: boolean; dimmed: boolean };
 type GroupNodeData = { label: string };
 
-function layout(graph: Graph, hidden: Set<string>): { nodes: FlowNode[]; edges: FlowEdge[] } {
+export function layout(graph: Graph, hidden: Set<string>): { nodes: FlowNode[]; edges: FlowEdge[] } {
   const edges = graph.edges.filter((e) => !hidden.has(e.kind));
   const g = new dagre.graphlib.Graph({ compound: true, multigraph: true });
   g.setGraph({ rankdir: "LR", nodesep: 22, ranksep: 90, edgesep: 12, marginx: 20, marginy: 20 });
@@ -254,7 +258,7 @@ function GroupView({ data }: NodeProps<FlowNode<GroupNodeData>>) {
   );
 }
 
-const nodeTypes = { arch: ArchNodeView, group: GroupView };
+export const nodeTypes = { arch: ArchNodeView, group: GroupView };
 
 // ---------------------------------------------------------------- view
 

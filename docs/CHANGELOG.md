@@ -12,4 +12,7 @@ history or imply that existing private package versions are product releases.
 ### Added
 
 - Contributor policies for curated release notes and explicit product compatibility/versioning.
-- A proposed execution plan for cross-repository flow navigation and human-reviewed glossary links; the feature is not implemented by this documentation package.
+- Revision-bound glossary connection graphs with bounded traversal, explicit source/binding evidence, calculation-input dependencies and visible coverage gaps.
+- PostgreSQL-backed reviewed terms, occurrence assertions and mismatch issues, with optimistic concurrency, audit attribution and stale-source detection.
+- Integrated glossary flow/review UI, including a read-only mode without a database. Human assertions remain distinct from source facts and do not establish field-level value propagation.
+- MADR-0008 defining evidence navigation, review provenance and the trusted-local mutation boundary.
