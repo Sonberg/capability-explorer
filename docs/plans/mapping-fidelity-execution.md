@@ -88,3 +88,33 @@ claim follows from search results or successful CLI exit alone.
 
 Not yet tested: candidate integrated behavior, private Glufs replay, full candidate
 CI/security, served candidate artifacts, performance comparison or remote deployment.
+
+## Pseudocode and failure paths
+
+1. Parse literal project targets and metadata; reject unsupported conditions with
+   coverage diagnostics. Traverse only reachable target-selected package dependencies.
+2. Ask NuGet.Frameworks for the nearest compatible compile group, prefer ref over lib,
+   and select the exact-target installed reference pack. Missing input stays partial.
+3. Group assemblies by identity and content digest. Deduplicate identical bytes;
+   diagnose conflicting bytes, except documented signed framework overlap policy.
+4. Discover static Next handler exports under the selected app root. Derive route
+   shape and parameter kinds; unsupported handlers/configuration remain incomplete.
+5. Classify HTTP URL as absolute, relative or unknown. Parse the authority separately,
+   apply static base resolution, remove sensitive derived metadata and retain unresolved
+   deployment identity. Unknown authority/options never invent a target or method.
+6. Seal baseline/candidate source and executable manifests, extract each twice offline,
+   validate schema and exact source spans, then compare every semantic record against
+   a reviewed delta inventory. Missing/changed inputs or unexplained deltas fail.
+
+Complexity: framework selection is bounded by available candidate groups; dependency
+traversal uses visited sets over the reachable graph. Assembly hashing is linear in
+selected candidate bytes, grouping/sorting O(n log n). Route scanning is linear in
+source AST size and URL normalization in URL length. Replay hashes all sealed bytes
+and sorts semantic records O(n log n); it is a validation tool, not a request-path
+service. No additional inference, persistent service or image is introduced.
+
+Pseudocode gate: 95/100 (one design iteration). Contracts cover every acceptance row;
+C# HTTP 11/11 and TS mapping/full suite 121/121 have executable positive/negative
+cases. Five points retained for resolution/replay integration evidence, which is
+required at the next gates. Brain closing pass: `sparc/docs/tutorial.md` reconfirmed
+source-bound independent evidence; retrieval found no reason to add runtime machinery.
