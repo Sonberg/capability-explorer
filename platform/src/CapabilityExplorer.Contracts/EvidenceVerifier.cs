@@ -45,15 +45,13 @@ public sealed class EvidenceVerifier(string repositoryDirectory)
                 }
                 else if (Snippet.Sha256(snippet) != evidence.SnippetSha256)
                 {
-                    problems.Add(new Problem(0, $"{evidence.Id}: snippet hash mismatch at {group.Key}:{evidence.Span.StartLine} (text there: {Truncate(snippet)})"));
+                    problems.Add(new Problem(0, $"{evidence.Id}: snippet hash mismatch at {group.Key}:{evidence.Span.StartLine}"));
                 }
             }
         }
 
         return problems;
     }
-
-    private static string Truncate(string s) => s.Length <= 60 ? s : s[..57] + "...";
 
     private async Task<(int ExitCode, string Output)> GitAsync(string[] args, CancellationToken cancellationToken)
     {
