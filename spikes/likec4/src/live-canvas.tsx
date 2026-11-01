@@ -23,6 +23,7 @@ export interface LiveArchitectureCanvasProps<N extends LiveNode=LiveNode, E exte
   graph:Omit<LiveGraph,'nodes'|'edges'> & {readonly nodes:readonly N[]; readonly edges:readonly E[]};
   snapshotKey:string;
   associationIds?:ReadonlySet<string>;
+  hiddenEdgeIds?:ReadonlySet<string>;
   selectedId?:string;
   onNodeSelect:(node:N)=>void;
   onEdgeSelect:(edge:E)=>void;
@@ -52,7 +53,7 @@ function savedGroups(result:LiveModelResult) {
   return {groups:result.groups, notice:''};
 }
 
-function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey, selectedId, onNodeSelect, onEdgeSelect, onNodeDrill, onClearSelection, result}:LiveArchitectureCanvasProps<N,E> & {result:LiveModelResult}) {
+function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey, selectedId, hiddenEdgeIds, onNodeSelect, onEdgeSelect, onNodeDrill, onClearSelection, result}:LiveArchitectureCanvasProps<N,E> & {result:LiveModelResult}) {
   const sourceModel = useMemo(() => LikeC4Model.create(result.modelData), [result]);
   const [initial] = useState(() => savedGroups(result));
   const [groups, setGroups] = useState<Group[]>(initial.groups);
@@ -79,7 +80,15 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
   const acceptLayout = useRef<(layout:LayoutedView)=>void>(()=>{});
   const editable = view === 'flow' || view === 'vertical';
   const generatedView = useMemo(() => editable ? applyLiveGroups(sourceModel.$data.views[view], groups) : sourceModel.$data.views[view], [sourceModel, view, groups, editable]);
-  const layoutView = editable ? customView ?? generatedView : generatedView;
+  const layoutView = useMemo(() => {
+    const customEdges = new Map(customView?.edges.map(edge => [edge.id, edge]));
+    // Captured native edits contain only visible connectors. Restore every source
+    // connector before filtering so toggling a kind back on cannot lose its IDs.
+    const layout = editable && customView ? {...customView, edges:generatedView.edges.map(edge => customEdges.get(edge.id) ?? edge)} : generatedView;
+    if (!hiddenEdgeIds?.size) return layout;
+    return {...layout, edges:layout.edges.filter(edge => (result.edgeSourceIds[edge.id] ?? []).some(id => !hiddenEdgeIds.has(id)))};
+  }, [customView, editable, generatedView, hiddenEdgeIds, result]);
+  const visibleGraph = useMemo(() => ({...graph, edges:graph.edges.filter(edge => !hiddenEdgeIds?.has(edge.id))}), [graph, hiddenEdgeIds]);
   const routing = useRouting(layoutView, orthogonal, resetKey, tracing);
   const currentView = routing.view;
   const model = useMemo(() => LikeC4Model.create({...sourceModel.$data, views:{...sourceModel.$data.views, [view]:currentView}, manualLayouts:{}}), [sourceModel, currentView, view]);
@@ -98,6 +107,7 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
   const motion = animations && !reduced;
 
   useEffect(() => {configureTracing(tracing); return () => configureTracing(false);}, [tracing]);
+  useEffect(() => {setEdgeChoices(choices => choices.some(edge => !hiddenEdgeIds?.has(edge.id)) ? choices : []);}, [hiddenEdgeIds]);
   useEffect(() => {
     document.addEventListener('pointerup', tracePointerUp, true);
     document.addEventListener('pointercancel', traceCancel, true);
@@ -174,7 +184,7 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
           onDelete={() => changeGroups(groups.filter(group => group.id !== activeGroup?.id))} error={error}/>}
         {error && !editing && <div className="storage-notice" role="status">{error}</div>}
         {(edgeChoices.length > 0 || nodeChoices.length > 0) && <aside className="live-originals" aria-label="Original relationships and elements"><button onClick={clear}>Close originals</button>
-          {edgeChoices.length > 0 && <><h2>Original relationships · {edgeChoices.length}</h2><p>This connector represents all relationships below. Select one to inspect its original evidence and direction.</p>{edgeChoices.map(edge => <button key={edge.id} aria-label={`Inspect relationship ${edge.id}`} onClick={() => onEdgeSelect(edge)}><strong>{edge.label ?? edge.kind ?? edge.id}</strong><span>{edge.from} → {edge.to} · {edge.certainty} · {edge.count ?? 1} facts</span><code>{edge.id}</code></button>)}</>}
+          {edgeChoices.length > 0 && <><h2>Original relationships · {edgeChoices.length}</h2><p>This connector represents all relationships below. Select one to inspect its original evidence and direction.</p>{edgeChoices.map(edge => <button key={edge.id} aria-label={`Inspect relationship ${edge.id}`} onClick={() => onEdgeSelect(edge)}><strong>{edge.label ?? edge.kind ?? edge.id}</strong><span>{edge.from} → {edge.to} · {edge.certainty} · {edge.count ?? 1} facts{hiddenEdgeIds?.has(edge.id) ? ' · hidden by current kind filters' : ''}</span><code>{edge.id}</code></button>)}</>}
           {nodeChoices.length > 0 && <><h2>Represented source elements</h2>{nodeChoices.map(node => <button key={node.id} aria-label={`Inspect element ${node.id}`} onClick={() => onNodeSelect(node)}>{node.label ?? node.id}<code>{node.id}</code></button>)}</>}
         </aside>}
         <div className="diagram-surface"><LikeC4ModelProvider likec4model={model}><LikeC4EditorProvider editor={editor}>
@@ -186,7 +196,7 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
             onNavigateTo={switchView} pannable zoomable controls keepAspectRatio={false} reduceGraphics={!motion} enableDynamicViewWalkthrough={false}
             enableElementDetails={false} enableRelationshipDetails={false} showNavigationButtons background="dots" colorScheme={dark ? 'dark' : 'light'}
             mantineTheme={{fontFamily:'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'}} style={{width:'100%', height:'100%'}}>
-            <SelectionBridge onSelection={setSelected}/><LiveSourceBridge graph={graph} result={result} selectedId={selectedId}/>
+            <SelectionBridge onSelection={setSelected}/><LiveSourceBridge graph={visibleGraph} result={result} selectedId={selectedId}/>
             <RoutingTraceBridge view={currentView} context={routing.trace} ready={routing.state === 'ready'}/>
             <style>{`.ce-live-diagram .react-flow__node[data-neighborhood="outside"], .ce-live-diagram .react-flow__edge[data-neighborhood="outside"] { opacity:.18; }
               .ce-live-diagram .react-flow__node[data-source-selected="true"] { outline:3px solid #60a5fa; outline-offset:3px; }
