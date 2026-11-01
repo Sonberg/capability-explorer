@@ -1,0 +1,501 @@
+// Architecture API snapshot; certainty is not upgraded by visualization.
+specification {
+  color ledgerObjective #CE4F7D
+  color ledgerPlatform #00804D
+  color ledgerInitiative #30C653
+  color ledgerBusinessCapability #0033A0
+  color ledgerBusinessContext #FF5A8C
+  color ledgerOrganization #2783FF
+  color ledgerApplication #0783BD
+  color ledgerInterface #00AFA5
+  color ledgerDataObject #7753CF
+  color ledgerItComponent #D68965
+  color ledgerProvider #FF991B
+  color ledgerTechCategory #A84968
+  element repository { style { color slate opacity 12% } }
+  element artifact
+  element service { style { color ledgerApplication } }
+  element application { style { color ledgerApplication } }
+  element datastore { notation "Data reference" style { color ledgerItComponent } }
+  element sqlObject { notation "SQL object" style { color ledgerDataObject shape rectangle } }
+  element database { notation "Concrete database reference" style { color ledgerItComponent shape storage } }
+  element databaseReference { notation "Unresolved database reference" style { color ledgerItComponent shape component border dashed opacity 12% } }
+  element sqlModel { notation "SQL source model" style { color ledgerItComponent shape component opacity 12% } }
+  element channel { style { color ledgerInterface } }
+  relationship observed { color ledgerInterface line solid }
+  relationship association { color ledgerInterface line dashed head none }
+  relationship uncertain { color ledgerInterface line dashed }
+}
+model {
+  repository_0 = repository "api-cs" {
+    description "Explicit repository membership: api-cs"
+    n1 = service "api-cs" {
+      description "Sales.Api"
+      metadata {
+        source "{\"badges\":[\"v3-filter\",\"2 endpoints\",\"2 calculations\"],\"category\":\"service\",\"drill\":{\"focus\":\"api-cs\",\"level\":\"repository\"},\"id\":\"repo:api-cs\",\"label\":\"api-cs\",\"repositoryId\":\"api-cs\",\"sublabel\":\"Sales.Api\"}"
+      }
+    }
+  }
+  repository_1 = repository "forecast-cs" {
+    description "Explicit repository membership: forecast-cs"
+    n2 = service "forecast-cs" {
+      description "Forecast.Api"
+      metadata {
+        source "{\"badges\":[\"v2-contract\",\"2 endpoints\",\"3 calculations\"],\"category\":\"service\",\"drill\":{\"focus\":\"forecast-cs\",\"level\":\"repository\"},\"id\":\"repo:forecast-cs\",\"label\":\"forecast-cs\",\"repositoryId\":\"forecast-cs\",\"sublabel\":\"Forecast.Api\"}"
+      }
+    }
+    n6 = channel "article-stats-updated" {
+      description "topic · forecast-cs/Forecast.Api:config=ServiceBus: ConnectionString"
+      metadata {
+        source "{\"badges\":[\"unbound\"],\"category\":\"channel\",\"group\":\"Messaging\",\"id\":\"res:chan|servicebus|@unbound:forecast-cs/Forecast.Api:config=ServiceBus:ConnectionString|topic/article-stats-updated\",\"label\":\"article-stats-updated\",\"repositoryId\":\"forecast-cs\",\"sublabel\":\"topic · forecast-cs/Forecast.Api:config=ServiceBus: ConnectionString\",\"symbolKey\":\"chan|servicebus|@unbound:forecast-cs/Forecast.Api:config=ServiceBus:ConnectionString|topic/article-stats-updated\"}"
+      }
+    }
+  }
+  repository_2 = repository "pricing-node" {
+    description "Explicit repository membership: pricing-node"
+    n3 = service "pricing-node" {
+      description "@fixture/pricing"
+      metadata {
+        source "{\"badges\":[\"v2-move\",\"3 endpoints\",\"3 calculations\"],\"category\":\"service\",\"drill\":{\"focus\":\"pricing-node\",\"level\":\"repository\"},\"id\":\"repo:pricing-node\",\"label\":\"pricing-node\",\"repositoryId\":\"pricing-node\",\"sublabel\":\"@fixture/pricing\"}"
+      }
+    }
+    n8 = channel "article-stats-updated" {
+      description "queue · sb-pricing.servicebus.windows.net"
+      metadata {
+        source "{\"badges\":[\"bound\"],\"category\":\"channel\",\"group\":\"Messaging\",\"id\":\"res:chan|servicebus|sb-pricing.servicebus.windows.net|queue/article-stats-updated\",\"label\":\"article-stats-updated\",\"repositoryId\":\"pricing-node\",\"sublabel\":\"queue · sb-pricing.servicebus.windows.net\",\"symbolKey\":\"chan|servicebus|sb-pricing.servicebus.windows.net|queue/article-stats-updated\"}"
+      }
+    }
+  }
+  repository_3 = repository "web-ts" {
+    description "Explicit repository membership: web-ts"
+    n4 = application "web-ts" {
+      description "@fixture/web"
+      metadata {
+        source "{\"badges\":[\"v1-base\",\"1 calculations\"],\"category\":\"application\",\"drill\":{\"focus\":\"web-ts\",\"level\":\"repository\"},\"id\":\"repo:web-ts\",\"label\":\"web-ts\",\"repositoryId\":\"web-ts\",\"sublabel\":\"@fixture/web\"}"
+      }
+    }
+  }
+  repository_4 = repository "worker-cs" {
+    description "Explicit repository membership: worker-cs"
+    n5 = service "worker-cs" {
+      description "Sales.Worker"
+      metadata {
+        source "{\"badges\":[\"v2-broken\",\"1 calculations\",\"partial\"],\"category\":\"service\",\"drill\":{\"focus\":\"worker-cs\",\"level\":\"repository\"},\"id\":\"repo:worker-cs\",\"label\":\"worker-cs\",\"repositoryId\":\"worker-cs\",\"sublabel\":\"Sales.Worker\"}"
+      }
+    }
+    n7 = channel "article-stats-updated" {
+      description "entity · worker-cs/Sales.Worker:config=ServiceBus: ConnectionString"
+      metadata {
+        source "{\"badges\":[\"unbound\"],\"category\":\"channel\",\"group\":\"Messaging\",\"id\":\"res:chan|servicebus|@unbound:worker-cs/Sales.Worker:config=ServiceBus:ConnectionString|entity/article-stats-updated\",\"label\":\"article-stats-updated\",\"repositoryId\":\"worker-cs\",\"sublabel\":\"entity · worker-cs/Sales.Worker:config=ServiceBus: ConnectionString\",\"symbolKey\":\"chan|servicebus|@unbound:worker-cs/Sales.Worker:config=ServiceBus:ConnectionString|entity/article-stats-updated\"}"
+      }
+    }
+  }
+  sql_scope_0 = databaseReference "Sales · api-cs/Sales.Api" {
+    description "Logical database reference; target unresolved"
+    metadata {
+      source "{\"binding\":\"unbound\",\"description\":\"Logical database reference; target unresolved\",\"id\":\"sql_scope_0\",\"kind\":\"databaseReference\",\"nodeIds\":[\"res:sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales\"],\"storeRef\":\"@unbound:api-cs/Sales.Api:conn=Sales\",\"title\":\"Sales · api-cs/Sales.Api\"}"
+    }
+    n9 = sqlObject "dbo.Sales" {
+      description "SQL object reference · object type or declaration not established · api-cs/Sales.Api: connection Sales"
+      metadata {
+        source "{\"badges\":[\"unbound\"],\"category\":\"datastore\",\"group\":\"Data\",\"id\":\"res:sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales\",\"label\":\"dbo.Sales\",\"sublabel\":\"api-cs/Sales.Api: connection Sales\",\"symbolKey\":\"sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales\"}"
+      }
+    }
+  }
+  sql_scope_1 = sqlModel "SalesDb · api-cs/SalesDb" {
+    description "SQL source model; deployment unresolved"
+    metadata {
+      source "{\"binding\":\"unbound\",\"description\":\"SQL source model; deployment unresolved\",\"id\":\"sql_scope_1\",\"kind\":\"sqlModel\",\"nodeIds\":[\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.ArticleStats\",\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\"],\"storeRef\":\"@unbound:api-cs/SalesDb:dbproject=SalesDb\",\"title\":\"SalesDb · api-cs/SalesDb\"}"
+    }
+    n10 = sqlObject "dbo.ArticleStats" {
+      description "Declared SQL table · api-cs/SalesDb: db project SalesDb"
+      metadata {
+        source "{\"badges\":[\"unbound\"],\"category\":\"datastore\",\"group\":\"Data\",\"id\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.ArticleStats\",\"label\":\"dbo.ArticleStats\",\"repositoryId\":\"api-cs\",\"sublabel\":\"api-cs/SalesDb: db project SalesDb\",\"symbolKey\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.ArticleStats\"}"
+      }
+    }
+    n11 = sqlObject "dbo.Sales" {
+      description "Declared SQL table · api-cs/SalesDb: db project SalesDb"
+      metadata {
+        source "{\"badges\":[\"unbound\"],\"category\":\"datastore\",\"group\":\"Data\",\"id\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\",\"label\":\"dbo.Sales\",\"repositoryId\":\"api-cs\",\"sublabel\":\"api-cs/SalesDb: db project SalesDb\",\"symbolKey\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\"}"
+      }
+    }
+  }
+  sql_scope_2 = databaseReference "Forecasts · forecast-cs/Forecast.Api" {
+    description "Logical database reference; target unresolved"
+    metadata {
+      source "{\"binding\":\"unbound\",\"description\":\"Logical database reference; target unresolved\",\"id\":\"sql_scope_2\",\"kind\":\"databaseReference\",\"nodeIds\":[\"res:sql|@unbound:forecast-cs/Forecast.Api:conn=Forecasts|forecast.weekly_history\",\"res:sql|@unbound:forecast-cs/Forecast.Api:conn=Forecasts|public.Forecasts\"],\"storeRef\":\"@unbound:forecast-cs/Forecast.Api:conn=Forecasts\",\"title\":\"Forecasts · forecast-cs/Forecast.Api\"}"
+    }
+    n12 = sqlObject "forecast.weekly_history" {
+      description "SQL object reference · object type or declaration not established · forecast-cs/Forecast.Api: connection Forecasts"
+      metadata {
+        source "{\"badges\":[\"unbound\"],\"category\":\"datastore\",\"group\":\"Data\",\"id\":\"res:sql|@unbound:forecast-cs/Forecast.Api:conn=Forecasts|forecast.weekly_history\",\"label\":\"forecast.weekly_history\",\"sublabel\":\"forecast-cs/Forecast.Api: connection Forecasts\",\"symbolKey\":\"sql|@unbound:forecast-cs/Forecast.Api:conn=Forecasts|forecast.weekly_history\"}"
+      }
+    }
+    n13 = sqlObject "public.Forecasts" {
+      description "SQL object reference · object type or declaration not established · forecast-cs/Forecast.Api: connection Forecasts"
+      metadata {
+        source "{\"badges\":[\"unbound\"],\"category\":\"datastore\",\"group\":\"Data\",\"id\":\"res:sql|@unbound:forecast-cs/Forecast.Api:conn=Forecasts|public.Forecasts\",\"label\":\"public.Forecasts\",\"sublabel\":\"forecast-cs/Forecast.Api: connection Forecasts\",\"symbolKey\":\"sql|@unbound:forecast-cs/Forecast.Api:conn=Forecasts|public.Forecasts\"}"
+      }
+    }
+  }
+  sql_scope_3 = databaseReference "PRICING_DATABASE_URL · pricing-node/@fixture/pricing" {
+    description "Logical database reference; target unresolved"
+    metadata {
+      source "{\"binding\":\"unbound\",\"description\":\"Logical database reference; target unresolved\",\"id\":\"sql_scope_3\",\"kind\":\"databaseReference\",\"nodeIds\":[\"res:sql|@unbound:pricing-node/@fixture/pricing:env=PRICING_DATABASE_URL|pricing.demand_signals\",\"res:sql|@unbound:pricing-node/@fixture/pricing:env=PRICING_DATABASE_URL|pricing.prices\"],\"storeRef\":\"@unbound:pricing-node/@fixture/pricing:env=PRICING_DATABASE_URL\",\"title\":\"PRICING_DATABASE_URL · pricing-node/@fixture/pricing\"}"
+    }
+    n14 = sqlObject "pricing.demand_signals" {
+      description "SQL object reference · object type or declaration not established · pricing-node/@fixture/pricing: env PRICING_DATABASE_URL"
+      metadata {
+        source "{\"badges\":[\"unbound\"],\"category\":\"datastore\",\"group\":\"Data\",\"id\":\"res:sql|@unbound:pricing-node/@fixture/pricing:env=PRICING_DATABASE_URL|pricing.demand_signals\",\"label\":\"pricing.demand_signals\",\"sublabel\":\"pricing-node/@fixture/pricing: env PRICING_DATABASE_URL\",\"symbolKey\":\"sql|@unbound:pricing-node/@fixture/pricing:env=PRICING_DATABASE_URL|pricing.demand_signals\"}"
+      }
+    }
+    n15 = sqlObject "pricing.prices" {
+      description "SQL object reference · object type or declaration not established · pricing-node/@fixture/pricing: env PRICING_DATABASE_URL"
+      metadata {
+        source "{\"badges\":[\"unbound\"],\"category\":\"datastore\",\"group\":\"Data\",\"id\":\"res:sql|@unbound:pricing-node/@fixture/pricing:env=PRICING_DATABASE_URL|pricing.prices\",\"label\":\"pricing.prices\",\"sublabel\":\"pricing-node/@fixture/pricing: env PRICING_DATABASE_URL\",\"symbolKey\":\"sql|@unbound:pricing-node/@fixture/pricing:env=PRICING_DATABASE_URL|pricing.prices\"}"
+      }
+    }
+  }
+  sql_scope_4 = sqlModel "pricing-db · pricing-node/pricing-db" {
+    description "SQL source model; deployment unresolved"
+    metadata {
+      source "{\"binding\":\"unbound\",\"description\":\"SQL source model; deployment unresolved\",\"id\":\"sql_scope_4\",\"kind\":\"sqlModel\",\"nodeIds\":[\"res:sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.demand_signals\",\"res:sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.prices\",\"res:sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.sales_ledger\"],\"storeRef\":\"@unbound:pricing-node/pricing-db:dbproject=pricing-db\",\"title\":\"pricing-db · pricing-node/pricing-db\"}"
+    }
+    n16 = sqlObject "pricing.demand_signals" {
+      description "Declared SQL table · pricing-node/pricing-db: db project pricing-db"
+      metadata {
+        source "{\"badges\":[\"unbound\"],\"category\":\"datastore\",\"group\":\"Data\",\"id\":\"res:sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.demand_signals\",\"label\":\"pricing.demand_signals\",\"repositoryId\":\"pricing-node\",\"sublabel\":\"pricing-node/pricing-db: db project pricing-db\",\"symbolKey\":\"sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.demand_signals\"}"
+      }
+    }
+    n17 = sqlObject "pricing.prices" {
+      description "Declared SQL table · pricing-node/pricing-db: db project pricing-db"
+      metadata {
+        source "{\"badges\":[\"unbound\"],\"category\":\"datastore\",\"group\":\"Data\",\"id\":\"res:sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.prices\",\"label\":\"pricing.prices\",\"repositoryId\":\"pricing-node\",\"sublabel\":\"pricing-node/pricing-db: db project pricing-db\",\"symbolKey\":\"sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.prices\"}"
+      }
+    }
+    n18 = sqlObject "pricing.sales_ledger" {
+      description "Declared SQL table · pricing-node/pricing-db: db project pricing-db"
+      metadata {
+        source "{\"badges\":[\"unbound\"],\"category\":\"datastore\",\"group\":\"Data\",\"id\":\"res:sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.sales_ledger\",\"label\":\"pricing.sales_ledger\",\"repositoryId\":\"pricing-node\",\"sublabel\":\"pricing-node/pricing-db: db project pricing-db\",\"symbolKey\":\"sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.sales_ledger\"}"
+      }
+    }
+  }
+  sql_scope_5 = databaseReference "Sales · worker-cs/Sales.Worker" {
+    description "Logical database reference; target unresolved"
+    metadata {
+      source "{\"binding\":\"unbound\",\"description\":\"Logical database reference; target unresolved\",\"id\":\"sql_scope_5\",\"kind\":\"databaseReference\",\"nodeIds\":[\"res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.ArticleStats\",\"res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.Sales\"],\"storeRef\":\"@unbound:worker-cs/Sales.Worker:conn=Sales\",\"title\":\"Sales · worker-cs/Sales.Worker\"}"
+    }
+    n19 = sqlObject "dbo.ArticleStats" {
+      description "SQL object reference · object type or declaration not established · worker-cs/Sales.Worker: connection Sales"
+      metadata {
+        source "{\"badges\":[\"unbound\"],\"category\":\"datastore\",\"group\":\"Data\",\"id\":\"res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.ArticleStats\",\"label\":\"dbo.ArticleStats\",\"sublabel\":\"worker-cs/Sales.Worker: connection Sales\",\"symbolKey\":\"sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.ArticleStats\"}"
+      }
+    }
+    n20 = sqlObject "dbo.Sales" {
+      description "SQL object reference · object type or declaration not established · worker-cs/Sales.Worker: connection Sales"
+      metadata {
+        source "{\"badges\":[\"unbound\"],\"category\":\"datastore\",\"group\":\"Data\",\"id\":\"res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.Sales\",\"label\":\"dbo.Sales\",\"sublabel\":\"worker-cs/Sales.Worker: connection Sales\",\"symbolKey\":\"sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.Sales\"}"
+      }
+    }
+  }
+  n0 = artifact "GET /api/forecasts/{}" {
+    description "bound to forecast-cs/Forecast.Api, but no such endpoint"
+    metadata {
+      source "{\"badges\":[\"broken\"],\"category\":\"unmatched\",\"group\":\"Broken\",\"id\":\"broken:http|forecast-cs/Forecast.Api|GET /api/forecasts/{}\",\"label\":\"GET /api/forecasts/{}\",\"sublabel\":\"bound to forecast-cs/Forecast.Api, but no such endpoint\"}"
+    }
+  }
+  n21 = artifact "dynamic request" {
+    description "target not statically known"
+    metadata {
+      source "{\"badges\":[\"unresolved\"],\"category\":\"unmatched\",\"group\":\"Unmatched\",\"id\":\"unmatched:dynamic request\",\"label\":\"dynamic request\",\"sublabel\":\"target not statically known\"}"
+    }
+  }
+  repository_0.n1 -[uncertain]-> sql_scope_0.n9 "maps to [unbound]" {
+    description "unbound; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"unbound\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"29571e3528e537313f938a1fedae43aaeb4dbef9\",\"endColumn\":43,\"endLine\":13,\"id\":\"ev:7b5256ab204a02f4\",\"path\":\"src/Sales.Api/Data/SalesDbContext.cs\",\"repositoryId\":\"api-cs\",\"startColumn\":13,\"startLine\":13},{\"commitSha\":\"29571e3528e537313f938a1fedae43aaeb4dbef9\",\"endColumn\":76,\"endLine\":9,\"id\":\"ev:2cb6e09e9d3567d9\",\"path\":\"src/Sales.Api/Program.cs\",\"repositoryId\":\"api-cs\",\"startColumn\":48,\"startLine\":9}],\"from\":{\"declared\":true,\"key\":\"cs|api-cs|Sales.Api|T:Sales.Api.Data.SaleEntity\",\"kind\":\"Type\",\"name\":\"SaleEntity\",\"repositoryId\":\"api-cs\"},\"relation\":\"MAPS_TO\",\"resolution\":\"unresolved\",\"rule\":\"efcore 1\",\"to\":{\"declared\":false,\"key\":\"sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales\",\"name\":\"dbo.Sales\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"repo:api-cs\",\"id\":\"repo:api-cs->res:sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales:data\",\"kind\":\"data\",\"label\":\"maps to\",\"to\":\"res:sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales\"}"
+    }
+  }
+  repository_0.n1 -[observed]-> sql_scope_1.n10 "declares [proven]" {
+    description "proven; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"proven\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"29571e3528e537313f938a1fedae43aaeb4dbef9\",\"endColumn\":30,\"endLine\":1,\"id\":\"ev:4ce62c06c04f329e\",\"path\":\"database/tables/ArticleStats.sql\",\"repositoryId\":\"api-cs\",\"startColumn\":1,\"startLine\":1}],\"from\":{\"declared\":true,\"key\":\"proj|api-cs|database\",\"kind\":\"Project\",\"name\":\"SalesDb\",\"repositoryId\":\"api-cs\"},\"relation\":\"DECLARES\",\"resolution\":\"resolved\",\"rule\":\"tsql.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.ArticleStats\",\"kind\":\"Table\",\"name\":\"dbo.ArticleStats\",\"repositoryId\":\"api-cs\"}}],\"from\":\"repo:api-cs\",\"id\":\"repo:api-cs->res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.ArticleStats:declares\",\"kind\":\"declares\",\"label\":\"declares\",\"to\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.ArticleStats\"}"
+    }
+  }
+  repository_0.n1 -[observed]-> sql_scope_1.n11 "declares [proven]" {
+    description "proven; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"proven\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"29571e3528e537313f938a1fedae43aaeb4dbef9\",\"endColumn\":23,\"endLine\":1,\"id\":\"ev:634133732dcadc8b\",\"path\":\"database/tables/Sales.sql\",\"repositoryId\":\"api-cs\",\"startColumn\":1,\"startLine\":1}],\"from\":{\"declared\":true,\"key\":\"proj|api-cs|database\",\"kind\":\"Project\",\"name\":\"SalesDb\",\"repositoryId\":\"api-cs\"},\"relation\":\"DECLARES\",\"resolution\":\"resolved\",\"rule\":\"tsql.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\",\"kind\":\"Table\",\"name\":\"dbo.Sales\",\"repositoryId\":\"api-cs\"}}],\"from\":\"repo:api-cs\",\"id\":\"repo:api-cs->res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales:declares\",\"kind\":\"declares\",\"label\":\"declares\",\"to\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\"}"
+    }
+  }
+  repository_1.n2 -[uncertain]-> repository_0.n1 "GET /api/articles/{}/weekly-sales [candidate]" {
+    description "candidate; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"candidate\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"78bf6a26336545c017efe3aef2cfdb8a6bdb0f98\",\"endColumn\":81,\"endLine\":12,\"id\":\"ev:9a63cb6d85a7305c\",\"path\":\"src/Forecast.Api/Clients/SalesApiClient.cs\",\"repositoryId\":\"forecast-cs\",\"startColumn\":20,\"startLine\":12},{\"commitSha\":\"78bf6a26336545c017efe3aef2cfdb8a6bdb0f98\",\"endColumn\":92,\"endLine\":13,\"id\":\"ev:cececb2876771102\",\"path\":\"src/Forecast.Api/Clients/SalesApiClient.cs\",\"repositoryId\":\"forecast-cs\",\"startColumn\":30,\"startLine\":13},{\"commitSha\":\"78bf6a26336545c017efe3aef2cfdb8a6bdb0f98\",\"endColumn\":77,\"endLine\":15,\"id\":\"ev:c4dee1a397f780ae\",\"path\":\"src/Forecast.Api/Program.cs\",\"repositoryId\":\"forecast-cs\",\"startColumn\":5,\"startLine\":15},{\"commitSha\":\"78bf6a26336545c017efe3aef2cfdb8a6bdb0f98\",\"endColumn\":35,\"endLine\":6,\"id\":\"ev:2a2e836cdc72a50b\",\"path\":\"src/Forecast.Api/appsettings.json\",\"repositoryId\":\"forecast-cs\",\"startColumn\":5,\"startLine\":6}],\"from\":{\"declared\":true,\"key\":\"cs|forecast-cs|Forecast.Api|M:Forecast.Api.Clients.SalesApiClient.GetWeeklyAverageAsync(System.String,System.DateOnly,System.DateOnly,System.Threading.CancellationToken)\",\"kind\":\"Method\",\"name\":\"GetWeeklyAverageAsync\",\"repositoryId\":\"forecast-cs\"},\"relation\":\"REQUESTS\",\"resolution\":\"unresolved\",\"rule\":\"dotnet.httpclient 1\",\"to\":{\"declared\":false,\"key\":\"http|@unbound:forecast-cs/Forecast.Api:config=SalesApi:BaseUrl|GET /api/articles/{}/weekly-sales\",\"name\":\"GET /api/articles/{}/weekly-sales\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"repo:forecast-cs\",\"id\":\"repo:forecast-cs->repo:api-cs:http\",\"kind\":\"http\",\"label\":\"GET /api/articles/{}/weekly-sales\",\"to\":\"repo:api-cs\"}"
+    }
+  }
+  repository_1.n2 -[uncertain]-> sql_scope_2.n12 "maps to [unbound]" {
+    description "unbound; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"unbound\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"78bf6a26336545c017efe3aef2cfdb8a6bdb0f98\",\"endColumn\":47,\"endLine\":5,\"id\":\"ev:a6cd3ebc2bfc450c\",\"path\":\"src/Forecast.Api/Data/WeeklyHistory.cs\",\"repositoryId\":\"forecast-cs\",\"startColumn\":1,\"startLine\":5},{\"commitSha\":\"78bf6a26336545c017efe3aef2cfdb8a6bdb0f98\",\"endColumn\":77,\"endLine\":12,\"id\":\"ev:6537d9f5922a328d\",\"path\":\"src/Forecast.Api/Program.cs\",\"repositoryId\":\"forecast-cs\",\"startColumn\":45,\"startLine\":12}],\"from\":{\"declared\":true,\"key\":\"cs|forecast-cs|Forecast.Api|T:Forecast.Api.Data.WeeklyHistory\",\"kind\":\"Type\",\"name\":\"WeeklyHistory\",\"repositoryId\":\"forecast-cs\"},\"relation\":\"MAPS_TO\",\"resolution\":\"unresolved\",\"rule\":\"efcore 1\",\"to\":{\"declared\":false,\"key\":\"sql|@unbound:forecast-cs/Forecast.Api:conn=Forecasts|forecast.weekly_history\",\"name\":\"forecast.weekly_history\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"repo:forecast-cs\",\"id\":\"repo:forecast-cs->res:sql|@unbound:forecast-cs/Forecast.Api:conn=Forecasts|forecast.weekly_history:data\",\"kind\":\"data\",\"label\":\"maps to\",\"to\":\"res:sql|@unbound:forecast-cs/Forecast.Api:conn=Forecasts|forecast.weekly_history\"}"
+    }
+  }
+  repository_1.n2 -[uncertain]-> sql_scope_2.n13 "2 data [unbound]" {
+    description "unbound; 2 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"unbound\",\"count\":2,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"78bf6a26336545c017efe3aef2cfdb8a6bdb0f98\",\"endColumn\":67,\"endLine\":7,\"id\":\"ev:a7a25b653cbfa751\",\"path\":\"src/Forecast.Api/Data/ForecastDbContext.cs\",\"repositoryId\":\"forecast-cs\",\"startColumn\":5,\"startLine\":7},{\"commitSha\":\"78bf6a26336545c017efe3aef2cfdb8a6bdb0f98\",\"endColumn\":77,\"endLine\":12,\"id\":\"ev:6537d9f5922a328d\",\"path\":\"src/Forecast.Api/Program.cs\",\"repositoryId\":\"forecast-cs\",\"startColumn\":45,\"startLine\":12}],\"from\":{\"declared\":true,\"key\":\"cs|forecast-cs|Forecast.Api|T:Forecast.Api.Data.ForecastEntry\",\"kind\":\"Type\",\"name\":\"ForecastEntry\",\"repositoryId\":\"forecast-cs\"},\"relation\":\"MAPS_TO\",\"resolution\":\"unresolved\",\"rule\":\"efcore 1\",\"to\":{\"declared\":false,\"key\":\"sql|@unbound:forecast-cs/Forecast.Api:conn=Forecasts|public.Forecasts\",\"name\":\"public.Forecasts\"},\"unresolvedReason\":\"configuration\"},{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"78bf6a26336545c017efe3aef2cfdb8a6bdb0f98\",\"endColumn\":51,\"endLine\":39,\"id\":\"ev:e7502e03c7919ae5\",\"path\":\"src/Forecast.Api/Endpoints/ForecastEndpoints.cs\",\"repositoryId\":\"forecast-cs\",\"startColumn\":15,\"startLine\":39}],\"from\":{\"declared\":true,\"key\":\"cs|forecast-cs|Forecast.Api|M:Forecast.Api.Endpoints.ForecastEndpoints.GetForecast(System.Int32,System.String,Forecast.Api.Clients.SalesApiClient,Forecast.Api.Data.Repository{Forecast.Api.Data.WeeklyHistory},Forecast.Api.Data.Repository{Forecast.Api.Data.ForecastEntry},System.IServiceProvider,Microsoft.Extensions.Configuration.IConfiguration,System.Threading.CancellationToken)\",\"kind\":\"Method\",\"name\":\"GetForecast\",\"repositoryId\":\"forecast-cs\"},\"relation\":\"WRITES\",\"resolution\":\"unresolved\",\"rule\":\"efcore 1\",\"to\":{\"declared\":false,\"key\":\"sql|@unbound:forecast-cs/Forecast.Api:conn=Forecasts|public.Forecasts\",\"name\":\"public.Forecasts\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"repo:forecast-cs\",\"id\":\"repo:forecast-cs->res:sql|@unbound:forecast-cs/Forecast.Api:conn=Forecasts|public.Forecasts:data\",\"kind\":\"data\",\"label\":\"2 data\",\"to\":\"res:sql|@unbound:forecast-cs/Forecast.Api:conn=Forecasts|public.Forecasts\"}"
+    }
+  }
+  repository_2.n3 -[uncertain]-> n0 "GET /api/forecasts/{} [broken]" {
+    description "broken; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"broken\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":109,\"endLine\":13,\"id\":\"ev:6806c0f381b7640c\",\"path\":\"src/clients/forecastClient.ts\",\"repositoryId\":\"pricing-node\",\"startColumn\":26,\"startLine\":13},{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":66,\"endLine\":10,\"id\":\"ev:1b729154681f06d8\",\"path\":\"src/clients/forecastClient.ts\",\"repositoryId\":\"pricing-node\",\"startColumn\":14,\"startLine\":10}],\"from\":{\"declared\":true,\"key\":\"ts|pricing-node|@fixture/pricing|src/clients/forecastClient.ts|getForecast#value\",\"kind\":\"Function\",\"name\":\"getForecast\",\"repositoryId\":\"pricing-node\"},\"relation\":\"REQUESTS\",\"resolution\":\"unresolved\",\"rule\":\"axios 1\",\"to\":{\"declared\":false,\"key\":\"http|@unbound:pricing-node/@fixture/pricing:env=FORECAST_API_URL|GET /api/forecasts/{}\",\"name\":\"GET /api/forecasts/{}\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"repo:pricing-node\",\"id\":\"repo:pricing-node->broken:http|forecast-cs/Forecast.Api|GET /api/forecasts/{}:http\",\"kind\":\"http\",\"label\":\"GET /api/forecasts/{}\",\"to\":\"broken:http|forecast-cs/Forecast.Api|GET /api/forecasts/{}\"}"
+    }
+  }
+  repository_2.n3 -[uncertain]-> repository_0.n1 "GET /api/articles/{}/weekly-sales [candidate]" {
+    description "candidate; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"candidate\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":93,\"endLine\":25,\"id\":\"ev:3fea1b44ec1974f1\",\"path\":\"src/generated/salesApi.ts\",\"repositoryId\":\"pricing-node\",\"startColumn\":53,\"startLine\":25},{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":79,\"endLine\":5,\"id\":\"ev:9c8dc810f4e22e4a\",\"path\":\"src/handlers/recalculate.ts\",\"repositoryId\":\"pricing-node\",\"startColumn\":18,\"startLine\":5}],\"from\":{\"declared\":true,\"key\":\"ts|pricing-node|@fixture/pricing|src/generated/salesApi.ts|SalesApi.getWeeklySales#value\",\"kind\":\"Method\",\"name\":\"getWeeklySales\",\"repositoryId\":\"pricing-node\"},\"relation\":\"REQUESTS\",\"resolution\":\"unresolved\",\"rule\":\"openapi.client 1\",\"to\":{\"declared\":false,\"key\":\"http|@unbound:pricing-node/@fixture/pricing:env=SALES_API_URL|GET /api/articles/{}/weekly-sales\",\"name\":\"GET /api/articles/{}/weekly-sales\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"repo:pricing-node\",\"id\":\"repo:pricing-node->repo:api-cs:http\",\"kind\":\"http\",\"label\":\"GET /api/articles/{}/weekly-sales\",\"to\":\"repo:api-cs\"}"
+    }
+  }
+  repository_2.n3 -[uncertain]-> sql_scope_3.n14 "writes [unbound]" {
+    description "unbound; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"unbound\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":126,\"endLine\":12,\"id\":\"ev:74d7590c49123020\",\"path\":\"src/db/priceRepository.ts\",\"repositoryId\":\"pricing-node\",\"startColumn\":23,\"startLine\":12}],\"from\":{\"declared\":true,\"key\":\"ts|pricing-node|@fixture/pricing|src/db/priceRepository.ts|saveSignal#value\",\"kind\":\"Function\",\"name\":\"saveSignal\",\"repositoryId\":\"pricing-node\"},\"relation\":\"WRITES\",\"resolution\":\"unresolved\",\"rule\":\"pg.sql 1\",\"to\":{\"declared\":false,\"key\":\"sql|@unbound:pricing-node/@fixture/pricing:env=PRICING_DATABASE_URL|pricing.demand_signals\",\"name\":\"pricing.demand_signals\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"repo:pricing-node\",\"id\":\"repo:pricing-node->res:sql|@unbound:pricing-node/@fixture/pricing:env=PRICING_DATABASE_URL|pricing.demand_signals:data\",\"kind\":\"data\",\"label\":\"writes\",\"to\":\"res:sql|@unbound:pricing-node/@fixture/pricing:env=PRICING_DATABASE_URL|pricing.demand_signals\"}"
+    }
+  }
+  repository_2.n3 -[observed]-> sql_scope_4.n16 "declares [proven]" {
+    description "proven; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"proven\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":36,\"endLine\":20,\"id\":\"ev:b8e410a93eb2d50c\",\"path\":\"db/migrations/001_pricing.sql\",\"repositoryId\":\"pricing-node\",\"startColumn\":1,\"startLine\":20}],\"from\":{\"declared\":true,\"key\":\"proj|pricing-node|db\",\"kind\":\"Project\",\"name\":\"pricing-db\",\"repositoryId\":\"pricing-node\"},\"relation\":\"DECLARES\",\"resolution\":\"resolved\",\"rule\":\"postgres.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.demand_signals\",\"kind\":\"Table\",\"name\":\"pricing.demand_signals\",\"repositoryId\":\"pricing-node\"}}],\"from\":\"repo:pricing-node\",\"id\":\"repo:pricing-node->res:sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.demand_signals:declares\",\"kind\":\"declares\",\"label\":\"declares\",\"to\":\"res:sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.demand_signals\"}"
+    }
+  }
+  repository_2.n3 -[observed]-> sql_scope_4.n17 "declares [proven]" {
+    description "proven; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"proven\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":28,\"endLine\":3,\"id\":\"ev:218ffaa67ce34b17\",\"path\":\"db/migrations/001_pricing.sql\",\"repositoryId\":\"pricing-node\",\"startColumn\":1,\"startLine\":3}],\"from\":{\"declared\":true,\"key\":\"proj|pricing-node|db\",\"kind\":\"Project\",\"name\":\"pricing-db\",\"repositoryId\":\"pricing-node\"},\"relation\":\"DECLARES\",\"resolution\":\"resolved\",\"rule\":\"postgres.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.prices\",\"kind\":\"Table\",\"name\":\"pricing.prices\",\"repositoryId\":\"pricing-node\"}}],\"from\":\"repo:pricing-node\",\"id\":\"repo:pricing-node->res:sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.prices:declares\",\"kind\":\"declares\",\"label\":\"declares\",\"to\":\"res:sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.prices\"}"
+    }
+  }
+  repository_2.n3 -[observed]-> sql_scope_4.n18 "declares [proven]" {
+    description "proven; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"proven\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":34,\"endLine\":10,\"id\":\"ev:8fdcf6c09d482237\",\"path\":\"db/migrations/001_pricing.sql\",\"repositoryId\":\"pricing-node\",\"startColumn\":1,\"startLine\":10}],\"from\":{\"declared\":true,\"key\":\"proj|pricing-node|db\",\"kind\":\"Project\",\"name\":\"pricing-db\",\"repositoryId\":\"pricing-node\"},\"relation\":\"DECLARES\",\"resolution\":\"resolved\",\"rule\":\"postgres.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.sales_ledger\",\"kind\":\"Table\",\"name\":\"pricing.sales_ledger\",\"repositoryId\":\"pricing-node\"}}],\"from\":\"repo:pricing-node\",\"id\":\"repo:pricing-node->res:sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.sales_ledger:declares\",\"kind\":\"declares\",\"label\":\"declares\",\"to\":\"res:sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.sales_ledger\"}"
+    }
+  }
+  repository_2.n3 -[uncertain]-> n21 "dynamic request [unresolved]" {
+    description "unresolved; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"unresolved\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":50,\"endLine\":18,\"id\":\"ev:86568afba6cafe0a\",\"path\":\"src/generated/salesApi.ts\",\"repositoryId\":\"pricing-node\",\"startColumn\":28,\"startLine\":18}],\"from\":{\"declared\":true,\"key\":\"ts|pricing-node|@fixture/pricing|src/generated/salesApi.ts|SalesApi.request#value\",\"kind\":\"Method\",\"name\":\"request\",\"repositoryId\":\"pricing-node\"},\"relation\":\"REQUESTS\",\"resolution\":\"unresolved\",\"rule\":\"web.fetch 1\",\"unresolvedReason\":\"dynamic-string\"}],\"from\":\"repo:pricing-node\",\"id\":\"repo:pricing-node->unmatched:dynamic request:http\",\"kind\":\"http\",\"label\":\"dynamic request\",\"to\":\"unmatched:dynamic request\"}"
+    }
+  }
+  repository_3.n4 -[uncertain]-> repository_0.n1 "GET /api/articles/{}/weekly-sales [candidate]" {
+    description "candidate; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"candidate\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"4f254bb0209550bfe8fd40459ae4136b1d37ebe4\",\"endColumn\":116,\"endLine\":11,\"id\":\"ev:150569d7c9a4a809\",\"path\":\"src/api/salesClient.ts\",\"repositoryId\":\"web-ts\",\"startColumn\":15,\"startLine\":11},{\"commitSha\":\"4f254bb0209550bfe8fd40459ae4136b1d37ebe4\",\"endColumn\":55,\"endLine\":12,\"id\":\"ev:b950720365391d0d\",\"path\":\"src/api/salesClient.ts\",\"repositoryId\":\"web-ts\",\"startColumn\":26,\"startLine\":12}],\"from\":{\"declared\":true,\"key\":\"ts|web-ts|@fixture/web|src/api/salesClient.ts|fetchWeeklySales#value\",\"kind\":\"Function\",\"name\":\"fetchWeeklySales\",\"repositoryId\":\"web-ts\"},\"relation\":\"REQUESTS\",\"resolution\":\"unresolved\",\"rule\":\"web.fetch 1\",\"to\":{\"declared\":false,\"key\":\"http|@unbound:web-ts/@fixture/web:base=salesApiBaseUrl|GET /api/articles/{}/weekly-sales\",\"name\":\"GET /api/articles/{}/weekly-sales\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"repo:web-ts\",\"id\":\"repo:web-ts->repo:api-cs:http\",\"kind\":\"http\",\"label\":\"GET /api/articles/{}/weekly-sales\",\"to\":\"repo:api-cs\"}"
+    }
+  }
+  repository_4.n5 -[uncertain]-> repository_4.n7 "publishes [unbound]" {
+    description "unbound; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"unbound\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"b884b04321a12d82c23f8575c94c1980de349ce9\",\"endColumn\":64,\"endLine\":12,\"id\":\"ev:6031dfa3fd591ea6\",\"path\":\"src/Sales.Worker/Messaging/StatsPublisher.cs\",\"repositoryId\":\"worker-cs\",\"startColumn\":34,\"startLine\":12},{\"commitSha\":\"b884b04321a12d82c23f8575c94c1980de349ce9\",\"endColumn\":39,\"endLine\":14,\"id\":\"ev:ce457488e78e3a65\",\"path\":\"src/Sales.Worker/Messaging/StatsPublisher.cs\",\"repositoryId\":\"worker-cs\",\"startColumn\":15,\"startLine\":14}],\"from\":{\"declared\":true,\"key\":\"cs|worker-cs|Sales.Worker|M:Sales.Worker.Messaging.StatsPublisher.PublishAsync(Sales.Worker.Messaging.ArticleStatsUpdated,System.Threading.CancellationToken)\",\"kind\":\"Method\",\"name\":\"PublishAsync\",\"repositoryId\":\"worker-cs\"},\"relation\":\"PUBLISHES\",\"resolution\":\"unresolved\",\"rule\":\"azure.servicebus 1\",\"to\":{\"declared\":true,\"key\":\"chan|servicebus|@unbound:worker-cs/Sales.Worker:config=ServiceBus:ConnectionString|entity/article-stats-updated\",\"kind\":\"Channel\",\"name\":\"article-stats-updated\",\"repositoryId\":\"worker-cs\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"repo:worker-cs\",\"id\":\"repo:worker-cs->res:chan|servicebus|@unbound:worker-cs/Sales.Worker:config=ServiceBus:ConnectionString|entity/article-stats-updated:message\",\"kind\":\"message\",\"label\":\"publishes\",\"to\":\"res:chan|servicebus|@unbound:worker-cs/Sales.Worker:config=ServiceBus:ConnectionString|entity/article-stats-updated\"}"
+    }
+  }
+  repository_4.n5 -[uncertain]-> sql_scope_5.n19 "writes [unbound]" {
+    description "unbound; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"unbound\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"b884b04321a12d82c23f8575c94c1980de349ce9\",\"endColumn\":52,\"endLine\":19,\"id\":\"ev:37a5d5bec65c2d65\",\"path\":\"src/Sales.Worker/Data/StatsRepository.cs\",\"repositoryId\":\"worker-cs\",\"startColumn\":9,\"startLine\":19},{\"commitSha\":\"b884b04321a12d82c23f8575c94c1980de349ce9\",\"endColumn\":124,\"endLine\":9,\"id\":\"ev:ab804a869b03f29f\",\"path\":\"src/Sales.Worker/Program.cs\",\"repositoryId\":\"worker-cs\",\"startColumn\":96,\"startLine\":9}],\"from\":{\"declared\":true,\"key\":\"cs|worker-cs|Sales.Worker|M:Sales.Worker.Data.StatsRepository.SaveAverageAsync(System.String,System.Decimal)\",\"kind\":\"Method\",\"name\":\"SaveAverageAsync\",\"repositoryId\":\"worker-cs\"},\"relation\":\"WRITES\",\"resolution\":\"unresolved\",\"rule\":\"dapper.sql 1\",\"to\":{\"declared\":false,\"key\":\"sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.ArticleStats\",\"name\":\"dbo.ArticleStats\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"repo:worker-cs\",\"id\":\"repo:worker-cs->res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.ArticleStats:data\",\"kind\":\"data\",\"label\":\"writes\",\"to\":\"res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.ArticleStats\"}"
+    }
+  }
+  repository_1.n6 -[uncertain]-> repository_1.n2 "consumes [unbound]" {
+    description "unbound; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"unbound\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"78bf6a26336545c017efe3aef2cfdb8a6bdb0f98\",\"endColumn\":88,\"endLine\":14,\"id\":\"ev:c059acbb38b8abe7\",\"path\":\"src/Forecast.Api/Messaging/StatsUpdatedConsumer.cs\",\"repositoryId\":\"forecast-cs\",\"startColumn\":37,\"startLine\":14},{\"commitSha\":\"78bf6a26336545c017efe3aef2cfdb8a6bdb0f98\",\"endColumn\":54,\"endLine\":15,\"id\":\"ev:9d2759b85db858be\",\"path\":\"src/Forecast.Api/Messaging/StatsUpdatedConsumer.cs\",\"repositoryId\":\"forecast-cs\",\"startColumn\":9,\"startLine\":15}],\"from\":{\"declared\":true,\"key\":\"cs|forecast-cs|Forecast.Api|M:Forecast.Api.Messaging.StatsUpdatedConsumer.ExecuteAsync(System.Threading.CancellationToken)\",\"kind\":\"Method\",\"name\":\"ExecuteAsync\",\"repositoryId\":\"forecast-cs\"},\"relation\":\"CONSUMES\",\"resolution\":\"unresolved\",\"rule\":\"azure.servicebus 1\",\"to\":{\"declared\":true,\"key\":\"chan|servicebus|@unbound:forecast-cs/Forecast.Api:config=ServiceBus:ConnectionString|topic/article-stats-updated\",\"kind\":\"Channel\",\"name\":\"article-stats-updated\",\"repositoryId\":\"forecast-cs\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"res:chan|servicebus|@unbound:forecast-cs/Forecast.Api:config=ServiceBus:ConnectionString|topic/article-stats-updated\",\"id\":\"res:chan|servicebus|@unbound:forecast-cs/Forecast.Api:config=ServiceBus:ConnectionString|topic/article-stats-updated->repo:forecast-cs:message\",\"kind\":\"message\",\"label\":\"consumes\",\"to\":\"repo:forecast-cs\"}"
+    }
+  }
+  repository_1.n6 -[association]-> repository_4.n7 "same name, not proven same [candidate]" {
+    description "candidate; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"candidate\",\"count\":1,\"facts\":[],\"from\":\"res:chan|servicebus|@unbound:forecast-cs/Forecast.Api:config=ServiceBus:ConnectionString|topic/article-stats-updated\",\"id\":\"res:chan|servicebus|@unbound:forecast-cs/Forecast.Api:config=ServiceBus:ConnectionString|topic/article-stats-updated~res:chan|servicebus|@unbound:worker-cs/Sales.Worker:config=ServiceBus:ConnectionString|entity/article-stats-updated\",\"kind\":\"sameName\",\"label\":\"same name, not proven same\",\"to\":\"res:chan|servicebus|@unbound:worker-cs/Sales.Worker:config=ServiceBus:ConnectionString|entity/article-stats-updated\"}"
+    }
+  }
+  repository_4.n7 -[association]-> repository_2.n8 "same name, not proven same [candidate]" {
+    description "candidate; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"candidate\",\"count\":1,\"facts\":[],\"from\":\"res:chan|servicebus|@unbound:worker-cs/Sales.Worker:config=ServiceBus:ConnectionString|entity/article-stats-updated\",\"id\":\"res:chan|servicebus|@unbound:worker-cs/Sales.Worker:config=ServiceBus:ConnectionString|entity/article-stats-updated~res:chan|servicebus|sb-pricing.servicebus.windows.net|queue/article-stats-updated\",\"kind\":\"sameName\",\"label\":\"same name, not proven same\",\"to\":\"res:chan|servicebus|sb-pricing.servicebus.windows.net|queue/article-stats-updated\"}"
+    }
+  }
+  repository_2.n8 -[observed]-> repository_2.n3 "consumes [proven]" {
+    description "proven; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"proven\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":66,\"endLine\":19,\"id\":\"ev:07f455e4bef5c087\",\"path\":\"src/messaging/statsListener.ts\",\"repositoryId\":\"pricing-node\",\"startColumn\":20,\"startLine\":19},{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":80,\"endLine\":18,\"id\":\"ev:09eac8376a813ec3\",\"path\":\"src/messaging/statsListener.ts\",\"repositoryId\":\"pricing-node\",\"startColumn\":18,\"startLine\":18}],\"from\":{\"declared\":true,\"key\":\"ts|pricing-node|@fixture/pricing|src/messaging/statsListener.ts|startStatsListener#value\",\"kind\":\"Function\",\"name\":\"startStatsListener\",\"repositoryId\":\"pricing-node\"},\"relation\":\"CONSUMES\",\"resolution\":\"resolved\",\"rule\":\"azure.servicebus 1\",\"to\":{\"declared\":true,\"key\":\"chan|servicebus|sb-pricing.servicebus.windows.net|queue/article-stats-updated\",\"kind\":\"Channel\",\"name\":\"article-stats-updated\",\"repositoryId\":\"pricing-node\"}}],\"from\":\"res:chan|servicebus|sb-pricing.servicebus.windows.net|queue/article-stats-updated\",\"id\":\"res:chan|servicebus|sb-pricing.servicebus.windows.net|queue/article-stats-updated->repo:pricing-node:message\",\"kind\":\"message\",\"label\":\"consumes\",\"to\":\"repo:pricing-node\"}"
+    }
+  }
+  sql_scope_0.n9 -[uncertain]-> repository_0.n1 "reads [unbound]" {
+    description "unbound; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"unbound\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"29571e3528e537313f938a1fedae43aaeb4dbef9\",\"endColumn\":30,\"endLine\":15,\"id\":\"ev:67d4bac124d66bfb\",\"path\":\"src/Sales.Api/Data/SalesRepository.cs\",\"repositoryId\":\"api-cs\",\"startColumn\":22,\"startLine\":15}],\"from\":{\"declared\":true,\"key\":\"cs|api-cs|Sales.Api|M:Sales.Api.Data.SalesRepository.GetSalesAsync(System.String,System.DateOnly,System.DateOnly,System.Threading.CancellationToken)\",\"kind\":\"Method\",\"name\":\"GetSalesAsync\",\"repositoryId\":\"api-cs\"},\"relation\":\"READS\",\"resolution\":\"unresolved\",\"rule\":\"efcore 1\",\"to\":{\"declared\":false,\"key\":\"sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales\",\"name\":\"dbo.Sales\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"res:sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales\",\"id\":\"res:sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales->repo:api-cs:data\",\"kind\":\"data\",\"label\":\"reads\",\"to\":\"repo:api-cs\"}"
+    }
+  }
+  sql_scope_0.n9 -[association]-> sql_scope_1.n11 "same name, not proven same [candidate]" {
+    description "candidate; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"candidate\",\"count\":1,\"facts\":[],\"from\":\"res:sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales\",\"id\":\"res:sql|@unbound:api-cs/Sales.Api:conn=Sales|dbo.Sales~res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\",\"kind\":\"sameName\",\"label\":\"same name, not proven same\",\"to\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\"}"
+    }
+  }
+  sql_scope_1.n10 -[association]-> sql_scope_5.n19 "same name, not proven same [candidate]" {
+    description "candidate; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"candidate\",\"count\":1,\"facts\":[],\"from\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.ArticleStats\",\"id\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.ArticleStats~res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.ArticleStats\",\"kind\":\"sameName\",\"label\":\"same name, not proven same\",\"to\":\"res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.ArticleStats\"}"
+    }
+  }
+  sql_scope_1.n11 -[observed]-> repository_0.n1 "reads ×4 [proven]" {
+    description "proven; 4 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"proven\",\"count\":4,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"29571e3528e537313f938a1fedae43aaeb4dbef9\",\"endColumn\":41,\"endLine\":17,\"id\":\"ev:11dd0d4038ad7205\",\"path\":\"database/functions/fnWeeklySalesAverage.sql\",\"repositoryId\":\"api-cs\",\"startColumn\":11,\"startLine\":17}],\"from\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.fnWeeklySalesAverage\",\"kind\":\"Routine\",\"name\":\"dbo.fnWeeklySalesAverage\",\"repositoryId\":\"api-cs\"},\"relation\":\"READS\",\"resolution\":\"resolved\",\"rule\":\"tsql.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales#SoldOn\",\"kind\":\"Column\",\"name\":\"SoldOn\",\"repositoryId\":\"api-cs\"}},{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"29571e3528e537313f938a1fedae43aaeb4dbef9\",\"endColumn\":24,\"endLine\":15,\"id\":\"ev:6fb0fee39ec1db8d\",\"path\":\"database/functions/fnWeeklySalesAverage.sql\",\"repositoryId\":\"api-cs\",\"startColumn\":5,\"startLine\":15}],\"from\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.fnWeeklySalesAverage\",\"kind\":\"Routine\",\"name\":\"dbo.fnWeeklySalesAverage\",\"repositoryId\":\"api-cs\"},\"relation\":\"READS\",\"resolution\":\"resolved\",\"rule\":\"tsql.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\",\"kind\":\"Table\",\"name\":\"dbo.Sales\",\"repositoryId\":\"api-cs\"}},{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"29571e3528e537313f938a1fedae43aaeb4dbef9\",\"endColumn\":34,\"endLine\":12,\"id\":\"ev:de39e11610c94198\",\"path\":\"database/functions/fnWeeklySalesAverage.sql\",\"repositoryId\":\"api-cs\",\"startColumn\":24,\"startLine\":12}],\"from\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.fnWeeklySalesAverage\",\"kind\":\"Routine\",\"name\":\"dbo.fnWeeklySalesAverage\",\"repositoryId\":\"api-cs\"},\"relation\":\"READS\",\"resolution\":\"resolved\",\"rule\":\"tsql.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales#Quantity\",\"kind\":\"Column\",\"name\":\"Quantity\",\"repositoryId\":\"api-cs\"}},{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"29571e3528e537313f938a1fedae43aaeb4dbef9\",\"endColumn\":35,\"endLine\":16,\"id\":\"ev:f64446797c298c9c\",\"path\":\"database/functions/fnWeeklySalesAverage.sql\",\"repositoryId\":\"api-cs\",\"startColumn\":11,\"startLine\":16}],\"from\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.fnWeeklySalesAverage\",\"kind\":\"Routine\",\"name\":\"dbo.fnWeeklySalesAverage\",\"repositoryId\":\"api-cs\"},\"relation\":\"READS\",\"resolution\":\"resolved\",\"rule\":\"tsql.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales#ArticleId\",\"kind\":\"Column\",\"name\":\"ArticleId\",\"repositoryId\":\"api-cs\"}}],\"from\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\",\"id\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales->repo:api-cs:data\",\"kind\":\"data\",\"label\":\"reads ×4\",\"to\":\"repo:api-cs\"}"
+    }
+  }
+  sql_scope_1.n11 -[association]-> sql_scope_5.n20 "same name, not proven same [candidate]" {
+    description "candidate; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"candidate\",\"count\":1,\"facts\":[],\"from\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales\",\"id\":\"res:sql|@unbound:api-cs/SalesDb:dbproject=SalesDb|dbo.Sales~res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.Sales\",\"kind\":\"sameName\",\"label\":\"same name, not proven same\",\"to\":\"res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.Sales\"}"
+    }
+  }
+  sql_scope_2.n12 -[uncertain]-> repository_1.n2 "reads [unbound]" {
+    description "unbound; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"unbound\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"78bf6a26336545c017efe3aef2cfdb8a6bdb0f98\",\"endColumn\":93,\"endLine\":31,\"id\":\"ev:fc2e2089ed1e460f\",\"path\":\"src/Forecast.Api/Endpoints/ForecastEndpoints.cs\",\"repositoryId\":\"forecast-cs\",\"startColumn\":26,\"startLine\":31}],\"from\":{\"declared\":true,\"key\":\"cs|forecast-cs|Forecast.Api|M:Forecast.Api.Endpoints.ForecastEndpoints.GetForecast(System.Int32,System.String,Forecast.Api.Clients.SalesApiClient,Forecast.Api.Data.Repository{Forecast.Api.Data.WeeklyHistory},Forecast.Api.Data.Repository{Forecast.Api.Data.ForecastEntry},System.IServiceProvider,Microsoft.Extensions.Configuration.IConfiguration,System.Threading.CancellationToken)\",\"kind\":\"Method\",\"name\":\"GetForecast\",\"repositoryId\":\"forecast-cs\"},\"relation\":\"READS\",\"resolution\":\"unresolved\",\"rule\":\"efcore 1\",\"to\":{\"declared\":false,\"key\":\"sql|@unbound:forecast-cs/Forecast.Api:conn=Forecasts|forecast.weekly_history\",\"name\":\"forecast.weekly_history\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"res:sql|@unbound:forecast-cs/Forecast.Api:conn=Forecasts|forecast.weekly_history\",\"id\":\"res:sql|@unbound:forecast-cs/Forecast.Api:conn=Forecasts|forecast.weekly_history->repo:forecast-cs:data\",\"kind\":\"data\",\"label\":\"reads\",\"to\":\"repo:forecast-cs\"}"
+    }
+  }
+  sql_scope_3.n14 -[association]-> sql_scope_4.n16 "same name, not proven same [candidate]" {
+    description "candidate; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"candidate\",\"count\":1,\"facts\":[],\"from\":\"res:sql|@unbound:pricing-node/@fixture/pricing:env=PRICING_DATABASE_URL|pricing.demand_signals\",\"id\":\"res:sql|@unbound:pricing-node/@fixture/pricing:env=PRICING_DATABASE_URL|pricing.demand_signals~res:sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.demand_signals\",\"kind\":\"sameName\",\"label\":\"same name, not proven same\",\"to\":\"res:sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.demand_signals\"}"
+    }
+  }
+  sql_scope_3.n15 -[uncertain]-> repository_2.n3 "reads ×2 [unbound]" {
+    description "unbound; 2 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"unbound\",\"count\":2,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":105,\"endLine\":11,\"id\":\"ev:b0d9d9dfa5c6e3f6\",\"path\":\"src/db/priceRepository.ts\",\"repositoryId\":\"pricing-node\",\"startColumn\":22,\"startLine\":11},{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":78,\"endLine\":9,\"id\":\"ev:0eac9937b18cd472\",\"path\":\"src/db/priceRepository.ts\",\"repositoryId\":\"pricing-node\",\"startColumn\":46,\"startLine\":9}],\"from\":{\"declared\":true,\"key\":\"ts|pricing-node|@fixture/pricing|src/db/priceRepository.ts|findPrice#value\",\"kind\":\"Function\",\"name\":\"findPrice\",\"repositoryId\":\"pricing-node\"},\"relation\":\"READS\",\"resolution\":\"unresolved\",\"rule\":\"pg.sql 1\",\"to\":{\"declared\":false,\"key\":\"sql|@unbound:pricing-node/@fixture/pricing:env=PRICING_DATABASE_URL|pricing.prices\",\"name\":\"pricing.prices\"},\"unresolvedReason\":\"configuration\"},{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":129,\"endLine\":20,\"id\":\"ev:4db88a7206f478df\",\"path\":\"src/db/priceRepository.ts\",\"repositoryId\":\"pricing-node\",\"startColumn\":45,\"startLine\":20},{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":73,\"endLine\":19,\"id\":\"ev:25d8400392f64c07\",\"path\":\"src/db/priceRepository.ts\",\"repositoryId\":\"pricing-node\",\"startColumn\":34,\"startLine\":19}],\"from\":{\"declared\":true,\"key\":\"ts|pricing-node|@fixture/pricing|src/db/priceRepository.ts|listPrices#value\",\"kind\":\"Function\",\"name\":\"listPrices\",\"repositoryId\":\"pricing-node\"},\"relation\":\"READS\",\"resolution\":\"unresolved\",\"rule\":\"pg.sql 1\",\"to\":{\"declared\":false,\"key\":\"sql|@unbound:pricing-node/@fixture/pricing:env=PRICING_DATABASE_URL|pricing.prices\",\"name\":\"pricing.prices\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"res:sql|@unbound:pricing-node/@fixture/pricing:env=PRICING_DATABASE_URL|pricing.prices\",\"id\":\"res:sql|@unbound:pricing-node/@fixture/pricing:env=PRICING_DATABASE_URL|pricing.prices->repo:pricing-node:data\",\"kind\":\"data\",\"label\":\"reads ×2\",\"to\":\"repo:pricing-node\"}"
+    }
+  }
+  sql_scope_3.n15 -[association]-> sql_scope_4.n17 "same name, not proven same [candidate]" {
+    description "candidate; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"candidate\",\"count\":1,\"facts\":[],\"from\":\"res:sql|@unbound:pricing-node/@fixture/pricing:env=PRICING_DATABASE_URL|pricing.prices\",\"id\":\"res:sql|@unbound:pricing-node/@fixture/pricing:env=PRICING_DATABASE_URL|pricing.prices~res:sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.prices\",\"kind\":\"sameName\",\"label\":\"same name, not proven same\",\"to\":\"res:sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.prices\"}"
+    }
+  }
+  sql_scope_4.n18 -[observed]-> repository_2.n3 "reads ×5 [proven]" {
+    description "proven; 5 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"proven\",\"count\":5,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":35,\"endLine\":10,\"id\":\"ev:6b69e96748474215\",\"path\":\"db/migrations/002_weekly_revenue.sql\",\"repositoryId\":\"pricing-node\",\"startColumn\":5,\"startLine\":10}],\"from\":{\"declared\":true,\"key\":\"sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.weekly_revenue\",\"kind\":\"Routine\",\"name\":\"pricing.weekly_revenue\",\"repositoryId\":\"pricing-node\"},\"relation\":\"READS\",\"resolution\":\"resolved\",\"rule\":\"postgres.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.sales_ledger\",\"kind\":\"Table\",\"name\":\"pricing.sales_ledger\",\"repositoryId\":\"pricing-node\"}},{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":38,\"endLine\":11,\"id\":\"ev:0e8776c713d0c383\",\"path\":\"db/migrations/002_weekly_revenue.sql\",\"repositoryId\":\"pricing-node\",\"startColumn\":11,\"startLine\":11}],\"from\":{\"declared\":true,\"key\":\"sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.weekly_revenue\",\"kind\":\"Routine\",\"name\":\"pricing.weekly_revenue\",\"repositoryId\":\"pricing-node\"},\"relation\":\"READS\",\"resolution\":\"resolved\",\"rule\":\"postgres.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.sales_ledger#article_id\",\"kind\":\"Column\",\"name\":\"article_id\",\"repositoryId\":\"pricing-node\"}},{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":32,\"endLine\":7,\"id\":\"ev:6295fc60a1ec8a76\",\"path\":\"db/migrations/002_weekly_revenue.sql\",\"repositoryId\":\"pricing-node\",\"startColumn\":20,\"startLine\":7}],\"from\":{\"declared\":true,\"key\":\"sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.weekly_revenue\",\"kind\":\"Routine\",\"name\":\"pricing.weekly_revenue\",\"repositoryId\":\"pricing-node\"},\"relation\":\"READS\",\"resolution\":\"resolved\",\"rule\":\"postgres.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.sales_ledger#amount_ore\",\"kind\":\"Column\",\"name\":\"amount_ore\",\"repositoryId\":\"pricing-node\"}},{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":69,\"endLine\":8,\"id\":\"ev:2fc092a2f41e1f3d\",\"path\":\"db/migrations/002_weekly_revenue.sql\",\"repositoryId\":\"pricing-node\",\"startColumn\":40,\"startLine\":8}],\"from\":{\"declared\":true,\"key\":\"sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.weekly_revenue\",\"kind\":\"Routine\",\"name\":\"pricing.weekly_revenue\",\"repositoryId\":\"pricing-node\"},\"relation\":\"READS\",\"resolution\":\"resolved\",\"rule\":\"postgres.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.sales_ledger#sold_at\",\"kind\":\"Column\",\"name\":\"sold_at\",\"repositoryId\":\"pricing-node\"}},{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"a0807a96e86264b9765e365721395176aafbe0ce\",\"endColumn\":45,\"endLine\":7,\"id\":\"ev:420be9e35ac2bf51\",\"path\":\"db/migrations/002_weekly_revenue.sql\",\"repositoryId\":\"pricing-node\",\"startColumn\":35,\"startLine\":7}],\"from\":{\"declared\":true,\"key\":\"sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.weekly_revenue\",\"kind\":\"Routine\",\"name\":\"pricing.weekly_revenue\",\"repositoryId\":\"pricing-node\"},\"relation\":\"READS\",\"resolution\":\"resolved\",\"rule\":\"postgres.objects 1\",\"to\":{\"declared\":true,\"key\":\"sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.sales_ledger#quantity\",\"kind\":\"Column\",\"name\":\"quantity\",\"repositoryId\":\"pricing-node\"}}],\"from\":\"res:sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.sales_ledger\",\"id\":\"res:sql|@unbound:pricing-node/pricing-db:dbproject=pricing-db|pricing.sales_ledger->repo:pricing-node:data\",\"kind\":\"data\",\"label\":\"reads ×5\",\"to\":\"repo:pricing-node\"}"
+    }
+  }
+  sql_scope_5.n20 -[uncertain]-> repository_4.n5 "reads [unbound]" {
+    description "unbound; 1 source facts. Metadata retains the original evidence."
+    metadata {
+      source "{\"certainty\":\"unbound\",\"count\":1,\"facts\":[{\"derivation\":\"rule\",\"evidence\":[{\"commitSha\":\"b884b04321a12d82c23f8575c94c1980de349ce9\",\"endColumn\":83,\"endLine\":16,\"id\":\"ev:c97315024d6f2b36\",\"path\":\"src/Sales.Worker/Data/StatsRepository.cs\",\"repositoryId\":\"worker-cs\",\"startColumn\":9,\"startLine\":16},{\"commitSha\":\"b884b04321a12d82c23f8575c94c1980de349ce9\",\"endColumn\":124,\"endLine\":9,\"id\":\"ev:ab804a869b03f29f\",\"path\":\"src/Sales.Worker/Program.cs\",\"repositoryId\":\"worker-cs\",\"startColumn\":96,\"startLine\":9}],\"from\":{\"declared\":true,\"key\":\"cs|worker-cs|Sales.Worker|M:Sales.Worker.Data.StatsRepository.GetSalesSinceAsync(System.DateTime)\",\"kind\":\"Method\",\"name\":\"GetSalesSinceAsync\",\"repositoryId\":\"worker-cs\"},\"relation\":\"READS\",\"resolution\":\"unresolved\",\"rule\":\"dapper.sql 1\",\"to\":{\"declared\":false,\"key\":\"sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.Sales\",\"name\":\"dbo.Sales\"},\"unresolvedReason\":\"configuration\"}],\"from\":\"res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.Sales\",\"id\":\"res:sql|@unbound:worker-cs/Sales.Worker:conn=Sales|dbo.Sales->repo:worker-cs:data\",\"kind\":\"data\",\"label\":\"reads\",\"to\":\"repo:worker-cs\"}"
+    }
+  }
+}
+views {
+  view index {
+    title "All loaded repositories · landscape"
+    include *
+    autoLayout LeftRight
+  }
+  view flow {
+    title "All loaded repositories · resource overview"
+    include *
+    include repository_0.*
+    include repository_1.*
+    include repository_2.*
+    include repository_3.*
+    include repository_4.*
+    autoLayout LeftRight
+  }
+  view vertical {
+    title "All loaded repositories · resource overview"
+    include *
+    include repository_0.*
+    include repository_1.*
+    include repository_2.*
+    include repository_3.*
+    include repository_4.*
+    autoLayout TopBottom
+  }
+  view objects {
+    title "All loaded repositories · SQL object detail"
+    include *
+    include repository_0.*
+    include repository_1.*
+    include repository_2.*
+    include repository_3.*
+    include repository_4.*
+    include sql_scope_0.*
+    include sql_scope_1.*
+    include sql_scope_2.*
+    include sql_scope_3.*
+    include sql_scope_4.*
+    include sql_scope_5.*
+    autoLayout LeftRight
+  }
+  view applications {
+    title "Application landscape"
+    include repository_0.n1, repository_1.n2, repository_2.n3, repository_3.n4, repository_4.n5
+    autoLayout LeftRight
+  }
+  view data {
+    title "Data dependencies"
+    include repository_0.n1, repository_1.n2, repository_2.n3, repository_4.n5, sql_scope_0, sql_scope_1, sql_scope_2, sql_scope_3, sql_scope_4, sql_scope_5
+    autoLayout LeftRight
+  }
+  view messaging {
+    title "Messaging dependencies"
+    include repository_1.n2, repository_2.n3, repository_4.n5, repository_1.n6, repository_4.n7, repository_2.n8
+    autoLayout LeftRight
+  }
+  view repository_0_detail of repository_0 {
+    title "api-cs · repository"
+    include *
+  }
+  view repository_1_detail of repository_1 {
+    title "forecast-cs · repository"
+    include *
+  }
+  view repository_2_detail of repository_2 {
+    title "pricing-node · repository"
+    include *
+  }
+  view repository_3_detail of repository_3 {
+    title "web-ts · repository"
+    include *
+  }
+  view repository_4_detail of repository_4 {
+    title "worker-cs · repository"
+    include *
+  }
+  view sql_scope_0_detail of sql_scope_0 {
+    title "Sales · api-cs/Sales.Api · SQL objects"
+    include *
+  }
+  view sql_scope_1_detail of sql_scope_1 {
+    title "SalesDb · api-cs/SalesDb · SQL objects"
+    include *
+  }
+  view sql_scope_2_detail of sql_scope_2 {
+    title "Forecasts · forecast-cs/Forecast.Api · SQL objects"
+    include *
+  }
+  view sql_scope_3_detail of sql_scope_3 {
+    title "PRICING_DATABASE_URL · pricing-node/@fixture/pricing · SQL objects"
+    include *
+  }
+  view sql_scope_4_detail of sql_scope_4 {
+    title "pricing-db · pricing-node/pricing-db · SQL objects"
+    include *
+  }
+  view sql_scope_5_detail of sql_scope_5 {
+    title "Sales · worker-cs/Sales.Worker · SQL objects"
+    include *
+  }
+}

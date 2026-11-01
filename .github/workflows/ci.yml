@@ -39,7 +39,7 @@ jobs:
             .sandbox-cache/npm
             .sandbox-cache/trivy
             .sandbox-cache/tools
-          key: sandbox-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('platform/**/packages.lock.json', 'extractors/ts/package-lock.json', 'platform/src/CapabilityExplorer.Explorer/client/package-lock.json', 'fixtures/src/**/*.csproj', 'fixtures/src/**/package-lock.json') }}
+          key: sandbox-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('platform/**/packages.lock.json', 'extractors/ts/package-lock.json', 'platform/src/CapabilityExplorer.Explorer/client/package-lock.json', 'spikes/likec4/package-lock.json', 'fixtures/src/**/*.csproj', 'fixtures/src/**/package-lock.json') }}
       - name: Audit action dependencies
         if: ${{ !env.ACT }}
         env:

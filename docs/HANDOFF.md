@@ -14,6 +14,12 @@ those fixes are separate from synthetic test coverage.
 
 PR updates and newcomer workflow: [MADR-0005](adr/0005-pr-lifecycle-and-conflict-prevention.md).
 
+## LikeC4 spike delivery
+
+The `spike/likec4-stage` workstream includes #11 as an explicit dependency by operator approval; its PR still targets `stage-1-contract-and-fixtures`. Review the spike changes relative to #11 until that dependency merges. Do not merge either automatically. The Architecture page adds a site-themed experimental tab, backed by a captured five-repository snapshot with evidence retained. It does not inherit the parent capability/revision selection. See [spike scope and validation](spikes/likec4.md).
+
+[Issue #13](https://github.com/Sonberg/capability-explorer/issues/13) tracks full settling latency. Provisional connector computation is fast, but complete settling remains roughly 1.4–1.6 seconds in the preliminary harness. The proposed next target is 200 ms p95 with corrected paint/lifecycle instrumentation. Publication requires the full local stage-aligned gate; focused browser results do not substitute for it.
+
 ## What exists
 
 | Area | Where | State |
