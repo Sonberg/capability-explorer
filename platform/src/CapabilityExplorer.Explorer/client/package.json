@@ -11,8 +11,11 @@
   "dependencies": {
     "@dagrejs/dagre": "3.1.1",
     "@xyflow/react": "12.12.0",
-    "react": "19.1.10",
-    "react-dom": "19.1.10"
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "@likec4/core": "1.60.0",
+    "likec4": "1.60.0",
+    "@hpcc-js/wasm-graphviz": "1.29.2"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.3.3",

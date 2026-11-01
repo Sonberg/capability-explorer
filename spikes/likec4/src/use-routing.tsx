@@ -19,9 +19,16 @@ export function useRouting(layout:LayoutedView,enabled:boolean,retry:number,trac
     traceEvent(context,'worker.construct',created);
     traceSpan(context,'preview',preview.started,preview.started+preview.milliseconds);
     traceSpan(context,'preview-to-worker-effect',preview.started+preview.milliseconds,created);
-    const worker=new Worker(new URL('./routing.worker.ts',import.meta.url),{type:'module'});
+    let worker:Worker|undefined;
+    let deadline:ReturnType<typeof setTimeout>|undefined;
+    const stop=()=>{clearTimeout(deadline);worker?.terminate();};
+    const fail=()=>{if(!active)return;stop();traceEvent(context,'worker.error');finishTrace(context,'error');setCompleted({layout,ok:false,error:'Background routing failed; provisional routes remain visible.'});};
+    try {
+    worker=new Worker(new URL('./routing.worker.ts',import.meta.url),{type:'module'});
+    deadline=setTimeout(fail,30_000);
     worker.onmessage=({data}:MessageEvent<RoutingResult<LayoutedView>>)=>{
       if(!active)return;
+      stop();
       const received=timestamp();
       traceEvent(context,'main.result',received);
       if(context&&data.timing){
@@ -37,13 +44,15 @@ export function useRouting(layout:LayoutedView,enabled:boolean,retry:number,trac
       if(data.ok){previous.current=data.view;cache.current.set(layout,value);}
       setCompleted(value);
     };
-    worker.onerror=()=>{traceEvent(context,'worker.error');finishTrace(context,'error');setCompleted({layout,ok:false,error:'Background routing failed; provisional routes remain visible.'});};
+    worker.onerror=fail;
+    worker.onmessageerror=fail;
     const posting=timestamp();
     traceEvent(context,'main.post',posting);
     worker.postMessage({view:layout,trace:context} satisfies RoutingRequest<LayoutedView>);
     traceSpan(context,'postMessage-call',posting);
+    } catch {fail();}
     // New geometry cancels obsolete work: no stale result can replace the latest move.
-    return ()=>{active=false;worker.terminate();traceEvent(context,'worker.disposed');finishTrace(context,'cancelled');};
+    return ()=>{active=false;stop();traceEvent(context,'worker.disposed');finishTrace(context,'cancelled');};
   },[layout,enabled,retry]);
   useLayoutEffect(()=>{if(result?.ok)traceEvent(preview.trace,'react.result-commit');},[result,preview.trace]);
   return {trace:preview.trace,view:enabled&&result?.ok?result.view:preview.view,state:!enabled?'off':result?result.ok?'ready':'error':'pending',generation:preview.generation,previewMs:preview.milliseconds,refinementMs:result?.ok?result.milliseconds:undefined};

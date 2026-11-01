@@ -21,8 +21,17 @@ Current owner-review package: [cross-repository flow and reviewed glossary links
 ## LikeC4 spike delivery
 
 PR #14 merged at `87d310d` and PR #15 at `daf02df` on stage (verified 2026-11-01).
-The Architecture page includes a site-themed LikeC4 experimental tab backed by a
-captured five-repository snapshot, not the parent capability/revision selection.
+The subsequent live replacement is committed locally on `feat/live-likec4-architecture`,
+based on PR #20 merged into stage at `9aa0547`. It replaces the production fixture
+iframe and shares the renderer with glossary connections. See
+[MADR-0009](adr/0009-live-likec4-architecture.md) and the
+[preflight contract](plans/live-likec4-preflight.md). Validation and PR handoff are
+pending: the resumed refinement gate is 95/100, with sampled routing-ready DOM
+p95 148.2 ms versus the accepted spike's 165.6 ms. Functional and independent
+adversarial checks pass; final full act/security and PR gates remain. See the
+[execution handoff](plans/live-likec4-execution.md) for exact-source evidence and
+limitations. Nothing has been pushed from this package. The standalone spike retains its
+captured five-repository fixture as a regression harness.
 See [spike scope](spikes/likec4.md). Strict TypeScript 7.0.2 checks cover the spike;
 the extractor compiler API remains unchanged.
 

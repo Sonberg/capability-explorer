@@ -96,7 +96,8 @@ function gridFor(view:DiagramView) {
   obstacles.forEach(r=>mark(r,blocked));titles.forEach(r=>mark(r,headers));
   return {left,top,width,height,blocked,headers,obstacles,titles,terminalClearance:new Uint16Array(width*height),horizontal:new Uint16Array(width*height),vertical:new Uint16Array(width*height)};
 }
-const labelPadding=8;
+// Native labels add padding around their allocated text box.
+const labelPadding=16;
 const padded=(box:Box):Box=>({x:box.x-labelPadding,y:box.y-labelPadding,width:box.width+labelPadding*2,height:box.height+labelPadding*2});
 function placeLabel(edge:DiagramEdge,points:readonly Point[],occupied:Box[],lineSegments:[Point,Point][]) {
   if(!edge.labelBBox)return edge.labelBBox;
@@ -109,9 +110,10 @@ function placeLabel(edge:DiagramEdge,points:readonly Point[],occupied:Box[],line
     const horizontal=a[1]===b[1],length=Math.abs(b[0]-a[0])+Math.abs(b[1]-a[1]);
     const step=horizontal?width+labelPadding*2:height+labelPadding*2;
     const fractions=[.5,...Array.from({length:Math.min(80,Math.floor(length/step))},(_,i)=>(i+.5)*step/length)];
-    for(const fraction of fractions)for(const side of [-1,1]){
+    for(let band=0;band<8;band++)for(const fraction of fractions)for(const side of [-1,1]){
       const x=a[0]+(b[0]-a[0])*fraction,y=a[1]+(b[1]-a[1])*fraction;
-      const box={x:horizontal?x-width/2:x+(side<0?-width-16:16),y:horizontal?y+(side<0?-height-16:16):y-height/2,width,height};
+      const offset=16+band*((horizontal?height:width)+labelPadding*2);
+      const box={x:horizontal?x-width/2:x+(side<0?-width-offset:offset),y:horizontal?y+(side<0?-height-offset:offset):y-height/2,width,height};
       const clearance=padded(box);
       const cost=occupied.filter(r=>overlaps(clearance,r)).length*100+lineSegments.filter(([p,q])=>segmentHits(p,q,clearance)).length;
       if(cost<bestCost){best=box;bestCost=cost;}if(cost===0){occupied.push(clearance);return box;}
@@ -151,13 +153,14 @@ function routeOnce(view:DiagramView,order:number,report:PhaseReporter|undefined,
   report?.(`order${order}.search`,searchStart,clock());
   const labelStart=report?clock():0;
   const fallback=ordered.filter(e=>!routes.has(e.id));
-  const occupied=[...grid.obstacles,...grid.titles,...fallback.filter(e=>e.labelBBox).map(e=>padded(e.labelBBox!))];
+  const occupied=[...grid.obstacles,...grid.titles];
   // Retained native geometry still occupies space when a route cannot be replaced.
   const lineSegments=[...routes.values(),...fallback.map(e=>(e.points??[]).filter((_,i)=>i%3===0))].flatMap(routeSegments);
-  const labels=new Map(ordered.filter(e=>routes.has(e.id)).map(e=>[e.id,placeLabel(e,routes.get(e.id)!,occupied,lineSegments)]));
+  // A retained connector still needs label placement: native initial labels may overlap.
+  const labels=new Map(ordered.map(e=>[e.id,placeLabel(e,routes.get(e.id)??e.points.filter((_,i)=>i%3===0),occupied,lineSegments)]));
   report?.(`order${order}.labels`,labelStart,clock());
   const applyStart=report?clock():0;
-  const edges=view.edges.map(edge=>routes.has(edge.id)?{...edge,points:cubicPoints(edge.dir==='back'?[...routes.get(edge.id)!].reverse():routes.get(edge.id)!),controlPoints:null,labelBBox:labels.get(edge.id),isLabelCustomized:true}:edge);
+  const edges=view.edges.map(edge=>routes.has(edge.id)?{...edge,points:cubicPoints(edge.dir==='back'?[...routes.get(edge.id)!].reverse():routes.get(edge.id)!),controlPoints:null,labelBBox:labels.get(edge.id),isLabelCustomized:true}:{...edge,labelBBox:labels.get(edge.id),isLabelCustomized:true});
   const points=edges.flatMap(e=>e.points??[]),boxes=[...view.nodes,...occupied];
   const x=Math.min(...boxes.map(b=>b.x),...points.map(p=>p[0]))-12,y=Math.min(...boxes.map(b=>b.y),...points.map(p=>p[1]))-12;
   const right=Math.max(...boxes.map(b=>b.x+b.width),...points.map(p=>p[0]))+12,bottom=Math.max(...boxes.map(b=>b.y+b.height),...points.map(p=>p[1]))+12;

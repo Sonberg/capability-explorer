@@ -16,3 +16,9 @@ history or imply that existing private package versions are product releases.
 - PostgreSQL-backed reviewed terms, occurrence assertions and mismatch issues, with optimistic concurrency, audit attribution and stale-source detection.
 - Integrated glossary flow/review UI, including a read-only mode without a database. Human assertions remain distinct from source facts and do not establish field-level value propagation.
 - MADR-0008 defining evidence navigation, review provenance and the trusted-local mutation boundary.
+
+### Changed
+
+- Architecture and glossary connection diagrams use a shared live LikeC4 canvas instead of a separate fixture iframe, with original source evidence and reviewed association semantics retained.
+- Diagram inputs follow selected capability/revisions and analysis generation; obsolete layouts are discarded. Viewpoints, grouping, routing controls and diagram-source download share the selected snapshot.
+- MADR-0009 records the live renderer boundary and validation requirements. The standalone spike remains a regression harness; the 200 ms p95 settling target remains open.

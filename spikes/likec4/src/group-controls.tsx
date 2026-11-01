@@ -1,5 +1,5 @@
 import type {Group} from './types.ts';
-import React, {useEffect} from 'react';
+import {useEffect} from 'react';
 import {useDiagramSelector} from 'likec4/react';
 export function SelectionBridge({onSelection}:{onSelection:(ids:string[])=>void}) {
   const selected=useDiagramSelector(s=>s.context.xynodes.filter(n=>n.selected).map(n=>n.id),

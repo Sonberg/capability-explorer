@@ -1,72 +1,10 @@
-import * as dagre from "@dagrejs/dagre";
-import {
-  Background,
-  Controls,
-  Handle,
-  MarkerType,
-  MiniMap,
-  Position,
-  ReactFlow,
-  ReactFlowProvider,
-  useReactFlow,
-  type Edge as FlowEdge,
-  type Node as FlowNode,
-  type NodeChange,
-  type NodeProps,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Evidence, SymbolRef } from "../api";
+import type { ArchNode, ArchEdge, Graph } from "../architecture-types";
+import { LiveArchitectureCanvas } from "../components/live-architecture";
 import { EvidenceLinks } from "../components/source";
 import { ResolutionPill, SymbolLink } from "../components/symbols";
 import { Button, ErrorBox, Key, Mono, Pill, type Tone } from "../components/ui";
 import { href, symbolHref, useApi, useSelection } from "../state";
-
-// ---------------------------------------------------------------- API shapes
-
-export interface ArchNode {
-  id: string;
-  category: string;
-  label: string;
-  sublabel?: string;
-  group?: string;
-  symbolKey?: string;
-  repositoryId?: string;
-  drill?: { level: string; focus: string };
-  badges: string[];
-}
-
-export interface ArchFact {
-  relation: string;
-  from: SymbolRef;
-  to?: SymbolRef;
-  resolution: "resolved" | "static-target" | "candidate" | "unresolved";
-  unresolvedReason?: string;
-  derivation: string;
-  rule?: string;
-  evidence: Evidence[];
-}
-
-export interface ArchEdge {
-  id: string;
-  from: string;
-  to: string;
-  kind: string;
-  label: string;
-  count: number;
-  certainty: "human" | "proven" | "static" | "bound" | "broken" | "unbound" | "candidate" | "unresolved";
-  facts: ArchFact[];
-}
-
-export interface Graph {
-  level: "landscape" | "system" | "repository" | "component" | "requests" | "glossary-flow";
-  focus?: string;
-  title: string;
-  breadcrumbs: { label: string; level: string; focus?: string }[];
-  nodes: ArchNode[];
-  edges: ArchEdge[];
-  notes: string[];
-}
 
 // ---------------------------------------------------------------- styling
 
@@ -136,151 +74,13 @@ const certaintyText: Record<ArchEdge["certainty"], { label: string; tone: Tone; 
   unresolved: { label: "unresolved", tone: "bad", title: "Target not statically known" },
 };
 
-// ---------------------------------------------------------------- layout
-
-const NODE_W = 220;
-const NODE_H = 64;
-
-export type CanvasNodeData = { node: ArchNode; selected: boolean; dimmed: boolean };
-type GroupNodeData = { label: string };
-
-export function layout(graph: Graph, hidden: Set<string>): { nodes: FlowNode[]; edges: FlowEdge[] } {
-  const edges = graph.edges.filter((e) => !hidden.has(e.kind));
-  const g = new dagre.graphlib.Graph({ compound: true, multigraph: true });
-  g.setGraph({ rankdir: "LR", nodesep: 22, ranksep: 90, edgesep: 12, marginx: 20, marginy: 20 });
-  g.setDefaultEdgeLabel(() => ({}));
-  // Only code elements are clustered (by unit or owning component); systems, data stores and channels are
-  // told apart by colour. Large mixed clusters make layered layouts unreadable.
-  const codeLike = (n: ArchNode) => !!n.group && ["component", "interface", "module", "member", "endpoint"].includes(n.category);
-  const sizes = new Map<string, number>();
-  for (const n of graph.nodes.filter(codeLike)) sizes.set(n.group!, (sizes.get(n.group!) ?? 0) + 1);
-  // A cluster only helps when it separates things: two or more groups, each with two or more members.
-  const useful = [...sizes.entries()].filter(([, count]) => count >= 2).map(([group]) => group);
-  const clustered = (n: ArchNode) => codeLike(n) && useful.length >= 2 && useful.includes(n.group!);
-  const groups = useful.length >= 2 ? useful : [];
-  for (const group of groups) g.setNode(`group:${group}`, { label: group });
-  for (const n of graph.nodes) {
-    g.setNode(n.id, { width: NODE_W, height: NODE_H });
-    if (clustered(n)) g.setParent(n.id, `group:${n.group}`);
-  }
-  // Lay out in a canonical direction (callers → callees → resources) whatever the arrow says, so reads and
-  // writes on the same store do not pull the graph both ways. Arrows still render the real direction.
-  const category = new Map(graph.nodes.map((n) => [n.id, n.category]));
-  const sink = (id: string) => ["datastore", "channel", "unmatched", "external"].includes(category.get(id) ?? "");
-  for (const e of edges) {
-    if (e.kind === "sameName") continue; // a hint between two resources; it should not shape the layout
-    const flip = sink(e.from) && !sink(e.to);
-    g.setEdge(flip ? e.to : e.from, flip ? e.from : e.to, {}, e.id);
-  }
-  dagre.layout(g);
-
-  const groupNodes: FlowNode[] = groups.flatMap((group) => {
-    const box = g.node(`group:${group}`);
-    if (!box || !box.width) return [];
-    return [
-      {
-        id: `group:${group}`,
-        type: "group",
-        position: { x: box.x - box.width / 2 - 10, y: box.y - box.height / 2 - 26 },
-        data: { label: group } satisfies GroupNodeData,
-        style: { width: box.width + 20, height: box.height + 36 },
-        selectable: false,
-        draggable: false,
-        zIndex: -1,
-      },
-    ];
-  });
-  const nodes: FlowNode[] = graph.nodes.map((n) => {
-    const p = g.node(n.id);
-    return { id: n.id, type: "arch", position: { x: p.x - NODE_W / 2, y: p.y - NODE_H / 2 }, data: { node: n, selected: false, dimmed: false } satisfies CanvasNodeData };
-  });
-  const flowEdges: FlowEdge[] = edges.map((e) => ({
-    id: e.id,
-    source: e.from,
-    target: e.to,
-    label: e.label,
-    data: { edge: e },
-    markerEnd: e.kind === "sameName" ? undefined : { type: MarkerType.ArrowClosed, color: kindColor[e.kind] ?? "#94a3b8", width: 16, height: 16 },
-    style: { stroke: kindColor[e.kind] ?? "#94a3b8", strokeWidth: Math.min(1.25 + Math.log2(e.count + 1), 4), strokeDasharray: certaintyDash[e.certainty] },
-    labelStyle: { fontSize: 10, fill: "currentColor" },
-    labelBgStyle: { fillOpacity: 0.85 },
-    labelBgPadding: [4, 2] as [number, number],
-    labelBgBorderRadius: 4,
-  }));
-  return { nodes: [...groupNodes, ...nodes], edges: flowEdges };
-}
-
-// ---------------------------------------------------------------- node renderers
-
-function ArchNodeView({ data }: NodeProps<FlowNode<CanvasNodeData>>) {
-  const n = data.node;
-  const style = categoryStyle[n.category] ?? categoryStyle.member;
-  return (
-    <div
-      title={n.drill ? "Double-click to open the next level" : undefined}
-      className={`relative flex h-[64px] w-[220px] overflow-hidden rounded-lg border bg-white shadow-sm transition-opacity dark:bg-zinc-900 ${style.box} ${data.selected ? "ring-2 ring-blue-500" : ""} ${data.dimmed ? "opacity-30" : ""}`}
-    >
-      <Handle type="target" position={Position.Left} className="!size-1.5 !border-0 !bg-zinc-400" />
-      <div className={`w-1.5 shrink-0 ${style.strip}`} />
-      <div className="min-w-0 flex-1 px-2.5 py-1.5">
-        <div className="flex items-center gap-1">
-          <span className="truncate text-[12.5px] font-semibold" title={n.label}>
-            {n.label}
-          </span>
-          {n.drill && <span className="ml-auto shrink-0 text-[10px] text-blue-600 dark:text-blue-400">⤢</span>}
-        </div>
-        <div className="truncate text-[10.5px] text-zinc-500" title={n.sublabel}>
-          {n.sublabel ?? style.name}
-        </div>
-        <div className="mt-0.5 flex gap-1 overflow-hidden">
-          {n.badges.filter(Boolean).slice(0, 3).map((b) => (
-            <span
-              key={b}
-              className={`whitespace-nowrap rounded px-1 text-[9.5px] font-semibold ${
-                b === "unbound" || b === "partial" || b === "candidate" ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" : b === "unmatched" || b === "unresolved" || b === "broken" ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
-              }`}
-            >
-              {b}
-            </span>
-          ))}
-        </div>
-      </div>
-      <Handle type="source" position={Position.Right} className="!size-1.5 !border-0 !bg-zinc-400" />
-    </div>
-  );
-}
-
-function GroupView({ data }: NodeProps<FlowNode<GroupNodeData>>) {
-  return (
-    <div className="h-full w-full rounded-xl border border-dashed border-zinc-300 bg-zinc-100/50 dark:border-zinc-700 dark:bg-zinc-800/30">
-      <div className="px-2.5 pt-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{data.label}</div>
-    </div>
-  );
-}
-
-export const nodeTypes = { arch: ArchNodeView, group: GroupView };
-
 // ---------------------------------------------------------------- view
 
 export function ArchitectureView({ params }: { params: URLSearchParams }) {
-  const { capability } = useSelection();
-  const [tab,setTab]=useState<'graph'|'likec4'>('graph');
-  return <div className="flex flex-col gap-2">
-    <div role="tablist" aria-label="Architecture renderer" className="flex gap-2">
-      {(['graph','likec4'] as const).map(id=><button key={id} id={`architecture-${id}-tab`} role="tab" aria-selected={tab===id} tabIndex={tab===id?0:-1} onKeyDown={e=>{
-        if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;
-        e.preventDefault();const next=e.key==='Home'?'graph':e.key==='End'?'likec4':id==='graph'?'likec4':'graph';
-        setTab(next);document.getElementById(`architecture-${next}-tab`)?.focus();
-      }} aria-controls={`architecture-${id}-panel`} onClick={()=>setTab(id)} className={`rounded border px-3 py-2 text-sm ${tab===id?'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900':'border-zinc-200 text-zinc-500 dark:border-zinc-800 dark:text-zinc-400'}`}>{id==='graph'?'Architecture':'LikeC4 · experiment'}</button>)}
-    </div>
-    <div role="tabpanel" id="architecture-graph-panel" aria-labelledby="architecture-graph-tab" hidden={tab!=='graph'}>
-      <ReactFlowProvider><Canvas level={params.get("level") ?? (capability ? "system" : "landscape")} focus={params.get("focus") ?? undefined} /></ReactFlowProvider>
-    </div>
-    {tab==='likec4'&&<div role="tabpanel" id="architecture-likec4-panel" aria-labelledby="architecture-likec4-tab">
-      <p className="mb-2 text-xs text-zinc-500">Experiment: all five fixture repositories at captured revisions. Capability and revision selectors above do not filter this snapshot.</p>
-      <iframe title="LikeC4 architecture experiment" src="/likec4/index.html?embed=1" className="block w-full border-0" style={{height:'calc(100dvh - 210px)',minHeight:640}} />
-    </div>}
-  </div>;
+  const { capability, scope } = useSelection();
+  const level = params.get("level") ?? (capability ? "system" : "landscape");
+  const focus = params.get("focus") ?? undefined;
+  return <Canvas key={`${scope}|${level}|${focus ?? ""}`} level={level} focus={focus} />;
 }
 
 type Selected = { type: "node"; node: ArchNode } | { type: "edge"; edge: ArchEdge } | null;
@@ -289,70 +89,14 @@ let rememberedHidden = new Set<string>(["declares"]);
 
 function Canvas({ level, focus }: { level: string; focus?: string }) {
   const { scope, setCapability } = useSelection();
-  const { data: graph, error, loading } = useApi<Graph>(`/api/architecture?level=${level}${focus ? `&focus=${encodeURIComponent(focus)}` : ""}&${scope}`);
+  const { data, error, loading } = useApi<Graph>(`/api/architecture?level=${level}${focus ? `&focus=${encodeURIComponent(focus)}` : ""}&${scope}`);
   const [hidden, setHidden] = useState<Set<string>>(rememberedHidden);
   const [selected, setSelected] = useState<Selected>(null);
-  const { fitView } = useReactFlow();
-
-  useEffect(() => setSelected(null), [level, focus]);
-  useEffect(() => {
-    rememberedHidden = hidden;
-  }, [hidden]);
-
-  const laidOut = useMemo(() => (graph ? layout(graph, hidden) : { nodes: [], edges: [] }), [graph, hidden]);
-  // Dragged positions, kept until the next layout. ponytail: not persisted; store per level/focus if wanted.
-  const [moved, setMoved] = useState<Record<string, { x: number; y: number }>>({});
-  useEffect(() => setMoved({}), [laidOut]);
-  const onNodesChange = (changes: NodeChange[]) => {
-    const next: Record<string, { x: number; y: number }> = {};
-    for (const c of changes) if (c.type === "position" && c.position) next[c.id] = c.position;
-    if (Object.keys(next).length) setMoved((m) => ({ ...m, ...next }));
-  };
-  // Refit only when the set of visible edge kinds changes. (fitView's identity is not stable across renders;
-  // depending on it would refit on every selection and move nodes between the two clicks of a double-click.)
-  const fitRef = useRef(fitView);
-  fitRef.current = fitView;
-  const firstFit = useRef(true);
+  const graph = loading ? undefined : data;
+  const hiddenEdgeIds = useMemo(() => new Set(graph?.edges.filter(edge => hidden.has(edge.kind)).map(edge => edge.id) ?? []), [graph, hidden]);
   const lastClick = useRef({ id: "", at: 0 });
-  useEffect(() => {
-    if (firstFit.current) {
-      firstFit.current = false;
-      return;
-    }
-    const t = setTimeout(() => fitRef.current({ padding: 0.12, duration: 200 }), 120);
-    return () => clearTimeout(t);
-  }, [hidden]);
-
-  // Highlight the neighbourhood of the selection.
-  const neighbours = useMemo(() => {
-    if (!graph || !selected) return null;
-    if (selected.type === "edge") return new Set([selected.edge.from, selected.edge.to]);
-    const ids = new Set([selected.node.id]);
-    for (const e of graph.edges) {
-      if (hidden.has(e.kind)) continue;
-      if (e.from === selected.node.id) ids.add(e.to);
-      if (e.to === selected.node.id) ids.add(e.from);
-    }
-    return ids;
-  }, [graph, selected, hidden]);
-
-  const nodes = useMemo(
-    () =>
-      laidOut.nodes.map((n) =>
-        n.type === "arch"
-          ? { ...n, position: moved[n.id] ?? n.position, data: { ...(n.data as CanvasNodeData), selected: selected?.type === "node" && selected.node.id === n.id, dimmed: !!neighbours && !neighbours.has(n.id) } }
-          : n,
-      ),
-    [laidOut, selected, neighbours, moved],
-  );
-  const edges = useMemo(
-    () =>
-      laidOut.edges.map((e) => {
-        const active = !neighbours || (neighbours.has(e.source) && neighbours.has(e.target) && (selected?.type !== "edge" || selected.edge.id === e.id));
-        return { ...e, style: { ...e.style, opacity: active ? 1 : 0.12 }, labelStyle: { ...e.labelStyle, opacity: active ? 1 : 0 } };
-      }),
-    [laidOut, neighbours, selected],
-  );
+  useEffect(() => { rememberedHidden = hidden; }, [hidden]);
+  const snapshotKey = `${scope}|${level}|${focus ?? ""}`;
 
   const kinds = useMemo(() => [...new Set(graph?.edges.map((e) => e.kind) ?? [])].sort(), [graph]);
   // Opening a capability selects it: the levels below are scoped by the selection, not by focus.
@@ -365,6 +109,8 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
   return (
     <div className="architecture-workspace flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
+        <Button variant="secondary" onClick={() => { setCapability(""); window.location.hash = href("architecture", { level: "system" }); }}>All repositories</Button>
+        <Button variant="secondary" onClick={() => { setCapability(""); window.location.hash = href("architecture", { level: "landscape" }); }}>Capability landscape</Button>
         <nav aria-label="Abstraction level" className="flex items-center gap-1 text-[13px]">
           {(graph?.breadcrumbs ?? [{ label: "Landscape", level: "landscape" }]).map((c, i, all) => (
             <span key={c.level} className="flex items-center gap-1">
@@ -406,48 +152,24 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
         <div className="architecture-canvas relative min-h-[420px] min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
           {loading && !graph && <div className="absolute inset-0 grid place-items-center text-zinc-500">Laying out…</div>}
           {graph && graph.nodes.length === 0 && <div className="absolute inset-0 grid place-items-center text-zinc-500">Nothing to draw at this level for the selected scope.</div>}
-          <ReactFlow
-            key={`${level}|${focus ?? ""}|${graph ? "ready" : "loading"}`}
-            fitView
-            fitViewOptions={{ padding: 0.12 }}
-            onInit={(instance) => {
-              // Large graphs: never fit below a readable zoom; the minimap and panning cover the rest.
-              setTimeout(() => {
-                if (instance.getZoom() < 0.5) instance.zoomTo(0.5);
-              }, 60);
-            }}
-            zoomOnDoubleClick={false}
-            nodes={nodes}
-            onNodesChange={onNodesChange}
-            edges={edges}
-            nodeTypes={nodeTypes}
-            colorMode="system"
-            nodesConnectable={false}
-            nodesDraggable
-            minZoom={0.1}
-            maxZoom={2}
-            proOptions={{ hideAttribution: true }}
-            onNodeClick={(_, n) => {
-              if (n.type !== "arch") return;
-              const node = (n.data as CanvasNodeData).node;
-              // Our own double-click detection: React Flow's drag handling can retarget the native dblclick.
+          {graph && graph.nodes.length > 0 && <LiveArchitectureCanvas
+            graph={graph} hiddenEdgeIds={hiddenEdgeIds} snapshotKey={snapshotKey}
+            selectedId={selected?.type === "node" ? selected.node.id : selected?.edge.id}
+            onNodeSelect={item => {
+              const node = graph?.nodes.find(node => node.id === item.id);
+              if (!node) return;
               const now = Date.now();
-              if (lastClick.current.id === n.id && now - lastClick.current.at < 350) {
-                lastClick.current = { id: "", at: 0 };
-                drill(node);
-                return;
+              if (lastClick.current.id === node.id && now - lastClick.current.at < 350) {
+                lastClick.current = { id: "", at: 0 }; drill(node); return;
               }
-              lastClick.current = { id: n.id, at: now };
+              lastClick.current = { id: node.id, at: now };
               setSelected({ type: "node", node });
             }}
-            onNodeDoubleClick={(_, n) => n.type === "arch" && drill((n.data as CanvasNodeData).node)}
-            onEdgeClick={(_, e) => setSelected({ type: "edge", edge: (e.data as { edge: ArchEdge }).edge })}
-            onPaneClick={() => setSelected(null)}
-          >
-            <Background gap={20} size={1} />
-            <Controls showInteractive={false} />
-            <MiniMap pannable zoomable nodeColor={(n) => (n.type === "group" ? "transparent" : kindColor.call)} className="!hidden sm:!block" />
-          </ReactFlow>
+            onNodeDrill={item => { const node = graph?.nodes.find(node => node.id === item.id); if (node) drill(node); }}
+            onEdgeSelect={item => { const edge = graph?.edges.find(edge => edge.id === item.id); if (edge) setSelected({ type: "edge", edge }); }}
+            onClearSelection={() => setSelected(null)}
+          />}
+
         </div>
         <aside className="min-h-0 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-3 text-[13px] dark:border-zinc-800 dark:bg-zinc-900">
           {selected?.type === "node" ? (
