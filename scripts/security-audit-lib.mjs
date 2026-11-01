@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { inventories, validateConfig } from './security-collect-inventory.mjs';
+import { inventories, validateConfig, runtimeInventory } from './security-collect-inventory.mjs';
 
 export const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const fail = message => { throw new Error(message); };
@@ -93,6 +93,7 @@ export function validate(root, manifest, mode, now = Date.now()) {
   need(['baseline', 'verify'].includes(mode), 'unknown audit mode');
   need(manifest.collectionCompleted === true, 'incomplete collection');
   const config = validateConfig(readJson(root, 'config/security/collector.json'));
+  runtimeInventory(root, config);
   need(JSON.stringify(manifest.images) === JSON.stringify(config.images), 'configured image inventory mismatch');
   const current = snapshot(root, p), inventory = inventories(current.files);
   const saved = JSON.parse(fs.readFileSync(artifact(root, manifest.source, 'source snapshot'), 'utf8'));

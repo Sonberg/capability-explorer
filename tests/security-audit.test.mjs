@@ -15,6 +15,12 @@ function fixture(t, vulnerability = false) {
   fs.writeFileSync(path.join(root, 'package-lock.json'), JSON.stringify({ name: 'fixture', lockfileVersion: 3, packages: { 'node_modules/example': { version: '1' } } }));
   fs.writeFileSync(path.join(root, 'Dockerfile'), 'FROM scratch\n');
   fs.writeFileSync(path.join(root, 'config/security/collector.json'), JSON.stringify({ schemaVersion: 1, tools: Object.fromEntries(['trivy', 'gitleaks', 'semgrep'].map(name => [name, { image, platform: 'linux/arm64' }])), images: [{ id: 'image-runtime', reference: image, platform: 'linux/arm64' }] }));
+  fs.mkdirSync(path.join(root, 'config/runtime'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'config/runtime/images.env'), ['DOTNET', 'NODE', 'PG', 'OLLAMA', 'ACT', 'BROWSER', 'RYUK'].map(role => `${role}_IMAGE=${image}`).join('\n'));
+  fs.writeFileSync(path.join(root, 'config/security/trivy-image'), image);
+  for (const relative of ['scripts/sandbox', 'scripts/local-check', 'Makefile', '.github/workflows/ci.yml', 'platform/tests/CapabilityExplorer.Store.Tests/ImporterTests.cs']) {
+    fs.mkdirSync(path.dirname(path.join(root, relative)), { recursive: true }); fs.writeFileSync(path.join(root, relative), '');
+  }
   const write = (name, value) => {
     const relative = `.sandbox-cache/${name}`;
     fs.mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
@@ -27,8 +33,8 @@ function fixture(t, vulnerability = false) {
   const manifest = { schemaVersion: 1, collectionCompleted: true, source: write('source.json', source), history, images: [{ id: 'image-runtime', reference: image, platform: 'linux/arm64' }], scans: [] };
   for (const [id, tool] of Object.entries({ dependencies: 'trivy', 'fs-secrets': 'trivy', 'fs-misconfig': 'trivy', 'history-secrets': 'gitleaks', 'source-secrets': 'gitleaks', sast: 'semgrep', 'image-runtime': 'trivy' })) {
     const raw = tool === 'trivy' ? { SchemaVersion: 2, Results: [{ Target: id === 'dependencies' ? 'package-lock.json' : 'source.ts', ...(vulnerability && id === 'dependencies' ? { Vulnerabilities: [{ VulnerabilityID: 'CVE-TEST', PkgName: 'example', InstalledVersion: '1', Severity: 'LOW' }] } : {}) }] }
-      : tool === 'semgrep' ? { results: [], errors: [], paths: { scanned: ['source.ts'] } } : [];
-    manifest.scans.push({ id, tool: { name: tool, version: '1.0.0', image, platform: 'linux/arm64' }, rules: write(`${id}-rules.txt`, 'reviewed-rules'), targets: write(`${id}-targets.json`, id === 'image-runtime' ? [image] : id === 'dependencies' ? ['package-lock.json'] : id === 'fs-misconfig' ? ['Dockerfile'] : id === 'sast' ? ['source.ts'] : id === 'history-secrets' ? [`refs/heads/stage@${'a'.repeat(40)}`] : source.files.map(x => x.path)), coverage: [id], skipped: 0, sourceSha256: source.sha256, completedAt: new Date(now).toISOString(), exitCode: 0, completed: true, executionLog: write(`${id}-log.txt`, 'scanner completed: 1 target'), report: write(`${id}-report.json`, raw), database: { sha256: 'b'.repeat(64), version: '2', updatedAt: new Date(now).toISOString() }, severities: ['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], includeDevDependencies: true, historySha256: history.sha256, targetImage: image, targetPlatform: 'linux/arm64' });
+      : tool === 'semgrep' ? { results: [], errors: [], paths: { scanned: inventories(source.files).sast } } : [];
+    manifest.scans.push({ id, tool: { name: tool, version: '1.0.0', image, platform: 'linux/arm64' }, rules: write(`${id}-rules.txt`, 'reviewed-rules'), targets: write(`${id}-targets.json`, id === 'image-runtime' ? [image] : id === 'dependencies' ? ['package-lock.json'] : id === 'fs-misconfig' ? ['Dockerfile'] : id === 'sast' ? inventories(source.files).sast : id === 'history-secrets' ? [`refs/heads/stage@${'a'.repeat(40)}`] : source.files.map(x => x.path)), coverage: [id], skipped: 0, sourceSha256: source.sha256, completedAt: new Date(now).toISOString(), exitCode: 0, completed: true, executionLog: write(`${id}-log.txt`, 'scanner completed: 1 target'), report: write(`${id}-report.json`, raw), database: { sha256: 'b'.repeat(64), version: '2', updatedAt: new Date(now).toISOString() }, severities: ['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], includeDevDependencies: true, historySha256: history.sha256, targetImage: image, targetPlatform: 'linux/arm64' });
   }
   manifest.manualReview = write('manual.json', { completed: true, reviewer: 'human-reviewer', limitations: ['Synthetic test only'], findings: [], sourceSha256: source.sha256, configurationReviewedTargets: inventories(source.files).unsupportedConfiguration });
   const current = manifest.scans.flatMap(scan => findings(scan, JSON.parse(fs.readFileSync(path.join(root, scan.report.path)))));

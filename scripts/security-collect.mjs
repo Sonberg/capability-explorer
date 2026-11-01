@@ -7,7 +7,7 @@ import { snapshot, sha, readJson, findings } from './security-audit-lib.mjs';
 
 const need = (ok, message) => { if (!ok) throw new Error(message); };
 export { validateConfig, inventories } from './security-collect-inventory.mjs';
-import { validateConfig, inventories } from './security-collect-inventory.mjs';
+import { validateConfig, inventories, runtimeInventory } from './security-collect-inventory.mjs';
 export function dockerArgs(tool, mounts, network = 'none') {
   const args = ['run', '--rm', '--pull=never', '--platform', tool.platform, '--network', network, '--user', `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`, '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--pids-limit', '512', '--memory', '2g', '--cpus', '2', '--tmpfs', '/tmp:rw,nosuid,size=1g', '-e', 'HOME=/tmp', '-e', 'SEMGREP_SEND_METRICS=off', '-e', 'SEMGREP_ENABLE_VERSION_CHECK=0', '-e', 'GIT_CONFIG_NOSYSTEM=1', '-e', 'GIT_CONFIG_GLOBAL=/dev/null'];
   if (tool.name) { need(['trivy', 'gitleaks', 'semgrep'].includes(tool.name), 'invalid tool entrypoint'); args.push('--entrypoint', tool.name); }
@@ -63,13 +63,14 @@ export function historyCheck(root, manifestPath, run = runner) {
 export async function collect(root, relative, ledgerPath, manualPath, run = runner) {
   root = fs.realpathSync(root);
   const config = validateConfig(readJson(root, 'config/security/collector.json'));
+  const runtimeImages = runtimeInventory(root, config);
   const out = outputDirectory(root, relative), sourceDir = path.join(out, 'source'), reportsDir = path.join(out, 'reports'), rulesDir = path.join(out, 'rules'), cacheDir = path.join(out, 'cache');
   for (const directory of [sourceDir, reportsDir, rulesDir, cacheDir]) fs.mkdirSync(directory);
   const artifact = file => ({ path: path.relative(root, file).split(path.sep).join('/'), sha256: sha(fs.readFileSync(file)) });
   const write = (name, data) => { const file = path.join(out, name); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, typeof data === 'string' ? data : JSON.stringify(data, null, 2) + '\n'); return artifact(file); };
   const source = snapshot(root), inventory = inventories(source.files); copySealed(root, sourceDir, source);
   const history = historyInventory(root, run);
-  const manifest = { schemaVersion: 1, source: write('source.json', source), history: write('history.json', history), inventory: write('inventory.json', inventory), images: config.images, scans: [], collectionCompleted: false };
+  const manifest = { schemaVersion: 1, source: write('source.json', source), history: write('history.json', history), inventory: write('inventory.json', inventory), runtimeImages: write('runtime-images.json', runtimeImages), images: config.images, scans: [], collectionCompleted: false };
   write('manifest.json', manifest); // An interrupted run remains visibly incomplete.
   const checked = (command, args, log, accepted = [0]) => {
     const result = run(command, args); const receipt = write(log, JSON.stringify({ command, args, exitCode: result.status, stdout: result.stdout, stderr: result.stderr }, null, 2));

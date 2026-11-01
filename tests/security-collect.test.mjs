@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { validateConfig, inventories, dockerArgs, outputDirectory, copySealed, historyInventory, historyCheck } from '../scripts/security-collect.mjs';
+import { runtimeInventory } from '../scripts/security-collect-inventory.mjs';
 import { sha } from '../scripts/security-audit-lib.mjs';
 const image = `scanner:1@sha256:${'a'.repeat(64)}`;
 const config = () => ({ schemaVersion: 1, tools: Object.fromEntries(['trivy', 'gitleaks', 'semgrep'].map(name => [name, { image, platform: 'linux/arm64' }])), images: [{ id: 'image-node', reference: image, platform: 'linux/arm64' }] });
@@ -55,4 +56,32 @@ test('fresh history check detects changed branch tips independently of the manif
   fs.writeFileSync(path.join(root, 'manifest.json'), JSON.stringify({ history: { path: 'history.json', sha256: sha(history) } }));
   historyCheck(root, 'manifest.json', gitRunner());
   assert.throws(() => historyCheck(root, 'manifest.json', gitRunner('b'.repeat(40))), /changed/);
+});
+
+function runtimeFixture(t) {
+  const root = temp(t), cfg = config();
+  for (const file of ['config/runtime/images.env', 'config/security/trivy-image', 'scripts/sandbox', 'scripts/local-check', 'Makefile', '.github/workflows/ci.yml', 'platform/tests/CapabilityExplorer.Store.Tests/ImporterTests.cs']) {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true }); fs.writeFileSync(path.join(root, file), '');
+  }
+  fs.writeFileSync(path.join(root, 'config/runtime/images.env'), ['DOTNET', 'NODE', 'PG', 'OLLAMA', 'ACT', 'BROWSER', 'RYUK'].map(role => `${role}_IMAGE=${image}`).join('\n'));
+  fs.writeFileSync(path.join(root, 'config/security/trivy-image'), image);
+  return { root, cfg };
+}
+test('runtime inventory requires every runtime and scanner image independently of configured scan list', t => {
+  const f = runtimeFixture(t); assert.equal(runtimeInventory(f.root, f.cfg).references.length, 1);
+  const different = `node:2@sha256:${'b'.repeat(64)}`;
+  fs.appendFileSync(path.join(f.root, 'config/runtime/images.env'), `\nEXTRA_IMAGE=${different}`);
+  assert.throws(() => runtimeInventory(f.root, f.cfg), /omits runtime/);
+});
+test('missing runtime role, stale hardcoded image and changed scanner platform fail', t => {
+  const f = runtimeFixture(t), registry = path.join(f.root, 'config/runtime/images.env'), original = fs.readFileSync(registry, 'utf8');
+  fs.writeFileSync(registry, original.replace(/^RYUK_IMAGE=.*$/m, ''));
+  assert.throws(() => runtimeInventory(f.root, f.cfg), /missing required runtime/);
+  fs.writeFileSync(registry, original); fs.writeFileSync(path.join(f.root, 'Makefile'), `BROWSER=browser:2@sha256:${'b'.repeat(64)}`);
+  assert.throws(() => runtimeInventory(f.root, f.cfg), /unregistered image/);
+  fs.writeFileSync(path.join(f.root, 'Makefile'), ''); f.cfg.tools.semgrep.platform = 'linux/amd64';
+  assert.throws(() => runtimeInventory(f.root, f.cfg), /scanner image platform/);
+});
+test('runtime env files require manual configuration review', () => {
+  assert.ok(inventories([{ path: 'config/runtime/images.env' }]).unsupportedConfiguration.includes('config/runtime/images.env'));
 });
