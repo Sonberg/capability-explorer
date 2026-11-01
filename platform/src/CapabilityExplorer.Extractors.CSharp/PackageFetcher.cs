@@ -29,17 +29,31 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
     private int _present;
 
     public async Task<FetchResult> FetchAsync(IEnumerable<(string Project, IReadOnlyList<PackageRef> Roots)> projects, CancellationToken cancellationToken = default)
+        => await FetchAsync(projects.Select(p => (p.Project, p.Roots, Target: (string?)"net10.0")), cancellationToken);
+
+    /// <summary>Target-aware production entrypoint. No MSBuild evaluation or analysed-code restore occurs.</summary>
+    public Task<FetchResult> FetchAsync(IEnumerable<ProjectModel> projects, CancellationToken cancellationToken = default) =>
+        FetchAsync(projects.Select(p => (p.RelativePath, p.PackageRoots(), p.TargetFramework)), cancellationToken);
+
+    private async Task<FetchResult> FetchAsync(IEnumerable<(string Project, IReadOnlyList<PackageRef> Roots, string? Target)> projects, CancellationToken cancellationToken)
     {
         var result = new PackageLock();
-        foreach (var (project, roots) in projects.OrderBy(p => p.Project, StringComparer.Ordinal))
+        foreach (var (project, roots, target) in projects.OrderBy(p => p.Project, StringComparer.Ordinal))
         {
-            result.Set(project, await ResolveProjectAsync(roots, cancellationToken));
+            if (FrameworkSelection.Parse(target) is null)
+            {
+                Fail($"{project}: a single supported literal target framework is required to select package dependencies");
+                result.Set(project, []);
+                continue;
+            }
+
+            result.Set(project, await ResolveProjectAsync(roots, target, cancellationToken));
         }
 
         return new FetchResult(_fetched, _present, _failed, result);
     }
 
-    private async Task<List<LockedPackage>> ResolveProjectAsync(IReadOnlyList<PackageRef> roots, CancellationToken cancellationToken)
+    private async Task<List<LockedPackage>> ResolveProjectAsync(IReadOnlyList<PackageRef> roots, string? target, CancellationToken cancellationToken)
     {
         var chosen = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var queue = new Queue<(string Id, string? Range, int Depth)>(roots.OrderBy(r => r.Id, StringComparer.OrdinalIgnoreCase).Select(r => (r.Id, r.Version, 0)));
@@ -77,7 +91,12 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
             }
 
             chosen[id] = version;
-            foreach (var (depId, depRange) in Dependencies(dir))
+            if (FrameworkSelection.IncompatibleDependencyGroups(dir, target))
+            {
+                Fail($"{id} {version}: no compatible dependency group for {target}");
+            }
+
+            foreach (var (depId, depRange) in Dependencies(dir, target))
             {
                 queue.Enqueue((depId, depRange, depth + 1));
             }
@@ -286,7 +305,7 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
                     var name = Uri.UnescapeDataString(entry.FullName).Replace('\\', '/');
                     var keep = (!name.Contains('/', StringComparison.Ordinal) && name.EndsWith(".nuspec", StringComparison.OrdinalIgnoreCase))
                         || ((name.StartsWith("lib/", StringComparison.OrdinalIgnoreCase) || name.StartsWith("ref/", StringComparison.OrdinalIgnoreCase))
-                            && name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase));
+                            && (name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) || Path.GetFileName(name) == "_._"));
                     if (!keep)
                     {
                         continue;
@@ -326,17 +345,14 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
         }
     }
 
-    private static List<(string Id, string? Range)> Dependencies(string dir)
+    private static List<(string Id, string? Range)> Dependencies(string dir, string? target)
     {
         if (!Directory.Exists(dir) || Directory.EnumerateFiles(dir, "*.nuspec").FirstOrDefault() is not { } nuspec)
         {
             return [];
         }
 
-        var doc = XDocument.Load(nuspec);
-        var groups = doc.Descendants().Where(e => e.Name.LocalName == "group").ToList();
-        var group = PackageResolver.Frameworks.Select(f => groups.FirstOrDefault(g => PackageResolver.Normalise((string?)g.Attribute("targetFramework")) == f)).FirstOrDefault(g => g is not null);
-        var deps = group?.Elements() ?? doc.Descendants().Where(e => e.Name.LocalName == "dependencies").Elements();
+        var deps = FrameworkSelection.DependencyElements(dir, target);
         return deps.Where(e => e.Name.LocalName == "dependency" && (string?)e.Attribute("id") is not null)
             .Select(e => ((string)e.Attribute("id")!, (string?)e.Attribute("version")))
             .ToList();

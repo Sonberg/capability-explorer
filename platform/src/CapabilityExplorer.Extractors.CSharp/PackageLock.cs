@@ -19,11 +19,19 @@ public sealed class PackageLock
 
     public IReadOnlyDictionary<string, IReadOnlyList<LockedPackage>> Projects => _projects;
 
-    public void Set(string projectPath, IEnumerable<LockedPackage> packages) =>
-        _projects[projectPath] = packages
+    public void Set(string projectPath, IEnumerable<LockedPackage> packages)
+    {
+        var set = packages.ToList();
+        if (set.GroupBy(p => p.Id, StringComparer.OrdinalIgnoreCase).Any(g => g.Select(p => p.Version).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1))
+        {
+            throw new InvalidDataException($"Conflicting package versions in lock for {projectPath}; a lock must select one exact version per package");
+        }
+
+        _projects[projectPath] = set
             .DistinctBy(p => p.Id, StringComparer.OrdinalIgnoreCase)
             .OrderBy(p => p.Id, StringComparer.OrdinalIgnoreCase).ThenBy(p => p.Version, StringComparer.Ordinal)
             .ToList();
+    }
 
     public IReadOnlyList<LockedPackage> For(string projectPath) => _projects.GetValueOrDefault(projectPath) ?? [];
 

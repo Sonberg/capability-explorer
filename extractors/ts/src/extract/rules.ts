@@ -4,6 +4,7 @@ import ts from "typescript";
 import type { ToolRef } from "../contracts/records.ts";
 import type { Props } from "./builder.ts";
 import { isFunctionInit, type Ctx } from "./context.ts";
+import { splitHttpPath } from "./http.ts";
 
 export const EXPRESS = { name: "express.routes", version: "1" };
 export const AXIOS = { name: "axios", version: "1" };
@@ -12,7 +13,7 @@ export const FETCH = { name: "web.fetch", version: "1" };
 export const PG = { name: "pg.sql", version: "1" };
 export const SB = { name: "azure.servicebus", version: "1" };
 
-const HTTP_METHODS = ["get", "post", "put", "patch", "delete", "options", "head", "all"];
+export const HTTP_METHODS = ["get", "post", "put", "patch", "delete", "options", "head", "all"];
 
 // ------------------------------------------------------------------ shared helpers
 
@@ -25,9 +26,9 @@ export function normaliseRoute(route: string): string {
   return r.toLowerCase();
 }
 
-const joinRoute = (a: string, b: string) => ("/" + [a, b].map((x) => x.replace(/^\/+|\/+$/g, "")).filter(Boolean).join("/")).replace(/\/+/g, "/");
+export const joinRoute = (a: string, b: string) => ("/" + [a, b].map((x) => x.replace(/^\/+|\/+$/g, "")).filter(Boolean).join("/")).replace(/\/+/g, "/");
 
-const unwrap = (e: ts.Expression): ts.Expression => {
+export const unwrap = (e: ts.Expression): ts.Expression => {
   while (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isNonNullExpression(e) || ts.isSatisfiesExpression(e) || ts.isAwaitExpression(e)) e = e.expression;
   return e;
 };
@@ -77,9 +78,9 @@ export function jsonValue(ctx: Ctx, e: ts.Expression): { value: unknown; path: s
 }
 
 /** Literal string, JSON config value, or environment variable. */
-type Resolved = { kind: "literal"; value: string; evidence?: string; source?: string } | { kind: "env"; name: string; fallback?: string; evidence: string } | { kind: "unknown" };
+export type Resolved = { kind: "literal"; value: string; evidence?: string; source?: string } | { kind: "env"; name: string; fallback?: string; evidence: string } | { kind: "unknown" };
 
-function resolveValue(ctx: Ctx, e: ts.Expression | undefined): Resolved {
+export function resolveValue(ctx: Ctx, e: ts.Expression | undefined): Resolved {
   if (!e) return { kind: "unknown" };
   const x = unwrap(e);
   if (ts.isStringLiteralLike(x)) return { kind: "literal", value: x.text, evidence: ctx.ev(x) };
@@ -95,7 +96,7 @@ function resolveValue(ctx: Ctx, e: ts.Expression | undefined): Resolved {
 }
 
 /** Imports of a package in a file: default/namespace names and named imports (local name → imported name). */
-function importsOf(sf: ts.SourceFile, pkg: string) {
+export function importsOf(sf: ts.SourceFile, pkg: string) {
   const names = new Set<string>();
   const named = new Map<string, string>();
   for (const s of sf.statements) {
@@ -108,7 +109,7 @@ function importsOf(sf: ts.SourceFile, pkg: string) {
   return { names, named };
 }
 
-function forEachNode(sf: ts.SourceFile, f: (n: ts.Node) => void) {
+export function forEachNode(sf: ts.SourceFile, f: (n: ts.Node) => void) {
   const visit = (n: ts.Node) => {
     f(n);
     ts.forEachChild(n, visit);
@@ -117,7 +118,7 @@ function forEachNode(sf: ts.SourceFile, f: (n: ts.Node) => void) {
 }
 
 /** Symbol of the variable an expression is assigned to (`const x = <e>`). */
-function assignedSymbol(ctx: Ctx, e: ts.Node): ts.Symbol | undefined {
+export function assignedSymbol(ctx: Ctx, e: ts.Node): ts.Symbol | undefined {
   let p = e.parent;
   while (p && (ts.isParenthesizedExpression(p) || ts.isAsExpression(p) || ts.isAwaitExpression(p))) p = p.parent;
   if (p && ts.isVariableDeclaration(p) && ts.isIdentifier(p.name)) return ctx.checker.getSymbolAtLocation(p.name);
@@ -126,14 +127,14 @@ function assignedSymbol(ctx: Ctx, e: ts.Node): ts.Symbol | undefined {
 }
 
 /** The variable symbol an expression names, through import aliases and `export { a as b }`. */
-function symbolOf(ctx: Ctx, e: ts.Expression): ts.Symbol | undefined {
+export function symbolOf(ctx: Ctx, e: ts.Expression): ts.Symbol | undefined {
   const x = unwrap(e);
   if (ts.isIdentifier(x)) return ctx.resolveSymbol(x);
   if (ts.isPropertyAccessExpression(x) && x.expression.kind === ts.SyntaxKind.ThisKeyword) return ctx.checker.getSymbolAtLocation(x.name);
   return undefined;
 }
 
-function typeArgKey(ctx: Ctx, args: ts.NodeArray<ts.TypeNode> | undefined): string | undefined {
+export function typeArgKey(ctx: Ctx, args: ts.NodeArray<ts.TypeNode> | undefined): string | undefined {
   const t = args?.[0];
   if (!t || !ts.isTypeReferenceNode(t)) return undefined;
   const decl = ctx.resolveSymbol(t.typeName)?.declarations?.[0];
@@ -141,7 +142,7 @@ function typeArgKey(ctx: Ctx, args: ts.NodeArray<ts.TypeNode> | undefined): stri
 }
 
 /** `Promise<T>` return annotation of the enclosing function, when T is a project type. */
-function responseType(ctx: Ctx, node: ts.Node): string | undefined {
+export function responseType(ctx: Ctx, node: ts.Node): string | undefined {
   for (let p: ts.Node | undefined = node.parent; p; p = p.parent) {
     if (ts.isFunctionLike(p) && p.type) {
       const t = p.type;
@@ -153,7 +154,7 @@ function responseType(ctx: Ctx, node: ts.Node): string | undefined {
 }
 
 /** Literal template: text with `{}` for substitutions; the leading substitution is reported separately as a base. */
-function urlTemplate(e: ts.Expression): { base?: ts.Expression; text: string; query: string[] } | undefined {
+export function urlTemplate(e: ts.Expression): { base?: ts.Expression; text: string; query: string[] } | undefined {
   e = unwrap(e);
   let parts: { text: string; expr?: ts.Expression }[];
   if (ts.isStringLiteralLike(e)) parts = [{ text: e.text }];
@@ -167,9 +168,8 @@ function urlTemplate(e: ts.Expression): { base?: ts.Expression; text: string; qu
     parts = parts.slice(2);
   }
   const text = parts.map((p) => (p.expr ? "{}" : p.text)).join("");
-  const q = text.split("?")[1] ?? "";
-  const query = q.split("&").map((kv) => kv.split("=")[0]!).filter(Boolean);
-  return { base, text: text.split("?")[0]!, query };
+  const path = splitHttpPath(text);
+  return { base, text: path.pathname, query: path.query };
 }
 
 // ------------------------------------------------------------------ express
@@ -289,191 +289,6 @@ export function projectNode(ctx: Ctx) {
     evidence = ctx.textEv(unitPath, text, 0, Math.min(1, text.length));
   }
   ctx.b.node(`proj|${ctx.repo}|${unitPath}`, "Project", ctx.pkg, [evidence]);
-}
-
-// ------------------------------------------------------------------ HTTP clients
-
-function requestTarget(ctx: Ctx, base: Resolved | { kind: "variable"; name: string; key?: string }, method: string, route: string) {
-  const normalised = normaliseRoute(route);
-  let store: string;
-  const props: Props = {};
-  if (base.kind === "env") {
-    store = ctx.unbound("env", base.name);
-    props.baseUrlEnv = base.name;
-    if (base.fallback) props.defaultBaseUrl = base.fallback;
-  } else if (base.kind === "variable") {
-    store = ctx.unbound("base", base.name);
-    props.baseUrl = base.key;
-  } else if (base.kind === "literal" && /^https?:\/\//.test(base.value)) {
-    const u = new URL(base.value);
-    store = ctx.unbound("host", u.host);
-    props.baseUrl = base.value;
-    route = joinRoute(u.pathname, route);
-  } else {
-    store = ctx.unbound("base", "origin");
-  }
-  return { to: `http|${store}|${method} ${normaliseRoute(route)}`, normalised: normaliseRoute(route) || normalised, props };
-}
-
-export function fetchRule(ctx: Ctx, rules: Set<ToolRef>) {
-  for (const sf of ctx.files) {
-    forEachNode(sf, (n) => {
-      if (!ts.isCallExpression(n)) return;
-      const callee = n.expression;
-      const name = ts.isIdentifier(callee) ? callee.text : ts.isPropertyAccessExpression(callee) && ["globalThis", "window", "self"].includes(callee.expression.getText()) ? callee.name.text : undefined;
-      if (name !== "fetch") return;
-      const declared = ctx.resolveSymbol(ts.isIdentifier(callee) ? callee : (callee as ts.PropertyAccessExpression).name)?.declarations?.[0];
-      if (declared && ctx.isProjectFile(declared.getSourceFile().fileName)) return; // a local function called fetch
-      const from = ctx.owner(n);
-      if (!from) return;
-      const generated = ctx.generated.has(sf.fileName) || undefined;
-      const init = n.arguments[1] && unwrap(n.arguments[1]);
-      let method = "GET";
-      if (init && ts.isObjectLiteralExpression(init)) {
-        const m = init.properties.find((p) => p.name?.getText() === "method");
-        if (m) method = ts.isPropertyAssignment(m) && ts.isStringLiteralLike(m.initializer) ? m.initializer.text.toUpperCase() : "dynamic";
-      }
-      const urlArg = n.arguments[0];
-      const urlExpr = urlArg && (ts.isIdentifier(unwrap(urlArg)) ? ctx.constInit(unwrap(urlArg)) ?? urlArg : urlArg);
-      const template = urlExpr && urlTemplate(urlExpr);
-      const callEv = ctx.ev(n);
-      rules.add(FETCH);
-      if (!template || method === "dynamic") {
-        ctx.b.edge({ from, rel: "REQUESTS", derivation: "rule", rule: FETCH, resolution: "unresolved", reason: "dynamic-string", props: { method, generated }, evidence: [callEv] });
-        return;
-      }
-      let base: Parameters<typeof requestTarget>[1] = { kind: "unknown" };
-      if (template.base) {
-        const env = envVar(template.base);
-        const decl = !env && ts.isIdentifier(template.base) ? ctx.resolveSymbol(template.base)?.declarations?.[0] : undefined;
-        base = env ? { kind: "env", name: env.name, fallback: env.fallback, evidence: ctx.ev(env.node) } : decl && ts.isIdentifier(template.base) ? { kind: "variable", name: template.base.text, key: ctx.keyOf(decl) } : { kind: "unknown" };
-        if (base.kind === "unknown") {
-          ctx.b.edge({ from, rel: "REQUESTS", derivation: "rule", rule: FETCH, resolution: "unresolved", reason: "dynamic-string", props: { method, generated }, evidence: [ctx.ev(urlExpr), callEv] });
-          return;
-        }
-      } else if (/^https?:\/\//.test(template.text)) {
-        const u = new URL(template.text.replace(/\{\}/g, "x"));
-        base = { kind: "literal", value: `${u.protocol}//${u.host}` };
-        template.text = template.text.slice(`${u.protocol}//${u.host}`.length) || "/";
-      }
-      const target = requestTarget(ctx, base, method, template.text);
-      ctx.b.edge({
-        from, rel: "REQUESTS", to: target.to, derivation: "rule", rule: FETCH, resolution: "unresolved", reason: "configuration",
-        props: { method, normalizedRoute: target.normalised, ...target.props, query: template.query.length ? template.query : undefined, responseType: responseType(ctx, n), generated },
-        evidence: [ctx.ev(urlExpr), callEv],
-      });
-    });
-  }
-}
-
-export function axiosRule(ctx: Ctx, rules: Set<ToolRef>) {
-  const clients = new Map<ts.Symbol, { base: Resolved; evidence: string }>();
-  for (const sf of ctx.files) {
-    const ax = importsOf(sf, "axios");
-    if (ax.names.size === 0) continue;
-    forEachNode(sf, (n) => {
-      if (!ts.isCallExpression(n) || !ts.isPropertyAccessExpression(n.expression) || n.expression.name.text !== "create") return;
-      if (!ts.isIdentifier(n.expression.expression) || !ax.names.has(n.expression.expression.text)) return;
-      const cfg = n.arguments[0] && unwrap(n.arguments[0]);
-      const baseProp = cfg && ts.isObjectLiteralExpression(cfg) ? cfg.properties.find((p) => p.name?.getText() === "baseURL") : undefined;
-      const base = baseProp && ts.isPropertyAssignment(baseProp) ? resolveValue(ctx, baseProp.initializer) : { kind: "unknown" as const };
-      const sym = assignedSymbol(ctx, n);
-      if (sym) clients.set(sym, { base, evidence: ctx.ev(n) });
-    });
-  }
-  for (const sf of ctx.files) {
-    const ax = importsOf(sf, "axios");
-    forEachNode(sf, (n) => {
-      if (!ts.isCallExpression(n) || !ts.isPropertyAccessExpression(n.expression)) return;
-      const verb = n.expression.name.text;
-      if (!HTTP_METHODS.includes(verb) || verb === "all") return;
-      const recv = n.expression.expression;
-      const client = symbolOf(ctx, recv);
-      const info = (client && clients.get(client)) ?? (ts.isIdentifier(recv) && ax.names.has(recv.text) ? { base: { kind: "unknown" } as Resolved, evidence: undefined } : undefined);
-      if (!info) return;
-      const from = ctx.owner(n);
-      const url = n.arguments[0] && urlTemplate(n.arguments[0]);
-      if (!from) return;
-      rules.add(AXIOS);
-      const method = verb.toUpperCase();
-      const callEv = ctx.ev(n);
-      if (!url || url.base) {
-        ctx.b.edge({ from, rel: "REQUESTS", derivation: "rule", rule: AXIOS, resolution: "unresolved", reason: "dynamic-string", props: { method }, evidence: [callEv] });
-        return;
-      }
-      const cfg = n.arguments[["post", "put", "patch"].includes(verb) ? 2 : 1];
-      const params = cfg && ts.isObjectLiteralExpression(unwrap(cfg)) ? (unwrap(cfg) as ts.ObjectLiteralExpression).properties.find((p) => p.name?.getText() === "params") : undefined;
-      const query = params && ts.isPropertyAssignment(params) && ts.isObjectLiteralExpression(params.initializer) ? params.initializer.properties.map((p) => p.name?.getText() ?? "").filter(Boolean) : url.query;
-      let base = info.base;
-      let text = url.text;
-      if (base.kind === "unknown" && /^https?:\/\//.test(text)) {
-        const u = new URL(text.replace(/\{\}/g, "x"));
-        base = { kind: "literal", value: `${u.protocol}//${u.host}` };
-        text = text.slice(`${u.protocol}//${u.host}`.length) || "/";
-      }
-      const target = requestTarget(ctx, base, method, text);
-      const resolved = base.kind === "literal" && !base.value.startsWith("http");
-      ctx.b.edge({
-        from, rel: "REQUESTS", to: target.to, derivation: "rule", rule: AXIOS, resolution: resolved ? "resolved" : "unresolved", reason: resolved ? undefined : "configuration",
-        props: { method, normalizedRoute: target.normalised, query: query.length ? query : undefined, ...target.props, responseType: typeArgKey(ctx, n.typeArguments) },
-        evidence: info.evidence ? [callEv, info.evidence] : [callEv],
-      });
-    });
-  }
-}
-
-/**
- * Generated OpenAPI clients: a method in a generated class that passes an HTTP method literal and a literal path
- * to a shared request helper. The base URL comes from where the client is constructed.
- */
-export function openApiRule(ctx: Ctx, rules: Set<ToolRef>) {
-  for (const sf of ctx.files) {
-    if (!ctx.generated.has(sf.fileName)) continue;
-    for (const c of sf.statements.filter(ts.isClassDeclaration)) {
-      if (!c.name) continue;
-      const classSym = ctx.checker.getSymbolAtLocation(c.name);
-      const construction = findConstruction(ctx, classSym);
-      for (const m of c.members.filter(ts.isMethodDeclaration)) {
-        let method: string | undefined;
-        let path: ts.StringLiteralLike | undefined;
-        const visit = (n: ts.Node) => {
-          if (ts.isStringLiteralLike(n)) {
-            if (/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$/.test(n.text)) method ??= n.text;
-            else if (/^\/[\w\-./{}]*$/.test(n.text) && n.text.length > 1) path ??= n;
-          }
-          ts.forEachChild(n, visit);
-        };
-        if (m.body) visit(m.body);
-        if (!method || !path) continue;
-        const from = ctx.keyOf(m);
-        if (!from) continue;
-        const env = construction && envVar(construction.arguments?.[0]);
-        const base: Resolved = env ? { kind: "env", name: env.name, fallback: env.fallback, evidence: ctx.ev(env.node) } : { kind: "unknown" };
-        const target = base.kind === "unknown"
-          ? { to: `http|${ctx.unbound("client", c.name.text)}|${method} ${normaliseRoute(path.text)}`, normalised: normaliseRoute(path.text), props: {} }
-          : requestTarget(ctx, base, method, path.text);
-        const operationId = /operationId:\s*([\w.-]+)/.exec(ts.getJSDocCommentsAndTags(m).map((j) => j.getText()).join("\n"))?.[1];
-        ctx.b.edge({
-          from, rel: "REQUESTS", to: target.to, derivation: "rule", rule: OPENAPI, resolution: "unresolved", reason: "configuration",
-          props: { method, normalizedRoute: target.normalised, operationId, ...target.props, generated: true },
-          evidence: construction ? [ctx.ev(path), ctx.ev(construction)] : [ctx.ev(path)],
-        });
-        rules.add(OPENAPI);
-      }
-    }
-  }
-}
-
-function findConstruction(ctx: Ctx, classSym: ts.Symbol | undefined): ts.NewExpression | undefined {
-  if (!classSym) return undefined;
-  for (const sf of ctx.files) {
-    let found: ts.NewExpression | undefined;
-    forEachNode(sf, (n) => {
-      if (!found && ts.isNewExpression(n) && ctx.resolveSymbol(n.expression) === classSym) found = n;
-    });
-    if (found) return found;
-  }
-  return undefined;
 }
 
 // ------------------------------------------------------------------ pg

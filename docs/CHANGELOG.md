@@ -17,8 +17,19 @@ history or imply that existing private package versions are product releases.
 - Integrated glossary flow/review UI, including a read-only mode without a database. Human assertions remain distinct from source facts and do not establish field-level value propagation.
 - MADR-0008 defining evidence navigation, review provenance and the trusted-local mutation boundary.
 
+- Static Next.js app-router handler extraction with explicit dynamic/catch-all route shapes and unsupported-case coverage diagnostics.
+- Source-bound baseline/candidate replay with repeatability, source evidence and reviewed semantic-delta checks.
+- MADR-0010 documenting conservative framework resolution and cross-repository mapping evidence.
+
 ### Changed
 
 - Architecture and glossary connection diagrams use a shared live LikeC4 canvas instead of a separate fixture iframe, with original source evidence and reviewed association semantics retained.
 - Diagram inputs follow selected capability/revisions and analysis generation; obsolete layouts are discarded. Viewpoints, grouping, routing controls and diagram-source download share the selected snapshot.
 - MADR-0009 records the live renderer boundary and validation requirements. The standalone spike remains a regression harness; the 200 ms p95 settling target remains open.
+
+### Fixed
+
+- HTTP request identities now separate absolute hosts from routes and exclude credentials, query values and fragments from derived URL metadata.
+- C# package/reference visibility follows the analyzed target framework and reports incompatible assets or conflicting assembly identities.
+- Cached C# packages must satisfy complete version bounds; incompatible repeated requests omit package assets instead of silently selecting an invalid version.
+- TypeScript analysis configuration hashes no longer depend on the checkout's absolute path.

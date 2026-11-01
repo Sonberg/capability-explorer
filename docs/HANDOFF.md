@@ -18,19 +18,31 @@ Release notes: [changelog](CHANGELOG.md), [MADR-0006](adr/0006-keep-a-changelog.
 Compatibility/versioning: [MADR-0007](adr/0007-semantic-versioning.md).
 Current owner-review package: [cross-repository flow and reviewed glossary links](plans/cross-repository-value-flow.md), issue #4 layers 4 and 3. Implementation and validation are recorded in [the execution receipt](plans/glossary-flow-execution.md); see [MADR-0008](adr/0008-glossary-flow-and-reviewed-assertions.md). BPMN/DMN issue #12 still requires an owner scope decision. LikeC4 PRs #14/#15 are now merged into stage.
 
+## Mapping fidelity workstream
+
+The independent stage-targeted mapping package is recorded in
+[the execution plan](plans/mapping-fidelity-execution.md) and
+[MADR-0010](adr/0010-deterministic-mapping-fidelity.md). It improves static C#
+reference selection, Next app-router endpoints and HTTP identities. It preserves
+uncertain bindings and does not implement full MSBuild/Next configuration execution.
+The synthetic replay is separate from the locked product fixtures and private-corpus
+validation. `make test-mapping-replay` runs harness failure-path tests in ordinary CI;
+`scripts/mapping-replay` compares explicitly sealed baseline/candidate bundles.
+Owner review remains required; issue #6 is not automatically closed by synthetic proof.
+The [project/workflow evaluation](plans/project-metaharness-evaluation.md) separates
+measured CI/replay and memory persistence from unproven routing savings and learning uplift.
+
 ## LikeC4 spike delivery
 
 PR #14 merged at `87d310d` and PR #15 at `daf02df` on stage (verified 2026-11-01).
-The subsequent live replacement is committed locally on `feat/live-likec4-architecture`,
-based on PR #20 merged into stage at `9aa0547`. It replaces the production fixture
-iframe and shares the renderer with glossary connections. See
-[MADR-0009](adr/0009-live-likec4-architecture.md) and the
-[preflight contract](plans/live-likec4-preflight.md). Validation and PR handoff are
-pending: the resumed refinement gate is 95/100, with sampled routing-ready DOM
-p95 148.2 ms versus the accepted spike's 165.6 ms. Functional and independent
-adversarial checks pass; final full act/security and PR gates remain. See the
-[execution handoff](plans/live-likec4-execution.md) for exact-source evidence and
-limitations. Nothing has been pushed from this package. The standalone spike retains its
+The live replacement PR #21 merged into stage at `5ce7f21` on 2026-11-01.
+It replaces the production fixture iframe and shares the renderer with glossary
+connections. See [MADR-0009](adr/0009-live-likec4-architecture.md), the
+[preflight contract](plans/live-likec4-preflight.md) and
+[execution handoff](plans/live-likec4-execution.md). Its sampled routing-ready DOM
+p95 of 148.2 ms is narrower than the final-paint/physical-display target below;
+merge status does not establish owner acceptance of every feature.
+The standalone spike retains its
 captured five-repository fixture as a regression harness.
 See [spike scope](spikes/likec4.md). Strict TypeScript 7.0.2 checks cover the spike;
 the extractor compiler API remains unchanged.

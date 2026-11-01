@@ -1,19 +1,29 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import ts from "typescript";
 import type { ToolRef } from "../contracts/records.ts";
-import { ArtifactBuilder, BUILD, sha256 } from "./builder.ts";
+import { ArtifactBuilder, BUILD, canonicalJson, sha256 } from "./builder.ts";
 import { calls, HANDLER_MAP } from "./calls.ts";
 import { calculations } from "./calculations.ts";
 import { Ctx } from "./context.ts";
 import { declare, detectGenerated } from "./declarations.ts";
-import { discoverUnits, posix, type UnitConfig } from "./project.ts";
-import { axiosRule, express, fetchRule, openApiRule, pgRule, projectNode, serviceBusRule, serviceNode } from "./rules.ts";
+import { discoverUnits, isFile, posix, type UnitConfig } from "./project.ts";
+import { nextRoutes } from "./next.ts";
+import { express, pgRule, projectNode, serviceBusRule, serviceNode } from "./rules.ts";
+import { axiosRule, fetchRule, openApiRule } from "./http-clients.ts";
 
 export const EXTRACTOR: ToolRef = { name: "ts-compiler", version: "0.1.0" };
 
 export interface ExtractOptions { source: string; repository: string; commit: string }
 export interface UnitResult { unitPath: string; unitName: string; jsonl: string; language: "typescript" | "javascript" }
+
+/** Compiler options contain absolute config/root paths; checkout location is not an analysis input. */
+function portableOptions(value: unknown, root: string): unknown {
+  if (typeof value === "string" && (value === root || value.startsWith(root + "/"))) return "$REPOSITORY" + posix(value.slice(root.length));
+  if (Array.isArray(value)) return value.map((v) => portableOptions(v, root));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, portableOptions(v, root)]));
+  return value;
+}
 
 /** Module specifiers that did not resolve: packages that are not installed (nothing is ever installed). */
 function missingModules(program: ts.Program, files: readonly ts.SourceFile[]): string[] {
@@ -61,6 +71,7 @@ export function extract(options: ExtractOptions): UnitResult[] {
     calls(ctx);
     calculations(ctx);
     express(ctx, rules);
+    nextRoutes(ctx, rules);
     axiosRule(ctx, rules);
     openApiRule(ctx, rules);
     fetchRule(ctx, rules);
@@ -86,8 +97,13 @@ export function extract(options: ExtractOptions): UnitResult[] {
     for (const e of unit.configErrors) b.diagnostic("warning", "CONFIG", e, ctx.rel(unit.configFile));
 
     const language = ctx.files.some((f) => /\.(m|c)?tsx?$/.test(f.fileName)) ? "typescript" : "javascript";
-    const inputs = [...owned].sort().map((f) => `${posix(f.slice(root.length + 1))}\0${sha256(readFileSync(f, "utf8"))}\n`).join("");
-    const configHash = sha256(`build=${BUILD}|typescript=${ts.version}|` + JSON.stringify(Object.keys(unit.options).sort().map((k) => [k, unit.options[k]])));
+    const inputFiles = new Set([...owned, unit.configFile, ...(unit.packageJson ? [unit.packageJson] : [])]);
+    for (const name of ["next.config.ts", "next.config.js", "next.config.mjs", "next.config.cjs"]) {
+      const file = resolve(unit.packageRoot, name);
+      if (isFile(file)) inputFiles.add(file);
+    }
+    const inputs = [...inputFiles].sort().map((f) => `${posix(f.slice(root.length + 1))}\0${sha256(readFileSync(f, "utf8"))}\n`).join("");
+    const configHash = sha256(`build=${BUILD}|typescript=${ts.version}|appRoot=${existsSync(resolve(unit.packageRoot, "app"))}|` + canonicalJson(portableOptions(unit.options, root)));
     const ordered = [...rules].sort((a, b2) => a.name.localeCompare(b2.name));
     const unitPath = ctx.rel(unit.configFile);
     results.push({ unitPath, unitName: unit.packageName, language, jsonl: b.toJsonl({ path: unitPath, name: unit.packageName }, language, ordered, configHash, sha256(inputs), owned.size) });

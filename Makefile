@@ -9,7 +9,7 @@ OFFLINE := $(SANDBOX) --offline
 
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
         restore ui build test-ts test-contracts test-evaluation test-extractors test-explorer test-store evaluate evaluate-golden \
-        extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze analyze-worker explore ollama postgres dev dev-data dev-down clean local-check pr-check install-git-hooks actions-audit test-local-ci security-check
+        extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze analyze-worker explore ollama postgres dev dev-data dev-down clean local-check pr-check install-git-hooks actions-audit test-local-ci test-mapping-replay security-check
 
 help:
 	@echo "make local-check     run the full GitHub CI workflow locally through nektos/gh-act before pushing"
@@ -58,12 +58,15 @@ actions-audit:
 test-local-ci:
 	$(OFFLINE) node bash tests/local-ci.test.sh
 
+test-mapping-replay:
+	$(OFFLINE) node node --test tests/mapping-replay.test.mjs
+
 security-check:
 	scripts/security-check
 
 ci: security-check fixtures-compile test
 
-test: test-local-ci golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
+test: test-local-ci test-mapping-replay golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
 
 fixtures:
 	$(OFFLINE) node scripts/build-fixtures.sh
