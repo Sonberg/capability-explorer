@@ -7,7 +7,9 @@ security fixes, locked corpus replay and binding preview/export are implemented
 locally. [MADR-0011](adr/0011-source-bound-security-validation.md) and
 [MADR-0012](adr/0012-revision-bound-binding-preview.md) document the boundaries.
 Live binding review passed nine browser assertions on loopback port 5108.
-The final full audit/local CI and PR are not yet complete. Container findings
+The [execution record](plans/security-corpus-binding-execution.md) records passed
+focused checks and failed/incomplete gates. Full local CI was interrupted when
+the OrbStack Docker socket disappeared; the final audit and PR are not complete. Container findings
 remain tracked in [issue #24](https://github.com/Sonberg/capability-explorer/issues/24);
 private Glufs validation remains blocked in [issue #23](https://github.com/Sonberg/capability-explorer/issues/23).
 Do not mistake passing dependency scans or synthetic replay for those missing gates.

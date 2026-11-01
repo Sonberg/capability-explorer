@@ -1,0 +1,80 @@
+# Security, corpus replay and binding review: execution record
+
+Status: local implementation; validation incomplete; no PR or push. Target only
+`stage-1-contract-and-fixtures`. Last checked base: `d4389b4` (2026-11-01).
+No merge, release or change to main is authorized by this record.
+
+## Delivered locally
+
+- Revision-bound binding preview and explicit reviewed export. Export does not
+  adopt bindings or write the database. Unknown/conflicted inputs remain visible.
+- Locked, deterministic corpus replay with synthetic acceptance tests. Real
+  Glufs validation remains unavailable: issue #23.
+- Source, reachable-history, dependency, SAST and image audit collection with
+  digest-pinned tools, explicit coverage and fail-closed verification.
+- Package/feed, Git/process, browser/API and model-credential boundary fixes.
+  Resource identities omit connection credentials; evidence mismatch diagnostics
+  omit source text. Each confirmed fix has dedicated regression evidence.
+- MADR-0011/0012, proposed MADR-0013, and a referenced weighted analysis-tool
+  comparison. Research scores are judgments, not benchmark measurements.
+
+## Evidence and its limits
+
+The integrated source `d438333` completed build, binding tests (23), Contracts
+tests (106), Evaluation tests (25), C# extractor tests (125), and evaluation of
+18 golden artifacts in local act. That run did **not** pass: the OrbStack Docker
+socket disappeared during subsequent extraction. Its log is the local ignored
+`.sandbox-cache/full-local-ci-final.log`. No successful local-CI receipt exists
+for the final batch. Later code must be validated again.
+
+The awk-free fixture script separately extracted and evaluated all ten C# golden
+artifacts, with unchanged thresholds and complete expected evidence. Worker TS
+credential fixes passed 134 tests plus typecheck; their twelve security cases
+include failing-before evidence. The later evidence-diagnostic redaction passed
+107 Contracts tests. These focused results do not replace integration CI.
+
+The binding preview passed nine actual browser assertions, including review and
+export, on the local application. This is UI evidence, not real-corpus acceptance
+or proof of every security boundary. The preview used port 5108; it depends on
+the Docker service remaining available.
+
+## Open gates and operational failures
+
+- Container findings, including unavailable upstream fixes, remain blockers in
+  issue #24. Earlier SDK/Node image comparisons are historical measurements;
+  they do not establish a complete current image inventory pass.
+- Semgrep reports parser failures. Independent file review supplements the
+  report but does not turn partial automated coverage into a passing scan.
+- Collection run6 found an unsupported Trivy image flag. The corrected collector
+  separates filesystem development dependencies from installed image packages;
+  its 51 harness tests passed, but full image collection must be rerun.
+- Run6 was also invalidated by newly generated Ruflo database files in `.swarm`.
+  These were runtime-state additions, not changed application source. Preserve
+  this failed receipt; do not edit it into a successful one.
+- Docker became unavailable during CI. Restore the shared service before
+  sandboxed validation; do not bypass sandboxing or restart others' workloads.
+- Local follow-up commits `83bbee5` (exact generated-memory exclusions) and
+  `5f3d6dc` (TypeScript source/config read boundaries) have not run their new
+  tests because Docker is unavailable. The JSON-boundary regression reproduced
+  four failures before the fix; that is not passing-after evidence. No fixture
+  or golden changes were made. File checks assume stable input, not protection
+  against concurrent hostile filesystem mutation.
+- Git replacement refs need a separate provenance review; disabling transport
+  helpers alone does not establish original-object identity under replacement
+  refs. This follow-up is unverified and is not recorded as a resolved finding.
+- Brain lifecycle hooks reported failed exact turn readback. An explicit
+  checkpoint was stored and read back as `project-state-current-1793555198027`,
+  but this does not prove automatic turn capture, learning or routing savings.
+
+## Resume order
+
+Finish isolated boundary fixes and independent review, restore Docker, integrate
+against current stage, then run focused regressions, unchanged golden gates,
+ordinary local act CI and fresh complete audit collection. Hold Git refs stable
+while sealing reachable history. Record unresolved findings individually; no
+blanket waiver or lowering of thresholds. Only publish an owner-review PR after
+the agreed publication gates are satisfied or the user explicitly revises them.
+
+Keep parser coverage, upstream image remediation and unavailable Glufs acceptance
+separate from product implementation. No claim that the project is vulnerability
+free follows from any one scanner or this record.
