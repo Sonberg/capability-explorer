@@ -1,14 +1,12 @@
-# Every build, install and test step runs inside scripts/sandbox (disposable container, non-root,
-# read-only root fs, no host env). Steps that do not need the network run with --offline.
-# Behind a TLS-intercepting proxy: export SANDBOX_EXTRA_CA_FILE=/path/to/ca.pem
-
-SANDBOX := scripts/sandbox
-DOTNET  := $(SANDBOX) dotnet
-NODE    := $(SANDBOX) node
-OFFLINE := $(SANDBOX) --offline
+# Trusted project development runs on the host for fast IDE, debugger and hot-reload loops.
+# Only capability analysis uses scripts/sandbox; analysed repositories are untrusted input.
+DOTNET := dotnet
+NODE   := node
+NPM    := npm
+NODE_PLATFORM := $(shell $(NODE) -p "process.platform + '-' + process.arch + '-abi' + process.versions.modules" 2>/dev/null || echo unavailable)
 
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
-        restore ui build test-ts test-contracts test-evaluation test-extractors test-explorer test-store evaluate evaluate-golden \
+        restore restore-dotnet restore-ts restore-ui ui frontend backend build test-ts test-contracts test-evaluation test-extractors test-explorer test-store evaluate evaluate-golden \
         analyze-all extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze analyze-worker explore ollama postgres dev dev-data dev-down clean local-check pr-check install-git-hooks actions-audit test-local-ci security-check
 
 help:
@@ -16,6 +14,8 @@ help:
 	@echo "make install-git-hooks  install this repository pre-push gate (preserves existing hooks)"
 	@echo "make actions-audit   audit workflow dependencies with Wayne Ashley Berry gh-act (separate tool)"
 	@echo "make dev             local environment: PostgreSQL (pgvector) + Ollama, import + embed the artifacts, then explore"
+	@echo "make frontend        run the Vite frontend dev server on the host (hot reload)"
+	@echo "make backend         run the Explorer API on the host at http://127.0.0.1:$(PORT)"
 	@echo "     PG_PORT=5433 OLLAMA_CHAT=none (skip the chat model) and every explore option; make dev-down stops the containers"
 	@echo "make dev-data        only the import + embed step of make dev (e.g. while the explorer runs)"
 	@echo "make analyze-worker  runs the explorer's Analyze code requests on the host (make dev starts one; CE_DATABASE='...' to store)"
@@ -25,7 +25,7 @@ help:
 	@echo "make fixtures-lock   rebuild fixture repos and rewrite revisions.lock.json (after editing fixtures/src)"
 	@echo "make golden          regenerate fixtures/expected from fixtures/golden/facts"
 	@echo "make fixtures-compile  check every fixture revision compiles (or fails) as intended"
-	@echo "make explore [ARTIFACTS=dir] [EVALUATION=report.json] [CAPABILITIES=file] [SOURCES=/abs/repo,...] [PORT=5080]"
+	@echo "make explore [ARTIFACTS=dir] [EVALUATION=report.json] [CAPABILITIES=file] [PORT=5080]"
 	@echo "     browse the model at http://127.0.0.1:5080"
 	@echo "     private GitHub repos: GITHUB_TOKEN, or 'gh auth login'; GITHUB_AUTH=git also tries the git credential helper"
 	@echo "     optional LLM: make ollama (local, no key), the Settings page (gear icon), or INTERPRETATION=foundry FOUNDRY_ENDPOINT=... FOUNDRY_DEPLOYMENT=..."
@@ -57,7 +57,7 @@ actions-audit:
 	scripts/actions-audit audit
 
 test-local-ci:
-	$(OFFLINE) node bash tests/local-ci.test.sh
+	bash tests/local-ci.test.sh
 
 security-check:
 	scripts/security-check
@@ -67,60 +67,82 @@ ci: security-check fixtures-compile test
 test: test-local-ci golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
 
 fixtures:
-	$(OFFLINE) node scripts/build-fixtures.sh
+	scripts/build-fixtures.sh
 
 fixtures-lock:
-	$(OFFLINE) node scripts/build-fixtures.sh --update
+	scripts/build-fixtures.sh --update
 
 fixtures-compile: fixtures
-	$(DOTNET) scripts/compile-fixtures.sh restore-dotnet
-	$(NODE) scripts/compile-fixtures.sh restore-node
-	$(OFFLINE) dotnet scripts/compile-fixtures.sh build-dotnet
-	$(OFFLINE) node scripts/compile-fixtures.sh build-node
+	scripts/compile-fixtures.sh restore-dotnet
+	scripts/compile-fixtures.sh restore-node
+	scripts/compile-fixtures.sh build-dotnet
+	scripts/compile-fixtures.sh build-node
 
 golden: fixtures
-	$(OFFLINE) node node fixtures/golden/build.mjs
+	$(NODE) fixtures/golden/build.mjs
 
 golden-check: fixtures
-	$(OFFLINE) node node fixtures/golden/build.mjs --check
+	$(NODE) fixtures/golden/build.mjs --check
 
-# Network is only used here; everything after restore runs offline.
-restore:
-	$(DOTNET) sh -c 'cd platform && dotnet restore --locked-mode CapabilityExplorer.slnx'
-	$(NODE) sh -c 'cd extractors/ts && npm ci'
+# Host-native dependency restore. Locked inputs keep CI and developer machines aligned.
+restore: restore-dotnet restore-ts restore-ui
 
-# Explorer UI: React + Tailwind (Vite). Dependencies are installed with network, the build runs offline.
+DOTNET_RESTORE_INPUTS := $(shell find platform -type f \( -name '*.csproj' -o -name '*.props' -o -name '*.targets' -o -name 'packages.lock.json' -o -name '*.slnx' -o -name 'global.json' -o -name 'NuGet.Config' \) -print)
+DOTNET_RESTORE_STAMP := .sandbox-cache/stamps/dotnet-restore
+$(DOTNET_RESTORE_STAMP): $(DOTNET_RESTORE_INPUTS)
+	cd platform && $(DOTNET) restore --locked-mode CapabilityExplorer.slnx
+	@mkdir -p $(dir $(DOTNET_RESTORE_STAMP)) && touch $(DOTNET_RESTORE_STAMP)
+
+restore-dotnet: $(DOTNET_RESTORE_STAMP)
+
+TS_DEPS_STAMP := extractors/ts/node_modules/.ce-host-$(NODE_PLATFORM)
+$(TS_DEPS_STAMP): extractors/ts/package-lock.json
+	cd extractors/ts && $(NPM) ci --ignore-scripts
+	@touch $(TS_DEPS_STAMP)
+
+restore-ts: $(TS_DEPS_STAMP)
+
+# Explorer UI: React + Tailwind (Vite), installed and built directly on the host.
 UI := platform/src/CapabilityExplorer.Explorer/client
-ui:
-	$(NODE) sh -c 'cd $(UI) && npm ci'
-	$(OFFLINE) node sh -c 'cd $(UI) && npm run -s build'
+UI_DEPS_STAMP := $(UI)/node_modules/.ce-host-$(NODE_PLATFORM)
+$(UI_DEPS_STAMP): $(UI)/package-lock.json
+	cd $(UI) && $(NPM) ci --ignore-scripts
+	@touch $(UI_DEPS_STAMP)
+
+restore-ui: $(UI_DEPS_STAMP)
+
+ui: restore-ui
+	cd $(UI) && $(NPM) run -s build
+
+frontend: restore-ui
+	cd $(UI) && $(NPM) run dev -- --host 127.0.0.1
 
 build: restore ui
-	$(OFFLINE) dotnet sh -c 'cd platform && dotnet build --no-restore -nologo CapabilityExplorer.slnx'
+	cd platform && $(DOTNET) build --no-restore -nologo CapabilityExplorer.slnx
 
 test-ts: restore
-	$(OFFLINE) node sh -c 'cd extractors/ts && npm run -s typecheck && npm test'
+	cd extractors/ts && $(NPM) run -s typecheck && $(NPM) test
 
 test-contracts: fixtures build
-	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Contracts.Tests'
+	cd platform && $(DOTNET) test --no-build tests/CapabilityExplorer.Contracts.Tests
 
 test-evaluation: fixtures build
-	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Evaluation.Tests'
+	cd platform && $(DOTNET) test --no-build tests/CapabilityExplorer.Evaluation.Tests
 
-CE := dotnet platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll
+CE := platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll
 
 test-extractors: build
-	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Extractors.Tests'
+	cd platform && $(DOTNET) test --no-build tests/CapabilityExplorer.Extractors.Tests
 
 # Self-check of the scorer: the golden set scored against itself must pass every threshold.
 evaluate-golden: fixtures build
-	$(OFFLINE) dotnet $(CE) evaluate --expected fixtures/expected --actual fixtures/expected \
+	$(DOTNET) $(CE) evaluate --expected fixtures/expected --actual fixtures/expected \
 	  --config fixtures/evaluation.json --repos fixtures/.repos
 
 # Score real extractor output: make evaluate ACTUAL=out/ [REPO=forecast-cs,pricing-node]
 evaluate: fixtures build
 	@test -n "$(ACTUAL)" || { echo "usage: make evaluate ACTUAL=<dir with .jsonl artifacts>"; exit 2; }
-	$(OFFLINE) dotnet $(CE) evaluate --expected fixtures/expected --actual $(ACTUAL) \
+	$(DOTNET) $(CE) evaluate --expected fixtures/expected --actual $(ACTUAL) \
 	  --config fixtures/evaluation.json --repos fixtures/.repos --json $(ACTUAL)/evaluation.json \
 	  $(if $(REPO),--repository $(REPO))
 
@@ -128,32 +150,32 @@ evaluate: fixtures build
 EXTRACTED := .sandbox-cache/extracted
 extract-cs: fixtures build fixtures-compile
 	rm -rf $(EXTRACTED)/cs
-	$(OFFLINE) dotnet bash scripts/extract-fixtures.sh cs $(EXTRACTED)/cs
+	bash scripts/extract-fixtures.sh cs $(EXTRACTED)/cs
 
 evaluate-cs: extract-cs
-	$(OFFLINE) dotnet $(CE) evaluate --expected fixtures/expected --actual $(EXTRACTED)/cs \
+	$(DOTNET) $(CE) evaluate --expected fixtures/expected --actual $(EXTRACTED)/cs \
 	  --config fixtures/evaluation.csharp.json --repos fixtures/.repos --language csharp --json $(EXTRACTED)/cs/evaluation.json
 
 # TypeScript/JavaScript extractor (compiler API; the analysed packages are never installed).
 extract-ts: fixtures restore
 	rm -rf $(EXTRACTED)/ts
-	$(OFFLINE) node bash scripts/extract-fixtures.sh ts $(EXTRACTED)/ts
+	bash scripts/extract-fixtures.sh ts $(EXTRACTED)/ts
 
 evaluate-ts: extract-ts build
-	$(OFFLINE) dotnet $(CE) evaluate --expected fixtures/expected --actual $(EXTRACTED)/ts \
+	$(DOTNET) $(CE) evaluate --expected fixtures/expected --actual $(EXTRACTED)/ts \
 	  --config fixtures/evaluation.extractors.ts.json --repos fixtures/.repos --language typescript,javascript --json $(EXTRACTED)/ts/evaluation.json
 
 # SQL extractor (T-SQL database projects and PostgreSQL migrations): read as text, no database, nothing executed.
 extract-sql: fixtures restore
 	rm -rf $(EXTRACTED)/sql
-	$(OFFLINE) node bash scripts/extract-fixtures.sh sql $(EXTRACTED)/sql
+	bash scripts/extract-fixtures.sh sql $(EXTRACTED)/sql
 
 evaluate-sql: extract-sql build
-	$(OFFLINE) dotnet $(CE) evaluate --expected fixtures/expected --actual $(EXTRACTED)/sql \
+	$(DOTNET) $(CE) evaluate --expected fixtures/expected --actual $(EXTRACTED)/sql \
 	  --config fixtures/evaluation.extractors.json --repos fixtures/.repos --language sql --json $(EXTRACTED)/sql/evaluation.json
 
 test-explorer: fixtures build
-	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Explorer.Tests && dotnet test --no-build tests/CapabilityExplorer.Interpretation.Tests && dotnet test --no-build tests/CapabilityExplorer.Capabilities.Tests'
+	cd platform && $(DOTNET) test --no-build tests/CapabilityExplorer.Explorer.Tests && $(DOTNET) test --no-build tests/CapabilityExplorer.Interpretation.Tests && $(DOTNET) test --no-build tests/CapabilityExplorer.Capabilities.Tests
 
 # Analyse a capability's repositories: export (network + token) -> packages (nuget.org) -> extract (offline).
 analyze: build
@@ -165,7 +187,7 @@ analyze-all:
 	@for c in $$(python3 -c "import json,sys;print(' '.join(c['id'] for c in json.load(open(sys.argv[1]))['capabilities']))" $(CAPABILITIES)); do \
 	  echo "#### $$c"; $(MAKE) --no-print-directory analyze CAPABILITY=$$c || exit 1; done
 
-# Read-only UI over artifacts. The container publishes the port on 127.0.0.1 only.
+# Read-only host-native UI/API over artifacts.
 # Analysed artifacts come after the golden set: for the same repository, commit and unit, the later one wins.
 ARTIFACTS ?= fixtures/expected,.sandbox-cache/artifacts
 CAPABILITIES ?= capabilities.json
@@ -173,18 +195,10 @@ GITHUB_AUTH ?= auto
 PORT ?= 5080
 # Human-maintained service map that binds @unbound hints (see schema/README.md). Used by explore and by the optional import in analyze.
 BINDINGS ?= $(wildcard bindings.json)
-# Extra local directories to mount read-only (local repositories in $(CAPABILITIES) are mounted automatically):
-# SOURCES=/abs/path,/abs/other — e.g. SOURCES=$$HOME/Code to add repositories from the UI without restarting.
 explore: fixtures build
 	@echo "Capability Explorer: http://127.0.0.1:$(PORT)"
-	@# GitHub credentials for private capability repositories are resolved on the host and forwarded
-	@# only into this container (see scripts/github-token). The token is never printed.
-	@# Local capability repositories (absolute or ~/ paths in $(CAPABILITIES)) are mounted read-only, and the
-	@# host's home is forwarded so ~ means the same thing inside the container.
 	GITHUB_TOKEN="$$(scripts/github-token $(GITHUB_AUTH))" CE_HOST_HOME="$$HOME" \
-	SANDBOX_PASS_ENV="$${SANDBOX_PASS_ENV:+$$SANDBOX_PASS_ENV,}GITHUB_TOKEN,CE_HOST_HOME,CE_DATABASE,CE_FOUNDRY_API_KEY" \
-	SANDBOX_SOURCES="$$(s="$(SOURCES)"; c="$$(scripts/capability-sources $(CAPABILITIES))"; echo "$${s}$${s:+$${c:+,}}$${c}")" \
-	$(SANDBOX) --port $(PORT) dotnet dotnet platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll \
+	ASPNETCORE_URLS="http://127.0.0.1:$(PORT)" $(DOTNET) platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll \
 	  --artifacts $(ARTIFACTS) --repos fixtures/.repos $(if $(EVALUATION),--evaluation $(EVALUATION)) \
 	  --capabilities $(CAPABILITIES) --workspace .sandbox-cache/sources $(if $(BINDINGS),--bindings $(BINDINGS)) \
 	  $(if $(INTERPRETATION),--interpretation:provider $(INTERPRETATION) --interpretation:cacheDirectory .sandbox-cache/interpretations) \
@@ -193,12 +207,14 @@ explore: fixtures build
 	  $(if $(RECORDINGS),--interpretation:recordings $(RECORDINGS)) \
 	  $(if $(RECORD_TO),--interpretation:recordTo $(RECORD_TO))
 
-# Needs the Docker socket so Testcontainers can start PostgreSQL (see scripts/sandbox --docker).
+backend: explore
+
+# Testcontainers talks to the developer's Docker daemon directly.
 test-store: build
-	$(SANDBOX) --docker dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Store.Tests'
+	cd platform && $(DOTNET) test --no-build tests/CapabilityExplorer.Store.Tests
 
 # Local models for explanations and similarity search: no key, nothing leaves the machine. Listens on the host's
-# 127.0.0.1:11434 only; the sandbox reaches it as host.docker.internal. The native Ollama app on the same port works too
+# 127.0.0.1:11434 only. The native Ollama app on the same port works too
 # (and uses the GPU, which Docker on macOS cannot). OLLAMA_CHAT=none skips the chat model (a few GB).
 # Saves .sandbox-cache/model.json unless settings were already saved (from the Settings page or an earlier run).
 OLLAMA_IMAGE ?= ollama/ollama:0.40.5
@@ -212,16 +228,15 @@ ollama:
 	[ "$(OLLAMA_CHAT)" = none ] || curl -fsS http://127.0.0.1:11434/api/pull -d '{"model":"$(OLLAMA_CHAT)","stream":false}' >/dev/null
 	@if [ -f .sandbox-cache/model.json ]; then echo "kept existing .sandbox-cache/model.json (change it on the Settings page)"; else \
 	  chat='"$(OLLAMA_CHAT)"'; [ "$(OLLAMA_CHAT)" = none ] && chat=null; \
-	  mkdir -p .sandbox-cache && (umask 077 && printf '{\n  "endpoint": "http://host.docker.internal:11434/v1",\n  "chatModel": %s,\n  "embeddingModel": "%s"\n}\n' \
+	  mkdir -p .sandbox-cache && (umask 077 && printf '{\n  "endpoint": "http://127.0.0.1:11434/v1",\n  "chatModel": %s,\n  "embeddingModel": "%s"\n}\n' \
 	    "$$chat" '$(OLLAMA_EMBED)' > .sandbox-cache/model.json) && \
 	  echo "saved .sandbox-cache/model.json: a running explorer picks it up on restart (or Save on the Settings page)"; fi
 
-# Local PostgreSQL with pgvector, on the host's 127.0.0.1 only (dev credentials, never a shared database). The sandbox
-# reaches it as host.docker.internal. Data survives restarts in the ce-postgres volume (docker volume rm ce-postgres resets).
-# ponytail: on Linux, host.docker.internal is the bridge gateway, which a 127.0.0.1-only port does not answer; set SANDBOX_NETWORK=host there.
+# Local PostgreSQL with pgvector, on the host's 127.0.0.1 only (dev credentials, never a shared database).
+# Data survives restarts in the ce-postgres volume (docker volume rm ce-postgres resets).
 PG_IMAGE ?= pgvector/pgvector:0.8.6-pg17
 PG_PORT ?= 5433
-DEV_DATABASE = Host=host.docker.internal;Port=$(PG_PORT);Database=ce;Username=ce;Password=ce
+DEV_DATABASE = Host=127.0.0.1;Port=$(PG_PORT);Database=ce;Username=ce;Password=ce
 comma := ,
 postgres:
 	@docker start ce-postgres >/dev/null 2>&1 || docker run -d --name ce-postgres -p 127.0.0.1:$(PG_PORT):5432 \
@@ -246,7 +261,7 @@ analyze-worker: build
 dev-data: build postgres ollama
 	@mkdir -p .sandbox-cache && find $(subst $(comma), ,$(ARTIFACTS)) -name '*.jsonl' 2>/dev/null | sort > .sandbox-cache/dev-artifacts.txt
 	@echo "== import $$(wc -l < .sandbox-cache/dev-artifacts.txt | tr -d ' ') artifact(s) and embed"
-	@CE_DATABASE='$(DEV_DATABASE)' SANDBOX_PASS_ENV=CE_DATABASE SANDBOX_SOURCES="" $(DOTNET) bash -c '\
+	@CE_DATABASE='$(DEV_DATABASE)' bash -c '\
 	  ce=platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll; \
 	  dotnet $$ce migrate; \
 	  xargs dotnet $$ce import < .sandbox-cache/dev-artifacts.txt | grep -v "^unchanged" || true; \

@@ -25,8 +25,9 @@ those fixes are separate from synthetic test coverage.
 
 Ground rules that apply to all work:
 
-- Every build, install and test goes through `scripts/sandbox` via `make`. Nothing runs on the host.
-- Extraction is `--offline` and never builds, restores or executes the analysed code.
+- Trusted project restore, build, tests, Explorer and Vite run on the host through `make`.
+- Capability source acquisition and extraction use `scripts/sandbox`; extraction is `--offline` and never builds,
+  restores or executes the analysed code.
 - Evaluation thresholds are only ever raised.
 
 ## Local checks before pushing

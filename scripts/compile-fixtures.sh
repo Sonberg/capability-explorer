@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 # Checks that every fixture revision compiles (or fails) as intended.
-#   restore phase (needs network):  scripts/sandbox dotnet scripts/compile-fixtures.sh restore-dotnet
-#                                    scripts/sandbox node   scripts/compile-fixtures.sh restore-node
-#   build phase (run --offline):     scripts/sandbox --offline dotnet scripts/compile-fixtures.sh build-dotnet
-#                                    scripts/sandbox --offline node   scripts/compile-fixtures.sh build-node
+#   restore phase: scripts/compile-fixtures.sh restore-dotnet | restore-node
+#   build phase:   scripts/compile-fixtures.sh build-dotnet   | build-node
 # Each fixture tag is checked out into fixtures/.work/<repo>@<tag> so fixtures/.repos stays pristine.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -53,7 +51,7 @@ case "$phase" in
     for c in "${dotnet_cases[@]}"; do read -r repo tag entry expect <<<"$c"
       dir=$(checkout "$repo" "$tag")
       # Restore failures for intentionally broken projects are expected; the build phase asserts them.
-      (cd "$dir" && dotnet restore "$entry" -v q -nologo >/dev/null 2>&1) || [[ $expect != ok ]] || { echo "restore failed: $repo@$tag"; rc=1; }
+      (cd "$dir" && dotnet restore "$entry" --configfile "$root/platform/NuGet.Config" -v q -nologo >/dev/null 2>&1) || [[ $expect != ok ]] || { echo "restore failed: $repo@$tag"; rc=1; }
     done ;;
   build-dotnet)
     for c in "${dotnet_cases[@]}"; do read -r repo tag entry expect <<<"$c"

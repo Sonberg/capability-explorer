@@ -18,28 +18,21 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      # Builds and tests run inside scripts/sandbox containers; the runner only needs Docker.
-      - name: Cache sandbox packages
-        if: ${{ !env.ACT }}
-        uses: actions/cache@v4
+      - uses: actions/setup-dotnet@v4
         with:
-          path: |
-            .sandbox-cache/nuget
-            .sandbox-cache/nuget-http
-            .sandbox-cache/npm
-            .sandbox-cache/trivy
-            .sandbox-cache/tools
-          key: sandbox-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('platform/**/packages.lock.json', 'extractors/ts/package-lock.json', 'platform/src/CapabilityExplorer.Explorer/client/package-lock.json', 'fixtures/src/**/*.csproj', 'fixtures/src/**/package-lock.json') }}
+          dotnet-version: 10.0.x
+          cache: true
+          cache-dependency-path: platform/**/packages.lock.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            extractors/ts/package-lock.json
+            platform/src/CapabilityExplorer.Explorer/client/package-lock.json
       - name: Audit action dependencies
         if: ${{ !env.ACT }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: scripts/actions-audit audit
-      - name: Pull sandbox images
-        run: |
-          for image in mcr.microsoft.com/dotnet/sdk:10.0 node:22-bookworm pgvector/pgvector:0.8.6-pg17; do
-            if [ "${ACT:-}" != "true" ] || ! docker image inspect "$image" >/dev/null 2>&1; then
-              docker pull "$image"
-            fi
-          done
       - run: make ci

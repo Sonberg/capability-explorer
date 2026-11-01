@@ -42,20 +42,62 @@ policy, limits, pinned tools and hook installation behavior. Hosted CI remains r
 | `fixtures/` | Five fixture repos (C#, TypeScript/JavaScript, T-SQL, PostgreSQL) built deterministically from overlays, plus golden artifacts. See [fixtures/README.md](fixtures/README.md). |
 | `platform/` | .NET 10: `Contracts` (validator, evidence verifier), `Binding` (service-map binding of `@unbound` hints), `Evaluation` (scoring against golden), `Store` (migrations, importer), `Cli` (`ce`), `Extractors.CSharp` (`ce-cs`), `Capabilities` (repository sets and source acquisition), `Interpretation` (optional LLM), `Explorer` (API + React/Tailwind UI), tests |
 | `extractors/ts/` | Node/TypeScript package: the TypeScript/JavaScript extractor (`ce-ts extract`) and the contract validator (ajv against the same schema). |
-| `scripts/sandbox` | Runs every build, install and test in a disposable container |
+| `scripts/sandbox` | Isolates capability source acquisition and extraction; normal development runs on the host |
 
 ## Running
 
-Everything goes through `make`, and `make` only calls `scripts/sandbox`. Nothing is restored,
-installed or compiled on the host. The host needs Docker (and make).
+Everything goes through `make`. Trusted project restore, build, tests, the Explorer API and Vite run directly on
+the host for normal debugger and hot-reload support. Capability analysis alone runs in hardened containers because
+it reads repositories that must be treated as untrusted input.
+
+Install .NET 10, Node.js 22, Docker and make, then run:
 
 ```sh
 make ci                 # fixture compile checks + all tests
 make test               # golden check, TS tests, .NET contract tests, store tests
 make fixtures-compile   # every fixture revision compiles (or fails) as intended
+make backend            # Explorer API on http://127.0.0.1:5080
+make frontend           # Vite dev server with hot reload
 ```
 
-Behind a TLS-intercepting proxy, run `export SANDBOX_EXTRA_CA_FILE=/path/to/ca.pem` first.
+### Run the complete development environment
+
+With Docker running, one command starts the complete local stack:
+
+```sh
+make dev
+```
+
+This builds the solution and production frontend, starts PostgreSQL with pgvector and Ollama, imports and
+embeds the available artifacts, starts the capability-analysis worker, and serves the application at
+<http://127.0.0.1:5080>. The first run can take longer while Docker images and Ollama models are downloaded.
+The Explorer API, solution, frontend build, import, and embedding run directly on the host; only capability
+source acquisition and extraction run in the analysis sandbox.
+
+The built frontend is already served by `make dev`. For frontend hot reload, leave it running and start Vite
+in a second terminal:
+
+```sh
+make frontend
+```
+
+To analyse a configured capability while the stack is running, use the **Analyse** action in the UI or run:
+
+```sh
+make analyze CAPABILITY=weekly-sales
+```
+
+The Explorer reloads completed artifacts automatically. Stop the local PostgreSQL and Ollama containers with:
+
+```sh
+make dev-down
+```
+
+To run everything required by CI rather than start the development environment:
+
+```sh
+make ci
+```
 
 ### Exploring the model
 
@@ -66,8 +108,8 @@ make explore ARTIFACTS=out/ EVALUATION=out/evaluation.json   # extractor output 
 
 The explorer is an ASP.NET Core server over a directory of artifacts. Its UI is React + Tailwind (Vite),
 in `platform/src/CapabilityExplorer.Explorer/client`. `make ui` builds it into `wwwroot`, which is a build
-output and not committed. `npm run dev` in that folder serves it with hot reload and proxies the API to a
-running explorer. Everything runs in the sandbox and publishes on `127.0.0.1` only.
+output and not committed. `make frontend` serves it with hot reload and proxies the API to a host-native
+`make backend`. Both bind to `127.0.0.1` only.
 
 - **Capability selector**: a capability is a named set of repositories, given as GitHub URLs or local
   paths, that are checked together. Selecting one scopes every view to its repositories at their locked
@@ -119,16 +161,13 @@ commit are loaded (see *Analysing a capability* below).
 
 **Local repositories**
 
-- Absolute and `~/` paths listed in `capabilities.json` are mounted read-only automatically when
-  `make explore` starts.
-- `~` means your home directory on the host, even inside the container.
-- A path added through the UI after start-up needs a restart, or a parent directory mounted up front:
-  `make explore SOURCES=$HOME/Code`.
+- Absolute and `~/` paths listed in `capabilities.json` are read directly by the host-native Explorer.
+- `~` means your home directory.
 - Relative paths resolve inside this checkout.
 
 **Private GitHub repositories**
 
-`make explore` resolves a token on your machine and forwards it into the explorer container only. It
+`make explore` resolves a token on your machine and passes it to the host-native Explorer process only. It
 never prints the token. The order is:
 
 1. `GITHUB_TOKEN` or `GH_TOKEN`.
@@ -154,7 +193,7 @@ rejected. The result is shown as an unreviewed AI proposal.
 ```sh
 # Microsoft Foundry (OpenAI-compatible v1 endpoint). The key is read from CE_FOUNDRY_API_KEY;
 # without a key, Entra ID (DefaultAzureCredential) is used.
-SANDBOX_PASS_ENV=CE_FOUNDRY_API_KEY make explore INTERPRETATION=foundry \
+CE_FOUNDRY_API_KEY=<key> make explore INTERPRETATION=foundry \
   FOUNDRY_ENDPOINT=https://<resource>.services.ai.azure.com FOUNDRY_DEPLOYMENT=<deployment> [RECORD_TO=recordings/]
 # Replay stored responses (no live model), as the tests do:
 make explore INTERPRETATION=recorded RECORDINGS=recordings/
@@ -175,7 +214,8 @@ Test projects and conventional test files (`tests/`, `__tests__/`, `*.test.*`, `
 default production graph and therefore from imports and embeddings. Set `"includeTests": true` on a capability in
 `capabilities.json` when it should retain tests. `INCLUDE_TESTS=0|1 make analyze ...` overrides that setting for one run.
 
-Each step runs in its own sandbox and gets only what it needs:
+Each analysis stage runs in its own sandbox and gets only what it needs. Optional import and embedding happen on
+the host after artifact validation:
 
 | Step | Sandbox | What happens |
 |---|---|---|
@@ -272,7 +312,7 @@ accuracy, evidence and precision are held at 100%; for all three extractors so a
 Storing is optional and off unless `CE_DATABASE` (an Npgsql connection string) is set:
 
 ```sh
-CE_DATABASE='Host=host.docker.internal;Database=ce;Username=ce;Password=...' make analyze CAPABILITY=weekly-sales
+CE_DATABASE='Host=127.0.0.1;Port=5433;Database=ce;Username=ce;Password=...' make analyze CAPABILITY=weekly-sales
 ```
 
 Step 4 of `make analyze` then runs migrations and imports every artifact it just wrote. The importer is
@@ -319,21 +359,20 @@ The output is a text report with one line per finding, saying where the fact was
 thresholds start at 100%; lower one only as a reviewed decision. `make evaluate-golden` scores the
 golden set against itself and runs in CI as a self-check of the scorer.
 
-### Sandbox model
+### Analysis sandbox
 
-`scripts/sandbox <dotnet|node> <cmd…>` runs `<cmd>` in a stock SDK image with these guarantees:
+`scripts/analyze` uses `scripts/sandbox <dotnet|node> <cmd…>` only for capability export, package acquisition and
+extraction. The trusted solution, frontend, tests and Explorer process run on the host. Analysis containers have
+these guarantees:
 
 - It runs as the host uid, never as root.
 - The root filesystem is read-only, all capabilities are dropped and `no-new-privileges` is set.
 - Only the repository is mounted. Package caches live in `.sandbox-cache/`.
 - The environment is an explicit allowlist, so no host variables or credentials leak in.
 - npm lifecycle scripts are disabled.
-- `--offline` adds `--network none`. Network is used only for `restore` and `npm ci`. Builds and
-  tests that need nothing external run offline, so a restored package can execute build logic but
-  cannot reach anywhere.
-- `--docker` mounts the Docker socket. Only `make test-store` uses it, so Testcontainers can start a
-  throwaway `postgres:17-alpine`. The socket gives control of the host Docker daemon, so analysis and
-  extraction steps must never get it.
+- Extraction uses `--offline` (`--network none`). The analysed code is parsed, never restored, built or executed.
+- Analysis containers never receive the Docker socket. `make test-store` runs on the host and Testcontainers talks
+  to Docker directly.
 
 ## Stage 1 done criteria
 
