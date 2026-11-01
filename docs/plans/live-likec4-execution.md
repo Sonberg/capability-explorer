@@ -1,7 +1,8 @@
 # Live LikeC4 replacement execution
 
-Status: implementation and browser refinement in progress; final exact-source
-act/security and stage-alignment gates remain pending. No PR or release is claimed.
+Status: refinement gate **90/100, not passed**. Functional implementation is
+committed locally; performance parity remains unaccepted. Final full act/security
+and PR gates are pending. No push, PR, merge or release is claimed.
 
 ## Contract and source
 
@@ -72,7 +73,7 @@ source wwwroot is insufficient. Served asset identities are checked after rebuil
   both at 1440×900, 5120×2160 and 390×844. CRUD, exact occurrence/evidence selection,
   reviewed association arrows, read-only behavior and source provenance passed.
   Simulated 409/503 cases test browser handling, not a real database outage.
-- Architecture browser journey: 182 assertions passed, including exact provenance,
+- Architecture browser journey: 184 assertions passed, including exact provenance,
   live scope/revisions, drills, filtering after group edits, group persistence, real
   label bounds, readable initial zoom and explicit Fit. Worker startup failure/retry
   and late API responses are simulated; all three viewport sizes use Chromium.
@@ -111,6 +112,27 @@ display strings, compound endpoints and opposite/parallel/self relationships.
 The corrected comparison is reproducible with `make live-architecture-benchmark`,
 using already running accepted/candidate previews; no hosted browser job is added.
 
+The public-WASM candidate was then measured with the tracked benchmark (30 drags,
+no competing tests), asset `index-B0WuVpjx.js` (SHA-256
+`219126db1c0c7207c387a85032668fe7117eb1d32453fa42ee0d1639908cc2e1`):
+
+| Measurement | Accepted baseline | Public Graphviz candidate |
+|---|---:|---:|
+| Worker refinement p50 / p95 | 80.5 / 92.9 ms | 161.6 / 201.0 ms |
+| Release-to-routing-ready attribute p50 / p95 | 98.8 / 116.7 ms | 180.2 / 225.2 ms |
+
+Both retain zero overlapping rendered label pairs. This is an improvement over the
+Dagre attempt but still fails the migration's performance-parity gate. Subsequent
+zoom-control/source-overlay changes have functional browser evidence bound to
+`index-Cu1KIVXo.js`; they are not claimed as a new performance measurement.
+
+Node-only routing bounds nearly halved one captured CPU sample, but worsened three
+crowded parallel-edge cases. That shortcut was rejected. The exact boundary guard
+cannot retain the speedup: certified searches perform the same work, and unsafe
+searches require a full fallback. A stronger turn heuristic also worsened crossings.
+Routing penalties, route-order comparisons and quality criteria remain unchanged.
+
+
 ## Remaining gates and limits
 
 Resolve the measured performance regression and repeat source-bound browser
@@ -125,3 +147,41 @@ for production-corpus capacity, all-browser support or physical-display paint.
 Initial readability, the explicit Fit action, narrow-screen source visibility,
 collapsed source containers and label spacing were corrected during browser review. General extractor fixes (#6) and
 owner-controlled BPMN/DMN scope (#12) remain separate.
+
+
+## Refinement handoff
+
+Five bounded refinement passes covered initial live integration, readable/compact
+layout, semantic ranking and label clearance, the public Graphviz adapter, and
+performance/edge-case review. The final self-assessment is **90/100**: the ten-point
+deduction is the measured routing regression in the table above. Functional source,
+worker failure paths and browser journeys pass; the performance criterion does not.
+Completion is not graded or claimed. The brain-build phase gate requires at least
+95/100 and stops after five unsuccessful refinement iterations.
+
+The final read-only model probe captured canonical DOT through public compiler and
+Graphviz APIs. Passing that DOT, with live identities, through the same adapter
+produced about 23 ms offline routing versus 96 ms for the adapter's generated DOT.
+This is **diagnostic fixture evidence**, not a production solution or browser result.
+It locates remaining work in generic DOT construction/content measurement and the
+resulting geometry. Hardcoding captured fixture DOT is not an acceptable repair.
+
+Next action: implement and independently review a bounded canonical-style content
+measurement/adjacency serializer using public APIs, keeping original identities,
+conservative associations and worker limits. Compare the same fixture and the
+crowded counterexamples; then rerun the tracked actual-browser benchmark. Only
+advance to final act/security, fresh stage alignment and owner-review PR when the
+performance gate passes. Do not change routing quality penalties to obtain a pass.
+
+Local research files are in `/private/tmp/ce-live-likec4-model/.sandbox-cache/`
+(`captured-1.dot`, `graphviz-final-probe.mjs`, and the order/semantic/native-content
+probes). Rejected search-domain probes are in the browser worker's ignored cache.
+The reproducible benchmark script and fixture are tracked; ignored probe outputs
+are not release evidence. Integration branch: `feat/live-likec4-architecture` in
+`/private/tmp/ce-live-likec4`. Preview: `http://127.0.0.1:5096/#/architecture`.
+
+Not tested or accepted: final physical-display paint, general production-corpus
+capacity, non-Chromium browsers, remote deployment, and the final clean-HEAD full
+act/security gate. Existing focused Trivy/backend results do not replace that gate.
+Automatic Brain turn recording reported unhealthy readback; manual AgentDB
+checkpoint store/retrieve was used without claiming automatic learning is healthy.

@@ -40,7 +40,7 @@
 .live-architecture-canvas .group-context { position:absolute; z-index:18; top:70px; left:12px; right:12px; display:flex; align-items:center; flex-wrap:wrap; gap:8px; width:fit-content; max-width:calc(100% - 24px); padding:10px 12px; border:1px solid var(--live-border); border-radius:8px; box-shadow:0 5px 20px #0003; background:var(--live-panel); }
 .live-architecture-canvas .group-context span { font-size:12px; }
 .live-architecture-canvas .group-context input { font:inherit; color:inherit; width:160px; padding:6px; border:1px solid var(--live-border); border-radius:5px; background:var(--live-bg); }
-.live-architecture-canvas .storage-notice { position:absolute; z-index:20; left:12px; bottom:42px; max-width:calc(100% - 24px); padding:8px; border:1px solid #ca8a04; border-radius:6px; background:#fef3c7; color:#713f12; font-size:12px; }
+.live-architecture-canvas .storage-notice { position:absolute; z-index:20; left:12px; bottom:120px; max-width:calc(100% - 24px); padding:8px; border:1px solid #ca8a04; border-radius:6px; background:#fef3c7; color:#713f12; font-size:12px; }
 .live-architecture-canvas .routing-status { position:absolute; z-index:12; top:12px; right:12px; max-width:calc(100% - 24px); padding:6px 10px; border-radius:6px; background:#18283b; color:#fff; font-size:12px; pointer-events:none; }
 .live-architecture-canvas .diagram-legend { display:flex; flex-direction:column; position:absolute; z-index:16; right:12px; bottom:40px; max-width:calc(100% - 24px); max-height:calc(100% - 80px); }
 .live-architecture-canvas .diagram-legend>button { flex-shrink:0; display:block; margin-left:auto; box-shadow:0 2px 7px #0002; }
