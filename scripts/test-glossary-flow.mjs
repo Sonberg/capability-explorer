@@ -5,7 +5,7 @@
 import { chromium } from '../spikes/likec4/node_modules/playwright/index.mjs';
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
-const base = process.env.CE_GLOSSARY_BASE_URL ?? 'http://host.docker.internal:5080';
+const base = process.env.CE_GLOSSARY_BASE_URL ?? process.env.CE_TEST_BASE_URL ?? process.argv[2] ?? 'http://host.docker.internal:5080';
 const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
 const receipt = { base, assertions: 0, simulated: [], viewports: [], databaseJourney: 'not run', viewportInteraction: 'Fit View is clicked after each resize; the canvas retains pan/zoom across sizes.' };
 const artifactDirectory = `/work/.sandbox-cache/glossary-browser/${new URL(base).port || "default"}`;
@@ -98,10 +98,17 @@ try {
       const association = assertionFlow.edges.find((edge) => edge.assertionId === link.id);
       check(association?.category === 'human-assertion' && association.relation === 'same', 'reviewed toggle must include persisted human association');
       check(association.occurrenceId === link.observed.occurrenceId, 'human edge must preserve exact reviewed occurrence ID');
-      const associationPath = page.locator(`.react-flow__edge[data-id="${association.id}"] .react-flow__edge-path`);
+      // Live LikeC4 can aggregate relationships and encode renderer IDs. Select by
+      // the exact contributing API edge; retain raw-ID compatibility for the old canvas.
+      const associationEdge = page.locator(`.react-flow__edge[data-source-edge-ids*=${JSON.stringify(JSON.stringify(association.id))}], .react-flow__edge[data-id=${JSON.stringify(association.id)}]`).first();
+      const associationPath = associationEdge.locator('.react-flow__edge-path').first();
       await associationPath.waitFor({ state: 'attached' });
-      check(await associationPath.getAttribute('marker-end') === null, 'same association must have no directional arrowhead');
+      check([null, 'none'].includes(await associationPath.getAttribute('marker-end')), 'same association must have no directional arrowhead');
+      check([null, 'none'].includes(await associationPath.getAttribute('marker-start')), 'same association must have no reverse directional arrowhead');
+      check(await associationPath.evaluate((element) => getComputedStyle(element).markerEnd === 'none' && getComputedStyle(element).markerStart === 'none'), 'same association must have no CSS-applied directional markers');
       await associationPath.dispatchEvent('click');
+      const exactRelationship = page.getByRole('button', { name: `Inspect relationship ${association.id}`, exact: true });
+      if (await exactRelationship.count()) await exactRelationship.click();
       await page.getByText(`Reviewed occurrence ID: ${link.observed.occurrenceId}`, { exact: true }).waitFor(); receipt.assertions++;
       await page.getByText(/^Association:/).waitFor(); receipt.assertions++;
       await page.getByText(`Reviewed occurrence ID: ${link.observed.occurrenceId}`, { exact: true }).scrollIntoViewIfNeeded();
