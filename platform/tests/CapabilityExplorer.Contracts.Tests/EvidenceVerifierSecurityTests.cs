@@ -8,6 +8,51 @@ namespace CapabilityExplorer.Tests;
 public sealed class EvidenceVerifierSecurityTests
 {
     [Fact]
+    public async Task Replacement_refs_cannot_change_evidence_at_the_requested_commit()
+    {
+        var root = Directory.CreateTempSubdirectory("ce-evidence-replacement-").FullName;
+        try
+        {
+            const string marker = "original-evidence";
+            File.WriteAllText(Path.Combine(root, "file.txt"), marker);
+            string Git(params string[] args)
+            {
+                var start = new ProcessStartInfo("git") { RedirectStandardOutput = true, RedirectStandardError = true };
+                start.ArgumentList.Add("-C"); start.ArgumentList.Add(root);
+                foreach (var arg in args) start.ArgumentList.Add(arg);
+                using var process = Process.Start(start)!;
+                var output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit(); Assert.Equal(0, process.ExitCode);
+                return output.Trim();
+            }
+            Git("init"); Git("add", "file.txt");
+            Git("-c", "user.name=Synthetic test", "-c", "user.email=test@example.invalid", "commit", "-m", "synthetic");
+            var commit = Git("rev-parse", "HEAD");
+            File.WriteAllText(Path.Combine(root, "file.txt"), "replaced-evidence");
+            Git("add", "file.txt");
+            Git("-c", "user.name=Synthetic test", "-c", "user.email=test@example.invalid", "commit", "-m", "replacement");
+            var replacement = Git("rev-parse", "HEAD");
+            Git("replace", commit, replacement);
+            var records = Fixtures.Golden("api-cs/v1-base/Sales.Api.jsonl").Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line => JsonNode.Parse(line)!.AsObject()).ToList();
+            foreach (var record in records)
+            {
+                if (record["commitSha"] is not null) record["commitSha"] = commit;
+                if (record["kind"]!.GetValue<string>() == "evidence")
+                {
+                    record["path"] = "file.txt";
+                    record["span"] = new JsonObject { ["startLine"] = 1, ["startColumn"] = 1, ["endLine"] = 1, ["endColumn"] = marker.Length + 1 };
+                    record["snippetSha256"] = Snippet.Sha256(marker);
+                }
+            }
+            var report = ArtifactValidator.Validate(string.Join('\n', records.Select(r => r.ToJsonString())) + "\n");
+            Assert.True(report.IsValid, string.Join("; ", report.Problems));
+            var problems = await new EvidenceVerifier(root).VerifyAsync(report.Artifact!);
+            Assert.Empty(problems);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public async Task Snippet_mismatch_diagnostics_do_not_copy_source_contents()
     {
         var root = Directory.CreateTempSubdirectory("ce-evidence-redaction-").FullName;

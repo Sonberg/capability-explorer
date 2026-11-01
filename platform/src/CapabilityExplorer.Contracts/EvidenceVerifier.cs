@@ -61,6 +61,8 @@ public sealed class EvidenceVerifier(string repositoryDirectory)
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        // Provenance binds the original object ID, never local replacement refs.
+        start.ArgumentList.Add("--no-replace-objects");
         foreach (var setting in new[] { "core.hooksPath=/dev/null", "core.fsmonitor=false", "credential.helper=",
             "protocol.allow=never", "protocol.file.allow=never", "protocol.ext.allow=never", "protocol.https.allow=never",
             "http.followRedirects=false", "http.sslVerify=true", "core.sshCommand=/bin/false" })

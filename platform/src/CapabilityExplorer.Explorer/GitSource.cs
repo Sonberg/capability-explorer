@@ -74,6 +74,8 @@ public sealed class GitSource(Func<string, string?> locate, CapabilityExplorer.C
         var start = new ProcessStartInfo("git") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
         // Source browsing is strictly offline. The authorized analysis/export step prefetches blobs.
         // Local repository configuration must not execute hooks, credential or transport helpers.
+        // Provenance binds the original object ID, never local replacement refs.
+        start.ArgumentList.Add("--no-replace-objects");
         foreach (var setting in new[] { "core.hooksPath=/dev/null", "core.fsmonitor=false", "credential.helper=",
             "protocol.allow=never", "protocol.file.allow=never", "protocol.ext.allow=never", "protocol.https.allow=never",
             "http.followRedirects=false", "http.sslVerify=true", "core.sshCommand=/bin/false" })
