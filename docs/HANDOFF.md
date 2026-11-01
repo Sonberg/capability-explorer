@@ -18,6 +18,18 @@ Release notes: [changelog](CHANGELOG.md), [MADR-0006](adr/0006-keep-a-changelog.
 Compatibility/versioning: [MADR-0007](adr/0007-semantic-versioning.md).
 Current owner-review package: [cross-repository flow and reviewed glossary links](plans/cross-repository-value-flow.md), issue #4 layers 4 and 3. Implementation and validation are recorded in [the execution receipt](plans/glossary-flow-execution.md); see [MADR-0008](adr/0008-glossary-flow-and-reviewed-assertions.md). BPMN/DMN issue #12 still requires an owner scope decision. LikeC4 PRs #14/#15 are now merged into stage.
 
+## Mapping fidelity workstream
+
+The independent stage-targeted mapping package is recorded in
+[the execution plan](plans/mapping-fidelity-execution.md) and
+[MADR-0010](adr/0010-deterministic-mapping-fidelity.md). It improves static C#
+reference selection, Next app-router endpoints and HTTP identities. It preserves
+uncertain bindings and does not implement full MSBuild/Next configuration execution.
+The synthetic replay is separate from the locked product fixtures and private-corpus
+validation. `make test-mapping-replay` runs harness failure-path tests in ordinary CI;
+`scripts/mapping-replay` compares explicitly sealed baseline/candidate bundles.
+Owner review remains required; issue #6 is not automatically closed by synthetic proof.
+
 ## LikeC4 spike delivery
 
 PR #14 merged at `87d310d` and PR #15 at `daf02df` on stage (verified 2026-11-01).

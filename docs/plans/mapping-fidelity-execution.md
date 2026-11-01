@@ -118,3 +118,47 @@ C# HTTP 11/11 and TS mapping/full suite 121/121 have executable positive/negativ
 cases. Five points retained for resolution/replay integration evidence, which is
 required at the next gates. Brain closing pass: `sparc/docs/tutorial.md` reconfirmed
 source-bound independent evidence; retrieval found no reason to add runtime machinery.
+
+## Replay operation and trust boundary
+
+Build/install through `make build`, then seal a new candidate with
+`scripts/mapping-replay prepare .sandbox-cache/mapping-replay/candidate <HEAD-SHA>`.
+Keep the baseline bundle from the separately built stage checkout. Copy its sealed
+bundle into this checkout's `.sandbox-cache/mapping-replay/`, then run:
+
+```sh
+scripts/mapping-replay .sandbox-cache/mapping-replay/baseline-v3 \
+  .sandbox-cache/mapping-replay/candidate tests/mapping-fixtures/manifest.json \
+  .sandbox-cache/mapping-replay/result
+```
+
+Bundle paths and output directories are immutable per run; choose fresh names for
+a new source snapshot. `sourceSnapshotHash` and `buildHash` bind actual bytes;
+`commitHint` is an explicitly advisory caller label. The normal clean-commit local
+CI gate independently binds publication to HEAD. These manifests are local integrity
+checks, not signed attestations or distributed authority. Installed dependency bytes
+are sealed and selected versions checked against the lock; replay does not recompute
+registry tarball integrity. Full replay inputs are synthetic, with their own content
+identity; they do not alter locked product fixture sources/revisions/goldens.
+
+## Architecture gate
+
+Architecture score: 95/100 (two review iterations). Integrated source `8589efa`
+builds with zero warnings/errors; C# extractor 59/59, contract 105/105 and TS
+122/122 tests pass, with zero skips. `make test-extractors test-contracts` evidence
+is in `.sandbox-cache/mapping-integration.log`; the separate final TS run is in
+`.sandbox-cache/ts-integration.log`. Typed `HttpRequestTarget`, `ProjectModel` and
+`PackageResolution` stay within their existing extractor assemblies; no new service,
+image, public artifact shape or dependency cycle is introduced.
+
+Independent reviews fixed opaque/spread HTTP option guessing, C# typed-base evidence
+and conflicting registrations, metadata/rejected-target fingerprint gaps, unknown
+project target visibility, project/package collisions and empty-reference-group
+fallback. C# resolution's 28 added cases and HTTP's 14 cases cover these boundaries.
+The CLI now invokes `FetchAsync(models)` so target-aware behavior reaches production.
+
+Five points remain for integrated replay/full CI and unavailable private-corpus
+verification; these are explicit limits rather than a claim of MSBuild equivalence.
+Brain closing pass: `sparc/docs/tutorial.md` again requires independent evidence;
+no additional runtime component was justified. Existing static parsing, NuGet's
+pinned compatibility reducer and native URI parsers implement the chosen contracts.
