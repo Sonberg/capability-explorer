@@ -11,7 +11,7 @@ namespace CapabilityExplorer.Tests;
 public sealed class SnapshotPublishCliTests(PostgresFixture db)
 {
     private static string Scope()=>"cli-"+Guid.NewGuid().ToString("N");
-    private static async Task<(int Exit,string Output)> Ce(string connection,params string[] args)
+    private static Process StartCli(string connection,params string[] args)
     {
         var dll=Path.Combine(Fixtures.RepositoryRoot,"platform","src","CapabilityExplorer.Cli","bin","Debug","net10.0","ce.dll");
         Assert.True(File.Exists(dll),"Build the CLI before running its subprocess tests");
@@ -19,7 +19,11 @@ public sealed class SnapshotPublishCliTests(PostgresFixture db)
         start.ArgumentList.Add(dll);
         foreach(var arg in args) start.ArgumentList.Add(arg);
         start.Environment["CE_DATABASE"]=connection;
-        using var process=Process.Start(start)!;
+        return Process.Start(start)!;
+    }
+    private static async Task<(int Exit,string Output)> Ce(string connection,params string[] args)
+    {
+        using var process=StartCli(connection,args);
         using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var output=process.StandardOutput.ReadToEndAsync(deadline.Token);
         var error=process.StandardError.ReadToEndAsync(deadline.Token);
@@ -142,6 +146,71 @@ public sealed class SnapshotPublishCliTests(PostgresFixture db)
         var retry=await Ce(db.ConnectionString,["publish","--scope",scope,"--bindings",bindingPath,..files.Reverse()]);
         Assert.True(retry.Exit==0,retry.Output);
         Assert.Equal(published,await Current(scope));
+    }
+
+    [Fact]
+    public async Task Bindings_keep_occurrences_when_the_same_edge_is_unchanged_across_two_revisions()
+    {
+        using var input=new InputFiles();
+        var scope=Scope();
+        var files=new[]{input.Artifact("pricing-node/v1-base/_fixture_pricing.jsonl"),input.Artifact("pricing-node/v2-move/_fixture_pricing.jsonl"),input.Artifact("forecast-cs/v1-base/Forecast.Api.jsonl")};
+        var result=await Ce(db.ConnectionString,["publish","--scope",scope,"--view","pricing-node:"+Fixtures.Lock["pricing-node"]["v2-move"],
+            "--bindings",Path.Combine(Fixtures.RepositoryRoot,"bindings.json"),..files]);
+        Assert.True(result.Exit==0,result.Output);
+        var published=(await Current(scope))!;
+        await using var rows=db.DataSource.CreateCommand("""
+            select count(*),count(distinct e.artifact_id),count(distinct e.local_id)
+            from bound_edge e join analysis_snapshot_binding l on l.binding_snapshot_id=e.snapshot_id where l.snapshot_id=$1
+            """);
+        rows.Parameters.AddWithValue(published.Id);
+        await using var reader=await rows.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.Equal(2L,reader.GetInt64(0));
+        Assert.Equal(2L,reader.GetInt64(1));
+        Assert.Equal(1L,reader.GetInt64(2));
+    }
+
+    [Fact]
+    public async Task Interrupting_the_cli_during_import_keeps_last_good_and_allows_a_clean_retry()
+    {
+        using var input=new InputFiles();
+        var scope=Scope();
+        var old=await Publish(scope,input.Artifact("web-ts/v1-base/_fixture_web.jsonl"));
+        var next=input.Artifact("web-ts/v1-base/_fixture_web.jsonl");
+        await using var connection=await db.DataSource.OpenConnectionAsync();
+        await using var transaction=await connection.BeginTransactionAsync();
+        await using(var hold=new Npgsql.NpgsqlCommand("lock table artifact in access exclusive mode",connection,transaction))
+            await hold.ExecuteNonQueryAsync();
+        using var process=StartCli(db.ConnectionString,"publish","--scope",scope,next);
+        var output=process.StandardOutput.ReadToEndAsync();
+        var error=process.StandardError.ReadToEndAsync();
+        try
+        {
+            var waiting=false;
+            for(var attempt=0;attempt<200 && !waiting;attempt++)
+            {
+                await using var observe=db.DataSource.CreateCommand("""
+                    select exists(select 1 from pg_stat_activity where datname=current_database()
+                      and query like 'insert into artifact%' and wait_event_type='Lock')
+                    """);
+                waiting=(bool)(await observe.ExecuteScalarAsync())!;
+                if(!waiting) await Task.Delay(50);
+            }
+            Assert.True(waiting,"CLI must reach a real in-flight artifact insert before interruption");
+            process.Kill(true);
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            if(!process.HasExited) process.Kill(true);
+            await transaction.RollbackAsync();
+            await Task.WhenAll(output,error);
+        }
+        Assert.NotEqual(0,process.ExitCode);
+        Assert.Equal(old,await Current(scope));
+        var retry=await Ce(db.ConnectionString,"publish","--scope",scope,next);
+        Assert.True(retry.Exit==0,retry.Output);
+        Assert.Equal(2L,(await Current(scope))!.Generation);
     }
 
     private sealed class InputFiles : IDisposable
