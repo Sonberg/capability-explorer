@@ -16,19 +16,36 @@ export function layoutLiveView(view:ComputedElementView):LayoutedElementView {
   function arrange(parent:string|null):{width:number;height:number} {
     const siblings=[...(children.get(parent)??[])].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
     // Parallel evidence edges share one layout constraint; evidence remains in view.edges.
-    const graph=new graphlib.Graph().setGraph({rankdir:direction,nodesep:50,ranksep:100,marginx:0,marginy:0,ranker:'longest-path'}).setDefaultEdgeLabel(()=>({}));
+    let graph=new graphlib.Graph().setGraph({rankdir:direction,nodesep:32,ranksep:48,marginx:0,marginy:0,ranker:'network-simplex'}).setDefaultEdgeLabel(()=>({minlen:1,weight:1}));
     for(const node of siblings) {
       const compound=(children.get(node.id)?.length??0)>0;
       const nested=compound?arrange(node.id):null;
-      const width=nested?Math.max(nested.width+64,240):Math.min(360,Math.max(200,Math.max(...node.title.split('\n').map(line=>line.length))*7.5+40));
-      const height=nested?nested.height+100:92;
+      // Match native LikeC4 leaf proportions so fit-to-view retains readable text.
+      const width=nested?Math.max(nested.width+64,240):Math.min(360,Math.max(320,Math.max(...node.title.split('\n').map(line=>line.length))*7.5+40));
+      const height=nested?nested.height+100:180;
       boxes.set(node.id,{x:0,y:0,width,height});graph.setNode(node.id,{width,height});
     }
     for(const edge of view.edges) {
       const source=branch(edge.source,parent),target=branch(edge.target,parent);
-      if(source&&target&&source!==target)graph.setEdge(source,target,{});
+      if(source&&target&&source!==target)graph.setEdge(source,target,{minlen:1,weight:1});
     }
-    if(siblings.length)layout(graph);
+    if(siblings.length&&parent) {
+      // Choose a compact orientation inside each container. The view's requested
+      // direction still governs the root layout and the public autoLayout value.
+      // Fresh candidate graphs prevent Dagre's mutable rank/order state leaking
+      // between the two bounded alternatives. Ties deterministically prefer LR.
+      const candidates=(['LR','TB'] as const).map(rankdir=>{
+        const candidate=new graphlib.Graph().setGraph({...graph.graph(),rankdir}).setDefaultEdgeLabel(()=>({minlen:1,weight:1}));
+        for(const id of graph.nodes()) {
+          const {width,height}=graph.node(id);candidate.setNode(id,{width,height});
+        }
+        for(const edge of graph.edges())candidate.setEdge(edge.v,edge.w,{...graph.edge(edge)});
+        layout(candidate);
+        const {width=0,height=0}=candidate.graph();
+        return {candidate,cost:vertical?height+width/3:width+height/3};
+      });
+      graph=candidates[0]!.cost<=candidates[1]!.cost?candidates[0]!.candidate:candidates[1]!.candidate;
+    } else if(siblings.length)layout(graph);
     let width=0,height=0;
     for(const node of siblings) {
       const center=graph.node(node.id),box=boxes.get(node.id)!;
