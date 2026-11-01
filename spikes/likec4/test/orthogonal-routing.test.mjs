@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {routeOrthogonal} from '../src/orthogonal-routing.mjs';
+import {routeOrthogonal} from '../src/orthogonal-routing.ts';
 const node=(id,x,y)=>({id,x,y,width:120,height:96,children:[]});
 const edge=(id,source,target)=>({id,source,target,relations:[id],label:id,labelBBox:{x:0,y:0,width:60,height:18},points:[[120,48],[160,48],[360,48],[480,48]]});
 const fixture={bounds:{x:0,y:0,width:600,height:400},nodes:[node('a',0,120),node('blocker',240,120),node('b',480,120)],edges:[edge('one','a','b'),edge('two','a','b'),edge('reverse','b','a')]};

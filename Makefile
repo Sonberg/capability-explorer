@@ -262,7 +262,7 @@ likec4-dist:
 	$(OFFLINE) node sh -c 'cd spikes/likec4 && npm run build'
 
 likec4-check: likec4-dist
-	$(OFFLINE) node sh -c 'cd spikes/likec4 && npm test && node scripts/check-model.mjs'
+	$(OFFLINE) node sh -c 'cd spikes/likec4 && npm test && node --experimental-strip-types scripts/check-model.mjs'
 
 likec4-preview: likec4-check
 	$(SANDBOX) --port 5091 node sh -c 'cd spikes/likec4 && npm run preview -- --host 0.0.0.0 --port 5091 --strictPort'
@@ -270,8 +270,13 @@ likec4-preview: likec4-check
 # Optional visual checks against running ports 5090/5091; not an extra hosted-CI image.
 .PHONY: likec4-browser-check
 likec4-browser-check:
-	SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node node spikes/likec4/test/browser.mjs
+	SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node node --experimental-strip-types spikes/likec4/test/browser.mjs
 
 .PHONY: likec4-interaction-check
 likec4-interaction-check:
 	SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node node spikes/likec4/test/embedded-routing.mjs
+
+# Opt-in diagnostics against the candidate preview; reuse the existing browser image.
+.PHONY: likec4-trace-check
+likec4-trace-check:
+	SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node sh -c 'cd spikes/likec4 && node test/routing-trace-browser.mjs && node test/immediate-layout-browser.mjs && node test/routing-lifecycle.mjs'

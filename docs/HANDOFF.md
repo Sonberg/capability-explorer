@@ -20,6 +20,10 @@ The `spike/likec4-stage` workstream includes #11 as an explicit dependency by op
 
 [Issue #13](https://github.com/Sonberg/capability-explorer/issues/13) tracks full settling latency. Provisional connector computation is fast, but complete settling remains roughly 1.4–1.6 seconds in the preliminary harness. The proposed next target is 200 ms p95 with corrected paint/lifecycle instrumentation. Publication requires the full local stage-aligned gate; focused browser results do not substitute for it.
 
+The TypeScript follow-up (`feat/likec4-typescript7`) is based on open PR #14 and keeps stage as its PR target. It adds strict browser/worker checks using pinned TypeScript 7.0.2; the extractor compiler API remains on its existing version. Review its incremental changes relative to #14 until that dependency merges.
+
+PR #15 also adds opt-in [routing lifecycle diagnostics](spikes/likec4-routing-diagnostics.md), kept in a separate commit from the TypeScript migration. It reports editor scheduling, worker phases and native-view/frame opportunities locally; no mandatory OTel SDK or collector. The follow-up captures completed edits immediately while preserving native undo/redo and optimizes exact A* search allocation. A test-only RuVector WASM adapter was slower and changed equal-cost path choices, so it is not shipped. Issue #13 stays open for tail-latency and final-paint validation.
+
 ## What exists
 
 | Area | Where | State |

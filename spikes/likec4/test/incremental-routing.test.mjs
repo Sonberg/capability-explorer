@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {previewRoutes} from '../src/incremental-routing.mjs';
-import {cubicPoints} from '../src/orthogonal-routing.mjs';
+import {previewRoutes} from '../src/incremental-routing.ts';
+import {cubicPoints} from '../src/orthogonal-routing.ts';
 const view={nodes:[{id:'a',x:0,y:0,width:100,height:100},{id:'b',x:400,y:0,width:100,height:100}],edges:[{id:'e',source:'a',target:'b',points:cubicPoints([[100,50],[400,50]]),labelBBox:{x:200,y:20,width:50,height:20}}]};
 test('provisional routing attaches moved endpoints and stays orthogonal without changing evidence',()=>{
  const next={...view,nodes:[{...view.nodes[0],x:24,y:36},view.nodes[1]]},before=structuredClone(view);

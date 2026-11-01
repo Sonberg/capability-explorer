@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {groupView} from '../src/grouping.mjs';
+import {groupView} from '../src/grouping.ts';
 const view={bounds:{x:0,y:0,width:300,height:200},nodes:[{id:'a',parent:null,x:0,y:0,width:80,height:50,level:0,modelRef:'a'},{id:'b',parent:null,x:120,y:100,width:80,height:50,level:0,modelRef:'b'}],edges:[{id:'e',source:'a',target:'b',certainty:'candidate'}]};
 test('presentation groups preserve evidence and member positions while expanding bounds',()=>{
  const grouped=groupView(view,['a','b'],'Review group');
@@ -17,7 +17,7 @@ test('presentation groups preserve evidence and member positions while expanding
 });
 
 test('automatic hierarchy uses explicit repository identity, never labels',async()=>{
- const {automaticGroups,modelIdentities}=await import('../src/grouping.mjs');
+ const {automaticGroups,modelIdentities}=await import('../src/grouping.ts');
  const graph={nodes:[{id:'b',repositoryId:'repo',label:'B'},{id:'a',label:'repo/A'},{id:'c',repositoryId:'repo'}]};
  const groups=automaticGroups(graph);
  assert.equal(groups.length,1);
@@ -26,7 +26,7 @@ test('automatic hierarchy uses explicit repository identity, never labels',async
  assert.deepEqual(groups,automaticGroups({nodes:[...graph.nodes].reverse()}));
 });
 test('CRUD transfers membership once and ungrouping preserves nodes and evidence',async()=>{
- const {saveGroup,applyGroups,validateGroups}=await import('../src/grouping.mjs');
+ const {saveGroup,applyGroups,validateGroups}=await import('../src/grouping.ts');
  const extended={...view,nodes:[...view.nodes,{id:'c',parent:null,x:220,y:0,width:80,height:50,level:0}]};
  const first=saveGroup([],extended,{title:'Initial',members:['a','b']});
  const renamed=saveGroup(first,extended,{id:first[0].id,title:'Renamed',members:['a','b']});
