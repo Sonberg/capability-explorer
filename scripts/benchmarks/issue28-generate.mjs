@@ -47,8 +47,10 @@ export function* records({count,repo,revision,seed}) {
   for(let i=1;i<count;i++) yield wrap('edge',{id:'e:'+i,from:key(i%10===0?i-1:0),relation:'CALLS',to:key(i),derivation:'compiler',resolution:'resolved',evidence:['ev:generated']});
   yield wrap('complete',{status:'full',counts:{node:count,edge:count-1,evidence:1,calculation:0,diagnostic:0},coverage:{filesTotal:1,filesAnalyzed:1,unresolvedEdges:0}});
 }
-export async function generate(o) {
-  const target=safeOutput(o.out), disk=fs.statfsSync(root);
+// The CLI always reads the actual filesystem. Tests inject capacity so small
+// deterministic fixtures do not depend on a hosted runner's spare disk space.
+export async function generate(o, readDisk=fs.statfsSync) {
+  const target=safeOutput(o.out), disk=readDisk(root);
   // Conservative encoded-data estimate; DB import/index/WAL require a separate budget.
   if(disk.bavail*disk.bsize<DISK_RESERVE_GIB*1024**3+o.nodes*1200) throw Error('Need 10GiB reserve plus estimated JSONL bytes');
   fs.mkdirSync(target,{recursive:true});

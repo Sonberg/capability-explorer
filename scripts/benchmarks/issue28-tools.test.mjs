@@ -28,10 +28,18 @@ test('outputs cannot escape ignored benchmark storage or traverse symlink ancest
 });
 test('streamed disk artifacts reproduce byte hashes over revisions and refuse overwrite',async()=>{
  const out='.sandbox-cache/issue28-bench/test-'+randomUUID();
- const m=await generate(options(['--nodes','1000','--repos','2','--revisions','2','--out',out]));
+ const capacity=()=>({bavail:11*1024**3,bsize:1});
+ const m=await generate(options(['--nodes','1000','--repos','2','--revisions','2','--out',out]),capacity);
  assert.equal(m.files.length,4);assert.equal(m.files.reduce((n,f)=>n+f.nodes,0),1000);
  for(const f of m.files){const data=fs.readFileSync(path.join(root,out,f.file));assert.equal(hash(data),f.sha256);assert.equal(data.length,f.bytes);}
- await assert.rejects(generate(options(['--out',out])),/EEXIST/);
+ await assert.rejects(generate(options(['--out',out]),capacity),/EEXIST/);
+});
+test('insufficient capacity preserves the ten GiB reserve and fails before creating output',async()=>{
+ const out='.sandbox-cache/issue28-bench/test-low-disk-'+randomUUID();
+ const args=options(['--nodes','1000','--out',out]);
+ const capacity=()=>({bavail:DISK_RESERVE_GIB*1024**3+args.nodes*1200-1,bsize:1});
+ await assert.rejects(generate(args,capacity),/10GiB reserve/);
+ assert.equal(fs.existsSync(path.join(root,out)),false);
 });
 test('benchmark rejects remote endpoints, credentials, over-limit and unstable-snapshot responses',()=>{
  for(const url of ['https://example.com','http://example.com','http://x:y@localhost','http://localhost/?token=x'])assert.throws(()=>localUrl(url));

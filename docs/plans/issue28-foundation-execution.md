@@ -103,7 +103,7 @@ make EXECUTION=sandbox issue28-foundation-check
 Docker-backed gates run in the Linux runner (including local act), as with the
 existing Store suite. Direct macOS test execution can use the same pinned act
 runner wrapper; do not grant the analysis sandbox a Docker socket. Ordinary CI
-adds only 16 small Node contract/tool tests; the PostgreSQL tests reuse its existing
+adds only 17 small Node contract/tool tests; the PostgreSQL tests reuse its existing
 Store test container. No browser, RuVector or model image is added to default CI.
 
 Actual browser proof uses `scripts/test-issue28-browser.mjs` against the served
@@ -194,6 +194,12 @@ The final served application passed 31 uninjected browser checks and a separate
 runs covered ten workloads each, including empty-query first and continuation
 pages, and passed the provisional p95 targets. See the benchmark report for exact
 source/build identities, variance, query plans and remaining database scan costs.
+
+The initial hosted run caught a test relying on 10 GiB of actual runner capacity.
+The small file-generation regression now injects capacity; a separate negative
+test proves the real reserve check fails before writing output. The CLI continues
+to use actual filesystem capacity with the unchanged 10 GiB reserve. This changes
+benchmark test plumbing, not the measured application or generated artifact bytes.
 
 Refinement corrected Unicode casing/order, rollback/retry edge cases, immutable
 default selection, legacy binding-upgrade reuse and failed-navigation page state.
