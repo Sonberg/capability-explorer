@@ -38,9 +38,6 @@ export function projectLiveGraph(input:LiveModelInput):LiveProjection {
   const sourceNodeIds:Record<string,string>=Object.create(null),nodeSourceIds:Record<string,string[]>=Object.create(null),relationSourceIds:Record<string,string>=Object.create(null);
   const owners=new Map<string,{id:string;title:string;kind:string;description:string;members:LiveNode[];owner?:string}>();
   const codeLike=(node:LiveNode)=>!!node.group&&['component','interface','module','member','endpoint'].includes(node.category??'');
-  const sourceGroups=new Map<string,number>();
-  for(const node of nodes.filter(codeLike))sourceGroups.set(node.group!,1+(sourceGroups.get(node.group!)??0));
-  const usefulSourceGroups=new Set([...sourceGroups].filter(([,count])=>count>=2).map(([group])=>group));
   const identities=new Map<string,string>();
   function identity(prefix:string,source:string):string {
     const id=`${prefix}_${stableToken(source)}`,prior=identities.get(id);
@@ -56,7 +53,7 @@ export function projectLiveGraph(input:LiveModelInput):LiveProjection {
       owner=owners.get(key)??{id:identity('sql_scope',store),title:hint?`${hint[3]} · ${hint[1]}`:store,kind,
         description:kind==='sqlModel'?'SQL source model; deployment unresolved':unbound?'Logical database reference; target unresolved':'Concrete database reference; deployment not verified',members:[]};
       owners.set(key,owner);
-    } else if(usefulSourceGroups.size>=2&&codeLike(node)&&usefulSourceGroups.has(node.group!)) {
+    } else if(codeLike(node)) {
       const key=`source-group:${canonical([node.repositoryId??null,node.group])}`;
       owner=owners.get(key)??{id:identity('repository',key),title:node.group!.slice(0,80),kind:'repository',description:`Explicit source group: ${node.group}`,owner:node.repositoryId??node.group!,members:[]};
       owners.set(key,owner);

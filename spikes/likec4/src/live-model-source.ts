@@ -1,7 +1,7 @@
 import type {Element,ElementStyle,ModelExpression,ParsedLikeC4ModelData} from '@likec4/core/types';
 
 // One typed semantic projection supplies both the downloadable DSL and browser data.
-const quote=(value:string)=>JSON.stringify(value.replace(/[\r\n\t]/g,' '));
+const quote=(value:string)=>JSON.stringify(value);
 function style(style:ElementStyle):string {
   return Object.entries(style).map(([key,value])=>`${key} ${key==='opacity'?`${value}%`:value}`).join(' ');
 }

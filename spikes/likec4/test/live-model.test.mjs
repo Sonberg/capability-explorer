@@ -119,4 +119,16 @@ test('source-provided code groups retain stable members and ledger category styl
   const result=buildLiveModel(input({nodes,edges:[]}));
   assert.equal(result.groups.length,2);assert.deepEqual(result.groups.map(g=>g.title).sort(),['A','B']);
   for(const n of nodes)assert.equal(result.modelData.elements[result.sourceNodeIds[n.id]].kind,n.category);
+  const reduced=buildLiveModel(input({nodes:[nodes[0]],edges:[]}));
+  assert.equal(reduced.sourceNodeIds[nodes[0].id],result.sourceNodeIds[nodes[0].id],'presentation usefulness does not change source identity');
+});
+test('DSL escaping preserves original multiline labels, quotes and backslashes',async()=>{
+  const g={nodes:[{id:'special',label:'Line one\nLine two "quoted" \\path\tcolumn',category:'service'}],edges:[]};
+  const result=buildLiveModel(input(g));
+  const compiler=await LikeC4.fromSource(result.source,{logger:false,printErrors:false,throwIfInvalid:true});
+  try {
+    const parsed=await compiler.parsedModel();
+    assert.equal(parsed.element(result.sourceNodeIds.special).title,g.nodes[0].label);
+    assert.equal(result.modelData.elements[result.sourceNodeIds.special].title,g.nodes[0].label);
+  } finally {await compiler.dispose();}
 });
