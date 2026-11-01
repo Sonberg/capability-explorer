@@ -41,6 +41,6 @@ export function reviewMutation(scope: string, collection: ReviewCollection, id: 
 }
 export function mutationMessage(error: unknown) {
   return error instanceof ApiError && error.status === 409
-    ? "This record changed since you loaded it. Your edits are kept. Reload reviewed data, then reopen the current record to reconcile the changes."
+    ? `${error.message} This record changed since you loaded it. Your edits are kept. Reload reviewed data, then reopen the current record to reconcile the changes. If the source observation changed, explicitly reload the selected observation and review its revision/hash again.`
     : error instanceof Error ? error.message : "The request failed.";
 }
