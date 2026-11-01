@@ -200,7 +200,8 @@
         "dependencies": {
           "CapabilityExplorer.Contracts": "[1.0.0, )",
           "Microsoft.CodeAnalysis.CSharp": "[5.6.0, )",
-          "NuGet.Frameworks": "[7.9.0, )"
+          "NuGet.Frameworks": "[7.9.0, )",
+          "NuGet.Versioning": "[7.9.0, )"
         }
       },
       "JsonSchema.Net": {
@@ -227,6 +228,12 @@
         "requested": "[7.9.0, )",
         "resolved": "7.9.0",
         "contentHash": "w2adPmgUafmW9ON1MzDjuHmViN0vtiPV48Dz3OE6px8BiGSqrnWHOjwFEPOEPAZx20J1c7bxp90Hxo9l4xGWtw=="
+      },
+      "NuGet.Versioning": {
+        "type": "CentralTransitive",
+        "requested": "[7.9.0, )",
+        "resolved": "7.9.0",
+        "contentHash": "r4sZuVpVqwSBLe4qYDrnpScqdyctlRXg0HSF5OoCGkeBc8b+o8BBYHuI/u1RoWYX78PbieijU13TBt71/Xf3lw=="
       }
     }
   }
