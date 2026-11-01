@@ -27,7 +27,7 @@ export function ViewpointMenu({views,current,onSelect,source,settings,coverage})
       <section className="diagram-settings" aria-label="Settings"><h2>Settings</h2>
         <label><span>Orthogonal</span><input type="checkbox" role="switch" checked={settings.orthogonal} onChange={e=>settings.setOrthogonal(e.target.checked)}/></label>
         <label><span>Animation</span><input type="checkbox" role="switch" checked={settings.motion} disabled={settings.reduced} onChange={e=>settings.setAnimations(e.target.checked)}/></label>
-        <label><span>Dark mode</span><input type="checkbox" role="switch" checked={settings.dark} onChange={e=>settings.setDark(e.target.checked)}/></label>
+        <label><span>{settings.embedded?'Site theme · dark':'Dark mode'}</span><input type="checkbox" role="switch" checked={settings.dark} disabled={settings.embedded} onChange={e=>settings.setDark(e.target.checked)}/></label>
         {settings.reduced&&<p>Animation disabled by reduced-motion preference.</p>}
       </section>
     </nav>;

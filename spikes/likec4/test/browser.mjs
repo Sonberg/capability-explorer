@@ -23,6 +23,7 @@ try {
     await page.goto('http://host.docker.internal:5091');
     await page.locator('.react-flow__node').first().waitFor();
     await page.evaluate(() => document.fonts.ready);
+    await page.locator('[data-routing-state=ready]').waitFor();
     await page.waitForTimeout(500); // allow the renderer's initial fit to settle
     assert.equal(await page.locator('.react-flow__node').count(), overviewCount);
     const labelCollisions=await page.locator('.likec4-edge-label').evaluateAll(elements=>{
@@ -56,6 +57,7 @@ try {
     assert.notDeepEqual(await routes(),orthoRoutes,'routing toggle changes rendered paths');
     assert.deepEqual(await nodePositions(),positions,'routing preserves node positions');
     await page.getByRole('switch',{name:'Orthogonal',exact:true}).check();
+    await page.locator('[data-routing-state=ready]').waitFor();
     await page.waitForTimeout(300);
     assert.deepEqual(await routes(),orthoRoutes,'orthogonal routing restored deterministically');
     await page.getByRole('switch',{name:'Dark mode',exact:true}).uncheck();

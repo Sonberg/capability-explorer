@@ -260,11 +260,23 @@ const nodeTypes = { arch: ArchNodeView, group: GroupView };
 
 export function ArchitectureView({ params }: { params: URLSearchParams }) {
   const { capability } = useSelection();
-  return (
-    <ReactFlowProvider>
-      <Canvas level={params.get("level") ?? (capability ? "system" : "landscape")} focus={params.get("focus") ?? undefined} />
-    </ReactFlowProvider>
-  );
+  const [tab,setTab]=useState<'graph'|'likec4'>('graph');
+  return <div className="flex flex-col gap-2">
+    <div role="tablist" aria-label="Architecture renderer" className="flex gap-2">
+      {(['graph','likec4'] as const).map(id=><button key={id} id={`architecture-${id}-tab`} role="tab" aria-selected={tab===id} tabIndex={tab===id?0:-1} onKeyDown={e=>{
+        if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;
+        e.preventDefault();const next=e.key==='Home'?'graph':e.key==='End'?'likec4':id==='graph'?'likec4':'graph';
+        setTab(next);document.getElementById(`architecture-${next}-tab`)?.focus();
+      }} aria-controls={`architecture-${id}-panel`} onClick={()=>setTab(id)} className={`rounded border px-3 py-2 text-sm ${tab===id?'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900':'border-zinc-200 text-zinc-500 dark:border-zinc-800 dark:text-zinc-400'}`}>{id==='graph'?'Architecture':'LikeC4 · experiment'}</button>)}
+    </div>
+    <div role="tabpanel" id="architecture-graph-panel" aria-labelledby="architecture-graph-tab" hidden={tab!=='graph'}>
+      <ReactFlowProvider><Canvas level={params.get("level") ?? (capability ? "system" : "landscape")} focus={params.get("focus") ?? undefined} /></ReactFlowProvider>
+    </div>
+    {tab==='likec4'&&<div role="tabpanel" id="architecture-likec4-panel" aria-labelledby="architecture-likec4-tab">
+      <p className="mb-2 text-xs text-zinc-500">Experiment: all five fixture repositories at captured revisions. Capability and revision selectors above do not filter this snapshot.</p>
+      <iframe title="LikeC4 architecture experiment" src="/likec4/index.html?embed=1" className="block w-full border-0" style={{height:'calc(100dvh - 210px)',minHeight:640}} />
+    </div>}
+  </div>;
 }
 
 type Selected = { type: "node"; node: ArchNode } | { type: "edge"; edge: ArchEdge } | null;

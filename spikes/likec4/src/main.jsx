@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { useLikeC4Model } from 'likec4:single-project';
 import { ReactLikeC4, LikeC4ModelProvider, LikeC4EditorProvider, createLikeC4Editor } from 'likec4/react';
 import { LikeC4Model } from 'likec4/model';
-import {routeOrthogonal} from './orthogonal-routing.mjs';
+import {useRouting} from './use-routing.jsx';
 import { animateEdges } from './edge-motion.mjs';
 import { automaticGroups, applyGroups, saveGroup, validateGroups } from './grouping.mjs';
 import { GroupControls, SelectionBridge } from './group-controls.jsx';
@@ -17,6 +17,7 @@ import './style.css';
 function OptionalEditor({enabled,editor,children}) {
   return enabled?<LikeC4EditorProvider editor={editor}>{children}</LikeC4EditorProvider>:children;
 }
+const embedded=new URLSearchParams(location.search).get('embed')==='1';
 function App() {
   const sourceModel = useLikeC4Model();
   const [orthogonal,setOrthogonal]=useState(true);
@@ -40,7 +41,8 @@ function App() {
   const editable=view==='flow'||view==='vertical';
   const generatedView=useMemo(()=>editable?applyGroups(sourceModel.$data.views[view],groups):sourceModel.$data.views[view],[sourceModel,view,groups,editable]);
   const layoutView = editable ? (customView ?? generatedView) : generatedView;
-  const currentView = useMemo(()=>orthogonal?routeOrthogonal(layoutView):{...layoutView,routing:'spline'},[layoutView,orthogonal]);
+  const routing=useRouting(layoutView,orthogonal,resetKey);
+  const currentView=routing.view;
   const model = useMemo(() => LikeC4Model.create({...sourceModel.$data,views:{...sourceModel.$data.views,[view]:currentView},manualLayouts:{}}), [sourceModel,currentView]);
   const editor = useMemo(() => createLikeC4Editor({fetchView: id => model.$data.views[id],handleChange: (id, change) => {if (id === view && change.op === 'save-view-snapshot') setCustomView(change.layout); return {waitForViewSync:false};}}), [model,view]);
   const selectedLeaves=selected.filter(id=>currentView.nodes.some(n=>n.id===id&&n.kind!=='@group'));
@@ -67,7 +69,8 @@ function App() {
     const ids=draftMembers.includes(node.id)?draftMembers.filter(id=>id!==node.id):[...draftMembers,node.id];
     setDraftMembers(ids);api.current?.select({nodes:ids});
   }
-  const [dark, setDark] = useState(true);
+  const [dark, setDark] = useState(()=>embedded?matchMedia('(prefers-color-scheme: dark)').matches:true);
+  useEffect(()=>{if(!embedded)return;const query=matchMedia('(prefers-color-scheme: dark)');const update=()=>setDark(query.matches);query.addEventListener('change',update);return ()=>query.removeEventListener('change',update);},[]);
   const [animations, setAnimations] = useState(false);
   const [reduced, setReduced] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
   const [showSource, setShowSource] = useState(false);
@@ -84,8 +87,8 @@ function App() {
     const a = document.createElement('a'); a.href = url; a.download = 'architecture.c4'; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  return <div className="spike" data-theme={dark ? 'dark' : 'light'} data-motion={motion ? 'on' : 'off'}>
-    <header><div><small>CAPABILITY EXPLORER / EXPERIMENT</small><h1>Architecture · LikeC4</h1></div>
+  return <div className={`spike${embedded?' embedded':''}`} data-theme={dark ? 'dark' : 'light'} data-motion={motion ? 'on' : 'off'}>
+    <header><div className="spike-heading"><small>CAPABILITY EXPLORER / EXPERIMENT</small><h1>Architecture · LikeC4</h1></div>
       <div className="actions">
         <span className="current-viewpoint">{viewpointLabel(view,sourceModel.$data.views[view])}</span>
         <button onClick={() => {setCustomView(null);setSelected([]);setEditing(null);setResetKey(k=>k+1);}}>Reset layout</button>
@@ -96,9 +99,11 @@ function App() {
     <div className="notice">All {Object.keys(selection).length} loaded repositories · build-time fixture snapshot · no live refresh or runtime flow claims.{reduced && ' Motion disabled by system preference.'}</div>
     <main className={showSource ? 'with-source' : ''}>
       <div className="diagram-workspace">
-        <ViewpointMenu views={sourceModel.$data.views} current={view} onSelect={switchView} source={source} coverage={<details><summary>Snapshot coverage · {Object.keys(selection).length} repositories</summary><p>Only analyzed repositories at the revisions below. Missing integrations may be unextracted or unresolved.</p>{Object.entries(selection).map(([id,sha])=><p key={id}><strong>{id}</strong> · {graph.nodes.find(n=>n.id===`repo:${id}`)?.badges?.join(" · ")}<br/><code title={sha}>{sha.slice(0,12)}</code></p>)}{graph.notes.map(note=><p key={note}>{note}</p>)}</details>} settings={{orthogonal,setOrthogonal,motion,setAnimations,reduced,dark,setDark}}/>
-      <section ref={canvas} className="canvas" aria-label="LikeC4 architecture diagram">
+        <ViewpointMenu views={sourceModel.$data.views} current={view} onSelect={switchView} source={source} coverage={<details><summary>Snapshot coverage · {Object.keys(selection).length} repositories</summary><p>Only analyzed repositories at the revisions below. Missing integrations may be unextracted or unresolved.</p>{Object.entries(selection).map(([id,sha])=><p key={id}><strong>{id}</strong> · {graph.nodes.find(n=>n.id===`repo:${id}`)?.badges?.join(" · ")}<br/><code title={sha}>{sha.slice(0,12)}</code></p>)}{graph.notes.map(note=><p key={note}>{note}</p>)}</details>} settings={{orthogonal,setOrthogonal,motion,setAnimations,reduced,dark,setDark,embedded}}/>
+      <section ref={canvas} data-routing-generation={routing.generation} data-routing-state={routing.state} data-preview-ms={routing.previewMs} data-refinement-ms={routing.refinementMs} className="canvas" aria-label="LikeC4 architecture diagram">
         <DiagramLegend/>
+        {routing.state==='pending'&&<div className="routing-status" role="status">Refining routes… provisional connectors may cross</div>}
+        {routing.state==='error'&&<div className="routing-status" role="status">Routing refinement failed; reset layout to retry.</div>}
         <div className="canvas-hint">{editable?'Click a group to manage it · Shift-click nodes to group · edits stay with this snapshot':'Source hierarchy · choose a repository or SQL-resource detail viewpoint to explore its contents'}</div>
         {editable && <GroupControls group={activeGroup} selectedCount={selectedLeaves.length} editing={editing} name={groupName} setName={setGroupName}
           memberCount={draftMembers.length} onCreate={()=>edit(null)} onRename={()=>edit(activeGroup)} onEdit={()=>edit(activeGroup)}
@@ -107,7 +112,7 @@ function App() {
         <div className="diagram-surface"><LikeC4ModelProvider likec4model={model}><OptionalEditor enabled={editable} editor={editor}>
         <ReactLikeC4 key={`${view}-${resetKey}-${currentView.nodes.length}`} onNodeClick={nodeClick} onInitialized={({diagram}) => {api.current=diagram;}} reactFlowProps={{nodesDraggable:editable,elementsSelectable:true,multiSelectionKeyCode:['Shift','Control','Meta']}} injectFontCss={false} viewId={view} onNavigateTo={switchView} pannable zoomable keepAspectRatio={false}
           reduceGraphics={!motion} enableDynamicViewWalkthrough={false}
-          enableElementDetails enableRelationshipDetails showNavigationButtons showDiagramTitle background="dots" colorScheme={dark ? 'dark' : 'light'}
+          controls={!embedded} mantineTheme={embedded?{fontFamily:'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',colors:{dark:['#fafafa','#f4f4f5','#d4d4d8','#a1a1aa','#71717a','#3f3f46','#27272a','#18181b','#09090b','#09090b']}}:undefined} enableElementDetails enableRelationshipDetails showNavigationButtons={!embedded} background="dots" colorScheme={dark ? 'dark' : 'light'}
           style={{ width: '100%', height: '100%' }}>
           <SelectionBridge onSelection={setSelected}/>
           <style>{`

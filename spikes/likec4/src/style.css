@@ -78,3 +78,35 @@ button:disabled { opacity:.45; cursor:default; }
 .diagram-settings input:checked::after { left:17px; }
 .diagram-settings input:disabled { opacity:.45; cursor:default; }
 .diagram-settings p { font-size:11px; margin:4px 0; }
+
+.routing-status { position:absolute; z-index:12; right:16px; top:16px; padding:6px 10px; background:#18283b; color:white; border-radius:6px; font-size:12px; }
+
+/* Embedded chrome uses Explorer's system theme and zinc/blue interface palette.
+   Diagram semantic ledger colors remain authoritative. */
+body:has(.embedded) { background:transparent; }
+.embedded { padding:0; gap:8px; min-height:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; line-height:1.45; background:transparent; color:#18181b; color-scheme:light; }
+.embedded .spike-heading,.embedded>.notice,.embedded>footer { display:none; }
+.embedded>header { justify-content:flex-end; }
+.embedded .actions { gap:8px; }
+.embedded button { border-radius:6px; border-color:#e4e4e7; padding:6px 10px; background:#fff; font-size:13px; }
+.embedded .canvas,.embedded aside { border-radius:6px; border-color:#e4e4e7; background:#fff; }
+.embedded .viewpoint-drawer { border-radius:6px 0 0 6px; background:#fafafa; border-color:#e4e4e7; padding:12px; }
+.embedded .viewpoint-link,.embedded .favorite-toggle { background:transparent; border-color:transparent; }
+.embedded .viewpoint-link[aria-current="page"] { background:#eff6ff; color:#1d4ed8; border-color:transparent; }
+.embedded .viewpoint-drawer h2,.embedded .diagram-legend p { color:#71717a; }
+.embedded .diagram-settings { border-color:#e4e4e7; }
+.embedded .diagram-legend section,.embedded .group-context,.embedded .canvas-hint { background:#fffffff5; border-color:#e4e4e7; color:#18181b; }
+.embedded[data-theme="dark"] { color:#f4f4f5; color-scheme:dark; }
+.embedded[data-theme="dark"] .viewpoint-drawer { background:#18181b; border-color:#27272a; }
+.embedded[data-theme="dark"] .canvas,.embedded[data-theme="dark"] aside { background:#09090b; border-color:#27272a; }
+.embedded[data-theme="dark"] button { background:#18181b; border-color:#3f3f46; }
+.embedded[data-theme="dark"] .viewpoint-link,.embedded[data-theme="dark"] .favorite-toggle { background:transparent; border-color:transparent; }
+.embedded[data-theme="dark"] .viewpoint-link[aria-current="page"] { background:#172554; color:#93c5fd; }
+.embedded[data-theme="dark"] .viewpoint-drawer h2,.embedded[data-theme="dark"] .diagram-legend p { color:#a1a1aa; }
+.embedded[data-theme="dark"] .diagram-settings { border-color:#3f3f46; }
+.embedded[data-theme="dark"] .diagram-legend section,.embedded[data-theme="dark"] .group-context,.embedded[data-theme="dark"] .canvas-hint { background:#18181bf5; border-color:#3f3f46; color:#f4f4f5; }
+
+body:has(.embedded[data-theme="dark"]) { background:#09090b; }
+body:has(.embedded[data-theme="light"]) { background:#fff; }
+.embedded .react-flow { background:#fff; }
+.embedded[data-theme="dark"] .react-flow { background:#09090b; }
