@@ -82,6 +82,60 @@ public sealed class PostgresExplorerApiTests(PostgresFixture db)
     }
 
     [Fact]
+    public async Task Capability_repository_revocation_applies_to_retained_pages_without_restart()
+    {
+        var scope=Scope();
+        var snapshot=await Publish(scope,"revocation");
+        using var factory=new DatabaseApiFactory(db.ConnectionString,scope);
+        using var client=factory.CreateClient();
+        var page=await Get(client,$"/api/search?cap={scope}&limit=1");
+        var cursor=page.GetProperty("nextCursor").GetString()!;
+        var config=JsonNode.Parse(File.ReadAllText(factory.CapabilitiesPath))!;
+        config["capabilities"]![0]!["repositories"]=new JsonArray();
+        File.WriteAllText(factory.CapabilitiesPath,config.ToJsonString());
+        using var revoked=await client.GetAsync(new Uri($"/api/search?cap={scope}&snapshot={snapshot.Id}&cursor={Q(cursor)}",UriKind.Relative));
+        Assert.Equal(HttpStatusCode.Forbidden,revoked.StatusCode);
+        File.WriteAllText(factory.CapabilitiesPath,"{\"capabilities\":[]}");
+        using var removed=await client.GetAsync(new Uri($"/api/meta?cap={scope}",UriKind.Relative));
+        Assert.Equal(HttpStatusCode.BadRequest,removed.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("gzip")]
+    [InlineData("br")]
+    public async Task Responses_negotiate_compression_and_decompress_to_the_original_bounded_json(string encoding)
+    {
+        var scope=Scope();
+        await Publish(scope,"compression");
+        using var factory=new DatabaseApiFactory(db.ConnectionString,scope);
+        using var client=factory.CreateClient();
+        using var request=new HttpRequestMessage(HttpMethod.Get,new Uri($"/api/meta?cap={scope}",UriKind.Relative));
+        request.Headers.AcceptEncoding.ParseAdd(encoding);
+        using var response=await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK,response.StatusCode);
+        Assert.Contains(encoding,response.Content.Headers.ContentEncoding);
+        await using var compressed=await response.Content.ReadAsStreamAsync();
+        await using Stream decoded=encoding=="gzip"
+            ?new System.IO.Compression.GZipStream(compressed,System.IO.Compression.CompressionMode.Decompress)
+            :new System.IO.Compression.BrotliStream(compressed,System.IO.Compression.CompressionMode.Decompress);
+        using var json=await JsonDocument.ParseAsync(decoded);
+        Assert.Equal("postgres",json.RootElement.GetProperty("source").GetString());
+        Assert.Equal(scope,json.RootElement.GetProperty("capability").GetString());
+        Assert.True(Encoding.UTF8.GetByteCount(json.RootElement.GetRawText())<=1024*1024);
+    }
+
+    [Fact]
+    public async Task Canceled_source_reads_do_not_even_resolve_the_repository()
+    {
+        var resolutions=0;
+        var git=new GitSource(_=>{resolutions++;return Fixtures.RepoDirectory("web-ts");});
+        using var canceled=new CancellationTokenSource();
+        canceled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(()=>git.ReadFileAsync("web-ts",Fixtures.Lock["web-ts"]["v1-base"],"src/index.ts",canceled.Token));
+        Assert.Equal(0,resolutions);
+    }
+
+    [Fact]
     public async Task Search_pages_keep_their_snapshot_while_a_new_publication_becomes_current()
     {
         var scope=Scope();
@@ -212,6 +266,7 @@ public sealed class PostgresExplorerApiTests(PostgresFixture db)
 internal sealed class DatabaseApiFactory : WebApplicationFactory<Program>
 {
     private static readonly JsonSerializerOptions ConfigurationJson=new(){Encoder=System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping};
+    public string CapabilitiesPath=>Path.Combine(_directory,"capabilities.json");
     private readonly string _connection;
     private readonly string _directory=Path.Combine(Path.GetTempPath(),"ce-pg-api-"+Guid.NewGuid().ToString("N"));
     public DatabaseApiFactory(string connection,string scope,bool poisonSnapshots=false,string capabilityName="Database HTTP test")
