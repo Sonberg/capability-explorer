@@ -5,6 +5,7 @@ import {createLikeC4Editor, LikeC4EditorProvider, LikeC4ModelProvider, ReactLike
 import type {DiagramApi} from 'likec4/react';
 import type {LiveEdge, LiveGraph, LiveModelResult, LiveNode} from './live-contracts.ts';
 import {useLiveModel} from './live-use-model.ts';
+import {useLiveInitialZoom} from './live-use-initial-zoom.ts';
 import {applyLiveGroups} from './live-canvas-groups.ts';
 import {LiveSourceBridge} from './live-canvas-bridge.tsx';
 import {attachImmediateLayout, geometryKey} from './immediate-layout.ts';
@@ -80,6 +81,7 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
   const acceptLayout = useRef<(layout:LayoutedView)=>void>(()=>{});
   const editable = view === 'flow' || view === 'vertical';
   const generatedView = useMemo(() => editable ? applyLiveGroups(sourceModel.$data.views[view], groups) : sourceModel.$data.views[view], [sourceModel, view, groups, editable]);
+  const initialViewport = useLiveInitialZoom(canvas, generatedView.bounds);
   const layoutView = useMemo(() => {
     const customEdges = new Map(customView?.edges.map(edge => [edge.id, edge]));
     // Captured native edits contain only visible connectors. Restore every source
@@ -164,6 +166,7 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
     <header className="live-canvas-header"><strong>{graph.title ?? 'Architecture'}</strong><div className="actions">
       <span className="current-viewpoint">{view === 'flow' ? graph.title ?? 'Selected architecture' : viewpointLabel(view, sourceModel.$data.views[view])}</span>
       <button onClick={() => {cancelTraceInteraction(); setCustomView(null); setSelected([]); setEditing(null); clear(); setResetKey(key => key+1);}}>Reset layout</button>
+      <button onClick={() => api.current?.fitDiagram(0)}>Fit diagram</button>
       {editable && <><button onClick={() => api.current?.editorActor().send({type:'undo'})}>Undo layout</button><button onClick={() => api.current?.editorActor().send({type:'redo'})}>Redo layout</button></>}
       <button onClick={() => setShowSource(!showSource)} aria-expanded={showSource}>Diagram source</button><button onClick={download}>Download .c4</button>
     </div></header>
@@ -188,7 +191,7 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
           {nodeChoices.length > 0 && <><h2>Represented source elements</h2>{nodeChoices.map(node => <button key={node.id} aria-label={`Inspect element ${node.id}`} onClick={() => onNodeSelect(node)}>{node.label ?? node.id}<code>{node.id}</code></button>)}</>}
         </aside>}
         <div className="diagram-surface"><LikeC4ModelProvider likec4model={model}><LikeC4EditorProvider editor={editor}>
-          <ReactLikeC4 key={`${view}-${resetKey}`} className="ce-live-diagram" viewId={view} injectFontCss={false} onNodeClick={nodeClick}
+          {initialViewport.ready && <ReactLikeC4 key={`${view}-${resetKey}`} className="ce-live-diagram" viewId={view} initialZoom={initialViewport.zoom} injectFontCss={false} onNodeClick={nodeClick}
             onEdgeClick={edge => {const originals=graph.edges.filter(original => result.edgeSourceIds[edge.id]?.includes(original.id)); setNodeChoices([]); if (originals.length===1) {setEdgeChoices([]); onEdgeSelect(originals[0]);} else setEdgeChoices(originals);}}
             onCanvasClick={() => {if (!editing) {setSelected([]); clear();}}}
             onInitialized={initialized => {detachImmediate.current?.(); api.current=initialized.diagram; acceptedGeometry.current=null; detachImmediate.current=editable ? attachImmediateLayout(initialized, layout => acceptLayout.current(layout)) : null;}}
@@ -204,7 +207,7 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
               ${motion ? ':host(.ce-live-diagram) .react-flow__edge-path { animation:ce-live-edge-flow 2.4s ease-in-out infinite; }' : ':host(.ce-live-diagram) *, :host(.ce-live-diagram) *::before, :host(.ce-live-diagram) *::after { animation:none!important; transition:none!important; }'}
               @keyframes ce-live-edge-flow { 0%,100% { filter:drop-shadow(0 0 0 currentColor); } 50% { filter:drop-shadow(0 0 5px currentColor); } }
               @media (prefers-reduced-motion: reduce) { :host(.ce-live-diagram) *, :host(.ce-live-diagram) *::before, :host(.ce-live-diagram) *::after { animation:none!important; transition:none!important; } }`}</style>
-          </ReactLikeC4>
+          </ReactLikeC4>}
         </LikeC4EditorProvider></LikeC4ModelProvider></div>
       </section></div>
       {showSource && <aside className="live-source" aria-label="Diagram source"><h2>Reviewable source</h2><p>Source IDs, certainty and associations come from the selected artifacts. Presentation edits do not change evidence.</p><pre data-live-source data-input-identity={snapshotKey}>{result.source}</pre></aside>}
