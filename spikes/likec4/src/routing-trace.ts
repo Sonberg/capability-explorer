@@ -19,6 +19,7 @@ export function tracePointerDown(kind:'node'|'group',pointerId:number) {
 }
 export function tracePointerUp(event:PointerEvent) {if(event.pointerId!==activePointer)return;activePointer=undefined;if(routingTrace.get(active)?.status==='pending')routingTrace.event(active,'pointer.release');}
 export function traceCancel(event:PointerEvent) {if(event.pointerId!==activePointer)return;routingTrace.event(active,'interaction.cancel');routingTrace.finish(active,'cancelled');active=undefined;activePointer=undefined;}
+export function cancelTraceInteraction() {routingTrace.finish(active,'cancelled');active=undefined;activePointer=undefined;}
 export function traceSnapshot(layout:object) {
   if(!routingTrace.enabled)return;
   if(active===undefined||routingTrace.get(active)?.status!=='pending')active=routingTrace.begin('layout');
@@ -32,7 +33,7 @@ export function traceSnapshot(layout:object) {
 }
 export function traceContext(layout:{nodes:readonly unknown[];edges:readonly unknown[]}):TraceContext|undefined {
   if(!routingTrace.enabled)return;
-  if(!contexts.has(layout))traceSnapshot(layout);
+  if(!contexts.has(layout)){cancelTraceInteraction();traceSnapshot(layout);}
   const context=contexts.get(layout),record=routingTrace.get(context?.id);
   if(record){record.nodes=layout.nodes.length;record.edges=layout.edges.length;}
   return context;

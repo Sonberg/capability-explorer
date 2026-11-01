@@ -22,6 +22,11 @@ try {
  records=(await snapshot()).records;
  assert.ok(records.some(r=>r.kind==='node'&&r.status==='cancelled'),'superseded gesture recorded');
  assert.equal(records.at(-1).status,'complete','latest gesture completes');
+ await move('repository_0.n1');
+ const navigating=(await snapshot()).records.at(-1).id;
+ await page.locator('[data-view-id="index"]').first().click();await ready();
+ assert.equal((await snapshot()).records.find(r=>r.id===navigating).status,'cancelled','navigation cannot finish a drag');
+ await page.locator('[data-view-id="flow"]').first().click();await ready();
  // Disable routing while the worker is active; a late result must never complete this generation.
  await move('repository_0.n1');
  await page.waitForFunction(()=>window.ceRoutingTrace.snapshot().records.at(-1)?.events.some(e=>e.name.endsWith('worker.construct')),{},{timeout:15000});

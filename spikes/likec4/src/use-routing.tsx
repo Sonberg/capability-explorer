@@ -11,7 +11,8 @@ export function useRouting(layout:LayoutedView,enabled:boolean,retry:number,trac
     return {view,started,trace:context,generation:++generation.current,milliseconds:performance.now()-start};},[layout,enabled,tracing]);
   const result=completed?.layout===layout?completed:cache.current.get(layout);
   useEffect(()=>{
-    if(!enabled||cache.current.has(layout))return;
+    if(!enabled){finishTrace(preview.trace,'cancelled');return;}
+    if(cache.current.has(layout))return;
     setCompleted(null);
     let active=true;
     const context=preview.trace,created=timestamp();

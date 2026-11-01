@@ -1,4 +1,4 @@
-import {configureTracing,downloadTrace,tracePointerDown,tracePointerUp,traceCancel,traceSnapshot} from './routing-trace.ts';
+import {cancelTraceInteraction,configureTracing,downloadTrace,tracePointerDown,tracePointerUp,traceCancel,traceSnapshot} from './routing-trace.ts';
 import {RoutingTraceBridge} from './routing-trace-bridge.tsx';
 import type {LayoutedView,DiagramNode} from 'likec4/model';
 import type {DiagramApi,LikeC4EditorCallbacks} from 'likec4/react';
@@ -60,6 +60,7 @@ function App() {
     catch {setError('Browser storage is unavailable; groups will last only for this page.');}
   },[groups]);
   function changeGroups(next:Group[]) {
+    cancelTraceInteraction();
     setCustomView(applyGroups(currentView,next));setGroups(next);setSelected([]);setEditing(null);setError('');setResetKey(k=>k+1);
   }
   function edit(group?:Group) {
@@ -71,7 +72,7 @@ function App() {
     try {changeGroups(saveGroup(groups,currentView,{id:editing==='new'?undefined:editing??undefined,title:groupName,members:draftMembers}));}
     catch(e){setError(e instanceof Error?e.message:String(e));}
   }
-  function switchView(id:string) {setView(id);setCustomView(null);setSelected([]);setEditing(null);setError('');}
+  function switchView(id:string) {cancelTraceInteraction();setView(id);setCustomView(null);setSelected([]);setEditing(null);setError('');}
   function nodeClick(node:DiagramNode) {
     if(!editing || node.kind==='@group')return;
     const ids=draftMembers.includes(node.id)?draftMembers.filter(id=>id!==node.id):[...draftMembers,node.id];
@@ -99,7 +100,7 @@ function App() {
     <header><div className="spike-heading"><small>CAPABILITY EXPLORER / EXPERIMENT</small><h1>Architecture · LikeC4</h1></div>
       <div className="actions">
         <span className="current-viewpoint">{viewpointLabel(view,sourceModel.$data.views[view])}</span>
-        <button onClick={() => {setCustomView(null);setSelected([]);setEditing(null);setResetKey(k=>k+1);}}>Reset layout</button>
+        <button onClick={() => {cancelTraceInteraction();setCustomView(null);setSelected([]);setEditing(null);setResetKey(k=>k+1);}}>Reset layout</button>
         <button onClick={() => setShowSource(!showSource)} aria-expanded={showSource}>Diagram source</button>
         <button onClick={download}>Download .c4</button>
       </div>

@@ -41,3 +41,16 @@ test('phase tracing leaves deterministic routes and evidence unchanged',()=>{
  assert.equal(phases.length,15);assert.ok(phases.every(p=>p.end>=p.start));
  assert.ok(phases.some(p=>p.name==='order2.quality'));
 });
+
+test('unrelated layouts and explicit navigation cannot complete a pending drag',async()=>{
+ const {configureTracing,routingTrace,tracePointerDown,tracePointerUp,traceSnapshot,traceContext,cancelTraceInteraction}=await import('../src/routing-trace.ts');
+ configureTracing(true);routingTrace.reset();
+ tracePointerDown('node',3);tracePointerUp({pointerId:3});
+ const drag={nodes:[],edges:[]};traceSnapshot(drag);const old=traceContext(drag);
+ tracePointerUp({pointerId:4});assert.equal(routingTrace.get(old.id).events.filter(e=>e.name==='pointer.release').length,1);
+ const layout=traceContext({nodes:[],edges:[]});
+ assert.equal(routingTrace.get(old.id).status,'cancelled');assert.equal(routingTrace.get(layout.id).kind,'layout');
+ tracePointerDown('group',5);cancelTraceInteraction();
+ assert.equal(routingTrace.snapshot().records.at(-1).status,'cancelled');
+ configureTracing(false);
+});

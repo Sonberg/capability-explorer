@@ -53,7 +53,7 @@ Outputs under `.sandbox-cache/likec4-browser` include `routing-lifecycle.json` a
 
 ## Initial diagnostic result (2026-11-01)
 
-Twelve warm node moves per viewport, one run each, headless container Chromium (no CPU profiler):
+Baseline instrumentation commit `c274cb0`: twelve warm node moves per viewport, one run each, headless container Chromium (no CPU profiler):
 
 | Stage | 1920×1080 p50 / p95 | 5120×2160 p50 / p95 |
 |---|---:|---:|
