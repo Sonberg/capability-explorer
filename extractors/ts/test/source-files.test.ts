@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import ts from 'typescript';
-import { sourceSystem } from '../src/extract/source-files.ts';
+import { sourceCompilerHost, sourceSystem } from '../src/extract/source-files.ts';
 import { discoverUnits } from '../src/extract/project.ts';
 import { extract } from '../src/extract/extractor.ts';
 
@@ -55,3 +55,33 @@ for (const reference of ['../repo-other/outside.ts', './linked/outside.ts']) {
     assert.ok(result.includes('SOURCE_REFERENCE_UNAVAILABLE'));
   }));
 }
+
+test('compiler host directory expansion cannot enumerate symlink or sibling trees', () => setup((root, base) => {
+  const host = sourceCompilerHost(root, {});
+  assert.deepEqual(host.readDirectory!(join(base, 'repo-other'), ['.ts'], [], ['**/*']), []);
+  assert.deepEqual(host.readDirectory!(join(root, 'linked'), ['.ts'], [], ['**/*']), []);
+  assert.deepEqual(host.readDirectory!(root, ['.ts'], [], ['**/*']), [join(root, 'index.ts')]);
+}));
+
+test('symlink framework config cannot affect derived artifacts or fingerprint', () => setup((root, base) => {
+  writeFileSync(join(root, 'tsconfig.json'), '{"include":["index.ts"]}');
+  const outside = join(base, 'outside-config.js');
+  writeFileSync(outside, 'synthetic outside version one');
+  symlinkSync(outside, join(root, 'next.config.js'));
+  const run = () => extract({source:root, repository:'sample', commit:'0'.repeat(40)})[0]!.jsonl;
+  const first = run();
+  writeFileSync(outside, 'synthetic outside version two');
+  assert.equal(run(), first);
+  assert.ok(first.includes('CONFIG_SOURCE_UNAVAILABLE'));
+}));
+
+test('contained framework config remains a fingerprint input', () => setup(root => {
+  writeFileSync(join(root, 'tsconfig.json'), '{"include":["index.ts"]}');
+  const config = join(root, 'next.config.js');
+  writeFileSync(config, 'export default {poweredByHeader:false};');
+  const run = () => extract({source:root, repository:'sample', commit:'0'.repeat(40)})[0]!.jsonl;
+  const first = run();
+  writeFileSync(config, 'export default {poweredByHeader:true};');
+  assert.notEqual(run(), first);
+  assert.equal(first.includes('CONFIG_SOURCE_UNAVAILABLE'), false);
+}));

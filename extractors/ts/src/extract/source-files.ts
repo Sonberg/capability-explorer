@@ -52,3 +52,21 @@ export function sourceSystem(root: string, builtins = false): ts.System {
       ts.sys.useCaseSensitiveFileNames, root, depth, entries, file => resolve(file)),
   };
 }
+
+/** All compiler filesystem hooks must use the same boundary, including directory expansion. */
+export function sourceCompilerHost(root: string, options: ts.CompilerOptions): ts.CompilerHost {
+  const system = sourceSystem(root, true);
+  const host = ts.createCompilerHost(options, true);
+  host.readFile = system.readFile;
+  host.readDirectory = system.readDirectory;
+  host.fileExists = system.fileExists;
+  host.directoryExists = system.directoryExists;
+  host.getDirectories = system.getDirectories;
+  host.realpath = system.realpath;
+  host.getCurrentDirectory = system.getCurrentDirectory;
+  host.getSourceFile = (file, languageVersion) => {
+    const text = system.readFile(file);
+    return text === undefined ? undefined : ts.createSourceFile(file, text, languageVersion, true);
+  };
+  return host;
+}
