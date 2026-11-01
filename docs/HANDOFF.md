@@ -1,5 +1,11 @@
 # Handoff: remaining work
 
+New proposed policy: [MADR-0013 integration contract standards](adr/0013-integration-contract-standards.md)
+records OpenAPI/AsyncAPI version and evidence boundaries; document parsers are not
+implemented by this decision. [Code-analysis research](research/code-analysis-options.md)
+compares existing tooling and alternatives with a weighted rubric and source log;
+candidate tools have not been benchmarked or adopted.
+
 Status: reconciliation PR #11 merged into `stage-1-contract-and-fixtures` at `db18165`.
 The sole future work/alignment/PR target is that branch; main must remain intact.
 #5/#7/#8 landed on main; #9 landed only on `feat/main-aligned-delivery` after #8.
