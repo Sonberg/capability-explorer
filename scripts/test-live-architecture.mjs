@@ -18,7 +18,8 @@ const sourceNode = (id) => canvas().locator(`.react-flow__node[data-source-node-
 const sourceEdge = (id) => canvas().locator(`.react-flow__edge[data-source-edge-ids*=${JSON.stringify(JSON.stringify(id))}]`).first();
 const ready = async () => {
   await page.waitForFunction(() => document.querySelector('[aria-label="Architecture canvas"]')?.getAttribute('data-status') === 'ready');
-  await canvas().locator('.react-flow__node').first().waitFor();
+  await canvas().locator('.react-flow__node[data-source-node-ids]').first().waitFor();
+  await canvas().locator('[data-routing-state="ready"]').waitFor();
 };
 const graphResponse = (predicate = () => true) => page.waitForResponse((response) => {
   const url = new URL(response.url());
@@ -128,6 +129,11 @@ async function groupJourney() {
   await page.getByRole('button', { name: 'Save group', exact: true }).click();
   const renamed = groups.filter({ hasText: 'Browser renamed group' });
   await renamed.waitFor(); receipt.assertions++;
+  const restored = graphResponse();
+  await page.reload();
+  currentGraph = await (await restored).json(); await ready();
+  await renamed.waitFor(); receipt.assertions++;
+  equal([...JSON.parse(await renamed.getAttribute('data-source-node-ids'))].sort(), [...candidates].sort(), 'custom grouping must persist for the exact same source snapshot');
   await selectGroup(renamed);
   await page.getByRole('button', { name: 'Edit members', exact: true }).click();
   await sourceNode(candidates[1]).click({ force: true });
@@ -152,7 +158,10 @@ try {
     if (url.pathname.includes('/likec4/index.html') || /all-repositories\.graph\.json|architecture\.c4$/.test(url.pathname)) forbidden.push(request.url());
   });
   await page.addInitScript(() => {
-    localStorage.clear(); localStorage.setItem('ce.capability', '""'); localStorage.setItem('ce.overrides', '{}');
+    if (!sessionStorage.getItem('ce.live-browser-initialized')) {
+      localStorage.clear(); localStorage.setItem('ce.capability', '""'); localStorage.setItem('ce.overrides', '{}');
+      sessionStorage.setItem('ce.live-browser-initialized', '1');
+    }
   });
   const metaResponse = await page.request.get(`${base}/api/meta`);
   check(metaResponse.ok(), 'actual metadata endpoint must succeed');
@@ -270,6 +279,9 @@ try {
   const favoriteName = (await favorite.getAttribute('aria-label')).replace(/^Add | to favorites$/g, '');
   await favorite.click();
   check((await page.getByRole('region', { name: 'Favorite viewpoints' }).innerText()).includes(favoriteName), 'favoriting must update permanent navigation');
+  const favoriteReload = graphResponse();
+  await page.reload(); currentGraph = await (await favoriteReload).json(); await ready();
+  check((await page.getByRole('region', { name: 'Favorite viewpoints' }).innerText()).includes(favoriteName), 'favorites must persist for the same selected source');
   await page.keyboard.press('Escape');
   check(await page.getByRole('navigation', { name: 'Viewpoints' }).isVisible(), 'Escape must preserve pinned navigation');
   await page.getByRole('switch', { name: 'Orthogonal', exact: true }).uncheck();
