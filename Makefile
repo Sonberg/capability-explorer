@@ -96,10 +96,11 @@ test: test-local-ci test-mapping-replay test-security-gates test-corpus-replay t
 test-binding-preview: build
 	$(OFFLINE) dotnet dotnet test --no-build platform/tests/CapabilityExplorer.Explorer.Tests --filter FullyQualifiedName~BindingPreviewTests
 	$(OFFLINE) node node --experimental-strip-types --test tests/binding-preview.test.mjs
+	$(OFFLINE) node node --experimental-transform-types --test tests/request.test.mjs
 
 BINDING_PREVIEW_URL ?= http://localhost:5108
 test-binding-preview-browser:
-	SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node node tests/binding-preview.browser.mjs $(BINDING_PREVIEW_URL)
+	SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) node node tests/binding-preview.browser.mjs $(BINDING_PREVIEW_URL)
 
 fixtures:
 	$(OFFLINE) node scripts/build-fixtures.sh
@@ -305,16 +306,16 @@ likec4-preview: likec4-check
 # Optional visual checks against running ports 5090/5091; not an extra hosted-CI image.
 .PHONY: likec4-browser-check
 likec4-browser-check:
-	SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node node --experimental-strip-types spikes/likec4/test/browser.mjs
+	SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) node node --experimental-strip-types spikes/likec4/test/browser.mjs
 
 .PHONY: likec4-interaction-check
 likec4-interaction-check:
-	SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node node spikes/likec4/test/embedded-routing.mjs
+	SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) node node spikes/likec4/test/embedded-routing.mjs
 
 # Opt-in diagnostics against the candidate preview; reuse the existing browser image.
 .PHONY: likec4-trace-check
 likec4-trace-check:
-	SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node sh -c 'cd spikes/likec4 && node test/routing-trace-browser.mjs && node test/immediate-layout-browser.mjs && node test/routing-lifecycle.mjs'
+	SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) node sh -c 'cd spikes/likec4 && node test/routing-trace-browser.mjs && node test/immediate-layout-browser.mjs && node test/routing-lifecycle.mjs'
 
 # Live model invariants run without a browser or additional service image.
 .PHONY: live-architecture-check live-architecture-browser-check
@@ -324,9 +325,9 @@ live-architecture-check: likec4-deps
 # Use an already running isolated explorer; network/credentials remain explicit.
 LIVE_ARCHITECTURE_URL ?= http://host.docker.internal:5096
 live-architecture-browser-check:
-	CE_LIVE_ARCHITECTURE_BASE_URL='$(LIVE_ARCHITECTURE_URL)' SANDBOX_PASS_ENV=CE_LIVE_ARCHITECTURE_BASE_URL SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node node scripts/test-live-architecture.mjs
+	CE_LIVE_ARCHITECTURE_BASE_URL='$(LIVE_ARCHITECTURE_URL)' SANDBOX_PASS_ENV=CE_LIVE_ARCHITECTURE_BASE_URL SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) node node scripts/test-live-architecture.mjs
 
 # Opt-in source-bound comparison; requires separately running baseline/candidate.
 .PHONY: live-architecture-benchmark
 live-architecture-benchmark:
-	SANDBOX_PASS_ENV=CE_LIVE_BENCHMARK_BASELINE_URL,CE_LIVE_BENCHMARK_CANDIDATE_URL,CE_LIVE_BENCHMARK_SAMPLES SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node node scripts/benchmark-live-architecture.mjs
+	SANDBOX_PASS_ENV=CE_LIVE_BENCHMARK_BASELINE_URL,CE_LIVE_BENCHMARK_CANDIDATE_URL,CE_LIVE_BENCHMARK_SAMPLES SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) node node scripts/benchmark-live-architecture.mjs

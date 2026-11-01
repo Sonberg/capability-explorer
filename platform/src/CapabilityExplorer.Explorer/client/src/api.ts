@@ -302,7 +302,10 @@ export class ApiError extends Error {
 }
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, { ...init, headers: { accept: "application/json", ...(init?.body ? { "content-type": "application/json" } : {}), ...init?.headers } });
+  const headers = new Headers(init?.headers);
+  if (!headers.has('accept')) headers.set('accept', 'application/json');
+  if (init?.body && !headers.has('content-type')) headers.set('content-type', 'application/json');
+  const res = await fetch(path, { ...init, headers });
   const text = await res.text();
   const body: unknown = text ? JSON.parse(text) : undefined;
   if (!res.ok) {

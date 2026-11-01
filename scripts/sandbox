@@ -134,6 +134,7 @@ if [[ $docker_sock -eq 1 ]]; then
     # Testcontainers publishes container ports on the host; reach them via the host gateway.
     --add-host host.docker.internal:host-gateway
     -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal
+    -e TESTCONTAINERS_RYUK_CONTAINER_IMAGE="$RYUK_IMAGE"
     -e DOCKER_HOST="unix://$sock"
   )
 fi
