@@ -45,6 +45,9 @@ try {
   await page.getByLabel('Maximum nodes', { exact: true }).fill('1');
   await page.getByRole('button', { name: 'Apply flow limits', exact: true }).click();
   await page.getByText(/applied bounds 4 hops \/ 1 nodes \/ 500 edges/).waitFor(); receipt.assertions++;
+  await page.getByLabel('Maximum nodes', { exact: true }).fill('250');
+  await page.getByRole('button', { name: 'Apply flow limits', exact: true }).click();
+  await page.getByText(/applied bounds 4 hops \/ 250 nodes \/ 500 edges/).waitFor(); receipt.assertions++;
   const reviewResponse = await page.request.get(`${base}/api/glossary/review`);
   check(reviewResponse.ok(), 'review status endpoint must succeed for DB-off or healthy DB');
   const review = await reviewResponse.json();
@@ -84,6 +87,21 @@ try {
       await page.getByLabel('Reviewed term', { exact: true }).selectOption(term.id);
       const link = await saved('links', () => page.getByRole('button', { name: 'Save review', exact: true }).click()); ids.push(['links', link.id]);
       check(!!link.observed.artifactContentSha256 && !!link.observed.commitSha, 'persisted link must carry artifact/revision provenance');
+      const assertionResponse = page.waitForResponse((response) => response.url().includes('/api/glossary/flow?') && new URL(response.url()).searchParams.get('reviewed') === 'true' && response.ok());
+      await page.getByLabel('Include reviewed assertions', { exact: true }).check();
+      const assertionFlow = await (await assertionResponse).json();
+      const association = assertionFlow.edges.find((edge) => edge.assertionId === link.id);
+      check(association?.category === 'human-assertion' && association.relation === 'same', 'reviewed toggle must include persisted human association');
+      check(association.occurrenceId === link.observed.occurrenceId, 'human edge must preserve exact reviewed occurrence ID');
+      const associationPath = page.locator(`.react-flow__edge[data-id="${association.id}"] .react-flow__edge-path`);
+      await associationPath.waitFor({ state: 'attached' });
+      check(await associationPath.getAttribute('marker-end') === null, 'same association must have no directional arrowhead');
+      await associationPath.dispatchEvent('click');
+      await page.getByText(`Reviewed occurrence ID: ${link.observed.occurrenceId}`, { exact: true }).waitFor(); receipt.assertions++;
+      await page.getByText(/^Association:/).waitFor(); receipt.assertions++;
+      await page.getByText(`Reviewed occurrence ID: ${link.observed.occurrenceId}`, { exact: true }).scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `${artifactDirectory}/reviewed-association.png` });
+
       console.log("Creating and resolving real mismatch issue");
       await page.getByRole('button', { name: 'Create mismatch issue', exact: true }).click();
       await page.getByLabel('Reviewed term', { exact: true }).selectOption(term.id);
