@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { shortSha, type AttributeValue, type Comparison, type GlossaryCandidate, type GlossaryOccurrence } from "../api";
 import { SourceView } from "../components/source";
+import { GlossaryReview } from "../components/glossary-review";
 import { Card, ErrorBox, H1, H2, inputClass, jsonText, Loading, Mono, Muted, Note, Pill, Table } from "../components/ui";
 import { href, useApi, useSelection } from "../state";
+
+const GlossaryFlow = lazy(() => import("../components/glossary-flow").then((module) => ({ default: module.GlossaryFlow })));
 
 type Difference = Comparison["differences"][number];
 
@@ -59,7 +62,7 @@ function ScopedGlossary({ scope, selectedTerm }: { scope: string; selectedTerm: 
             />
           )}
           {selectedTerm && !selected && <Note>The selected candidate “{selectedTerm}” is not present in this capability and revision selection. Choose a candidate from the current list.</Note>}
-          {selected && <div ref={detail} className="scroll-mt-32 space-y-3"><CandidateDetail key={selected.term} candidate={selected} /></div>}
+          {selected && <div ref={detail} className="scroll-mt-32 space-y-3"><CandidateDetail key={selected.term} candidate={selected} scope={scope} occurrences={candidates.flatMap((candidate) => candidate.occurrences)} /></div>}
         </>
       )}
     </div>
@@ -95,7 +98,10 @@ function CandidateFacts({ candidate }: { candidate: GlossaryCandidate }) {
   </div>;
 }
 
-function CandidateDetail({ candidate }: { candidate: GlossaryCandidate }) {
+function CandidateDetail({ candidate, scope, occurrences }: { candidate: GlossaryCandidate; scope: string; occurrences: GlossaryOccurrence[] }) {
+  const [occurrenceId, setOccurrenceId] = useState(candidate.occurrences[0]?.id);
+  const [reviewGeneration, setReviewGeneration] = useState(0);
+  const occurrence = candidate.occurrences.find((item) => item.id === occurrenceId);
   return <>
     <Card>
       <H2>{candidate.term}</H2>
@@ -127,7 +133,12 @@ function CandidateDetail({ candidate }: { candidate: GlossaryCandidate }) {
       })}
     </Card>
     <H2>Source occurrences</H2>
-    {candidate.occurrences.map((occurrence) => <OccurrenceCard key={occurrence.id} occurrence={occurrence} />)}
+    <p className="text-xs text-zinc-500">Choose the exact occurrence whose connections and reviewed membership you want to inspect. Repository, revision and role are kept distinct.</p>
+    {candidate.occurrences.map((item) => <OccurrenceCard key={item.id} occurrence={item} selected={item.id === occurrenceId} onSelect={() => setOccurrenceId(item.id)} />)}
+    {occurrence && <>
+      <Suspense fallback={<Loading what="Loading connection canvas" />}><GlossaryFlow key={`${scope}:${occurrence.id}`} scope={scope} occurrence={occurrence} reviewGeneration={reviewGeneration} /></Suspense>
+      <GlossaryReview key={scope} scope={scope} occurrence={occurrence} occurrences={occurrences} onChanged={() => setReviewGeneration((generation) => generation + 1)} />
+    </>}
   </>;
 }
 
@@ -158,10 +169,10 @@ function AttributeText({ value }: { value?: AttributeValue }) {
   </div>;
 }
 
-function OccurrenceCard({ occurrence }: { occurrence: GlossaryOccurrence }) {
+function OccurrenceCard({ occurrence, selected, onSelect }: { occurrence: GlossaryOccurrence; selected: boolean; onSelect: () => void }) {
   const [showSource, setShowSource] = useState(false);
   return <Card>
-    <div className="mb-1 flex flex-wrap items-center gap-2"><span className="font-semibold">{occurrence.name}</span><Pill>{occurrence.kind}</Pill><Pill>{occurrence.role}</Pill></div>
+    <div className="mb-1 flex flex-wrap items-center gap-2"><button type="button" aria-pressed={selected} aria-label={`Explore connections for ${occurrence.name} · ${occurrence.role} · ${occurrence.repositoryId} · ${occurrence.commitSha}`} data-glossary-occurrence={occurrence.id} onClick={onSelect} className="rounded border border-blue-200 px-2 py-1 text-xs font-semibold text-blue-700 dark:border-blue-900 dark:text-blue-300">{selected ? "Selected connections" : "Explore connections"} for {occurrence.name} · {occurrence.role}</button><span className="font-semibold">{occurrence.name}</span><Pill>{occurrence.kind}</Pill><Pill>{occurrence.role}</Pill></div>
     <div className="text-xs"><OccurrenceLabel occurrence={occurrence} /></div>
     <div className="mt-1 break-all text-xs text-zinc-500">Revision: <Mono>{occurrence.commitSha}</Mono></div>
     <div className="mt-1 break-all text-xs text-zinc-500">Unit path: {occurrence.unitPath}</div>

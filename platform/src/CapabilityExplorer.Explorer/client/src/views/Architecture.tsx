@@ -24,7 +24,7 @@ import { href, symbolHref, useApi, useSelection } from "../state";
 
 // ---------------------------------------------------------------- API shapes
 
-interface ArchNode {
+export interface ArchNode {
   id: string;
   category: string;
   label: string;
@@ -36,7 +36,7 @@ interface ArchNode {
   badges: string[];
 }
 
-interface ArchFact {
+export interface ArchFact {
   relation: string;
   from: SymbolRef;
   to?: SymbolRef;
@@ -47,7 +47,7 @@ interface ArchFact {
   evidence: Evidence[];
 }
 
-interface ArchEdge {
+export interface ArchEdge {
   id: string;
   from: string;
   to: string;
@@ -58,8 +58,8 @@ interface ArchEdge {
   facts: ArchFact[];
 }
 
-interface Graph {
-  level: "landscape" | "system" | "repository" | "component" | "requests";
+export interface Graph {
+  level: "landscape" | "system" | "repository" | "component" | "requests" | "glossary-flow";
   focus?: string;
   title: string;
   breadcrumbs: { label: string; level: string; focus?: string }[];
@@ -137,10 +137,10 @@ const certaintyText: Record<ArchEdge["certainty"], { label: string; tone: Tone; 
 const NODE_W = 220;
 const NODE_H = 64;
 
-type CanvasNodeData = { node: ArchNode; selected: boolean; dimmed: boolean };
+export type CanvasNodeData = { node: ArchNode; selected: boolean; dimmed: boolean };
 type GroupNodeData = { label: string };
 
-function layout(graph: Graph, hidden: Set<string>): { nodes: FlowNode[]; edges: FlowEdge[] } {
+export function layout(graph: Graph, hidden: Set<string>): { nodes: FlowNode[]; edges: FlowEdge[] } {
   const edges = graph.edges.filter((e) => !hidden.has(e.kind));
   const g = new dagre.graphlib.Graph({ compound: true, multigraph: true });
   g.setGraph({ rankdir: "LR", nodesep: 22, ranksep: 90, edgesep: 12, marginx: 20, marginy: 20 });
@@ -254,7 +254,7 @@ function GroupView({ data }: NodeProps<FlowNode<GroupNodeData>>) {
   );
 }
 
-const nodeTypes = { arch: ArchNodeView, group: GroupView };
+export const nodeTypes = { arch: ArchNodeView, group: GroupView };
 
 // ---------------------------------------------------------------- view
 
