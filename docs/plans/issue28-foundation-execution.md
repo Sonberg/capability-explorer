@@ -123,6 +123,9 @@ The seeded generator and [benchmark protocol](issue28-benchmark-protocol.md) sup
 no real Git source contents. Their HTTP timing alone proves neither source browsing
 nor a 10M-node memory target. Query plans, cold cache, database/OS memory and import
 peaks must be named explicitly when not measured.
+The [clean sequential result](issue28-benchmark-sequential.md) records the final
+foundation measurements and exact source/build/corpus identities, superseding
+the earlier diagnostic and briefly overlapping runs.
 
 ## RuVector result
 
