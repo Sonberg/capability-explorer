@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 const base = process.env.CE_GLOSSARY_BASE_URL ?? 'http://host.docker.internal:5080';
 const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
-const receipt = { base, assertions: 0, simulated: [], viewports: [], databaseJourney: 'not run' };
+const receipt = { base, assertions: 0, simulated: [], viewports: [], databaseJourney: 'not run', viewportInteraction: 'Fit View is clicked after each resize; the canvas retains pan/zoom across sizes.' };
 const artifactDirectory = `/work/.sandbox-cache/glossary-browser/${new URL(base).port || "default"}`;
 let page;
 const check = (condition, message) => { assert.ok(condition, message); receipt.assertions++; };
@@ -145,6 +145,8 @@ try {
     await page.setViewportSize(viewport);
     check(await page.getByRole('heading', { name: 'Reviewed glossary', exact: true }).isVisible(), 'review UI must remain available at viewport');
     check(await page.getByRole('button', { name: 'Apply flow limits', exact: true }).isVisible(), 'flow controls must remain available at viewport');
+    await page.getByRole('button', { name: 'Fit View', exact: true }).click();
+    await page.waitForTimeout(250); // Let the control's viewport animation settle before screenshots.
     await page.locator('[aria-label="Glossary connection canvas"]').evaluate((element) => window.scrollTo({ top: element.getBoundingClientRect().top + window.scrollY - 80 }));
     await page.screenshot({ path: `${artifactDirectory}/flow-${viewport.width}.png` });
     await page.getByRole('heading', { name: 'Reviewed glossary', exact: true }).evaluate((element) => window.scrollTo({ top: element.getBoundingClientRect().top + window.scrollY - 80 }));
