@@ -143,3 +143,28 @@ test('presence of a Dockerfile cannot waive manual review of unsupported configu
   f.manifest.manualReview = f.write('manual-incomplete.json', manual);
   assert.throws(() => validate(f.root, f.manifest, 'verify', f.now), /unsupported-configuration coverage/);
 });
+
+test('only exact generated memory files are excluded and runtime writes do not invalidate source', t => {
+  const f = fixture(t), dir = path.join(f.root, '.swarm'); fs.mkdirSync(dir);
+  for (const name of ['config.json', 'worker.ts', 'unknown.db']) fs.writeFileSync(path.join(dir, name), 'source');
+  const before = snapshot(f.root);
+  for (const name of ['agentdb-memory.db', 'memory.db']) for (const suffix of ['', '.ruvector', '-wal', '-shm'])
+    fs.writeFileSync(path.join(dir, name + suffix), 'runtime state');
+  assert.equal(snapshot(f.root).sha256, before.sha256);
+  fs.writeFileSync(path.join(dir, 'agentdb-memory.db'), 'updated runtime state');
+  assert.equal(snapshot(f.root).sha256, before.sha256);
+  for (const name of ['config.json', 'worker.ts', 'unknown.db']) assert.ok(before.files.some(x => x.path === `.swarm/${name}`));
+  fs.writeFileSync(path.join(dir, 'config.json'), 'changed config');
+  assert.notEqual(snapshot(f.root).sha256, before.sha256);
+});
+test('generated exclusions cannot hide directories, symlinks or arbitrary .swarm files', t => {
+  const f = fixture(t), dir = path.join(f.root, '.swarm'); fs.mkdirSync(dir);
+  const generated = path.join(dir, 'memory.db'); fs.mkdirSync(generated);
+  assert.throws(() => snapshot(f.root), /regular file/);
+  fs.rmdirSync(generated); fs.symlinkSync(path.join(f.root, 'source.ts'), generated);
+  assert.throws(() => snapshot(f.root), /regular file/);
+  fs.unlinkSync(generated);
+  const file = path.join(f.root, 'config/security/audit-scope.json'), policy = JSON.parse(fs.readFileSync(file));
+  policy.excludedGeneratedFiles.push('.swarm/config.json'); fs.writeFileSync(file, JSON.stringify(policy));
+  assert.throws(() => snapshot(f.root), /unreviewed generated/);
+});

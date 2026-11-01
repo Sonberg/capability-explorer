@@ -1,8 +1,19 @@
 {
   "schemaVersion": 1,
-  "excludedDirectoryNames": [".git", ".sandbox-cache", "node_modules", "bin", "obj", "TestResults"],
-  "excludedPaths": ["fixtures/.repos", "fixtures/.work", "platform/src/CapabilityExplorer.Explorer/wwwroot"],
-  "exclusionReason": "Caches and generated outputs are not source inputs. Runtime/container images are separate required scan targets; fixture source and dependency locks remain included.",
+  "excludedDirectoryNames": [
+    ".git",
+    ".sandbox-cache",
+    "node_modules",
+    "bin",
+    "obj",
+    "TestResults"
+  ],
+  "excludedPaths": [
+    "fixtures/.repos",
+    "fixtures/.work",
+    "platform/src/CapabilityExplorer.Explorer/wwwroot"
+  ],
+  "exclusionReason": "Caches and generated outputs are not source inputs. Runtime/container images are separate required scan targets; fixture source and dependency locks remain included. Only the explicitly named Ruflo/AgentDB local database files and SQLite sidecars are excluded; all other .swarm files remain source inputs.",
   "requiredCoverage": {
     "dependencies": "trivy",
     "fs-secrets": "trivy",
@@ -12,5 +23,15 @@
     "sast": "semgrep"
   },
   "maximumScanAgeHours": 72,
-  "maximumDatabaseAgeHours": 24
+  "maximumDatabaseAgeHours": 24,
+  "excludedGeneratedFiles": [
+    ".swarm/agentdb-memory.db",
+    ".swarm/agentdb-memory.db.ruvector",
+    ".swarm/agentdb-memory.db-wal",
+    ".swarm/agentdb-memory.db-shm",
+    ".swarm/memory.db",
+    ".swarm/memory.db.ruvector",
+    ".swarm/memory.db-wal",
+    ".swarm/memory.db-shm"
+  ]
 }

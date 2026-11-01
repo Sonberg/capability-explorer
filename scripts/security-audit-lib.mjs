@@ -21,6 +21,8 @@ export function policy(root) {
   need(p.schemaVersion === 1 && nonempty(p.exclusionReason), 'invalid audit scope');
   const allowedDirectories = ['.git', '.sandbox-cache', 'node_modules', 'bin', 'obj', 'TestResults'];
   const allowedPaths = ['fixtures/.repos', 'fixtures/.work', 'platform/src/CapabilityExplorer.Explorer/wwwroot'];
+  const allowedGeneratedFiles = ['agentdb-memory.db', 'memory.db'].flatMap(name => ['', '.ruvector', '-wal', '-shm'].map(suffix => `.swarm/${name}${suffix}`));
+  need(Array.isArray(p.excludedGeneratedFiles) && p.excludedGeneratedFiles.every(x => allowedGeneratedFiles.includes(x)), 'unreviewed generated file exclusion');
   need(Array.isArray(p.excludedDirectoryNames) && p.excludedDirectoryNames.every(x => allowedDirectories.includes(x)) &&
     Array.isArray(p.excludedPaths) && p.excludedPaths.every(x => allowedPaths.includes(x)), 'unreviewed source exclusion');
   need(p.maximumScanAgeHours > 0 && p.maximumScanAgeHours <= 72 && p.maximumDatabaseAgeHours > 0 && p.maximumDatabaseAgeHours <= 24, 'unsafe freshness policy');
@@ -35,6 +37,10 @@ export function snapshot(root, p = policy(root)) {
       const name = prefix ? `${prefix}/${entry.name}` : entry.name;
       if (p.excludedDirectoryNames.includes(entry.name) && (entry.isDirectory() || entry.name === '.git')) continue;
       if (p.excludedPaths.some(x => name === x || name.startsWith(`${x}/`))) continue;
+      if (p.excludedGeneratedFiles?.includes(name)) {
+        need(entry.isFile(), `generated exclusion must be a regular file: ${name}`);
+        continue;
+      }
       need(!entry.isSymbolicLink(), `source symlink requires explicit review: ${name}`);
       if (entry.isDirectory()) walk(path.join(dir, entry.name), name);
       else if (entry.isFile()) files.push({ path: name, sha256: sha(fs.readFileSync(path.join(dir, entry.name))) });
