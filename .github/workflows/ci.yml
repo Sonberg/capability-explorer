@@ -27,11 +27,11 @@ jobs:
             echo 'PRs must target stage-1-contract-and-fixtures; main is not a delivery target.' >&2
             exit 1
           }
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # Builds and tests run inside scripts/sandbox containers; the runner only needs Docker.
       - name: Cache sandbox packages
         if: ${{ !env.ACT }}
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             .sandbox-cache/nuget
@@ -47,7 +47,8 @@ jobs:
         run: scripts/actions-audit audit
       - name: Pull sandbox images
         run: |
-          for image in mcr.microsoft.com/dotnet/sdk:10.0 node:22-bookworm pgvector/pgvector:0.8.6-pg17; do
+          source config/runtime/images.env
+          for image in "$DOTNET_IMAGE" "$NODE_IMAGE" "$PG_IMAGE"; do
             if [ "${ACT:-}" != "true" ] || ! docker image inspect "$image" >/dev/null 2>&1; then
               docker pull "$image"
             fi

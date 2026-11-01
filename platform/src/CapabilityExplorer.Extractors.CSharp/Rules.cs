@@ -631,7 +631,7 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                 {
                     ElementAccessExpressionSyntax ea when ConstString(f.Model, ea.ArgumentList.Arguments.FirstOrDefault()?.Expression) is { } k => Unbound("config", k.Value),
                     InvocationExpressionSyntax i when MethodName(i) == "GetConnectionString" && ConstString(f.Model, i.ArgumentList.Arguments.FirstOrDefault()?.Expression) is { } c => Unbound("conn", c.Value),
-                    _ when ConstString(f.Model, arg) is { Value: var v } && v.Contains(".servicebus.", StringComparison.Ordinal) => v,
+                    _ when ConstString(f.Model, arg) is { Value: var v } && ServiceBusNamespace.Parse(v) is { } host => host,
                     _ => Unbound("config", "unknown"),
                 };
                 nsSite = f.Evidence(b, arg ?? (SyntaxNode)creation);

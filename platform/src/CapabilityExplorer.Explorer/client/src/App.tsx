@@ -10,6 +10,7 @@ import { Capabilities } from "./views/Capabilities";
 import { Changes } from "./views/Changes";
 import { Evaluation } from "./views/Evaluation";
 import { Explore } from "./views/Explore";
+import { BindingPreview } from "./views/BindingPreview";
 import { Integrations } from "./views/Integrations";
 import { Settings } from "./views/Settings";
 
@@ -20,6 +21,7 @@ const VIEWS = [
   ["explore", "Explore"],
   ["architecture", "Architecture"],
   ["integrations", "Integrations"],
+  ["binding-preview", "Binding review"],
   ["calculations", "Calculations"],
   ["glossary", "Glossary"],
   ["changes", "Changes"],
@@ -127,6 +129,8 @@ function Routed({ path, params }: { path: string; params: URLSearchParams }) {
           <ArchitectureView params={params} />
         </Suspense>
       );
+    case "binding-preview":
+      return <BindingPreview />;
     case "integrations":
       return <Integrations />;
     case "calculations":

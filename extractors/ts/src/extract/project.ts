@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
+import { containedSource, sourceSystem } from "./source-files.ts";
 
 /** A TypeScript/JavaScript unit: one tsconfig.json (or a package.json with plain JavaScript and no tsconfig). */
 export interface UnitConfig {
@@ -39,7 +40,7 @@ function walk(dir: string, found: (file: string) => void, depth = 0) {
 function nearestPackage(start: string, root: string): { dir: string; name: string; file?: string } {
   for (let dir = start; ; dir = dirname(dir)) {
     const file = join(dir, "package.json");
-    if (existsSync(file)) {
+    if (containedSource(root, file) && existsSync(file)) {
       try {
         const name = (JSON.parse(readFileSync(file, "utf8")) as { name?: unknown }).name;
         if (typeof name === "string" && name.length > 0) return { dir, name, file };
@@ -58,6 +59,7 @@ function nearestPackage(start: string, root: string): { dir: string; name: strin
  * own JSON reader, `extends` to packages that are not installed degrade to a config error. Nothing is installed.
  */
 export function discoverUnits(root: string): UnitConfig[] {
+  const system = sourceSystem(root);
   const tsconfigs: string[] = [];
   const packages: string[] = [];
   walk(root, (f) => {
@@ -67,15 +69,15 @@ export function discoverUnits(root: string): UnitConfig[] {
   tsconfigs.sort();
   const units: UnitConfig[] = [];
   for (const configFile of tsconfigs) {
-    const read = ts.readConfigFile(configFile, (p) => ts.sys.readFile(p));
+    const read = ts.readConfigFile(configFile, (p) => system.readFile(p));
     const errors: string[] = [];
     if (read.error) errors.push(ts.flattenDiagnosticMessageText(read.error.messageText, "\n"));
-    const parsed = ts.parseJsonConfigFileContent(read.config ?? {}, ts.sys, dirname(configFile), undefined, configFile);
+    const parsed = ts.parseJsonConfigFileContent(read.config ?? {}, system, dirname(configFile), undefined, configFile);
     for (const e of parsed.errors) {
       // "No inputs were found" is normal for solution-style configs that only list references.
       if (e.code !== 18003) errors.push(ts.flattenDiagnosticMessageText(e.messageText, "\n"));
     }
-    const rootNames = parsed.fileNames.filter((f) => resolve(f).startsWith(root) && !f.includes(`${sep}node_modules${sep}`) && !f.includes("/node_modules/"));
+    const rootNames = parsed.fileNames.filter((f) => containedSource(root, f) && !f.includes(`${sep}node_modules${sep}`) && !f.includes("/node_modules/"));
     if (rootNames.length === 0) continue;
     const pkg = nearestPackage(dirname(configFile), root);
     units.push({
@@ -86,7 +88,7 @@ export function discoverUnits(root: string): UnitConfig[] {
   }
 
   // Plain JavaScript packages without any tsconfig above them.
-  const covered = (dir: string) => units.some((u) => dir.startsWith(dirname(u.configFile)));
+  const covered = (dir: string) => units.some((u) => (dir === dirname(u.configFile) || dir.startsWith(dirname(u.configFile) + sep)));
   for (const file of packages.sort()) {
     const dir = dirname(file);
     if (covered(dir)) continue;

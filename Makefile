@@ -6,6 +6,7 @@ SANDBOX := scripts/sandbox
 DOTNET  := $(SANDBOX) dotnet
 NODE    := $(SANDBOX) node
 OFFLINE := $(SANDBOX) --offline
+include config/runtime/images.env
 
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
         restore ui build test-ts test-contracts test-evaluation test-extractors test-explorer test-store evaluate evaluate-golden \
@@ -64,9 +65,42 @@ test-mapping-replay:
 security-check:
 	scripts/security-check
 
+SECURITY_MANIFEST ?= .sandbox-cache/security-audit/manifest.json
+.PHONY: security-plan-check security-baseline security-audit security-verify test-security-gates test-security-regressions test-corpus-replay
+security-plan-check:
+	scripts/security-audit plan-check
+
+security-baseline:
+	scripts/security-audit baseline $(SECURITY_MANIFEST)
+
+security-audit:
+	scripts/security-collect run .sandbox-cache/security-audit
+
+security-verify:
+	scripts/security-audit verify $(SECURITY_MANIFEST)
+
+test-security-gates:
+	$(OFFLINE) node node --test tests/security-audit.test.mjs tests/security-collect.test.mjs
+
+test-corpus-replay:
+	$(OFFLINE) node node --test tests/corpus-replay.test.mjs
+
+test-security-regressions: build
+	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Capabilities.Tests && dotnet test --no-build tests/CapabilityExplorer.Interpretation.Tests && dotnet test --no-build tests/CapabilityExplorer.Extractors.Tests && dotnet test --no-build tests/CapabilityExplorer.Explorer.Tests'
+
 ci: security-check fixtures-compile test
 
-test: test-local-ci test-mapping-replay golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
+test: test-local-ci test-mapping-replay test-security-gates test-corpus-replay test-binding-preview golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
+
+.PHONY: test-binding-preview test-binding-preview-browser
+test-binding-preview: build
+	$(OFFLINE) dotnet dotnet test --no-build platform/tests/CapabilityExplorer.Explorer.Tests --filter FullyQualifiedName~BindingPreviewTests
+	$(OFFLINE) node node --experimental-strip-types --test tests/binding-preview.test.mjs
+	$(OFFLINE) node node --experimental-transform-types --test tests/request.test.mjs
+
+BINDING_PREVIEW_URL ?= http://localhost:5108
+test-binding-preview-browser:
+	SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) node node tests/binding-preview.browser.mjs $(BINDING_PREVIEW_URL)
 
 fixtures:
 	$(OFFLINE) node scripts/build-fixtures.sh
@@ -198,7 +232,6 @@ test-store: build
 # 127.0.0.1:11434 only; the sandbox reaches it as host.docker.internal. The native Ollama app on the same port works too
 # (and uses the GPU, which Docker on macOS cannot). OLLAMA_CHAT=none skips the chat model (a few GB).
 # Saves .sandbox-cache/model.json unless settings were already saved (from the Settings page or an earlier run).
-OLLAMA_IMAGE ?= ollama/ollama:0.40.5
 OLLAMA_EMBED ?= nomic-embed-text
 OLLAMA_CHAT ?= qwen2.5:7b
 ollama:
@@ -216,7 +249,6 @@ ollama:
 # Local PostgreSQL with pgvector, on the host's 127.0.0.1 only (dev credentials, never a shared database). The sandbox
 # reaches it as host.docker.internal. Data survives restarts in the ce-postgres volume (docker volume rm ce-postgres resets).
 # ponytail: on Linux, host.docker.internal is the bridge gateway, which a 127.0.0.1-only port does not answer; set SANDBOX_NETWORK=host there.
-PG_IMAGE ?= pgvector/pgvector:0.8.6-pg17
 PG_PORT ?= 5433
 DEV_DATABASE = Host=host.docker.internal;Port=$(PG_PORT);Database=ce;Username=ce;Password=ce
 comma := ,
@@ -274,16 +306,16 @@ likec4-preview: likec4-check
 # Optional visual checks against running ports 5090/5091; not an extra hosted-CI image.
 .PHONY: likec4-browser-check
 likec4-browser-check:
-	SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node node --experimental-strip-types spikes/likec4/test/browser.mjs
+	SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) node node --experimental-strip-types spikes/likec4/test/browser.mjs
 
 .PHONY: likec4-interaction-check
 likec4-interaction-check:
-	SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node node spikes/likec4/test/embedded-routing.mjs
+	SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) node node spikes/likec4/test/embedded-routing.mjs
 
 # Opt-in diagnostics against the candidate preview; reuse the existing browser image.
 .PHONY: likec4-trace-check
 likec4-trace-check:
-	SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node sh -c 'cd spikes/likec4 && node test/routing-trace-browser.mjs && node test/immediate-layout-browser.mjs && node test/routing-lifecycle.mjs'
+	SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) node sh -c 'cd spikes/likec4 && node test/routing-trace-browser.mjs && node test/immediate-layout-browser.mjs && node test/routing-lifecycle.mjs'
 
 # Live model invariants run without a browser or additional service image.
 .PHONY: live-architecture-check live-architecture-browser-check
@@ -293,9 +325,9 @@ live-architecture-check: likec4-deps
 # Use an already running isolated explorer; network/credentials remain explicit.
 LIVE_ARCHITECTURE_URL ?= http://host.docker.internal:5096
 live-architecture-browser-check:
-	CE_LIVE_ARCHITECTURE_BASE_URL='$(LIVE_ARCHITECTURE_URL)' SANDBOX_PASS_ENV=CE_LIVE_ARCHITECTURE_BASE_URL SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node node scripts/test-live-architecture.mjs
+	CE_LIVE_ARCHITECTURE_BASE_URL='$(LIVE_ARCHITECTURE_URL)' SANDBOX_PASS_ENV=CE_LIVE_ARCHITECTURE_BASE_URL SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) node node scripts/test-live-architecture.mjs
 
 # Opt-in source-bound comparison; requires separately running baseline/candidate.
 .PHONY: live-architecture-benchmark
 live-architecture-benchmark:
-	SANDBOX_PASS_ENV=CE_LIVE_BENCHMARK_BASELINE_URL,CE_LIVE_BENCHMARK_CANDIDATE_URL,CE_LIVE_BENCHMARK_SAMPLES SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node node scripts/benchmark-live-architecture.mjs
+	SANDBOX_PASS_ENV=CE_LIVE_BENCHMARK_BASELINE_URL,CE_LIVE_BENCHMARK_CANDIDATE_URL,CE_LIVE_BENCHMARK_SAMPLES SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) node node scripts/benchmark-live-architecture.mjs

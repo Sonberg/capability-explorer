@@ -33,7 +33,9 @@ public sealed class PackageResolver(string? packagesRoot, IReadOnlyDictionary<st
             var byId = locked.ToDictionary(l => l.Id, StringComparer.OrdinalIgnoreCase);
             foreach (var l in locked)
             {
+                PackageSafety.Validate(l.Id, l.Version);
                 var root = packagesRoot is null ? null : Path.Combine(packagesRoot, l.Id.ToLowerInvariant(), l.Version.ToLowerInvariant());
+                if (root is not null) PackageSafety.NoLinks(packagesRoot!, root);
                 if (root is null || !Directory.Exists(root))
                 {
                     throw new InvalidOperationException($"locked package {l.Id} {l.Version} is not in the packages folder; run the packages step again");
@@ -48,6 +50,7 @@ public sealed class PackageResolver(string? packagesRoot, IReadOnlyDictionary<st
             {
                 if (!seen.Add(id) || !byId.TryGetValue(id, out var package)) continue;
                 var root = Path.Combine(packagesRoot!, package.Id.ToLowerInvariant(), package.Version.ToLowerInvariant());
+                PackageSafety.Tree(root);
                 assemblies.AddRange(AssembliesIn(root, targetFramework, package.Id, issues));
                 resolved.Add(package);
                 foreach (var dependency in FrameworkSelection.DependencyElements(root, targetFramework))

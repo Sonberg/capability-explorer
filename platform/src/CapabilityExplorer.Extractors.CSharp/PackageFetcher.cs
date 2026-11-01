@@ -15,10 +15,14 @@ public sealed record FetchResult(int Fetched, int Present, IReadOnlyList<string>
 /// The result is a <see cref="PackageLock"/>; it depends on the declared versions and the feeds, never on what the
 /// packages folder already held. Feeds are tried in order. Credentials are sent only to their own feed's host.
 /// </summary>
-public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOnlyList<PackageFeed>? feeds = null)
+public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOnlyList<PackageFeed>? feeds = null, PackageFeedPolicy? policy = null)
 {
+    private readonly PackageFeedPolicy _policy = policy ?? new PackageFeedPolicy();
     private const long MaxPackageBytes = 256L * 1024 * 1024;
     private const int MaxPackages = 600;
+    private const int MaxArchiveEntries = 10000;
+    private const long MaxExpandedBytes = 512L * 1024 * 1024;
+    private const long MaxMetadataBytes = 4L * 1024 * 1024;
 
     private readonly IReadOnlyList<PackageFeed> _feeds = feeds is { Count: > 0 } ? feeds : [PackageFeed.NuGetOrg];
     private readonly Dictionary<string, string?> _bases = new(StringComparer.OrdinalIgnoreCase);
@@ -67,14 +71,16 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
                 continue;
             }
 
+            if (!PackageSafety.Id(id)) { Fail("Invalid package ID; paths are prohibited"); continue; }
             var version = await ResolveVersionAsync(id, range, cancellationToken);
-            if (version is null)
+            if (version is null || !PackageSafety.Version(version))
             {
                 Fail($"{id} {range ?? "(no version)"}: no matching version on the feeds");
                 continue;
             }
 
             var dir = Path.Combine(packagesRoot, id.ToLowerInvariant(), version.ToLowerInvariant());
+            PackageSafety.NoLinks(packagesRoot, dir);
             if (!Directory.Exists(dir) || !Directory.EnumerateFiles(dir, "*.nuspec").Any())
             {
                 if (!await DownloadAsync(id, version, dir, cancellationToken))
@@ -90,6 +96,7 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
                 _present++;
             }
 
+            PackageSafety.Tree(dir);
             chosen[id] = version;
             if (FrameworkSelection.IncompatibleDependencyGroups(dir, target))
             {
@@ -143,13 +150,13 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
                     continue;
                 }
 
-                using var response = await SendAsync(feed, new Uri($"{baseUrl}{id.ToLowerInvariant()}/index.json"), HttpCompletionOption.ResponseContentRead, cancellationToken);
+                using var response = await SendAsync(feed, new Uri($"{baseUrl}{id.ToLowerInvariant()}/index.json"), HttpCompletionOption.ResponseHeadersRead, cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
                     continue;
                 }
 
-                using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+                using var doc = JsonDocument.Parse(await ReadMetadataAsync(response, cancellationToken));
                 var versions = doc.RootElement.GetProperty("versions").EnumerateArray().Select(v => v.GetString()!).ToList();
                 var pick = versions.LastOrDefault(v => !v.Contains('-', StringComparison.Ordinal) && v.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) ?? versions.LastOrDefault();
                 if (pick is not null)
@@ -170,7 +177,9 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
     {
         if (feed.BaseAddress is { } known)
         {
-            return known;
+            if (Uri.TryCreate(known, UriKind.Absolute, out var uri) && PackageSafety.Https(uri)) return known.EndsWith('/') ? known : known + "/";
+            Fail("Feed base must be HTTPS without user information or fragment");
+            return null;
         }
 
         if (_bases.TryGetValue(feed.Url, out var cached))
@@ -181,10 +190,10 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
         string? result = null;
         try
         {
-            using var response = await SendAsync(feed, new Uri(feed.Url), HttpCompletionOption.ResponseContentRead, cancellationToken);
+            using var response = await SendAsync(feed, new Uri(feed.Url), HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
-                using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+                using var doc = JsonDocument.Parse(await ReadMetadataAsync(response, cancellationToken));
                 result = doc.RootElement.GetProperty("resources").EnumerateArray()
                     .Where(r => r.GetProperty("@type").GetString() is { } t && t.StartsWith("PackageBaseAddress/3.0.0", StringComparison.Ordinal))
                     .Select(r => r.GetProperty("@id").GetString()).FirstOrDefault();
@@ -210,11 +219,13 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
     /// <summary>GET with manual redirects; the Authorization header is only ever attached for the feed's own host over https.</summary>
     private async Task<HttpResponseMessage> SendAsync(PackageFeed feed, Uri url, HttpCompletionOption completion, CancellationToken cancellationToken)
     {
-        var feedHost = new Uri(feed.Url).Host;
+        var feedUri = new Uri(feed.Url);
+        RequireOrigin(feedUri);
         for (var hop = 0; hop < 5; hop++)
         {
+            RequireOrigin(url);
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            if (feed.Credentials is { } c && url.Scheme == Uri.UriSchemeHttps && string.Equals(url.Host, feedHost, StringComparison.OrdinalIgnoreCase))
+            if (feed.Credentials is { } c && url.Scheme == Uri.UriSchemeHttps && string.Equals(url.Authority, feedUri.Authority, StringComparison.OrdinalIgnoreCase))
             {
                 request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"{c.Username}:{c.Password}")));
             }
@@ -300,6 +311,8 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
             var root = Path.GetFullPath(staging) + Path.DirectorySeparatorChar;
             using (var zip = new ZipArchive(buffer, ZipArchiveMode.Read))
             {
+                if (zip.Entries.Count > MaxArchiveEntries || zip.Entries.Sum(e => e.Length) > MaxExpandedBytes)
+                    throw new InvalidDataException("Package expanded size or entry count exceeds limits");
                 foreach (var entry in zip.Entries)
                 {
                     var name = Uri.UnescapeDataString(entry.FullName).Replace('\\', '/');
@@ -333,7 +346,7 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidDataException or IOException)
         {
-            Fail($"{id} {version}: {e.Message}");
+            Fail($"{id} {version}: package download or archive rejected ({e.GetType().Name})");
             return false;
         }
         finally
@@ -343,6 +356,26 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
                 Directory.Delete(staging, recursive: true);
             }
         }
+    }
+
+    private void RequireOrigin(Uri uri)
+    {
+        if (!_policy.Allows(uri)) Fail("Unauthorized package feed origin; configure CE_NUGET_ALLOWED_ORIGINS explicitly");
+        _policy.Require(uri);
+    }
+
+    private static async Task<string> ReadMetadataAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        await using var stream = await response.Content.ReadAsStreamAsync(ct);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[8192];
+        int count;
+        while ((count = await stream.ReadAsync(chunk, ct)) > 0)
+        {
+            if (buffer.Length + count > MaxMetadataBytes) throw new HttpRequestException("Feed metadata exceeds limit");
+            buffer.Write(chunk, 0, count);
+        }
+        return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
     }
 
     private static List<(string Id, string? Range)> Dependencies(string dir, string? target)

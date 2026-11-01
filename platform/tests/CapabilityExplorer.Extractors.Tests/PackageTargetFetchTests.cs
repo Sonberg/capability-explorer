@@ -29,7 +29,7 @@ public sealed class PackageTargetFetchTests : IDisposable
         using var http = new HttpClient(handler);
         var model = Project(target);
         var cache = Path.Combine(_root, "cache");
-        var fetched = await new PackageFetcher(cache, http, [new("data", "https://feed.test/index.json", BaseAddress: "https://feed.test/flat/")]).FetchAsync([model]);
+        var fetched = await new PackageFetcher(cache, http, [new("data", "https://feed.test/index.json", BaseAddress: "https://feed.test/flat/")], new PackageFeedPolicy("https://feed.test")).FetchAsync([model]);
         Assert.Empty(fetched.Failed);
         Assert.Equal(new[] { expected, "Root" }.Order(StringComparer.OrdinalIgnoreCase), fetched.Lock.For("App.csproj").Select(p => p.Id));
         var resolved = new PackageResolver(cache).Resolve(model.PackageRoots(), fetched.Lock.For("App.csproj"), model.TargetFramework);
@@ -46,7 +46,7 @@ public sealed class PackageTargetFetchTests : IDisposable
         using var http = new HttpClient(handler);
         var cache = Path.Combine(_root, "cache");
         var model = Project("net8.0");
-        var fetched = await new PackageFetcher(cache, http, [new("data", "https://feed.test/index.json", BaseAddress: "https://feed.test/flat/")]).FetchAsync([model]);
+        var fetched = await new PackageFetcher(cache, http, [new("data", "https://feed.test/index.json", BaseAddress: "https://feed.test/flat/")], new PackageFeedPolicy("https://feed.test")).FetchAsync([model]);
         Assert.Empty(fetched.Failed);
         Assert.True(File.Exists(Path.Combine(cache, "root", "1.0.0", "ref", "net8.0", "_._")));
         var resolved = new PackageResolver(cache).Resolve(model.PackageRoots(), fetched.Lock.For("App.csproj"), "net8.0");
@@ -62,7 +62,7 @@ public sealed class PackageTargetFetchTests : IDisposable
         handler.Add("Portable");
         using var http = new HttpClient(handler);
         var model = Project("net8.0");
-        var fetched = await new PackageFetcher(Path.Combine(_root, "cache"), http, [new("data", "https://feed.test/index.json", BaseAddress: "https://feed.test/flat/")]).FetchAsync([model]);
+        var fetched = await new PackageFetcher(Path.Combine(_root, "cache"), http, [new("data", "https://feed.test/index.json", BaseAddress: "https://feed.test/flat/")], new PackageFeedPolicy("https://feed.test")).FetchAsync([model]);
         Assert.Empty(fetched.Failed);
         Assert.Contains(fetched.Lock.For("App.csproj"), p => p.Id == "Portable");
     }
@@ -75,7 +75,7 @@ public sealed class PackageTargetFetchTests : IDisposable
         using var http = new HttpClient(handler);
         var cache = Path.Combine(_root, "cache");
         var model = Project("net8.0");
-        var fetched = await new PackageFetcher(cache, http, [new("data", "https://feed.test/index.json", BaseAddress: "https://feed.test/flat/")]).FetchAsync([model]);
+        var fetched = await new PackageFetcher(cache, http, [new("data", "https://feed.test/index.json", BaseAddress: "https://feed.test/flat/")], new PackageFeedPolicy("https://feed.test")).FetchAsync([model]);
         Assert.Contains(fetched.Failed, f => f.Contains("no compatible dependency group", StringComparison.Ordinal));
         var resolved = new PackageResolver(cache).Resolve(model.PackageRoots(), fetched.Lock.For("App.csproj"), model.TargetFramework);
         Assert.Contains(resolved.Issues, i => i.Code == "PACKAGE_NO_COMPATIBLE_DEPENDENCIES");
@@ -90,7 +90,7 @@ public sealed class PackageTargetFetchTests : IDisposable
         using var http = new HttpClient(handler);
         var cache = Path.Combine(_root, "cache");
         var modern = Project("net10.0");
-        var fetched = await new PackageFetcher(cache, http, [new("data", "https://feed.test/index.json", BaseAddress: "https://feed.test/flat/")]).FetchAsync([modern]);
+        var fetched = await new PackageFetcher(cache, http, [new("data", "https://feed.test/index.json", BaseAddress: "https://feed.test/flat/")], new PackageFeedPolicy("https://feed.test")).FetchAsync([modern]);
         var old = Project("net8.0");
         var result = new PackageResolver(cache).Resolve(old.PackageRoots(), fetched.Lock.For("App.csproj"), old.TargetFramework);
         Assert.Equal("Root", Assert.Single(result.Resolved).Id);

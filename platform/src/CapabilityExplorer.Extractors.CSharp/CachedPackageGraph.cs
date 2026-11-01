@@ -42,6 +42,8 @@ internal sealed class CachedPackageGraph(string? packagesRoot, string? target, I
                 var package = new LockedPackage(name, version);
                 inspected[$"{id}@{version}"] = package;
                 var dir = Path.Combine(packagesRoot!, id.ToLowerInvariant(), version.ToLowerInvariant());
+                PackageSafety.NoLinks(packagesRoot!, dir);
+                PackageSafety.Tree(dir);
                 foreach (var dependency in FrameworkSelection.DependencyElements(dir, target)
                     .OrderBy(d => (string?)d.Attribute("id"), StringComparer.OrdinalIgnoreCase)
                     .ThenBy(d => (string?)d.Attribute("version"), StringComparer.Ordinal))
@@ -103,8 +105,9 @@ internal sealed class CachedPackageGraph(string? packagesRoot, string? target, I
     private string? Pick(string id, IReadOnlyList<Request> requests)
     {
         var ranges = requests.Select(r => PackageVersionSelection.Parse(r.Range)).ToList();
-        if (packagesRoot is null || ranges.Any(r => r is null)) return null;
+        if (packagesRoot is null || !PackageSafety.Id(id) || ranges.Any(r => r is null)) return null;
         var dir = Path.Combine(packagesRoot, id.ToLowerInvariant());
+        PackageSafety.NoLinks(packagesRoot, dir);
         return Directory.Exists(dir) ? PackageVersionSelection.Pick(dir, ranges.Select(r => r!).ToList()) : null;
     }
 

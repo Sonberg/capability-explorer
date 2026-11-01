@@ -37,13 +37,18 @@ public sealed record InterpretationOptions
 
     public bool Enabled => !string.Equals(Provider, "none", StringComparison.OrdinalIgnoreCase);
 
-    private string? Key => ApiKey is { Length: > 0 } ? ApiKey : Environment.GetEnvironmentVariable(ApiKeyVariable) is { Length: > 0 } key ? key : null;
+    public bool UseEnvironmentApiKey { get; init; } = true;
+
+    /// <summary>Ambient Azure identity is opt-in for saved/UI settings; configured providers retain their existing default.</summary>
+    public bool UseDefaultAzureCredential { get; init; } = true;
+
+    private string? Key => ApiKey is { Length: > 0 } ? ApiKey : UseEnvironmentApiKey && Environment.GetEnvironmentVariable(ApiKeyVariable) is { Length: > 0 } key ? key : null;
 
     private bool IsOpenAi => Provider.ToLowerInvariant() is "openai" or "foundry";
 
-    /// <summary>Entra ID only without a key, and only for Foundry or an Azure host.</summary>
+    /// <summary>Entra ID only when enabled, without a key, and for an Azure host.</summary>
     private DefaultAzureCredential? Credential(Uri endpoint) =>
-        Key is null && (string.Equals(Provider, "foundry", StringComparison.OrdinalIgnoreCase) || OpenAiApi.IsAzure(endpoint)) ? new DefaultAzureCredential() : null;
+        UseDefaultAzureCredential && Key is null && OpenAiApi.IsAzure(endpoint) ? new DefaultAzureCredential() : null;
 
     /// <summary>Creates the configured model, or null when the layer is disabled. Misconfiguration fails fast.</summary>
     public IInterpretationModel? CreateModel(HttpClient? http = null)
@@ -63,11 +68,11 @@ public sealed record InterpretationOptions
     }
 
     private FoundryChatModel Chat(HttpClient? http, Uri endpoint, string deployment) =>
-        new(http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(180) }, endpoint, deployment, Key, Credential(endpoint), Provider.ToLowerInvariant());
+        new(http ?? OpenAiApi.CreateClient(), endpoint, deployment, Key, Credential(endpoint), Provider.ToLowerInvariant());
 
     /// <summary>The embeddings model, or null unless an OpenAI-compatible provider has an endpoint and an embedding model.</summary>
     public OpenAiEmbeddingModel? CreateEmbeddingModel(HttpClient? http = null) =>
         IsOpenAi && Endpoint is { Length: > 0 } && EmbeddingModel is { Length: > 0 }
-            ? new OpenAiEmbeddingModel(http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(180) }, new Uri(Endpoint), EmbeddingModel, Key, Credential(new Uri(Endpoint)), Provider.ToLowerInvariant())
+            ? new OpenAiEmbeddingModel(http ?? OpenAiApi.CreateClient(), new Uri(Endpoint), EmbeddingModel, Key, Credential(new Uri(Endpoint)), Provider.ToLowerInvariant())
             : null;
 }

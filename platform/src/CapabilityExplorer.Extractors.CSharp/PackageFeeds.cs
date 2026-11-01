@@ -30,14 +30,15 @@ public sealed record PackageFeed(string Name, string Url, FeedCredentials? Crede
 /// </summary>
 public static partial class NuGetConfig
 {
-    public static IReadOnlyList<PackageFeed> Discover(string sourceRoot, IEnumerable<string> projectDirs, Func<string, string?> env)
+    public static IReadOnlyList<PackageFeed> Discover(string sourceRoot, IEnumerable<string> projectDirs, Func<string, string?> env, PackageFeedPolicy? policy = null)
     {
+        policy ??= new PackageFeedPolicy();
         var root = Path.GetFullPath(sourceRoot);
         var dirs = new List<string> { root };
         foreach (var d in projectDirs.Select(Path.GetFullPath).Order(StringComparer.Ordinal))
         {
             var chain = new List<string>();
-            for (var c = d; c.StartsWith(root, StringComparison.Ordinal) && c.Length > root.Length; c = Path.GetDirectoryName(c)!)
+            for (var c = d; c.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal) && c.Length > root.Length; c = Path.GetDirectoryName(c)!)
             {
                 chain.Add(c);
             }
@@ -93,7 +94,7 @@ public static partial class NuGetConfig
                             string? user = null, password = null;
                             foreach (var a in s.Elements().Where(x => x.Name.LocalName == "add"))
                             {
-                                var value = Expand((string?)a.Attribute("value"), env);
+                                var value = (string?)a.Attribute("value");
                                 switch ((string?)a.Attribute("key"))
                                 {
                                     case "Username": user = value; break;
@@ -118,12 +119,16 @@ public static partial class NuGetConfig
         foreach (var (key, url) in sources)
         {
             // Local folders, http and unparsable sources are skipped: only https v3 feeds, and only they get credentials.
-            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || feeds.Any(f => string.Equals(f.Url, url, StringComparison.OrdinalIgnoreCase)))
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !PackageSafety.Https(uri) || feeds.Any(f => string.Equals(f.Url, url, StringComparison.OrdinalIgnoreCase)))
             {
                 continue;
             }
 
-            var creds = credentials.TryGetValue(key, out var c) && !string.IsNullOrEmpty(c.User) && c.Password is not null ? new FeedCredentials(c.User, c.Password) : null;
+            if (!policy.Allows(uri)) throw new InvalidDataException("Repository requests an unauthorized NuGet feed origin; configure CE_NUGET_ALLOWED_ORIGINS before providing credentials");
+            credentials.TryGetValue(key, out var c);
+            var username = Expand(c.User, env);
+            var password = Expand(c.Password, env);
+            var creds = !string.IsNullOrEmpty(username) && password is not null ? new FeedCredentials(username, password) : null;
             feeds.Add(new PackageFeed(key, url, creds));
         }
 
@@ -131,7 +136,7 @@ public static partial class NuGetConfig
     }
 
     private static string? Expand(string? value, Func<string, string?> env) =>
-        value is null ? null : EnvReference().Replace(value, m => env(m.Groups[1].Value) ?? "");
+        value is not null && EnvReference().Match(value) is { Success: true } match && match.Length == value.Length ? env(match.Groups[1].Value) : null;
 
     [GeneratedRegex("%([A-Za-z_][A-Za-z0-9_]*)%")]
     private static partial Regex EnvReference();
