@@ -1,0 +1,90 @@
+{
+  "note": "Seed weights were fitted on labelled samples A and B with the prototype feature set; entries marked prior are stated judgments, not fitted. Cross-validation showed refitting does not improve on them at this label count. See docs/adr/0005-glossary-concepts.md, Validation.",
+  "version": 1,
+  "bias": -66,
+  "supportingAt": -41,
+  "coreAt": 41,
+  "genericLabelShare": 0.05,
+  "weights": {
+    "roleSuffix": {
+      "points": -127,
+      "basis": "fitted"
+    },
+    "integrationModel": {
+      "points": -117,
+      "basis": "fitted"
+    },
+    "operationName": {
+      "points": -99,
+      "basis": "fitted"
+    },
+    "featureFolder": {
+      "points": 85,
+      "basis": "fitted"
+    },
+    "domainEvent": {
+      "points": 69,
+      "basis": "fitted"
+    },
+    "dataShape": {
+      "points": 62,
+      "basis": "fitted"
+    },
+    "wideShape": {
+      "points": 57,
+      "basis": "fitted"
+    },
+    "crossRepo": {
+      "points": 54,
+      "basis": "fitted"
+    },
+    "moduleLocalType": {
+      "points": -52,
+      "basis": "fitted"
+    },
+    "persisted": {
+      "points": 39,
+      "basis": "fitted"
+    },
+    "infrastructureLayer": {
+      "points": -15,
+      "basis": "fitted"
+    },
+    "singleImplementationInterface": {
+      "points": -100,
+      "basis": "prior: one implementation is a DI seam"
+    },
+    "diRegistered": {
+      "points": -5,
+      "basis": "fitted"
+    },
+    "variants": {
+      "points": 100,
+      "basis": "prior: an interface with several implementations is a concept"
+    },
+    "messageContract": {
+      "points": 200,
+      "basis": "prior"
+    },
+    "calculationInput": {
+      "points": 200,
+      "basis": "prior"
+    },
+    "usedByCalculation": {
+      "points": 200,
+      "basis": "prior"
+    },
+    "hostsCalculation": {
+      "points": -100,
+      "basis": "prior"
+    },
+    "nestedType": {
+      "points": -200,
+      "basis": "prior"
+    },
+    "representationOnly": {
+      "points": -50,
+      "basis": "prior: between ignoring and vetoing; labelled samples disagree on DTO-only result types"
+    }
+  }
+}

@@ -163,7 +163,7 @@ public static class Glossary
             comparisons.Any(c => c.SameExpression == false), possible == comparisons.Count, possible, comparisons);
     }
 
-    private static bool Eligible(NodeRecord node)
+    internal static bool Eligible(NodeRecord node)
     {
         var parts = SymbolKey.Segments(node.SymbolKey);
         return node.Generated != true && !string.IsNullOrWhiteSpace(node.Name) &&
@@ -220,10 +220,10 @@ public static class Glossary
         element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Array
             ? value.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!) : [];
 
-    private static List<string> Sorted(IEnumerable<string> values) =>
+    internal static List<string> Sorted(IEnumerable<string> values) =>
         values.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
 
-    private static List<EvidenceDto> SortEvidence(IEnumerable<EvidenceDto> evidence) => evidence.Distinct()
+    internal static List<EvidenceDto> SortEvidence(IEnumerable<EvidenceDto> evidence) => evidence.Distinct()
         .OrderBy(e => e.RepositoryId, StringComparer.Ordinal).ThenBy(e => e.CommitSha, StringComparer.Ordinal)
         .ThenBy(e => e.Path, StringComparer.Ordinal).ThenBy(e => e.StartLine).ThenBy(e => e.StartColumn)
         .ThenBy(e => e.EndLine).ThenBy(e => e.EndColumn).ThenBy(e => e.Id, StringComparer.Ordinal).ToList();

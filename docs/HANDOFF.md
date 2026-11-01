@@ -126,6 +126,12 @@ Read-only deterministic candidates and the Glossary tab are implemented in the
 stacked glossary workstream. Names group only by explicit normalization; calendar
 and active qualifiers remain distinct. Source occurrences retain revision/unit/record
 identity, unknowns remain unknown, and comparison completeness is explicit.
+Glossary concepts (follow-up): `GET /api/glossary/concepts` ranks declarations into concepts
+with an explainable score and a Concepts/Candidates toggle in the tab. See
+[MADR-0005](adr/0005-glossary-concepts.md) for semantics, measured precision/recall and known
+limits (about 60% precision on a fresh blind sample; TypeScript members are not in ce.v1).
+Weights live in `glossary-weights.json`; the fixture gold set is a regression test.
+
 See [MADR-0004](adr/0004-glossary-candidates.md) and
 [build evidence](plans/glossary-build-evidence.md). Flow tracing, persistent reviewed
 terms/same-value links, and LLM proposals remain separate unimplemented layers.
