@@ -46,5 +46,6 @@ public sealed record ModelSettings(string? Endpoint, string? ChatModel, string? 
         EmbeddingModel = EmbeddingModel is { Length: > 0 } ? EmbeddingModel : null,
         ApiKey = ApiKey,
         UseEnvironmentApiKey = false,
+        UseDefaultAzureCredential = false,
     };
 }

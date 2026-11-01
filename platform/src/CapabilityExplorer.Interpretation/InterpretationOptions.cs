@@ -39,13 +39,16 @@ public sealed record InterpretationOptions
 
     public bool UseEnvironmentApiKey { get; init; } = true;
 
+    /// <summary>Ambient Azure identity is opt-in for saved/UI settings; configured providers retain their existing default.</summary>
+    public bool UseDefaultAzureCredential { get; init; } = true;
+
     private string? Key => ApiKey is { Length: > 0 } ? ApiKey : UseEnvironmentApiKey && Environment.GetEnvironmentVariable(ApiKeyVariable) is { Length: > 0 } key ? key : null;
 
     private bool IsOpenAi => Provider.ToLowerInvariant() is "openai" or "foundry";
 
-    /// <summary>Entra ID only without a key, and only for Foundry or an Azure host.</summary>
+    /// <summary>Entra ID only when enabled, without a key, and for an Azure host.</summary>
     private DefaultAzureCredential? Credential(Uri endpoint) =>
-        Key is null && OpenAiApi.IsAzure(endpoint) ? new DefaultAzureCredential() : null;
+        UseDefaultAzureCredential && Key is null && OpenAiApi.IsAzure(endpoint) ? new DefaultAzureCredential() : null;
 
     /// <summary>Creates the configured model, or null when the layer is disabled. Misconfiguration fails fast.</summary>
     public IInterpretationModel? CreateModel(HttpClient? http = null)

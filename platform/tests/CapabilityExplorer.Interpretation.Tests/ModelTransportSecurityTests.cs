@@ -45,6 +45,17 @@ public sealed class ModelTransportSecurityTests
         var options = new ModelSettings("https://model.test/v1", "model", null, null).ApplyTo(new InterpretationOptions());
         Assert.False(options.UseEnvironmentApiKey);
     }
+    [Fact]
+    public async Task Saved_azure_endpoint_does_not_acquire_ambient_identity()
+    {
+        var options = new ModelSettings("https://resource.services.ai.azure.com/openai/v1", null, "model", null).ApplyTo(new InterpretationOptions());
+        Assert.False(options.UseDefaultAzureCredential);
+        var handler = new Handler();
+        using var http = new HttpClient(handler);
+        var error = await Assert.ThrowsAsync<InterpretationUnavailableException>(() => options.CreateEmbeddingModel(http)!.EmbedAsync(["synthetic"]));
+        Assert.Contains("400", error.Message, StringComparison.Ordinal);
+        Assert.Equal(1, handler.Calls);
+    }
     [Theory]
     [InlineData("https://user:password@model.test/v1")]
     [InlineData("https://model.test/v1?secret=x")]
