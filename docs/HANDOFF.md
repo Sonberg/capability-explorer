@@ -1,10 +1,10 @@
 # Handoff: remaining work
 
-Status: reconciliation package prepared for `stage-1-contract-and-fixtures`.
+Status: reconciliation PR #11 merged into `stage-1-contract-and-fixtures` at `db18165`.
 The sole future work/alignment/PR target is that branch; main must remain intact.
 #5/#7/#8 landed on main; #9 landed only on `feat/main-aligned-delivery` after #8.
 This package includes both histories and corrected #10 lifecycle documentation.
-Do not call stage reconciled until the owner actually merges this package.
+The merge was verified on 2026-11-01; it does not imply owner validation of every feature.
 The operator reports notifying the owner; subsequent validation is unconfirmed.
 See [reconciliation and source SHAs](plans/stage-branch-reconciliation.md).
 Environment/IaC binding remains open.
@@ -13,6 +13,11 @@ Shared terminology: [ubiquitous language](ubiquitous-language.md),
 those fixes are separate from synthetic test coverage.
 
 PR updates and newcomer workflow: [MADR-0005](adr/0005-pr-lifecycle-and-conflict-prevention.md).
+
+Release notes: [changelog](CHANGELOG.md), [MADR-0006](adr/0006-keep-a-changelog.md).
+Compatibility/versioning: [MADR-0007](adr/0007-semantic-versioning.md).
+Next proposed large package: [cross-repository flow and reviewed glossary links](plans/cross-repository-value-flow.md), issue #4 layers 4 and 3. Planning only; implementation ownership is not claimed. BPMN/DMN issue #12 still requires an owner scope decision. LikeC4 PRs #14/#15 remain separate pending work.
+
 
 ## What exists
 
