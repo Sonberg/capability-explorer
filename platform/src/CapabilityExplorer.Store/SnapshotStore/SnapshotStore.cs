@@ -12,8 +12,22 @@ public sealed partial class SnapshotStore(NpgsqlDataSource dataSource)
 {
     public const int MaximumArtifacts = 100_000;
 
-    public async Task<AnalysisSnapshot> CreateAsync(string capabilityId, string inputIdentity,
-        IReadOnlyList<long> artifactIds, CancellationToken cancellationToken = default)
+    public Task<AnalysisSnapshot> CreateAsync(string capabilityId, string inputIdentity,
+        IReadOnlyList<long> artifactIds, CancellationToken cancellationToken = default) =>
+        CreateCoreAsync(capabilityId,inputIdentity,artifactIds,null,cancellationToken);
+
+    /// <summary>Explicit defaults may override single-revision repositories and must choose one member revision
+    /// for every repository having multiple revisions. Defaults become immutable snapshot metadata.</summary>
+    public Task<AnalysisSnapshot> CreateAsync(string capabilityId, string inputIdentity,
+        IReadOnlyList<long> artifactIds, IReadOnlyDictionary<string,string> defaultRevisions,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(defaultRevisions);
+        return CreateCoreAsync(capabilityId,inputIdentity,artifactIds,defaultRevisions,cancellationToken);
+    }
+
+    private async Task<AnalysisSnapshot> CreateCoreAsync(string capabilityId,string inputIdentity,
+        IReadOnlyList<long> artifactIds,IReadOnlyDictionary<string,string>? defaultRevisions,CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(artifactIds);
         ArgumentException.ThrowIfNullOrWhiteSpace(capabilityId);
@@ -26,6 +40,7 @@ public sealed partial class SnapshotStore(NpgsqlDataSource dataSource)
         await using var c = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var tx = await c.BeginTransactionAsync(cancellationToken);
         await LockAsync(c, tx, "create:" + capabilityId + ":" + inputIdentity, cancellationToken);
+        var defaults=await ResolveDefaultsAsync(c,tx,ids,defaultRevisions,cancellationToken);
         await using (var existing = new NpgsqlCommand("""
             select id from analysis_snapshot where capability_id=$1 and input_identity=$2
             """, c, tx))
@@ -41,6 +56,8 @@ public sealed partial class SnapshotStore(NpgsqlDataSource dataSource)
                 var previous = await matches.ExecuteScalarAsync(cancellationToken) as long[];
                 if (!(previous ?? []).SequenceEqual(ids))
                     throw new SnapshotConflictException("Input identity already selects different artifacts");
+                if (!await DefaultsMatchAsync(c,tx,prior,defaults,cancellationToken))
+                    throw new SnapshotConflictException("Input identity already selects different default revisions");
                 await tx.CommitAsync(cancellationToken);
                 return (await GetByIdAsync(c, prior, cancellationToken))!;
             }
@@ -67,10 +84,11 @@ public sealed partial class SnapshotStore(NpgsqlDataSource dataSource)
             }
         }
         await ExecuteAsync(c, tx, """
-            insert into snapshot_revision(snapshot_id,repository_id,commit_sha,label)
-            select distinct snapshot_id,repository_id,commit_sha,left(commit_sha,12)
-            from analysis_snapshot_artifact where snapshot_id=$1
-            """, cancellationToken, id);
+            insert into snapshot_revision(snapshot_id,repository_id,commit_sha,label,is_default)
+            select distinct sa.snapshot_id,sa.repository_id,sa.commit_sha,left(sa.commit_sha,12),sa.commit_sha::text=d.sha
+            from analysis_snapshot_artifact sa join unnest($2::text[],$3::text[]) d(repo,sha) on d.repo=sa.repository_id
+            where snapshot_id=$1
+            """, cancellationToken, id,defaults.Keys.ToArray(),defaults.Values.ToArray());
         await tx.CommitAsync(cancellationToken);
         return (await GetByIdAsync(c, id, cancellationToken))!;
     }
