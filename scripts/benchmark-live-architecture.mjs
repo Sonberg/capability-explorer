@@ -52,7 +52,7 @@ const scenarios = [
   {name:'candidate', url:candidateUrl, viewport:{width:1440, height:900}},
 ];
 const receipt = {
-  version:1,
+  version:2,
   startedAt:new Date().toISOString(),
   sampleCount,
   fixture:{path:'spikes/likec4/test/all-repositories.graph.json', sha256:sha256(fixtureBody),
@@ -69,13 +69,41 @@ const receipt = {
     'Candidate-only runs do not refresh the accepted baseline. Compare only receipts with the same fixture and method.',
   ],
   samples:[],
-  passed:false,
+  qualityChecks:[],
+  procedurePassed:false,
+  comparison:null,
+  finalPaint:{measured:false, parity:'unverified'},
 };
 
 function statistics(values) {
   const ordered = [...values].sort((left, right) => left - right);
   return {n:ordered.length, min:ordered[0], median:ordered[Math.floor(ordered.length / 2)],
     p95:ordered[Math.ceil(ordered.length * 0.95) - 1], max:ordered.at(-1)};
+}
+
+function compareTimings(samples) {
+  const accepted = samples.find(sample => sample.name === 'accepted');
+  const candidate = samples.find(sample => sample.name === 'candidate');
+  if (!accepted || !candidate) {
+    return {available:false, status:'not_compared', sampledTimingParity:null,
+      reason:'A completed accepted baseline and candidate are both required; candidate-only runs make no timing-parity claim.'};
+  }
+  const metrics = Object.fromEntries(['preview', 'refinement', 'releaseToRoutingReady'].map(metric => {
+    const baseline = accepted[metric], value = candidate[metric];
+    return [metric, {
+      accepted:{medianMs:baseline.median, p95Ms:baseline.p95},
+      candidate:{medianMs:value.median, p95Ms:value.p95},
+      medianDeltaMs:value.median - baseline.median,
+      p95DeltaMs:value.p95 - baseline.p95,
+      p95Ratio:baseline.p95 === 0 ? null : value.p95 / baseline.p95,
+      medianRegressionObserved:value.median > baseline.median,
+      p95RegressionObserved:value.p95 > baseline.p95,
+    }];
+  }));
+  const sampledTimingParity = Object.values(metrics).every(metric => !metric.medianRegressionObserved && !metric.p95RegressionObserved);
+  return {available:true, status:sampledTimingParity ? 'no_sampled_timing_regression' : 'timing_regression_observed',
+    sampledTimingParity, rule:'Each candidate median and p95 must be no slower than the accepted sample; no tolerance is applied.',
+    scope:'These finite routing and DOM-status samples do not establish final-paint parity.', metrics};
 }
 
 async function assetHashes(page, urls) {
@@ -165,6 +193,7 @@ async function runScenario(browser, scenario) {
     if (scenario.name === 'candidate') await page.getByRole('button', {name:'Fit diagram', exact:true}).click();
     await page.getByRole('button', {name:'Minimize ledger', exact:true}).click();
     const labelOverlaps = await labelOverlap(page);
+    receipt.qualityChecks.push({scenario:scenario.name, phase:'before_drag', ...labelOverlaps});
     assert.ok(labelOverlaps.labels > 0, 'The benchmark must measure actual rendered labels');
     assert.deepEqual(labelOverlaps.pairs, [], 'Rendered relationship label boxes overlap');
     const canvas = page.locator('.canvas');
@@ -192,20 +221,31 @@ async function runScenario(browser, scenario) {
       await page.mouse.move(x + 40 * scale * direction, y + 20 * scale * direction, {steps:4});
       await page.mouse.up();
       await page.locator(`.canvas:not([data-routing-generation="${before}"])[data-routing-state=ready]`).waitFor();
-      measurements.push(await canvas.evaluate(element => {
+      const measurement = await canvas.evaluate(element => {
         const generation = Number(element.dataset.routingGeneration);
         const ready = window.__ceBenchmarkReadyEvents.findLast(event => event.generation === generation);
         if (!ready) throw new Error('No routing-ready mutation timestamp for the completed generation');
         return {generation, previewMs:Number(element.dataset.previewMs), refinementMs:Number(element.dataset.refinementMs),
           releaseToRoutingReadyMs:ready.at - window.__ceBenchmarkRelease,
           observedWaitMs:performance.now() - window.__ceBenchmarkRelease, inputBounds:window.__ceBenchmarkBounds};
-      }));
+      });
+      for (const metric of ['previewMs', 'refinementMs', 'releaseToRoutingReadyMs']) {
+        assert.ok(Number.isFinite(measurement[metric]) && measurement[metric] >= 0, `Invalid ${metric} measurement`);
+      }
+      measurements.push(measurement);
       if ((index + 1) % 10 === 0) console.log(`${scenario.name}: ${index + 1}/${sampleCount} drags`);
     }
+    // Let native DOM layout apply before checking actual text rectangles. Frame
+    // opportunities are not treated as measurements or proof of final paint.
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const postDragLabelOverlaps = await labelOverlap(page);
+    receipt.qualityChecks.push({scenario:scenario.name, phase:'after_final_drag', ...postDragLabelOverlaps});
+    assert.equal(postDragLabelOverlaps.labels, labelOverlaps.labels, 'Dragging must retain every rendered relationship label');
+    assert.deepEqual(postDragLabelOverlaps.pairs, [], 'Rendered relationship label boxes overlap after the final drag');
     assert.deepEqual(errors, [], 'The benchmark encountered browser errors');
     await page.screenshot({path:new URL(`${scenario.name}.png`, output).pathname, fullPage:true});
     return {...scenario, build, sourceSha256, javascriptAssets:await assetHashes(page, javascriptUrls),
-      initialLeafPixels, labelOverlaps, measurements,
+      initialLeafPixels, labelOverlaps, postDragLabelOverlaps, measurements,
       preview:statistics(measurements.map(value => value.previewMs)),
       refinement:statistics(measurements.map(value => value.refinementMs)),
       releaseToRoutingReady:statistics(measurements.map(value => value.releaseToRoutingReadyMs))};
@@ -218,12 +258,13 @@ const browser = await chromium.launch({headless:true, args:['--no-sandbox']});
 try {
   // Sequential runs avoid competing with each other for browser/worker CPU.
   for (const scenario of scenarios) receipt.samples.push(await runScenario(browser, scenario));
-  receipt.passed = true;
+  receipt.procedurePassed = true;
 } catch (error) {
   receipt.error = error instanceof Error ? error.message : String(error);
   throw error;
 } finally {
   receipt.finishedAt = new Date().toISOString();
+  receipt.comparison = compareTimings(receipt.samples);
   const path = new URL(candidateOnly ? 'candidate.json' : 'comparison.json', output);
   await writeFile(path, JSON.stringify(receipt, null, 2));
   console.log(JSON.stringify({...receipt, samples:receipt.samples.map(({measurements, ...sample}) => sample)}, null, 2));
