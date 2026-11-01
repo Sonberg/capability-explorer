@@ -344,6 +344,23 @@ public sealed class ResolutionFidelityTests : IDisposable
             JsonDocument.Parse(second.Split('\n')[0]).RootElement.GetProperty("configHash").GetString());
     }
 
+    [Fact]
+    public void A_later_incompatible_package_request_cannot_leave_calls_resolved_to_the_omitted_version()
+    {
+        Package("Same", "net8.0", "namespace Shared; public static class Api { public static int Read() => 2; }");
+        Directory.Move(Path.Combine(Cache, "same", "1.0.0"), Path.Combine(Cache, "same", "2.0.0"));
+        Package("Same", "net8.0", "namespace Shared; public static class Api { public static int Read() => 1; }");
+        Package("RootA", "net8.0", "public class RootA { }");
+        Package("RootB", "net8.0", "public class RootB { }");
+        File.WriteAllText(Path.Combine(Cache, "roota", "1.0.0", "roota.nuspec"), "<package><metadata><dependencies><dependency id=\"Same\" version=\"1.0.0\" /></dependencies></metadata></package>");
+        File.WriteAllText(Path.Combine(Cache, "rootb", "1.0.0", "rootb.nuspec"), "<package><metadata><dependencies><dependency id=\"Same\" version=\"2.0.0\" /></dependencies></metadata></package>");
+        Project("<PackageReference Include=\"RootA\" Version=\"1.0.0\" /><PackageReference Include=\"RootB\" Version=\"1.0.0\" />", "public class App { public int Run() => Shared.Api.Read(); }");
+        var output = Extract();
+        Assert.Contains("PACKAGE_VERSION_CONFLICT", output);
+        Assert.Contains("\"resolution\":\"unresolved\"", output);
+        Assert.DoesNotContain("cs|@ext|Same|M:Shared.Api.Read", output);
+    }
+
     private string Package(string id, string tfm, string source, string? assembly = null)
     {
         var dir = Path.Combine(Cache, id.ToLowerInvariant(), "1.0.0", "lib", tfm);

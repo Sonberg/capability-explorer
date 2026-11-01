@@ -1,3 +1,5 @@
+using NuGet.Versioning;
+
 namespace CapabilityExplorer.Extractors.CSharp;
 
 /// <summary>
@@ -20,8 +22,8 @@ internal sealed record FrameworkPackageCoverage(IReadOnlyDictionary<string, stri
             foreach (var line in File.ReadLines(data))
             {
                 var parts = line.Trim().Split('|');
-                if (parts.Length != 2 || StableVersion(parts[1]) is not { } version) continue;
-                if (!packages.TryGetValue(parts[0], out var prior) || version > StableVersion(prior)) packages[parts[0]] = parts[1];
+                if (parts.Length != 2 || !NuGetVersion.TryParse(parts[1], out var version) || version.IsPrerelease) continue;
+                if (!packages.TryGetValue(parts[0], out var prior) || version > NuGetVersion.Parse(prior)) packages[parts[0]] = parts[1];
             }
         }
         return new(packages, ArtifactBuilder.Sha256(string.Join("\n", inputs)));
@@ -29,31 +31,9 @@ internal sealed record FrameworkPackageCoverage(IReadOnlyDictionary<string, stri
 
     public static bool Satisfies(IReadOnlyDictionary<string, string>? packages, string id, string? range)
     {
-        if (packages is null || !packages.TryGetValue(id, out var supplied) || StableVersion(supplied) is not { } ceiling
-            || string.IsNullOrWhiteSpace(range)) return false;
-        var value = range.Trim();
-        var inclusive = true;
-        if (value.StartsWith('[') || value.StartsWith('('))
-        {
-            if (!value.EndsWith(']') && !value.EndsWith(')')) return false;
-            inclusive = value[0] == '[';
-            var bounds = value[1..^1].Split(',');
-            if (bounds.Length == 1)
-            {
-                return inclusive && value.EndsWith(']') && StableVersion(bounds[0].Trim()) is { } exact && exact <= ceiling;
-            }
-            if (bounds.Length != 2 || StableVersion(bounds[0].Trim()) is not { } lower) return false;
-            if (bounds[1].Trim() is { Length: > 0 } upperText)
-            {
-                if (StableVersion(upperText) is not { } upper || upper < lower
-                    || upper == lower && (!inclusive || !value.EndsWith(']'))) return false;
-            }
-            return inclusive ? lower <= ceiling : lower < ceiling;
-        }
-        return StableVersion(value) is { } minimum && minimum <= ceiling;
+        if (packages is null || !packages.TryGetValue(id, out var supplied) || !NuGetVersion.TryParse(supplied, out var ceiling)
+            || ceiling.IsPrerelease || PackageVersionSelection.Parse(range) is not { HasLowerBound: true } requested
+            || requested.MinVersion.IsPrerelease || requested.MaxVersion?.IsPrerelease == true) return false;
+        return requested.IsMinInclusive ? requested.MinVersion <= ceiling : requested.MinVersion < ceiling;
     }
-
-    private static Version? StableVersion(string value) => value.All(c => char.IsAsciiDigit(c) || c == '.')
-        && Version.TryParse(value, out var parsed)
-        ? new Version(parsed.Major, parsed.Minor, Math.Max(0, parsed.Build), Math.Max(0, parsed.Revision)) : null;
 }

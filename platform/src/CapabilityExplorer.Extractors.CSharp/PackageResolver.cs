@@ -26,6 +26,7 @@ public sealed class PackageResolver(string? packagesRoot, IReadOnlyDictionary<st
         var resolved = new List<LockedPackage>();
         var missing = new List<PackageRef>();
         var issues = new List<ResolutionIssue>();
+        var conflicting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (locked is not null)
         {
             var roots = packages.ToList();
@@ -65,20 +66,28 @@ public sealed class PackageResolver(string? packagesRoot, IReadOnlyDictionary<st
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var p in packages)
             {
-                if (!Visit(p.Id, p.Version, assemblies, resolved, seen, issues, targetFramework, depth: 0))
+                if (!Visit(p.Id, p.Version, assemblies, resolved, seen, issues, conflicting, targetFramework, depth: 0))
                 {
                     missing.Add(p);
                 }
             }
         }
 
+        var inputFingerprint = Fingerprint(resolved);
+        if (conflicting.Count > 0)
+        {
+            var omitted = resolved.Where(p => conflicting.Contains(p.Id))
+                .Select(p => Path.Combine(packagesRoot!, p.Id.ToLowerInvariant(), p.Version.ToLowerInvariant()) + Path.DirectorySeparatorChar).ToList();
+            assemblies.RemoveAll(a => omitted.Any(root => a.StartsWith(root, StringComparison.Ordinal)));
+            resolved.RemoveAll(p => conflicting.Contains(p.Id));
+        }
         return new PackageResolution(
             assemblies.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList(),
             missing,
             resolved.OrderBy(r => r.Id, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Version, StringComparer.Ordinal).ToList())
         {
             Issues = issues,
-            InputFingerprint = Fingerprint(resolved),
+            InputFingerprint = inputFingerprint,
         };
     }
 
@@ -132,8 +141,13 @@ public sealed class PackageResolver(string? packagesRoot, IReadOnlyDictionary<st
         return [];
     }
 
-    private bool Visit(string id, string? versionRange, List<string> assemblies, List<LockedPackage> resolved, HashSet<string> seen, List<ResolutionIssue> issues, string? target, int depth)
+    private bool Visit(string id, string? versionRange, List<string> assemblies, List<LockedPackage> resolved, HashSet<string> seen, List<ResolutionIssue> issues, HashSet<string> conflicting, string? target, int depth)
     {
+        if (PackageVersionSelection.Parse(versionRange) is not { } requested)
+        {
+            issues.Add(new("UNSUPPORTED_PACKAGE_VERSION_RANGE", $"Package {id} has an invalid, missing or floating version request ({versionRange ?? "none"}); an exact package lock is required for floating resolution"));
+            return false;
+        }
         if (FrameworkPackageCoverage.Satisfies(frameworkPackages, id, versionRange)) return true;
         if (packagesRoot is null || depth > 6)
         {
@@ -142,7 +156,12 @@ public sealed class PackageResolver(string? packagesRoot, IReadOnlyDictionary<st
 
         if (!seen.Add(id))
         {
-            return true;
+            var selected = resolved.FirstOrDefault(p => p.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+            if (selected is null || !NuGet.Versioning.NuGetVersion.TryParse(selected.Version, out var cachedVersion)) return false;
+            if (PackageVersionSelection.Allows(requested, cachedVersion)) return !conflicting.Contains(id);
+            conflicting.Add(id);
+            issues.Add(new("PACKAGE_VERSION_CONFLICT", $"Package {id} selected as {selected.Version} cannot satisfy later request {versionRange}; its compile assets are omitted; use a compatible exact package lock for global resolution"));
+            return false;
         }
 
         var dir = Path.Combine(packagesRoot, id.ToLowerInvariant());
@@ -151,7 +170,7 @@ public sealed class PackageResolver(string? packagesRoot, IReadOnlyDictionary<st
             return false;
         }
 
-        var version = Pick(dir, versionRange);
+        var version = PackageVersionSelection.Pick(dir, requested);
         if (version is null)
         {
             return false;
@@ -165,7 +184,7 @@ public sealed class PackageResolver(string? packagesRoot, IReadOnlyDictionary<st
         {
             if ((string?)dep.Attribute("id") is { } depId)
             {
-                if (!Visit(depId, (string?)dep.Attribute("version"), assemblies, resolved, seen, issues, target, depth + 1))
+                if (!Visit(depId, (string?)dep.Attribute("version"), assemblies, resolved, seen, issues, conflicting, target, depth + 1))
                 {
                     issues.Add(new("UNRESOLVED_TRANSITIVE_PACKAGE", $"Package {id} requires {depId} {(string?)dep.Attribute("version")}, which is unavailable"));
                 }
@@ -175,22 +194,4 @@ public sealed class PackageResolver(string? packagesRoot, IReadOnlyDictionary<st
         return true;
     }
 
-    /// <summary>The exact version if present, else the lowest available version satisfying a "[min, ...)" range.</summary>
-    private static string? Pick(string dir, string? range)
-    {
-        var available = Directory.EnumerateDirectories(dir).Select(Path.GetFileName).OfType<string>().ToList();
-        var min = range?.Trim('[', '(', ']', ')', ' ').Split(',')[0].Trim();
-        if (!string.IsNullOrEmpty(min) && available.Contains(min, StringComparer.OrdinalIgnoreCase))
-        {
-            return available.First(v => string.Equals(v, min, StringComparison.OrdinalIgnoreCase));
-        }
-
-        var parsed = available.Select(v => (v, ok: Version.TryParse(v.Split('-')[0], out var pv), pv)).Where(x => x.ok).OrderBy(x => x.pv).ToList();
-        if (Version.TryParse(min?.Split('-')[0], out var floor))
-        {
-            return parsed.FirstOrDefault(x => x.pv >= floor).v ?? parsed.LastOrDefault().v;
-        }
-
-        return parsed.LastOrDefault().v;
-    }
 }
