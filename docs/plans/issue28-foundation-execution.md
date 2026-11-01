@@ -151,6 +151,22 @@ inventory remains incomplete. Foundation checks cannot waive that gate.
 
 ## Coordination, cost and next integration boundary
 
+### Foundation design gate: pseudocode 95/100
+
+The design maps invalid imports to artifact rollback, partial multi-file failure to
+an unchanged published pointer, concurrent publication to CAS rejection, and page
+navigation to an immutable context and authenticated continuation. Executable proof:
+`issue28-gate PHASE=pseudocode` passed 27 actual snapshot/CLI/upgrade tests.
+
+Application import memory is bounded by record/staging budgets plus at most
+100,000 artifact identities. Query/UI memory is bounded by page/row/body budgets.
+Database work is not bounded by page size: empty/substring search still scans and
+sorts the selected corpus, and normalization processes the stored corpus in bounded
+batches. Five points are deducted because the larger-tier database time/import
+resource envelope remains provisional; see the unverified-scale list above.
+The closing Brain pass found relevant SPARC evidence/trace guidance, without a
+source-grounded reason to add another runtime dependency.
+
 One root integrator owns shared migrations/manifests/CLI/API registration; isolated
 native workers own Store/query/UI, independent tests and the RuVector experiment.
 Actual session capacity is root plus three workers; Ruflo records a hierarchical
