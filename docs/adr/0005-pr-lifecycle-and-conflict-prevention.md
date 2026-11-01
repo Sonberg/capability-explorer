@@ -194,6 +194,31 @@ from current stage-1-contract-and-fixtures and current issues rather than the pr
 Do not start another implementation merely because an old checkpoint says next.
 Do not automatically delete worktrees or branches at handoff.
 
+### Authorized worktree cleanup
+
+Inventory linked worktrees and disk use periodically; retaining a merged checkout
+can duplicate large scanner, package and build caches. Cleanup is a separate,
+explicitly authorized action, not a consequence of a successful merge or test.
+
+Before removal, verify the exact HEAD is contained in the intended integration
+target (`stage-1-contract-and-fixtures` here), the working tree is clean, and the
+worktree is neither primary nor locked. A squash/cherry-pick resemblance alone is
+not ancestry proof. Record the target SHA and ref freshness. Check current process
+directories, open files, container mounts and collaboration claims for activity;
+absence of observed activity is not proof that another contributor has finished.
+
+Review ignored files separately. Preserve local notes, evidence, environment files
+and agent memory in private, verified backups before removing a checkout. A clean
+Git status says nothing about those files. Document any discarded reproducible
+dependency, scanner or build caches. Keep secrets out of public receipts.
+
+Recheck source, ancestry, activity and backup integrity immediately before using
+`git worktree remove` without force. Retain branch refs unless their deletion is
+separately authorized. Skip a changed, active, locked or uncertain worktree; never
+escalate to force to finish a cleanup list. Record actual free space afterward:
+summed worktree allocations can overstate recoverable space on shared/clone filesystems.
+Missing paths and stale worktree metadata require their own review, not blanket pruning.
+
 ## Consequences
 
 Positive: newcomers can reproduce the same workflow, dependent PRs have visible

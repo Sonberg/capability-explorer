@@ -20,6 +20,16 @@ No merge, release or change to main is authorized by this record.
 
 ## Evidence and its limits
 
+After Docker restoration, full ordinary `make local-check` passed for exact source
+`80a8dcb2603fed00c4d2dac13143a556fc85b8f4`, targeting stage base `d4389b4`.
+The real application passed all nine browser binding-review/export assertions on
+loopback port 5108. Local receipts: `.sandbox-cache/local-ci/last-success.txt`,
+`.sandbox-cache/local-ci-80a8dcb.log` and
+`.sandbox-cache/binding-browser-80a8dcb.log`. A later receipt must identify its
+own tested commit; the earlier successful result cannot authorize a changed HEAD.
+The local control map checks registration of 29 tests across 12 controls against
+that source/CI receipt; it is not proof of exhaustive security coverage.
+
 The integrated source `d438333` completed build, binding tests (23), Contracts
 tests (106), Evaluation tests (25), C# extractor tests (125), and evaluation of
 18 golden artifacts in local act. That run did **not** pass: the OrbStack Docker
@@ -51,6 +61,16 @@ the Docker service remaining available.
 - Run6 was also invalidated by newly generated Ruflo database files in `.swarm`.
   These were runtime-state additions, not changed application source. Preserve
   this failed receipt; do not edit it into a successful one.
+- Run8 measured eight pinned arm64 images against one recorded database, with
+  12,483 package/advisory rows. These are scanner measurements, not a count of
+  exploitable application paths. Project dependency reports contained zero
+  vulnerability findings across all requested severities. The partial image
+  measurements and limitations are recorded in issue #24.
+- Ollama acquisition was cancelled at low host disk space. Ryuk returned no
+  supported package inventory; that is unavailable coverage, not a clean result.
+  The whole run8 collection was invalidated by new generated spike build output.
+  `9a54cfb` adds an exact generated-output exclusion and retains unsupported image
+  coverage as a failure; its 55 harness tests passed. Raw reports remain intact.
 - Docker became unavailable during CI and was subsequently restored. The
   interrupted receipt remains invalid; final validation uses a fresh run.
 - Follow-up TypeScript filesystem/configuration/fingerprint boundaries and exact
@@ -95,3 +115,12 @@ analysis. A possible next package reuses existing Roslyn for unchanged modern C#
 syntax and independently checks exact targets and parse diagnostics. This is a
 proposal, not implemented coverage. A scanner parser limitation is not a reason
 to rewrite valid application syntax or silently exclude files.
+
+A read-only storage inventory found 248 registered entries across 37 repositories
+under the operator's projects/workspaces. Twelve inactive, clean, merged linked
+worktrees of this repository were explicitly authorized for removal after verified
+private backups. Other candidates require separate authorization. Branch refs,
+primary checkouts, dirty and active worktrees remain protected. Exact removal and
+backup receipts are local/private; no ignored environment or memory data belongs
+in GitHub. MADR-0005 documents this procedure. Reclaiming caches does not resolve
+container advisories or scanner coverage gaps.
