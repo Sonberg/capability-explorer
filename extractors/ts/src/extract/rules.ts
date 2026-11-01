@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import ts from "typescript";
 import type { ToolRef } from "../contracts/records.ts";
@@ -6,6 +5,7 @@ import type { Props } from "./builder.ts";
 import { isFunctionInit, type Ctx } from "./context.ts";
 import { splitHttpPath } from "./http.ts";
 import { postgresStore, serviceBusNamespace } from "./resource-identities.ts";
+import { readSource } from "./source-files.ts";
 
 export const EXPRESS = { name: "express.routes", version: "1" };
 export const AXIOS = { name: "axios", version: "1" };
@@ -72,8 +72,14 @@ export function jsonValue(ctx: Ctx, e: ts.Expression): { value: unknown; path: s
   const imp = decl && (ts.isImportClause(decl) ? decl.parent : undefined);
   if (!imp || !ts.isStringLiteral(imp.moduleSpecifier) || !imp.moduleSpecifier.text.endsWith(".json")) return undefined;
   const file = resolve(dirname(x.getSourceFile().fileName), imp.moduleSpecifier.text);
-  if (!existsSync(file)) return undefined;
-  const text = readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+  const raw = readSource(ctx.root, file);
+  if (raw === undefined) {
+    const source = ctx.rel(x.getSourceFile().fileName);
+    ctx.b.diagnostic("warning", "JSON_SOURCE_UNAVAILABLE", "Imported JSON is unavailable within the selected source boundary.", source, true, ctx.ev(x));
+    ctx.b.markIncomplete(source);
+    return undefined;
+  }
+  const text = raw.replace(/\r\n/g, "\n");
   let value: unknown;
   try {
     value = JSON.parse(text);
