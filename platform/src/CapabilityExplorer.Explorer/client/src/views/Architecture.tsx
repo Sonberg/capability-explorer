@@ -54,7 +54,7 @@ export interface ArchEdge {
   kind: string;
   label: string;
   count: number;
-  certainty: "proven" | "static" | "bound" | "broken" | "unbound" | "candidate" | "unresolved";
+  certainty: "human" | "proven" | "static" | "bound" | "broken" | "unbound" | "candidate" | "unresolved";
   facts: ArchFact[];
 }
 
@@ -96,6 +96,7 @@ const kindColor: Record<string, string> = {
   handles: "#10b981",
   declares: "#a1a1aa",
   sameName: "#fb7185",
+  "human-assertion": "#a855f7",
   shares: "#6366f1",
 };
 
@@ -109,10 +110,12 @@ const kindLabel: Record<string, string> = {
   handles: "handles endpoint",
   declares: "declares",
   sameName: "same name (unproven)",
+  "human-assertion": "human assertion",
   shares: "shares repository",
 };
 
 const certaintyDash: Record<ArchEdge["certainty"], string | undefined> = {
+  human: "8 3 2 3",
   proven: undefined,
   static: undefined,
   bound: undefined,
@@ -123,6 +126,7 @@ const certaintyDash: Record<ArchEdge["certainty"], string | undefined> = {
 };
 
 const certaintyText: Record<ArchEdge["certainty"], { label: string; tone: Tone; title: string }> = {
+  human: { label: "human assertion", tone: "info", title: "Reviewed assertion of intended meaning with a self-reported reviewer label; no observed runtime value equality is implied" },
   proven: { label: "proven", tone: "ok", title: "Every underlying fact is resolved" },
   static: { label: "static target", tone: "info", title: "Static target proven; the runtime target is not (interface dispatch, DI)" },
   bound: { label: "bound", tone: "ok", title: "Bound by the service map to a declared endpoint (human-derived link; extractor output unchanged)" },
