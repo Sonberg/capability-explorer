@@ -3,8 +3,9 @@ import type {LayoutedLikeC4ModelData} from '@likec4/core/types';
 import type {LiveModelInput,LiveModelResult} from './live-contracts.ts';
 import {projectLiveGraph} from './live-projection.ts';
 import {layoutLiveView} from './live-model-layout.ts';
+import type {LiveViewLayout} from './live-model-graphviz.ts';
 
-export function buildLiveModel(input:LiveModelInput):LiveModelResult {
+export function buildLiveModel(input:LiveModelInput,layout:LiveViewLayout=layoutLiveView):LiveModelResult {
   const projection=projectLiveGraph(input),computed=computeParsedModelData(projection.parsed);
   const edgeSourceIds:Record<string,string[]>=Object.create(null);
   const sourceEdges=new Map(input.graph.edges.map(e=>[e.id,e]));
@@ -21,7 +22,7 @@ export function buildLiveModel(input:LiveModelInput):LiveModelResult {
       const dashed=ids.some(id=>associations.has(id)||['candidate','unresolved','unbound','broken'].includes(sourceEdges.get(id)?.certainty??'unresolved'));
       return {...edge,line:dashed?'dashed' as const:'solid' as const,head:allAssociations?'none' as const:'normal' as const,tail:'none' as const};
     });
-    views[id]=layoutLiveView({...view,edges});
+    views[id]=layout({...view,edges});
   }
   const modelData:LayoutedLikeC4ModelData={...computed,_stage:'layouted',views};
   return {snapshot:input.snapshot,source:projection.source,modelData,nodeSourceIds:projection.nodeSourceIds,edgeSourceIds,sourceNodeIds:projection.sourceNodeIds,groups:projection.groups};
