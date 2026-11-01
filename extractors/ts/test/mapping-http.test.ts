@@ -198,6 +198,28 @@ test("HTTP URI normalization removes dot segments while preserving placeholders 
   ]);
 });
 
+test("HTTP runtime options and spreads cannot invent a verb or client target", () => {
+  const { records } = run({ "src/client.ts": [
+    'import axios from "axios";',
+    'declare const config: Record<string, unknown>;',
+    'declare const unknownBase: string;',
+    'const client = axios.create({ baseURL: "https://base.example", ...config });',
+    'const dynamic = axios.create({ baseURL: unknownBase });',
+    'const queryBase = axios.create({ baseURL: "https://base.example/prefix?key=secret" });',
+    'export async function request() {',
+    'await fetch("/runtime", config);',
+    'await fetch("/spread", { ...config });',
+    'await fetch("/quoted", { "method": "POST" });',
+    'await client.get("https://remote.example/path");',
+    'await dynamic.get("/path");',
+    'await queryBase.get("/path");',
+    '}',
+  ].join("\n") });
+  assert.equal(requests(records).length, 6);
+  assert.equal(requests(records).filter((r) => r.to === undefined).length, 5);
+  assert.ok(requests(records).some((r) => r.to === "http|@unbound:mapping/web:base=origin|POST /quoted"));
+});
+
 test("Next proxy request facts retain their source handler without inferred remote connections", () => {
   const { records } = run({ "app/proxy/route.ts": "export async function GET() { return fetch(process.env.TARGET); }\n" });
   assert.deepEqual(endpoints(records), ["http|mapping/web|GET /proxy"]);

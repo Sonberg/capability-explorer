@@ -5,6 +5,9 @@ import type { Ctx } from "./context.ts";
 import { absoluteHttp, canonicalHttpPath, hasAuthorityOrScheme, splitHttpPath } from "./http.ts";
 import { AXIOS, FETCH, OPENAPI, HTTP_METHODS, assignedSymbol, envVar, forEachNode, importsOf, joinRoute, normaliseRoute, resolveValue, responseType, symbolOf, typeArgKey, unwrap, urlTemplate, type Resolved } from "./rules.ts";
 
+const propertyName = (property: ts.ObjectLiteralElementLike) => property.name && (ts.isIdentifier(property.name) || ts.isStringLiteralLike(property.name)) ? property.name.text : undefined;
+const property = (object: ts.ObjectLiteralExpression | undefined, name: string) => object?.properties.filter((p) => propertyName(p) === name).at(-1);
+
 // ------------------------------------------------------------------ HTTP clients
 
 function requestTarget(ctx: Ctx, base: Resolved | { kind: "variable"; name: string; key?: string }, method: string, route: string) {
@@ -16,7 +19,7 @@ function requestTarget(ctx: Ctx, base: Resolved | { kind: "variable"; name: stri
     props.baseUrl = absolute.origin;
     props.scheme = absolute.scheme;
     route = absolute.pathname;
-  } else if (hasAuthorityOrScheme(route)) return undefined;
+  } else if (hasAuthorityOrScheme(route) || (base.kind === "literal" && /[?#]/.test(base.value))) return undefined;
   else if (base.kind === "env") {
     store = ctx.unbound("env", base.name);
     props.baseUrlEnv = base.name;
@@ -56,11 +59,13 @@ export function fetchRule(ctx: Ctx, rules: Set<ToolRef>) {
       if (!from) return;
       const generated = ctx.generated.has(sf.fileName) || undefined;
       const init = n.arguments[1] && unwrap(n.arguments[1]);
-      let method = "GET";
-      if (init && ts.isObjectLiteralExpression(init)) {
-        const m = init.properties.find((p) => p.name?.getText() === "method");
+      const object = init && ts.isObjectLiteralExpression(init) ? init : undefined;
+      let method = init && (!object || object.properties.some((p) => ts.isSpreadAssignment(p) || (p.name && ts.isComputedPropertyName(p.name)))) ? "dynamic" : "GET";
+      if (object && method !== "dynamic") {
+        const m = property(object, "method");
         if (m) method = ts.isPropertyAssignment(m) && ts.isStringLiteralLike(m.initializer) ? m.initializer.text.toUpperCase() : "dynamic";
       }
+      if (!/^[A-Z]+$/.test(method)) method = "dynamic";
       const urlArg = n.arguments[0];
       const urlExpr = urlArg && (ts.isIdentifier(unwrap(urlArg)) ? ctx.constInit(unwrap(urlArg)) ?? urlArg : urlArg);
       const template = urlExpr && urlTemplate(urlExpr);
@@ -95,7 +100,7 @@ export function fetchRule(ctx: Ctx, rules: Set<ToolRef>) {
 }
 
 export function axiosRule(ctx: Ctx, rules: Set<ToolRef>) {
-  const clients = new Map<ts.Symbol, { base: Resolved; evidence: string; allowAbsolute: boolean }>();
+  const clients = new Map<ts.Symbol, { base: Resolved; evidence: string; allowAbsolute: boolean; opaqueConfig: boolean; unknownBase: boolean }>();
   for (const sf of ctx.files) {
     const ax = importsOf(sf, "axios");
     if (ax.names.size === 0) continue;
@@ -103,12 +108,14 @@ export function axiosRule(ctx: Ctx, rules: Set<ToolRef>) {
       if (!ts.isCallExpression(n) || !ts.isPropertyAccessExpression(n.expression) || n.expression.name.text !== "create") return;
       if (!ts.isIdentifier(n.expression.expression) || !ax.names.has(n.expression.expression.text)) return;
       const cfg = n.arguments[0] && unwrap(n.arguments[0]);
-      const baseProp = cfg && ts.isObjectLiteralExpression(cfg) ? cfg.properties.find((p) => p.name?.getText() === "baseURL") : undefined;
+      const object = cfg && ts.isObjectLiteralExpression(cfg) ? cfg : undefined;
+      const baseProp = property(object, "baseURL");
       const base = baseProp && ts.isPropertyAssignment(baseProp) ? resolveValue(ctx, baseProp.initializer) : { kind: "unknown" as const };
-      const absoluteProp = cfg && ts.isObjectLiteralExpression(cfg) ? cfg.properties.find((p) => p.name?.getText() === "allowAbsoluteUrls") : undefined;
+      const absoluteProp = property(object, "allowAbsoluteUrls");
       const allowAbsolute = !absoluteProp || (ts.isPropertyAssignment(absoluteProp) && absoluteProp.initializer.kind === ts.SyntaxKind.TrueKeyword);
+      const opaqueConfig = !!cfg && (!object || object.properties.some((p) => ts.isSpreadAssignment(p) || (p.name && ts.isComputedPropertyName(p.name))));
       const sym = assignedSymbol(ctx, n);
-      if (sym) clients.set(sym, { base, evidence: ctx.ev(n), allowAbsolute });
+      if (sym) clients.set(sym, { base, evidence: ctx.ev(n), allowAbsolute, opaqueConfig, unknownBase: !!baseProp && base.kind === "unknown" });
     });
   }
   for (const sf of ctx.files) {
@@ -119,7 +126,7 @@ export function axiosRule(ctx: Ctx, rules: Set<ToolRef>) {
       if (!HTTP_METHODS.includes(verb) || verb === "all") return;
       const recv = n.expression.expression;
       const client = symbolOf(ctx, recv);
-      const info = (client && clients.get(client)) ?? (ts.isIdentifier(recv) && ax.names.has(recv.text) ? { base: { kind: "unknown" } as Resolved, evidence: undefined, allowAbsolute: true } : undefined);
+      const info = (client && clients.get(client)) ?? (ts.isIdentifier(recv) && ax.names.has(recv.text) ? { base: { kind: "unknown" } as Resolved, evidence: undefined, allowAbsolute: true, opaqueConfig: false, unknownBase: false } : undefined);
       if (!info) return;
       const from = ctx.owner(n);
       const url = n.arguments[0] && urlTemplate(n.arguments[0]);
@@ -133,14 +140,15 @@ export function axiosRule(ctx: Ctx, rules: Set<ToolRef>) {
       }
       const cfg = n.arguments[["post", "put", "patch"].includes(verb) ? 2 : 1];
       const object = cfg && ts.isObjectLiteralExpression(unwrap(cfg)) ? unwrap(cfg) as ts.ObjectLiteralExpression : undefined;
-      const params = object?.properties.find((p) => p.name?.getText() === "params");
-      const query = [...new Set([...url.query, ...(params && ts.isPropertyAssignment(params) && ts.isObjectLiteralExpression(params.initializer) ? params.initializer.properties.map((p) => p.name?.getText() ?? "").filter(Boolean) : [])])].sort();
-      const baseProp = object?.properties.find((p) => p.name?.getText() === "baseURL");
+      const params = property(object, "params");
+      const query = [...new Set([...url.query, ...(params && ts.isPropertyAssignment(params) && ts.isObjectLiteralExpression(params.initializer) ? params.initializer.properties.map((p) => propertyName(p) ?? "").filter(Boolean) : [])])].sort();
+      const baseProp = property(object, "baseURL");
       const base = baseProp && ts.isPropertyAssignment(baseProp) ? resolveValue(ctx, baseProp.initializer) : info.base;
-      const absoluteProp = object?.properties.find((p) => p.name?.getText() === "allowAbsoluteUrls");
+      const absoluteProp = property(object, "allowAbsoluteUrls");
       const allowAbsolute = absoluteProp ? ts.isPropertyAssignment(absoluteProp) && absoluteProp.initializer.kind === ts.SyntaxKind.TrueKeyword : info.allowAbsolute;
-      const opaqueConfig = !!cfg && (!object || object.properties.some(ts.isSpreadAssignment));
-      const target = opaqueConfig || (hasAuthorityOrScheme(url.text) && !allowAbsolute) ? undefined : requestTarget(ctx, base, method, url.text);
+      const opaqueConfig = info.opaqueConfig || (!!cfg && (!object || object.properties.some((p) => ts.isSpreadAssignment(p) || (p.name && ts.isComputedPropertyName(p.name)))));
+      const unknownBase = baseProp ? base.kind === "unknown" : info.unknownBase;
+      const target = opaqueConfig || (hasAuthorityOrScheme(url.text) ? !allowAbsolute : unknownBase) ? undefined : requestTarget(ctx, base, method, url.text);
       if (!target) {
         ctx.b.edge({ from, rel: "REQUESTS", derivation: "rule", rule: AXIOS, resolution: "unresolved", reason: "dynamic-string", props: { method }, evidence: [callEv] });
         return;
