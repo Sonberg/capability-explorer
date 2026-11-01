@@ -85,13 +85,15 @@ async function sourceDownload(expectedGraph) {
 async function groupJourney() {
   const groups = canvas().locator('.react-flow__node[data-presentation-group="true"]');
   check(await groups.count() > 0, 'actual repository ownership must produce identified groups');
-  const group = groups.first();
-  const memberIds = JSON.parse(await group.getAttribute('data-source-node-ids'));
-  const candidates = [];
-  for (const id of memberIds) {
-    const node = sourceNode(id);
-    if (await node.count() && JSON.parse(await node.getAttribute('data-source-node-ids')).length === 1) candidates.push(id);
-    if (candidates.length === 2) break;
+  let group, candidates = [];
+  for (let index = 0; index < await groups.count(); index++) {
+    const candidateGroup = groups.nth(index), eligible = [];
+    for (const id of JSON.parse(await candidateGroup.getAttribute('data-source-node-ids'))) {
+      const node = sourceNode(id);
+      if (await node.count() && JSON.parse(await node.getAttribute('data-source-node-ids')).length === 1) eligible.push(id);
+      if (eligible.length === 2) break;
+    }
+    if (eligible.length === 2) { group = candidateGroup; candidates = eligible; break; }
   }
   check(candidates.length === 2, 'identified group must retain two independently selectable original members');
   const selectGroup = async (locator) => {
@@ -304,7 +306,8 @@ try {
   await canvas().getByText(sentinel, { exact: true }).first().waitFor(); receipt.assertions++;
   releaseOld();
   await page.waitForTimeout(150); // allow the deliberately delayed obsolete response to reach React
-  equal(await canvas().getAttribute('data-generation'), String(latestGeneration), 'latest generation must own the rendered model after obsolete response completes');
+  check((await canvas().getAttribute('data-input-identity')).includes(`g=${latestGeneration}|`), 'latest analysis generation must own the rendered model after obsolete response completes');
+  check(Number(await canvas().getAttribute('data-generation')) > 0, 'live worker generation must be nonzero');
   equal(await canvas().getByText('Obsolete browser generation', { exact: true }).count(), 0, 'obsolete response must never replace the newer rendered model');
   check((await sourceDownload(generationGraph)).includes(sentinel), 'runtime generation must change exported source without rebuilding the app');
   receipt.simulated.push('generation polling, changed graph and delayed obsolete-response race at browser boundary; filesystem watcher not exercised');
