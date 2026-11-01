@@ -335,6 +335,26 @@ try {
   check((await sourceDownload(generationGraph)).includes(sentinel), 'runtime generation must change exported source without rebuilding the app');
   receipt.simulated.push('generation polling, changed graph and delayed obsolete-response race at browser boundary; filesystem watcher not exercised');
   await page.unroute('**/api/meta'); await page.unroute('**/api/generation'); await page.unroute('**/api/architecture?*');
+  await page.addInitScript(() => {
+    let firstModelWorker = true;
+    window.Worker = new Proxy(window.Worker, {
+      construct(Target, args, NewTarget) {
+        if (firstModelWorker && String(args[0]).includes('live-model.worker')) {
+          firstModelWorker = false;
+          throw new Error('Simulated transient model worker construction failure');
+        }
+        return Reflect.construct(Target, args, NewTarget);
+      },
+    });
+  });
+  const recoverGraph = graphResponse();
+  await page.reload(); currentGraph = await (await recoverGraph).json();
+  await page.getByRole('alert').getByText('Simulated transient model worker construction failure', { exact: true }).waitFor(); receipt.assertions++;
+  equal(await canvas().getAttribute('data-status'), 'error', 'worker construction failure must be visible');
+  equal(await canvas().locator('.react-flow__node').count(), 0, 'failed compilation must never expose obsolete graph nodes');
+  await page.getByRole('button', { name: 'Retry diagram', exact: true }).click();
+  await ready(); await mapping(currentGraph);
+  receipt.simulated.push('first model-worker constructor throws; visible error and successful Retry diagram verified; native routing workers untouched');
   equal(errors, [], 'browser must have no uncaught exceptions');
   equal(forbidden, [], 'production architecture must not fetch a static LikeC4 fixture, iframe or third-party resource');
   check(receipt.assertions > 40 && receipt.viewports.length === 3, 'browser gate must execute nonzero substantive assertions at all required sizes');
