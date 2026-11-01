@@ -70,10 +70,22 @@ public sealed class GitSource(Func<string, string?> locate, CapabilityExplorer.C
             return (false, "");
         }
 
+        _ = auth; // Retained constructor compatibility; source browsing never forwards these credentials.
         var start = new ProcessStartInfo("git") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
-        // Blob-less clones fetch file contents on demand; private repositories need the same credentials.
+        // Source browsing is strictly offline. The authorized analysis/export step prefetches blobs.
+        // Local repository configuration must not execute hooks, credential or transport helpers.
+        foreach (var setting in new[] { "core.hooksPath=/dev/null", "core.fsmonitor=false", "credential.helper=",
+            "protocol.allow=never", "protocol.file.allow=never", "protocol.ext.allow=never", "protocol.https.allow=never",
+            "http.followRedirects=false", "http.sslVerify=true", "core.sshCommand=/bin/false" })
+        {
+            start.ArgumentList.Add("-c");
+            start.ArgumentList.Add(setting);
+        }
+        start.Environment["GIT_CONFIG_NOSYSTEM"] = "1";
+        start.Environment["GIT_CONFIG_GLOBAL"] = "/dev/null";
+        start.Environment["GIT_NO_LAZY_FETCH"] = "1";
         start.Environment["GIT_TERMINAL_PROMPT"] = "0";
-        auth?.Apply(start);
+        start.Environment["GIT_ASKPASS"] = "/bin/false";
         start.ArgumentList.Add("-C");
         start.ArgumentList.Add(directory);
         foreach (var a in args)
