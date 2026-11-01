@@ -23,7 +23,7 @@ function validate(view) {
   }
   for(const edge of view.edges) {
     assert.equal((edge.points.length-1)%3,0);assert.ok(edge.points.every(p=>p.every(Number.isFinite)));
-    if(edge.label)assert.equal(edge.labelBBox.height,44);
+    if(edge.label)assert.ok(edge.labelBBox.height>=44);
   }
 }
 test('production public Graphviz adapter builds every typed viewpoint with exact identities and relationships',()=>{
@@ -66,10 +66,10 @@ test('public Graphviz handles compound endpoints without exposing synthetic anch
   assert.deepEqual(output.nodes.map(n=>n.id),view.nodes.map(n=>n.id));
   assert.deepEqual(output.edges.map(e=>[e.id,e.source,e.target]),edges.map(e=>[e.id,e.source,e.target]));
 });
-test('generated DOT uses bounded aliases and numeric HTML reservations for hostile display strings',()=>{
+test('generated DOT uses bounded aliases and escaped bounded HTML labels for hostile display strings',()=>{
   const malicious='\"] ; evil [image="https://invalid.example/secret"]; <script>\\n';
   const view=computed({nodes:[{id:malicious,label:malicious},{id:'b',label:'B'}],edges:[{id:malicious,from:malicious,to:'b',kind:'call',label:malicious,certainty:'proven'}]});
-  const dot=graphvizDot(view);assert.ok(!dot.includes('invalid.example'));assert.ok(!dot.includes('<script>'));
+  const dot=graphvizDot(view);assert.ok(dot.includes('image=&quot;https://invalid.example/secret&quot;'));assert.ok(dot.includes('&lt;script&gt;'));assert.ok(!dot.includes('<script>'));assert.ok(!dot.includes('[image="https://'));
   validate(layout(view));
   assert.throws(()=>graphvizDot({...view,autoLayout:{direction:'LR;evil'}}),/direction/);
   assert.throws(()=>graphvizDot({...view,nodes:Array(2129).fill(view.nodes[0])}),/limits/);
@@ -90,4 +90,22 @@ test('WASM initialization rejection becomes a worker error carrying the request 
     await self.onmessage({data:{requestId:93,graph:{nodes:[],edges:[]},snapshot:'failure',associationIds:[]}});
     assert.deepEqual(messages,[{requestId:93,ok:false,error:'WASM initialization unavailable'}]);
   } finally {Graphviz.load=originalLoad;globalThis.self=originalSelf;}
+});
+
+test('content measurement wraps long tokens and reserves actual multiline edge labels',()=>{
+  const label='x'.repeat(180),description='description '.repeat(30);
+  const view=computed({nodes:[{id:'a',label,sublabel:description},{id:'b',label:'B'}],edges:[{id:'e',from:'a',to:'b',kind:'call',label:'long relationship '.repeat(10),certainty:'proven'}]});
+  const dot=graphvizDot(view),rendered=layout(view);
+  assert.ok(dot.includes('<BR/>'));assert.ok(!dot.includes('fixedsize=true'));
+  assert.ok(!dot.includes('x'.repeat(41)));
+  const node=rendered.nodes.find(n=>n.title===label);assert.ok(node.width>=320&&node.width<1000);
+  assert.deepEqual(node.description,view.nodes.find(n=>n.id===node.id).description);
+  assert.equal(rendered.edges[0].label,view.edges[0].label);
+  assert.ok(rendered.edges[0].labelBBox.height>44);
+});
+test('generic hierarchy rank constraints are geometric and leave relationship facts unchanged',()=>{
+  const view=computed({nodes:[{id:'a',label:'A',repositoryId:'r'},{id:'b',label:'B',repositoryId:'r'},{id:'c',label:'C',repositoryId:'other'}],edges:[{id:'inner',from:'a',to:'b',kind:'call',certainty:'proven'},{id:'outer',from:'a',to:'c',kind:'call',certainty:'proven'}]});
+  const dot=graphvizDot(view),rendered=layout(view);
+  assert.ok(dot.includes('weight='));assert.ok(dot.includes('minlen=0'));
+  assert.deepEqual(rendered.edges.map(({id,source,target,relations,head,tail})=>({id,source,target,relations,head,tail})),view.edges.map(({id,source,target,relations,head,tail})=>({id,source,target,relations,head,tail})));
 });
