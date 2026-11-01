@@ -16,8 +16,24 @@ PR updates and newcomer workflow: [MADR-0005](adr/0005-pr-lifecycle-and-conflict
 
 Release notes: [changelog](CHANGELOG.md), [MADR-0006](adr/0006-keep-a-changelog.md).
 Compatibility/versioning: [MADR-0007](adr/0007-semantic-versioning.md).
-Next proposed large package: [cross-repository flow and reviewed glossary links](plans/cross-repository-value-flow.md), issue #4 layers 4 and 3. Planning only; implementation ownership is not claimed. BPMN/DMN issue #12 still requires an owner scope decision. LikeC4 PRs #14/#15 remain separate pending work.
+Next proposed large package: [cross-repository flow and reviewed glossary links](plans/cross-repository-value-flow.md), issue #4 layers 4 and 3. Planning only; implementation ownership is not claimed. BPMN/DMN issue #12 still requires an owner scope decision. LikeC4 PRs #14/#15 are now merged into stage.
 
+## LikeC4 spike delivery
+
+PR #14 merged at `87d310d` and PR #15 at `daf02df` on stage (verified 2026-11-01).
+The Architecture page includes a site-themed LikeC4 experimental tab backed by a
+captured five-repository snapshot, not the parent capability/revision selection.
+See [spike scope](spikes/likec4.md). Strict TypeScript 7.0.2 checks cover the spike;
+the extractor compiler API remains unchanged.
+
+[Routing diagnostics and measurements](spikes/likec4-routing-diagnostics.md) record
+600 warm drags: release-to-second-frame-opportunity p50/p95 is 130/208 ms at 1920
+and 184/269 ms at 5120. These are not exact-paint or physical-display measurements.
+Immediate completed-edit capture preserves native undo/redo; exact A* scratch
+reuse reduces allocation. The evaluated RuVector WASM adapter was slower and is
+not shipped. Opt-in local tracing supports a host-supplied OTel tracer without a
+mandatory SDK/collector. [Issue #13](https://github.com/Sonberg/capability-explorer/issues/13)
+remains open: the 200 ms p95 target and final-paint validation are not achieved.
 
 ## What exists
 

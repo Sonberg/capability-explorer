@@ -90,9 +90,10 @@ restore:
 
 # Explorer UI: React + Tailwind (Vite). Dependencies are installed with network, the build runs offline.
 UI := platform/src/CapabilityExplorer.Explorer/client
-ui:
+ui: likec4-dist
 	$(NODE) sh -c 'cd $(UI) && npm ci'
 	$(OFFLINE) node sh -c 'cd $(UI) && npm run -s build'
+	$(OFFLINE) node sh -c 'cp -R spikes/likec4/dist platform/src/CapabilityExplorer.Explorer/wwwroot/likec4'
 
 build: restore ui
 	$(OFFLINE) dotnet sh -c 'cd platform && dotnet build --no-restore -nologo CapabilityExplorer.slnx'
@@ -252,3 +253,30 @@ dev-down:
 clean:
 	rm -rf fixtures/.repos fixtures/.work extractors/ts/node_modules $(UI)/node_modules platform/src/CapabilityExplorer.Explorer/wwwroot
 	find platform -type d \( -name bin -o -name obj \) -prune -exec rm -rf {} +
+
+# Isolated LikeC4 experiment; production Explorer dependencies stay unchanged.
+.PHONY: likec4-dist likec4-check likec4-preview
+ci: likec4-check
+likec4-dist:
+	$(NODE) sh -c 'cd spikes/likec4 && npm ci'
+	$(OFFLINE) node sh -c 'cd spikes/likec4 && npm run build'
+
+likec4-check: likec4-dist
+	$(OFFLINE) node sh -c 'cd spikes/likec4 && npm test && node --experimental-strip-types scripts/check-model.mjs'
+
+likec4-preview: likec4-check
+	$(SANDBOX) --port 5091 node sh -c 'cd spikes/likec4 && npm run preview -- --host 0.0.0.0 --port 5091 --strictPort'
+
+# Optional visual checks against running ports 5090/5091; not an extra hosted-CI image.
+.PHONY: likec4-browser-check
+likec4-browser-check:
+	SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node node --experimental-strip-types spikes/likec4/test/browser.mjs
+
+.PHONY: likec4-interaction-check
+likec4-interaction-check:
+	SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node node spikes/likec4/test/embedded-routing.mjs
+
+# Opt-in diagnostics against the candidate preview; reuse the existing browser image.
+.PHONY: likec4-trace-check
+likec4-trace-check:
+	SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node sh -c 'cd spikes/likec4 && node test/routing-trace-browser.mjs && node test/immediate-layout-browser.mjs && node test/routing-lifecycle.mjs'

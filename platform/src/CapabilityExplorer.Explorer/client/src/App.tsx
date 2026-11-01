@@ -112,7 +112,7 @@ function Shell() {
         </div>
       </header>
       <ScopeBar />
-      <main className="mx-auto max-w-[1500px] p-3 sm:p-5">
+      <main className="w-full min-w-0 p-3 sm:p-5">
         <Routed path={view} params={route.params} />
       </main>
     </>

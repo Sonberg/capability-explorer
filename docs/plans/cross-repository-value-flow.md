@@ -1,7 +1,7 @@
 # Brain Prompt: cross-repository flow and reviewed glossary relationships
 
 Proposed implementation package, not an implementation claim or reservation of
-code paths. Prepared against stage `db18165` on 2026-11-01. Coordination:
+code paths. Prepared against stage `daf02df` on 2026-11-01. Coordination:
 [issue #3](https://github.com/Sonberg/capability-explorer/issues/3);
 product scope: [issue #4](https://github.com/Sonberg/capability-explorer/issues/4),
 layers 4 and 3. Refresh issue comments, claims and stage before starting.
@@ -17,7 +17,7 @@ uncertainty and missing coverage visible, without any model calls.
 <execution_inputs>
 repository: Sonberg/capability-explorer
 target_branch: stage-1-contract-and-fixtures
-planning_base: db18165
+planning_base: daf02df
 operator_account: Tigon32
 max_concurrent_agents_including_integration_owner: 4
 external_provider_budget_usd: 0
@@ -32,9 +32,9 @@ implementation_status: proposed; not started by this planning PR
   commit, unit, symbol and role. The Explorer currently exposes `/api/glossary`
   but has no glossary flow or mutation endpoint. Store has migrations 0001–0003
   and no GlossaryStore. Recheck these facts before allocating migration numbers.
-- Use the existing Architecture canvas. Pending LikeC4 PRs #14/#15 are not a
-  dependency; live LikeC4 model integration and issue #13 performance remain
-  separately scoped. Do not describe its fixture snapshot as live input.
+- Use the existing Architecture canvas. LikeC4 PRs #14/#15 have
+  merged into stage, but live LikeC4 model integration and issue #13 performance
+  remain separately scoped. Do not describe its fixture snapshot as live input.
 - #6 extractor gaps remain visible as partial/unresolved evidence; do not hide
   them or opportunistically rewrite extractors. #12 BPMN/DMN implementation
   remains blocked on the owner's separate scope decision.
