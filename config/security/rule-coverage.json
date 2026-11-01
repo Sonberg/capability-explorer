@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "rules": "config/security/semgrep-rules.yaml",
+  "purpose": "Conservative sink inventory for human review; findings are not automatically exploitable vulnerabilities.",
+  "coverage": ["JavaScript/TypeScript dynamic code and HTML sinks", "C# process launches, XML resolver enabling, archive extraction and SQL construction", "Shell eval"],
+  "limitations": ["No interprocedural taint analysis", "Does not prove SQL parameterization, URL/feed destination safety, authorization or browser origin defenses", "Does not exhaust framework aliases, reflection or all process/archive APIs", "Generic path containment and resource limits require manual review and adversarial regression tests", "Rules and parser errors must be retained; static trusted uses need finding-specific independent review"],
+  "review": "Rules intentionally inventory both safe and unsafe sinks. No source files or rule findings are silently allowlisted."
+}

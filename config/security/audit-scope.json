@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "excludedDirectoryNames": [".git", ".sandbox-cache", "node_modules", "bin", "obj", "TestResults"],
+  "excludedPaths": ["fixtures/.repos", "fixtures/.work", "platform/src/CapabilityExplorer.Explorer/wwwroot"],
+  "exclusionReason": "Caches and generated outputs are not source inputs. Runtime/container images are separate required scan targets; fixture source and dependency locks remain included.",
+  "requiredCoverage": {
+    "dependencies": "trivy",
+    "fs-secrets": "trivy",
+    "fs-misconfig": "trivy",
+    "history-secrets": "gitleaks",
+    "source-secrets": "gitleaks",
+    "sast": "semgrep"
+  },
+  "maximumScanAgeHours": 72,
+  "maximumDatabaseAgeHours": 24
+}

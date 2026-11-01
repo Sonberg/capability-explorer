@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Offline evidence validation. Collection is separate and never inferred from a receipt.
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+exec scripts/sandbox --offline node node scripts/security-audit.mjs "$@"
