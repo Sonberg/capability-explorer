@@ -26,9 +26,11 @@ based on PR #20 merged into stage at `9aa0547`. It replaces the production fixtu
 iframe and shares the renderer with glossary connections. See
 [MADR-0009](adr/0009-live-likec4-architecture.md) and the
 [preflight contract](plans/live-likec4-preflight.md). Validation and PR handoff are
-pending: the refinement gate is 90/100 because measured routing performance
-regresses against the accepted spike. See the [execution handoff](plans/live-likec4-execution.md)
-for results and the exact next action. Nothing has been pushed from this package. The standalone spike retains its
+pending: the resumed refinement gate is 95/100, with sampled routing-ready DOM
+p95 148.2 ms versus the accepted spike's 165.6 ms. Functional and independent
+adversarial checks pass; final full act/security and PR gates remain. See the
+[execution handoff](plans/live-likec4-execution.md) for exact-source evidence and
+limitations. Nothing has been pushed from this package. The standalone spike retains its
 captured five-repository fixture as a regression harness.
 See [spike scope](spikes/likec4.md). Strict TypeScript 7.0.2 checks cover the spike;
 the extractor compiler API remains unchanged.

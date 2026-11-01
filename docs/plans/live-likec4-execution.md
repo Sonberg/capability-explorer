@@ -1,8 +1,9 @@
 # Live LikeC4 replacement execution
 
-Status: refinement gate **90/100, not passed**. Functional implementation is
-committed locally; performance parity remains unaccepted. Final full act/security
-and PR gates are pending. No push, PR, merge or release is claimed.
+Status: refinement gate **95/100, passed** after the user authorized continuation.
+The resumed candidate passes independent review, functional checks and sampled
+browser performance parity. Final full act/security and PR gates are pending.
+No push, PR, merge or release is claimed.
 
 ## Contract and source
 
@@ -64,7 +65,8 @@ source wwwroot is insufficient. Served asset identities are checked after rebuil
 - Explorer backend: 138/138 tests passed after generating fixture repositories and
   building UI assets. Earlier missing fixture/UI failures were setup omissions,
   corrected without changing test assertions.
-- Shared/spike unit suite: 68/68 passed, including model/worker and group tests.
+- Shared/spike unit suite: 70/70 passed, including model/worker and group tests;
+  six additional independent adversarial adapter tests passed before integration.
   The live model suite also passed against a captured real system-level API graph.
 - Compiler round-trip: exported source preserves node IDs, metadata, labels and
   viewpoint membership. Shuffled input yields identical source and layout; unrelated
@@ -84,7 +86,7 @@ Receipts/screenshots are ignored local artifacts in `.sandbox-cache/glossary-bro
 `.sandbox-cache/live-architecture-browser/` and worker review caches. They are not
 committed as source or claimed to cover remote deployments.
 
-## Performance investigation (not accepted)
+## Performance investigation (superseded candidates)
 
 The source-bound comparison uses the captured historical 22-node/31-edge input,
 SHA-256 `f6bd4915eb94ae9c0fc63cb22c46170b3deeb99388b380bd615cd149442e72e9`,
@@ -133,10 +135,66 @@ searches require a full fallback. A stronger turn heuristic also worsened crossi
 Routing penalties, route-order comparisons and quality criteria remain unchanged.
 
 
+## Resumed refinement: accepted candidate
+
+The user authorized continuation after the historical handoff below. A generic
+DOT serializer now uses public LikeC4 style/ancestry APIs, escaped bounded text,
+measured multiline labels, compound-first adjacency declarations and
+hierarchy-aware rank weights. It contains no fixture IDs or captured DOT.
+Ancestor/leaf/internal-pair indices avoid per-edge full-graph rescanning. Layout
+text is XML-normalized and escaped; original model/export strings remain intact.
+
+The offline diagnostic improved routing median from 102.39 to 26.75 ms, with
+81 searches and zero failures in both. Shared/near segments stayed zero; crossings
+fell from two to zero. Path length increased from 13388 to 16914.83 model units
+while segment count fell from 67 to 59. These diagnostics explain the candidate;
+the browser comparison below supplies the performance evidence.
+
+Final sequential comparison: 30 accepted drags followed by 30 candidate drags,
+with other heavy checks paused. Candidate entry `index-C1M2dSeQ.js`, SHA-256
+`6f5761535cfe6fbd9cdb0123d5c94dbffcb6cbd5b172570d4d97d9f588b88081`.
+
+| Measurement (p50 / p95) | Accepted baseline | Resumed candidate |
+|---|---:|---:|
+| Preview | 0 / 0.1 ms | 0 / 0.1 ms |
+| Worker refinement | 82.2 / 124.4 ms | 43.5 / 55.4 ms |
+| Release-to-routing-ready attribute | 103.2 / 165.6 ms | 69.1 / 148.2 ms |
+
+Every candidate median/p95 is no slower in this finite sample. Both builds retain
+25 rendered labels with zero actual bounding-box overlaps before and after the
+final drag. Receipt v2 separates procedure completion from sampled timing parity;
+it does not claim final-paint parity. Receipt:
+`.sandbox-cache/live-architecture-benchmark/comparison.json`.
+Benchmark script SHA-256:
+`879bafd68c93b3d43b306f91a06e93c703ee992189d500861b1b8d4cb6151cfa`.
+Model worker `live-model.worker-DvZ0296Q.js` SHA-256:
+`8bfa623b77b90672360b19a0ab01630c50fae42012d9045110496badd8a8840b`.
+Routing worker `routing.worker-CFyqkgR2.js` SHA-256:
+`edf1806f519846c661a7c148f1a352402320bfd1dd2319888118dd4a188d92dd`.
+
+The Architecture browser journey passes 184 assertions against this exact entry.
+Independent adapter review adds six adversarial tests covering all-view source
+provenance, escaping, four directions, compound/self/parallel relationships,
+malformed output and hierarchy rejection. Raw lone UTF-16 surrogates fail visibly
+in upstream model hashing; layout-only normalization does not claim to repair that
+earlier boundary. The reviewer found no remaining adapter blocker.
+
+Refinement score: 95/100, one resumed implementation iteration. Deductions: three
+points for the finite fixture-only timing sample and two for Chromium-only browser
+coverage (see benchmark limitations and browser scripts). No general production
+corpus or final-paint claim is made. Prior failed experiments remain documented.
+The resumed Glossary journeys also pass 54 database-backed and 34 read-only
+assertions at all three viewport sizes. Both previews serve the same candidate.
+The Brain review returned `sparc/docs/tutorial.md`: it supports independently
+verified phase evidence, but supplies no additional layout implementation.
+No inference-provider calls or new services were added; native agent spend is
+unavailable and no monetary savings are claimed.
+
 ## Remaining gates and limits
 
-Resolve the measured performance regression and repeat source-bound browser
-validation. Then run the full ordinary push hook (`make ci` via act plus Trivy),
+The resumed candidate below resolves the sampled performance regression and
+passes the source-bound browser journey. Run the full ordinary push hook
+(`make ci` via act plus Trivy),
 fresh `make pr-check`, and create the owner-review PR against stage. Final phase
 scores and gate receipt belong in the completed handoff, not this pending record.
 
@@ -149,11 +207,11 @@ collapsed source containers and label spacing were corrected during browser revi
 owner-controlled BPMN/DMN scope (#12) remain separate.
 
 
-## Refinement handoff
+## Historical refinement handoff
 
 Five bounded refinement passes covered initial live integration, readable/compact
 layout, semantic ranking and label clearance, the public Graphviz adapter, and
-performance/edge-case review. The final self-assessment is **90/100**: the ten-point
+performance/edge-case review. The previous self-assessment was **90/100**: the ten-point
 deduction is the measured routing regression in the table above. Functional source,
 worker failure paths and browser journeys pass; the performance criterion does not.
 Completion is not graded or claimed. The brain-build phase gate requires at least
@@ -185,3 +243,8 @@ capacity, non-Chromium browsers, remote deployment, and the final clean-HEAD ful
 act/security gate. Existing focused Trivy/backend results do not replace that gate.
 Automatic Brain turn recording reported unhealthy readback; manual AgentDB
 checkpoint store/retrieve was used without claiming automatic learning is healthy.
+
+The historical next action above has been completed by the resumed candidate.
+Current next action: commit this evidence, run the ordinary push hook's full
+act/security gate, refresh stage alignment with `make pr-check`, and create the
+owner-review PR. Owner merge and any release remain outside this authorization.

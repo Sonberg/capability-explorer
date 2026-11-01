@@ -66,12 +66,21 @@ do not rewrite analyzed artifacts or reviewed assertions.
 The browser bundle grows and initial layout now has a worker lifecycle to manage.
 Graphviz WASM is pinned directly at the already installed transitive version
 1.29.2. Its public `Graphviz.load()`/`layout()` API consumes generated DOT IDs and
-numeric label reservations; user text is not interpolated into DOT or HTML.
-Returned JSON identities, counts and geometry are checked before rendering. Layout
+attributes. Bounded display text is XML-normalized and escaped into a fixed HTML
+label subset; it cannot introduce attributes, links, images or executable markup.
+Public LikeC4 style measurements, hierarchy-aware ranking and source-adjacent
+declarations preserve content space without a private compiler dependency.
+Original strings remain intact in the model and exported source. Returned JSON
+identities, counts, label measurements and geometry are checked before rendering. Layout
 quality, hierarchy, labels and interaction still require browser checks. See the
 [public package documentation](https://hpcc-systems.github.io/hpcc-js-wasm/packages/graphviz/README.html).
 No artifact schema, extraction behavior or API compatibility change is intended.
-Unreleased notes follow MADR-0006; no product version is published by this change.
+The intended release category is a compatible feature (minor under MADR-0007),
+subject to release review of the combined changes. Unreleased notes follow
+Keep a Changelog 1.1.0 through MADR-0006; no product version is published here.
+MADR-0005 governs contributor claims, stage alignment and the validated PR handoff.
+These policies apply to this work; their repository-wide owner/contributor adoption
+remains pending the explicit decision recorded in those MADRs.
 
 Required validation includes shuffled-input determinism, stable identity under input
 changes, association direction, contributor retention, invalid/bounded input cases,
