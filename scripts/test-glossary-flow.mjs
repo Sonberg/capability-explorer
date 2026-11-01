@@ -32,6 +32,7 @@ try {
   check(flow.coverage.valueFlowComplete === false, 'context fixture must not claim complete value flow');
   await page.getByText('field/value flow incomplete', { exact: true }).waitFor(); receipt.assertions++;
   await page.getByRole('heading', { name: 'Selection and revision coverage', exact: true }).waitFor(); receipt.assertions++;
+  await page.getByText(/The reviewed glossary is a global registry across repositories/).waitFor(); receipt.assertions++;
   check(flow.selection.length > 0, 'flow must disclose selected revisions');
   for (const selected of flow.selection) check((await page.locator('body').innerText()).includes(selected.commitSha), 'exact selection revision must be rendered');
   if (candidate.occurrences.length > 1) {
@@ -89,11 +90,13 @@ try {
       await page.getByLabel('Issue summary', { exact: true }).fill(`${name} mismatch`);
       const issue = await saved('issues', () => page.getByRole('button', { name: 'Save review', exact: true }).click()); ids.push(['issues', issue.id]);
       await page.getByRole('button', { name: `Resolve issue ${issue.id}`, exact: true }).click();
+      check(await page.getByLabel('Reviewed term', { exact: true }).isDisabled(), 'existing issue parent term must be immutable');
       const resolved = await saved('issues', () => page.getByRole('button', { name: 'Save review', exact: true }).click());
       check(resolved.status === 'resolved', 'issue resolution must persist');
       for (const [collection, id] of [...ids].reverse()) {
         const label = collection === 'terms' ? name : `${collection === 'links' ? 'link' : 'issue'} ${id}`;
         await page.getByRole('button', { name: `Delete ${label}`, exact: true }).click();
+        if (collection === 'terms') { await page.getByText(/Deleting this global term also deletes its reviewed links and mismatch issues across all repositories/).waitFor(); receipt.assertions++; }
         const response = page.waitForResponse((item) => item.url().includes(`/api/glossary/${collection}/${id}`) && item.request().method() === 'DELETE');
         await page.getByRole('button', { name: 'Confirm deletion', exact: true }).click(); check((await response).ok(), `real ${collection} delete must succeed`);
         ids.splice(ids.findIndex((item) => item[1] === id), 1);
