@@ -97,7 +97,7 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
     /// <summary>Routes compare by shape: parameters become {}, no query string, lower case, no trailing slash.</summary>
     internal static string NormaliseRoute(string route)
     {
-        var path = route.Split('?')[0];
+        var path = route.Split('?', '#')[0];
         path = RouteParameter().Replace(path, "{}");
         path = "/" + string.Join('/', path.Split('/', StringSplitOptions.RemoveEmptyEntries));
         return path.ToLowerInvariant();
@@ -729,15 +729,17 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                 var verb = HttpVerbs.First(v => name.StartsWith(v, StringComparison.Ordinal)).ToUpperInvariant();
                 var containing = CSharpExtractor.Owner(f.Model, inv.SpanStart)?.ContainingType;
                 var hint = containing is not null && bases.TryGetValue(keys.Of(containing), out var h) ? h : $"client={containing?.Name ?? "unknown"}";
-                var parts = hint.Split('=', 2);
-                var route = NormaliseRoute(url.Value);
-                var props = new JsonObject { ["method"] = verb, ["normalizedRoute"] = route };
-                if (url.Value.Contains('?', StringComparison.Ordinal))
+                var target = HttpRequestTarget.Parse(url.Value, hint);
+                if (target is null)
                 {
-                    props["query"] = new JsonArray(url.Value.Split('?', 2)[1].Split('&').Select(q => (JsonNode)JsonValue.Create(q.Split('=')[0])!).ToArray());
+                    b.Edge(owner, "REQUESTS", null, url.Sources.Select(s => f.Evidence(b, s)).Append(f.Evidence(b, inv)), "rule", "unresolved", "dynamic-string", Http);
+                    continue;
                 }
 
-                b.Edge(owner, "REQUESTS", $"http|{Unbound(parts[0], parts[1])}|{verb} {route}", url.Sources.Select(s => f.Evidence(b, s)).Append(f.Evidence(b, inv)), "rule", "unresolved", "configuration", Http, props);
+                var props = new JsonObject { ["method"] = verb, ["normalizedRoute"] = target.Route };
+                if (target.Scheme is not null) props["scheme"] = target.Scheme;
+                if (target.QueryNames.Length > 0) props["query"] = new JsonArray(target.QueryNames.Select(q => (JsonNode)JsonValue.Create(q)!).ToArray());
+                b.Edge(owner, "REQUESTS", $"http|{Unbound(target.Kind, target.Hint)}|{verb} {target.Route}", url.Sources.Select(s => f.Evidence(b, s)).Append(f.Evidence(b, inv)), "rule", "unresolved", "configuration", Http, props);
             }
         }
     }
