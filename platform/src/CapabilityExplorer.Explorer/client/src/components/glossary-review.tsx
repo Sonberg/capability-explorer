@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { type GlossaryOccurrence } from "../api";
-import { mutationMessage, reviewMutation, type ObservedOccurrence, type ReviewCollection, type ReviewResult, type ReviewedIssue, type ReviewedLink, type ReviewedTerm } from "../glossary-api";
+import { mutationMessage, reviewId, reviewMutation, type ObservedOccurrence, type ReviewCollection, type ReviewResult, type ReviewedIssue, type ReviewedLink, type ReviewedTerm } from "../glossary-api";
 import { useApi } from "../state";
 import { Button, Card, ErrorBox, H2, inputClass, Loading, Mono, Note, Pill, Table } from "./ui";
 
@@ -9,7 +9,7 @@ type Draft = {
   name: string; definition: string; group: string; termId: string; occurrenceId: string;
   role: ReviewedLink["role"]; note: string; kind: ReviewedIssue["kind"]; summary: string; status: ReviewedIssue["status"];
 };
-const fresh = (collection: ReviewCollection, occurrenceId: string, termId = ""): Draft => ({ collection, id: crypto.randomUUID(), expectedVersion: 0, name: "", definition: "", group: "", termId, occurrenceId, role: "same", note: "", kind: "other", summary: "", status: "open" });
+const fresh = (collection: ReviewCollection, occurrenceId: string, termId = ""): Draft => ({ collection, id: reviewId(), expectedVersion: 0, name: "", definition: "", group: "", termId, occurrenceId, role: "same", note: "", kind: "other", summary: "", status: "open" });
 
 export function GlossaryReview({ scope, occurrence, occurrences, onChanged }: {
   scope: string; occurrence: GlossaryOccurrence; occurrences: GlossaryOccurrence[]; onChanged: () => void;

@@ -44,3 +44,13 @@ export function mutationMessage(error: unknown) {
     ? `${error.message} This record changed since you loaded it. Your edits are kept. Reload reviewed data, then reopen the current record to reconcile the changes. If the source observation changed, explicitly reload the selected observation and review its revision/hash again.`
     : error instanceof Error ? error.message : "The request failed.";
 }
+
+/** UUID creation also works on local HTTP host aliases where randomUUID is unavailable. */
+export function reviewId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}

@@ -8,12 +8,16 @@ import { mkdir, writeFile } from 'node:fs/promises';
 const base = process.env.CE_GLOSSARY_BASE_URL ?? 'http://host.docker.internal:5080';
 const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
 const receipt = { base, assertions: 0, simulated: [], viewports: [], databaseJourney: 'not run' };
+const artifactDirectory = `/work/.sandbox-cache/glossary-browser/${new URL(base).port || "default"}`;
+let page;
 const check = (condition, message) => { assert.ok(condition, message); receipt.assertions++; };
 try {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.addInitScript(() => { localStorage.setItem('ce.capability', '""'); localStorage.setItem('ce.overrides', '{}'); });
+  await mkdir(artifactDirectory, { recursive: true });
+  console.log("Checking actual source flow and occurrence selection");
   const glossaryResponse = await page.request.get(`${base}/api/glossary`);
   check(glossaryResponse.ok(), 'real glossary endpoint must succeed');
   const candidates = await glossaryResponse.json();
@@ -43,6 +47,7 @@ try {
   const reviewResponse = await page.request.get(`${base}/api/glossary/review`);
   check(reviewResponse.ok(), 'review status endpoint must succeed for DB-off or healthy DB');
   const review = await reviewResponse.json();
+  console.log(`Checking reviewed state: configured=${review.configured}, readOnly=${review.readOnly}`);
   if (!review.configured || review.readOnly) {
     await page.getByText(/Read-only: no glossary database|Reviewed data is read-only/).waitFor();
     check(await page.getByRole('button', { name: 'Create reviewed term', exact: true }).isDisabled(), 'missing DB must disable writes');
@@ -57,6 +62,7 @@ try {
       return (await result.json()).value;
     };
     try {
+      console.log("Creating real reviewed term");
       await page.getByRole('button', { name: 'Create reviewed term', exact: true }).click();
       await page.getByLabel('Term name', { exact: true }).fill(name);
       await page.getByLabel('Definition', { exact: true }).fill('<script>window.glossaryInjected=true</script> retained as text');
@@ -72,10 +78,12 @@ try {
       receipt.simulated.push('409 retains draft');
       await page.unroute(`**/api/glossary/terms/${term.id}?*`);
       await saved('terms', () => page.getByRole('button', { name: 'Save review', exact: true }).click());
+      console.log("Creating real reviewed link with exact observation");
       await page.getByRole('button', { name: 'Create reviewed link', exact: true }).click();
       await page.getByLabel('Reviewed term', { exact: true }).selectOption(term.id);
       const link = await saved('links', () => page.getByRole('button', { name: 'Save review', exact: true }).click()); ids.push(['links', link.id]);
       check(!!link.observed.artifactContentSha256 && !!link.observed.commitSha, 'persisted link must carry artifact/revision provenance');
+      console.log("Creating and resolving real mismatch issue");
       await page.getByRole('button', { name: 'Create mismatch issue', exact: true }).click();
       await page.getByLabel('Reviewed term', { exact: true }).selectOption(term.id);
       await page.getByLabel('Issue summary', { exact: true }).fill(`${name} mismatch`);
@@ -111,6 +119,10 @@ try {
     await page.setViewportSize(viewport);
     check(await page.getByRole('heading', { name: 'Reviewed glossary', exact: true }).isVisible(), 'review UI must remain available at viewport');
     check(await page.getByRole('button', { name: 'Apply flow limits', exact: true }).isVisible(), 'flow controls must remain available at viewport');
+    await page.getByRole('heading', { name: /^Connections for/ }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${artifactDirectory}/flow-${viewport.width}.png` });
+    await page.getByRole('heading', { name: 'Reviewed glossary', exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${artifactDirectory}/review-${viewport.width}.png` });
     receipt.viewports.push(viewport);
   }
   const meta = await (await page.request.get(`${base}/api/meta`)).json();
@@ -123,7 +135,12 @@ try {
     receipt.assertions++;
   }
   check(errors.length === 0, `browser errors: ${errors.join('; ')}`);
-  await mkdir('/work/.sandbox-cache/glossary-browser', { recursive: true });
-  await writeFile('/work/.sandbox-cache/glossary-browser/results.json', JSON.stringify(receipt, null, 2));
+  await writeFile(`${artifactDirectory}/results.json`, JSON.stringify(receipt, null, 2));
   console.log(JSON.stringify(receipt, null, 2));
+} catch (error) {
+  if (page) {
+    await page.screenshot({ path: `${artifactDirectory}/failure.png` }).catch(() => undefined);
+    console.error(await page.locator("body").innerText().catch(() => "No page content"));
+  }
+  throw error;
 } finally { await browser.close(); }
