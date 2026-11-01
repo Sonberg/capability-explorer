@@ -5,7 +5,7 @@ using CapabilityExplorer.Store;
 namespace CapabilityExplorer.Explorer;
 
 /// <summary>The configured intelligence layer; <see cref="Explanations"/> is null when no model is configured.</summary>
-public sealed record InterpretationLayer(InterpretationOptions Options, ExplanationService? Explanations)
+public sealed record InterpretationLayer(InterpretationOptions Options, ExplanationService? Explanations, IChatModel? Chat = null)
 {
     public bool Enabled => Explanations is not null;
 }
@@ -106,8 +106,9 @@ public sealed partial class Intelligence
     private State Build(ModelSettings? saved)
     {
         var options = saved?.ApplyTo(_configured) ?? _configured;
-        var explanations = options.CreateModel() is { } model ? new ExplanationService(model, options.CacheDirectory) : null;
-        return new State(new InterpretationLayer(options, explanations), options.CreateEmbeddingModel(), saved);
+        var model = options.CreateModel();
+        var explanations = model is not null ? new ExplanationService(model, options.CacheDirectory) : null;
+        return new State(new InterpretationLayer(options, explanations, model as IChatModel), options.CreateEmbeddingModel(), saved);
     }
 
     // Ollama names look like "qwen2.5:7b" or "library/nomic-embed-text"; Foundry deployments are plainer.

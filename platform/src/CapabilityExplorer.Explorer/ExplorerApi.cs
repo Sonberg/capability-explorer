@@ -70,7 +70,7 @@ public static class ExplorerApi
         new { error = e is Npgsql.PostgresException { SqlState: "42P01" } ? "no embeddings yet: run `ce embed` (or make analyze with a model configured)" : $"database: {e.Message}" },
         statusCode: StatusCodes.Status503ServiceUnavailable);
 
-    private static List<SimilarHit> InView(ViewIndex view, IReadOnlyList<SimilarSymbol> hits, int limit) =>
+    internal static List<SimilarHit> InView(ViewIndex view, IReadOnlyList<SimilarSymbol> hits, int limit) =>
         hits.Select(h => (h, Node: view.Node(h.SymbolKey)))
             .Where(x => x.Node is not null)
             .Take(limit)
@@ -112,7 +112,7 @@ public static class ExplorerApi
                 generation,
                 capabilities = capabilities.List().Select(c => new { c.Id, c.Name, repositories = c.Repositories.Select(r => r.Id) }),
                 githubAuth = new { configured = capabilities.Sync.Auth.Configured, source = capabilities.Sync.Auth.Source },
-                interpretation = new { enabled = interpretation.Enabled, provider = interpretation.Options.Provider, model = interpretation.Explanations?.ModelId },
+                interpretation = new { enabled = interpretation.Enabled, chat = interpretation.Chat is not null, provider = interpretation.Options.Provider, model = interpretation.Explanations?.ModelId },
                 similarity = new { database = intelligence.Store is not null, embeddings = intelligence.Embeddings?.Id },
                 revisions = index.Revisions,
                 defaultView = index.DefaultSelection,
@@ -261,6 +261,31 @@ public static class ExplorerApi
             try
             {
                 return Results.Ok(await service.ExplainAsync(comparison, ct));
+            }
+            catch (InterpretationUnavailableException e)
+            {
+                return Results.Json(new { error = e.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        });
+
+        // Question answering over the selected view: retrieval (vector, names, glossary) plus a chat model that cites the items.
+        api.MapPost("/chat", async (ExplorerIndex index, CapabilityService caps, Intelligence intelligence, ChatRequest request, CancellationToken ct) =>
+        {
+            if (intelligence.Layer.Chat is null)
+            {
+                return Results.Json(new { error = "no chat model is configured (Settings, or make ollama)" }, statusCode: StatusCodes.Status409Conflict);
+            }
+
+            if (request.Messages is not { Count: > 0 } || request.Messages.Count > Chat.MaxTurns
+                || request.Messages[^1].Role != "user" || request.Messages[^1].Content.Trim().Length is 0 or > Chat.MaxQuestion
+                || request.Messages.Any(m => m.Role is not ("user" or "assistant")))
+            {
+                return Results.BadRequest(new { error = $"send up to {Chat.MaxTurns} user/assistant messages ending with a question of 1 to {Chat.MaxQuestion} characters" });
+            }
+
+            try
+            {
+                return Results.Ok(await Chat.AnswerAsync(request, index.View(request.View, caps.Scope(request.Cap)), Membership(caps), intelligence, ct));
             }
             catch (InterpretationUnavailableException e)
             {

@@ -63,7 +63,7 @@ public sealed record InterpretationOptions
     }
 
     private FoundryChatModel Chat(HttpClient? http, Uri endpoint, string deployment) =>
-        new(http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(180) }, endpoint, deployment, Key, Credential(endpoint), Provider.ToLowerInvariant());
+        new(http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(600) }, endpoint, deployment, Key, Credential(endpoint), Provider.ToLowerInvariant());
 
     /// <summary>The embeddings model, or null unless an OpenAI-compatible provider has an endpoint and an embedding model.</summary>
     public OpenAiEmbeddingModel? CreateEmbeddingModel(HttpClient? http = null) =>

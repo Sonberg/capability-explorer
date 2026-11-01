@@ -20,6 +20,7 @@ import type { Evidence, SymbolRef } from "../api";
 import { EvidenceLinks } from "../components/source";
 import { ResolutionPill, SymbolLink } from "../components/symbols";
 import { Button, ErrorBox, Key, Mono, Pill, type Tone } from "../components/ui";
+import { usePublishFocus } from "../focus";
 import { href, symbolHref, useApi, useSelection } from "../state";
 
 // ---------------------------------------------------------------- API shapes
@@ -284,6 +285,7 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
   const { fitView } = useReactFlow();
 
   useEffect(() => setSelected(null), [level, focus]);
+  usePublishFocus(selected?.type === "node" ? { kind: selected.node.category, label: selected.node.label, key: selected.node.symbolKey } : null);
   useEffect(() => {
     rememberedHidden = hidden;
   }, [hidden]);

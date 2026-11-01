@@ -2,5 +2,6 @@
   <!-- Optional intelligence layer. Nothing else in the platform depends on a model being configured. -->
   <ItemGroup>
     <PackageReference Include="Azure.Identity" />
+    <PackageReference Include="Microsoft.Agents.AI" />
   </ItemGroup>
 </Project>

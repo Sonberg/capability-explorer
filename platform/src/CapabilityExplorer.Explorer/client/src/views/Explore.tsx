@@ -4,6 +4,7 @@ import { Formula, shortTarget } from "../components/formula";
 import { EvidenceLinks, SourceView } from "../components/source";
 import { KindPill, ResolutionPill, SymbolLink } from "../components/symbols";
 import { Card, H1, H2, H3, inputClass, Key, Kv, Loading, Mono, Muted, Pill, PropsList, Table, jsonText } from "../components/ui";
+import { usePublishFocus } from "../focus";
 import { revisionLabel, symbolHref, useApi, useSelection } from "../state";
 
 export const ATTRIBUTES = ["aggregation", "timeBucket", "period", "denominatorSource", "filters", "rounding", "numericType", "nullHandling", "zeroDenominator", "currency", "overflow"];
@@ -100,6 +101,7 @@ const stateDot: Record<string, string> = { present: "bg-emerald-500", absent: "b
 function Symbol({ symbolKey }: { symbolKey: string }) {
   const { meta, scope } = useSelection();
   const { data: d, error } = useApi<SymbolDetail>(`/api/symbol?key=${encodeURIComponent(symbolKey)}&${scope}`);
+  usePublishFocus(d ? { kind: d.node.kind, label: d.node.name, key: symbolKey } : null);
   if (error)
     return (
       <Card>

@@ -186,6 +186,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             var file = FileOf(tree)!;
             Declarations(b, keys, file, projectKey);
             Calls(b, keys, file);
+            Creations(b, keys, file);
             foreach (var decl in tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>())
             {
                 if (file.Model.GetDeclaredSymbol(decl) is IMethodSymbol method && b.HasNode(keys.Of(method)))
@@ -277,6 +278,34 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             }
         }
 
+        // Constructors are methods named after their type. Parameter types of repository types are REFERENCES: "KlarnaOrderInput takes a Cart and a
+        // Quote" is a fact about how data moves, and the only place it is written down. Framework and package types (ILogger, CancellationToken) are not.
+        foreach (var decl in file.Tree.GetRoot().DescendantNodes().OfType<ConstructorDeclarationSyntax>())
+        {
+            if (file.Model.GetDeclaredSymbol(decl) is not IMethodSymbol ctor)
+            {
+                continue;
+            }
+
+            var key = keys.Of(ctor);
+            var header = Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(HeaderStart(decl.Modifiers, decl.Identifier), decl.ParameterList.OpenParenToken.Span.End);
+            b.Node(key, "Method", ctor.ContainingType.Name, [file.Evidence(b, header)], signature: decl.ParameterList.ToString(), generated: file.Generated,
+                props: new JsonObject { ["constructor"] = true, ["static"] = ctor.IsStatic ? true : null }.WithoutNulls());
+            b.Edge(keys.Of(ctor.ContainingType), "DECLARES", key, [file.Evidence(b, header)]);
+            foreach (var parameter in decl.ParameterList.Parameters)
+            {
+                if (file.Model.GetDeclaredSymbol(parameter) is not { } symbol)
+                {
+                    continue;
+                }
+
+                foreach (var type in RepositoryTypes(keys, symbol.Type))
+                {
+                    b.Edge(key, "REFERENCES", keys.Of(type), [file.Evidence(b, parameter)]);
+                }
+            }
+        }
+
         foreach (var decl in file.Tree.GetRoot().DescendantNodes().Where(n => n is PropertyDeclarationSyntax or ParameterSyntax { Parent.Parent: RecordDeclarationSyntax }))
         {
             var property = decl switch
@@ -352,6 +381,54 @@ public sealed class CSharpExtractor(ExtractorOptions options)
         }
     }
 
+    /// <summary>
+    /// <c>new T(...)</c> and <c>: base(...)</c>/<c>: this(...)</c>. A constructor declared in source is CALLED, like any method. A type with no
+    /// declared constructor (default, or a record's primary one) is REFERENCED, since there is no constructor node to point at. Only types of the
+    /// repository are recorded: <c>new List&lt;int&gt;()</c> says nothing about the system.
+    /// </summary>
+    private static void Creations(ArtifactBuilder b, SymbolKeys keys, SourceFile file)
+    {
+        foreach (var node in file.Tree.GetRoot().DescendantNodes().Where(n => n is BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax))
+        {
+            if (Owner(file.Model, node.SpanStart) is not { } owner || !b.HasNode(keys.Of(owner)) || file.Model.GetSymbolInfo(node).Symbol is not IMethodSymbol { MethodKind: MethodKind.Constructor } ctor)
+            {
+                continue; // ponytail: an unresolved `new X()` is not recorded; invocations are, because a call is a claim about behaviour and a missing type is a compile diagnostic already
+            }
+
+            var type = ctor.ContainingType.OriginalDefinition;
+            if (keys.Of(type).StartsWith("cs|@ext|", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var from = keys.Of(owner);
+            var declared = ctor.OriginalDefinition.DeclaringSyntaxReferences.Any(r => r.GetSyntax() is ConstructorDeclarationSyntax);
+            if (declared)
+            {
+                b.Edge(from, "CALLS", keys.Of(ctor.OriginalDefinition), [file.Evidence(b, node)]);
+            }
+            else
+            {
+                b.Edge(from, "REFERENCES", keys.Of(type), [file.Evidence(b, node)]);
+            }
+        }
+    }
+
+    /// <summary>The repository types a type mentions: itself, its type arguments and its element type (<c>IReadOnlyList&lt;Cart&gt;</c> mentions Cart).</summary>
+    private static IEnumerable<INamedTypeSymbol> RepositoryTypes(SymbolKeys keys, ITypeSymbol type)
+    {
+        switch (type)
+        {
+            case IArrayTypeSymbol array:
+                return RepositoryTypes(keys, array.ElementType);
+            case INamedTypeSymbol named:
+                var self = keys.Of(named).StartsWith("cs|@ext|", StringComparison.Ordinal) ? [] : new[] { named.OriginalDefinition };
+                return self.Concat(named.TypeArguments.SelectMany(a => RepositoryTypes(keys, a))).DistinctBy(t => keys.Of(t), StringComparer.Ordinal);
+            default:
+                return [];
+        }
+    }
+
     internal static ISymbol? Owner(SemanticModel model, int position)
     {
         var symbol = model.GetEnclosingSymbol(position);
@@ -363,7 +440,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
         return symbol switch
         {
             IMethodSymbol { MethodKind: MethodKind.PropertyGet or MethodKind.PropertySet } accessor => accessor.AssociatedSymbol,
-            IMethodSymbol { MethodKind: MethodKind.Ordinary } m => m,
+            IMethodSymbol { MethodKind: MethodKind.Ordinary or MethodKind.Constructor or MethodKind.StaticConstructor } m => m,
             IPropertySymbol p => p,
             _ => null,
         };

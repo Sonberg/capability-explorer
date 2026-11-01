@@ -2,7 +2,9 @@ import { request, type Meta } from "./api";
 import { ErrorBox, Loading } from "./components/ui";
 import { href, SelectionProvider, useApi, useRoute, useSelection } from "./state";
 import { lazy, Suspense, useEffect, useState } from "react";
+import { ChatPanel } from "./components/ChatPanel";
 import { CommandPalette } from "./components/CommandPalette";
+import { FocusProvider } from "./focus";
 import { Artifacts } from "./views/Artifacts";
 import { Glossary } from "./views/Glossary";
 import { Calculations } from "./views/Calculations";
@@ -35,7 +37,9 @@ export function App() {
   if (!meta.data) return <main className="p-5"><Loading /></main>;
   return (
     <SelectionProvider meta={meta.data} reloadMeta={meta.reload}>
-      <Shell />
+      <FocusProvider>
+        <Shell />
+      </FocusProvider>
     </SelectionProvider>
   );
 }
@@ -59,6 +63,17 @@ function Shell() {
   const route = useRoute();
   const view = route.path;
   const [palette, setPalette] = useState(false);
+  const [chat, setChat] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "j") {
+        e.preventDefault();
+        setChat((c) => !c);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);
   return (
     <>
@@ -97,6 +112,14 @@ function Shell() {
             <span className="hidden md:inline">Search</span>
             <kbd className="font-sans text-xs">{mac ? "⌘K" : "Ctrl K"}</kbd>
           </button>
+          <button
+            type="button"
+            onClick={() => setChat((c) => !c)}
+            aria-pressed={chat}
+            className={`rounded-md border px-2.5 py-1 text-[13px] ${chat ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300" : "border-zinc-200 text-zinc-500 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"}`}
+          >
+            Ask <kbd className="hidden font-sans text-xs md:inline">{mac ? "⌘J" : "Ctrl J"}</kbd>
+          </button>
           <a
             href={href("settings")}
             aria-label="Settings"
@@ -112,7 +135,8 @@ function Shell() {
         </div>
       </header>
       <ScopeBar />
-      <main className="mx-auto max-w-[1500px] p-3 sm:p-5">
+      {chat && <ChatPanel onClose={() => setChat(false)} />}
+      <main className={`mx-auto max-w-[1500px] p-3 sm:p-5 ${chat ? "sm:mr-[420px]" : ""}`}>
         <Routed path={view} params={route.params} />
       </main>
     </>

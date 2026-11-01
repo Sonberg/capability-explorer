@@ -23,7 +23,7 @@ export interface Meta {
   generation: number;
   capabilities: CapabilitySummary[];
   githubAuth: { configured: boolean; source: string };
-  interpretation: { enabled: boolean; provider: string; model?: string };
+  interpretation: { enabled: boolean; chat: boolean; provider: string; model?: string };
   /** Vector search: needs the database (CE_DATABASE) and an embedding model (make ollama, or Settings). */
   similarity: { database: boolean; embeddings?: string };
   revisions: Revision[];

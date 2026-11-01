@@ -9,7 +9,7 @@ namespace CapabilityExplorer.Interpretation;
 /// Chat completions with JSON-schema constrained output on an OpenAI-compatible API: a local Ollama
 /// (<c>http://localhost:11434/v1</c>) or a Microsoft Foundry deployment. See <see cref="OpenAiApi"/> for URLs and auth.
 /// </summary>
-public sealed class FoundryChatModel : IInterpretationModel
+public sealed class FoundryChatModel : IInterpretationModel, IChatModel
 {
     private readonly HttpClient _http;
     private readonly Uri _url;
@@ -34,7 +34,7 @@ public sealed class FoundryChatModel : IInterpretationModel
     public async Task<ModelResponse> CompleteJsonAsync(ModelRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var body = new JsonObject
+        var text = await PostAsync(new JsonObject
         {
             ["model"] = _deployment,
             ["messages"] = new JsonArray(
@@ -50,8 +50,91 @@ public sealed class FoundryChatModel : IInterpretationModel
                     ["schema"] = JsonNode.Parse(request.Schema.GetRawText()),
                 },
             },
-        };
+        }, cancellationToken);
+        return Parse(text, root =>
+        {
+            var content = root.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString()
+                ?? throw new InterpretationUnavailableException("model response has no content");
+            return new ModelResponse(content, Usage(root, "prompt_tokens"), Usage(root, "completion_tokens"));
+        });
+    }
 
+    public async Task<ChatResult> ChatAsync(IReadOnlyList<ChatMessage> messages, IReadOnlyList<ChatTool>? tools = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+        var body = new JsonObject
+        {
+            ["model"] = _deployment,
+            ["messages"] = new JsonArray(messages.Select(Message).ToArray()),
+        };
+        if (tools is { Count: > 0 })
+        {
+            body["tools"] = new JsonArray(tools.Select(t => (JsonNode)new JsonObject
+            {
+                ["type"] = "function",
+                ["function"] = new JsonObject { ["name"] = t.Name, ["description"] = t.Description, ["parameters"] = JsonNode.Parse(t.Parameters.GetRawText()) },
+            }).ToArray());
+        }
+
+        var text = await PostAsync(body, cancellationToken);
+        return Parse(text, root =>
+        {
+            var message = root.GetProperty("choices")[0].GetProperty("message");
+            var content = message.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() : null;
+            var calls = message.TryGetProperty("tool_calls", out var tc) && tc.ValueKind == JsonValueKind.Array
+                ? tc.EnumerateArray().Select(call => new ToolCall(
+                    call.GetProperty("id").GetString() ?? "",
+                    call.GetProperty("function").GetProperty("name").GetString() ?? "",
+                    call.GetProperty("function").GetProperty("arguments").GetString() ?? "{}")).ToList()
+                : [];
+            if (content is null && calls.Count == 0)
+            {
+                throw new InterpretationUnavailableException("model response has neither content nor tool calls");
+            }
+
+            return new ChatResult(content, calls, Usage(root, "prompt_tokens"), Usage(root, "completion_tokens"));
+        });
+    }
+
+    private static JsonNode Message(ChatMessage m)
+    {
+        var json = new JsonObject { ["role"] = m.Role, ["content"] = m.Content };
+        if (m.ToolCalls is { Count: > 0 })
+        {
+            json["tool_calls"] = new JsonArray(m.ToolCalls.Select(c => (JsonNode)new JsonObject
+            {
+                ["id"] = c.Id,
+                ["type"] = "function",
+                ["function"] = new JsonObject { ["name"] = c.Name, ["arguments"] = c.Arguments },
+            }).ToArray());
+        }
+
+        if (m.ToolCallId is not null)
+        {
+            json["tool_call_id"] = m.ToolCallId;
+        }
+
+        return json;
+    }
+
+    private static int? Usage(JsonElement root, string name) =>
+        root.TryGetProperty("usage", out var u) && u.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : null;
+
+    private static T Parse<T>(string text, Func<JsonElement, T> read)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            return read(doc.RootElement);
+        }
+        catch (Exception e) when (e is JsonException or KeyNotFoundException or IndexOutOfRangeException or InvalidOperationException)
+        {
+            throw new InterpretationUnavailableException($"unexpected model response shape: {Truncate(text)}", e);
+        }
+    }
+
+    private async Task<string> PostAsync(JsonObject body, CancellationToken cancellationToken)
+    {
         using var message = new HttpRequestMessage(HttpMethod.Post, _url) { Content = JsonContent.Create(body) };
         await OpenAiApi.AuthorizeAsync(message, _apiKey, _credential, cancellationToken);
 
@@ -64,28 +147,17 @@ public sealed class FoundryChatModel : IInterpretationModel
         {
             throw new InterpretationUnavailableException($"model request failed: {e.Message}", e);
         }
+        catch (TaskCanceledException e) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new InterpretationUnavailableException("the model did not answer in time (a model on CPU can be slow: try a smaller model, or use the native Ollama app, which uses the GPU)", e);
+        }
 
         using (response)
         {
             var text = await response.Content.ReadAsStringAsync(cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new InterpretationUnavailableException($"model API returned {(int)response.StatusCode}: {Truncate(text)}");
-            }
-
-            try
-            {
-                using var doc = JsonDocument.Parse(text);
-                var root = doc.RootElement;
-                var content = root.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString()
-                    ?? throw new InterpretationUnavailableException("model response has no content");
-                int? Usage(string name) => root.TryGetProperty("usage", out var u) && u.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : null;
-                return new ModelResponse(content, Usage("prompt_tokens"), Usage("completion_tokens"));
-            }
-            catch (Exception e) when (e is JsonException or KeyNotFoundException or IndexOutOfRangeException or InvalidOperationException)
-            {
-                throw new InterpretationUnavailableException($"unexpected model response shape: {Truncate(text)}", e);
-            }
+            return response.IsSuccessStatusCode
+                ? text
+                : throw new InterpretationUnavailableException($"model API returned {(int)response.StatusCode}: {Truncate(text)}");
         }
     }
 

@@ -16,6 +16,24 @@ public interface IInterpretationModel
     Task<ModelResponse> CompleteJsonAsync(ModelRequest request, CancellationToken cancellationToken = default);
 }
 
+/// <summary>A model's request to run a tool; <paramref name="Arguments"/> is the JSON object it wrote.</summary>
+public sealed record ToolCall(string Id, string Name, string Arguments);
+
+/// <param name="Content">Null on an assistant turn that only calls tools.</param>
+/// <param name="ToolCalls">Set on an assistant turn that calls tools; the following "tool" messages answer them by <paramref name="ToolCallId"/>.</param>
+public sealed record ChatMessage(string Role, string? Content, IReadOnlyList<ToolCall>? ToolCalls = null, string? ToolCallId = null);
+
+/// <param name="Parameters">JSON schema of the arguments object.</param>
+public sealed record ChatTool(string Name, string Description, JsonElement Parameters);
+
+public sealed record ChatResult(string? Content, IReadOnlyList<ToolCall> ToolCalls, int? InputTokens = null, int? OutputTokens = null);
+
+/// <summary>Plain-text multi-turn completion with optional tool calling. Separate from <see cref="IInterpretationModel"/>: only a live chat model can do it (not recordings).</summary>
+public interface IChatModel
+{
+    Task<ChatResult> ChatAsync(IReadOnlyList<ChatMessage> messages, IReadOnlyList<ChatTool>? tools = null, CancellationToken cancellationToken = default);
+}
+
 /// <summary>The model could not be used (not configured, no recording, HTTP failure). Never a reason to fail non-AI features.</summary>
 public sealed class InterpretationUnavailableException(string message, Exception? inner = null) : Exception(message, inner);
 
@@ -38,8 +56,12 @@ public sealed class RecordedModel(string directory, string id = "recorded") : II
 }
 
 /// <summary>Wraps a live model and stores each response under its input hash, producing recordings for <see cref="RecordedModel"/>.</summary>
-public sealed class RecordingModel(IInterpretationModel inner, string directory) : IInterpretationModel
+public sealed class RecordingModel(IInterpretationModel inner, string directory) : IInterpretationModel, IChatModel
 {
+    // ponytail: chat turns are passed through, not recorded.
+    public Task<ChatResult> ChatAsync(IReadOnlyList<ChatMessage> messages, IReadOnlyList<ChatTool>? tools = null, CancellationToken cancellationToken = default) =>
+        inner is IChatModel chat ? chat.ChatAsync(messages, tools, cancellationToken) : throw new InterpretationUnavailableException("the configured model cannot chat");
+
     public string Id => inner.Id;
 
     public async Task<ModelResponse> CompleteJsonAsync(ModelRequest request, CancellationToken cancellationToken = default)
