@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { inventories } from '../scripts/security-collect-inventory.mjs';
 import { sha, snapshot, validate, findings, safeFile } from '../scripts/security-audit-lib.mjs';
 const image = `scanner:1@sha256:${'a'.repeat(64)}`;
 function fixture(t, vulnerability = false) {
@@ -11,6 +12,9 @@ function fixture(t, vulnerability = false) {
   fs.mkdirSync(path.join(root, 'config/security'), { recursive: true });
   fs.copyFileSync('config/security/audit-scope.json', path.join(root, 'config/security/audit-scope.json'));
   fs.writeFileSync(path.join(root, 'source.ts'), 'export const x = 1;');
+  fs.writeFileSync(path.join(root, 'package-lock.json'), JSON.stringify({ name: 'fixture', lockfileVersion: 3, packages: { 'node_modules/example': { version: '1' } } }));
+  fs.writeFileSync(path.join(root, 'Dockerfile'), 'FROM scratch\n');
+  fs.writeFileSync(path.join(root, 'config/security/collector.json'), JSON.stringify({ schemaVersion: 1, tools: Object.fromEntries(['trivy', 'gitleaks', 'semgrep'].map(name => [name, { image, platform: 'linux/arm64' }])), images: [{ id: 'image-runtime', reference: image, platform: 'linux/arm64' }] }));
   const write = (name, value) => {
     const relative = `.sandbox-cache/${name}`;
     fs.mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
@@ -20,13 +24,13 @@ function fixture(t, vulnerability = false) {
   };
   const source = snapshot(root), now = Date.now();
   const history = write('history.json', { refs: [{ name: 'refs/heads/stage', sha: 'a'.repeat(40) }], commitCount: 3, shallow: false });
-  const manifest = { schemaVersion: 1, source: write('source.json', source), history, images: [{ id: 'image-runtime', reference: image, platform: 'linux/arm64' }], scans: [] };
+  const manifest = { schemaVersion: 1, collectionCompleted: true, source: write('source.json', source), history, images: [{ id: 'image-runtime', reference: image, platform: 'linux/arm64' }], scans: [] };
   for (const [id, tool] of Object.entries({ dependencies: 'trivy', 'fs-secrets': 'trivy', 'fs-misconfig': 'trivy', 'history-secrets': 'gitleaks', 'source-secrets': 'gitleaks', sast: 'semgrep', 'image-runtime': 'trivy' })) {
-    const raw = tool === 'trivy' ? { SchemaVersion: 2, Results: [{ Target: 'source.ts', ...(vulnerability && id === 'dependencies' ? { Vulnerabilities: [{ VulnerabilityID: 'CVE-TEST', PkgName: 'example', InstalledVersion: '1', Severity: 'LOW' }] } : {}) }] }
+    const raw = tool === 'trivy' ? { SchemaVersion: 2, Results: [{ Target: id === 'dependencies' ? 'package-lock.json' : 'source.ts', ...(vulnerability && id === 'dependencies' ? { Vulnerabilities: [{ VulnerabilityID: 'CVE-TEST', PkgName: 'example', InstalledVersion: '1', Severity: 'LOW' }] } : {}) }] }
       : tool === 'semgrep' ? { results: [], errors: [], paths: { scanned: ['source.ts'] } } : [];
-    manifest.scans.push({ id, tool: { name: tool, version: '1.0.0', image, platform: 'linux/arm64' }, rules: write(`${id}-rules.txt`, 'reviewed-rules'), targets: write(`${id}-targets.json`, [id === 'image-runtime' ? image : 'source.ts']), coverage: [id], skipped: 0, sourceSha256: source.sha256, completedAt: new Date(now).toISOString(), exitCode: 0, completed: true, executionLog: write(`${id}-log.txt`, 'scanner completed: 1 target'), report: write(`${id}-report.json`, raw), database: { sha256: 'b'.repeat(64), version: '2', updatedAt: new Date(now).toISOString() }, severities: ['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], includeDevDependencies: true, historySha256: history.sha256, targetImage: image, targetPlatform: 'linux/arm64' });
+    manifest.scans.push({ id, tool: { name: tool, version: '1.0.0', image, platform: 'linux/arm64' }, rules: write(`${id}-rules.txt`, 'reviewed-rules'), targets: write(`${id}-targets.json`, id === 'image-runtime' ? [image] : id === 'dependencies' ? ['package-lock.json'] : id === 'fs-misconfig' ? ['Dockerfile'] : id === 'sast' ? ['source.ts'] : id === 'history-secrets' ? [`refs/heads/stage@${'a'.repeat(40)}`] : source.files.map(x => x.path)), coverage: [id], skipped: 0, sourceSha256: source.sha256, completedAt: new Date(now).toISOString(), exitCode: 0, completed: true, executionLog: write(`${id}-log.txt`, 'scanner completed: 1 target'), report: write(`${id}-report.json`, raw), database: { sha256: 'b'.repeat(64), version: '2', updatedAt: new Date(now).toISOString() }, severities: ['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], includeDevDependencies: true, historySha256: history.sha256, targetImage: image, targetPlatform: 'linux/arm64' });
   }
-  manifest.manualReview = write('manual.json', { completed: true, reviewer: 'human-reviewer', limitations: ['Synthetic test only'], findings: [] });
+  manifest.manualReview = write('manual.json', { completed: true, reviewer: 'human-reviewer', limitations: ['Synthetic test only'], findings: [], sourceSha256: source.sha256, configurationReviewedTargets: inventories(source.files).unsupportedConfiguration });
   const current = manifest.scans.flatMap(scan => findings(scan, JSON.parse(fs.readFileSync(path.join(root, scan.report.path)))));
   const ledger = { schemaVersion: 1, findings: current.map(x => ({ ...x, disposition: 'confirmed-open', owner: 'reviewer', rationale: 'Synthetic regression example' })) };
   manifest.ledger = write('ledger.json', ledger);
@@ -94,11 +98,41 @@ test('invalid raw Trivy finding array is rejected rather than discarded', t => {
 });
 test('manual review finding blocks clean scanner verification until fixed and retested', t => {
   const f = fixture(t), finding = { id: sha('manual-B01'), externalId: 'B01', location: 'source.ts:1', severity: 'HIGH' };
-  f.manifest.manualReview = f.write('manual.json', { completed: true, reviewer: 'security-reviewer', limitations: [], findings: [finding] });
+  f.manifest.manualReview = f.write('manual.json', { completed: true, reviewer: 'security-reviewer', limitations: [], findings: [finding], sourceSha256: f.manifest.scans[0].sourceSha256, configurationReviewedTargets: inventories(snapshot(f.root).files).unsupportedConfiguration });
   f.ledger.findings.push({ ...finding, disposition: 'confirmed-open', owner: 'developer', rationale: 'Boundary reproduction' });
   f.manifest.ledger = f.write('ledger.json', f.ledger);
   assert.throws(() => validate(f.root, f.manifest, 'verify', f.now), /unresolved confirmed/);
   Object.assign(f.ledger.findings[0], { disposition: 'fixed', fixCommit: 'c'.repeat(40), retest: { ...f.write('manual-retest.txt', 'Regression passed'), sourceSha256: f.manifest.scans[0].sourceSha256 } });
   f.manifest.ledger = f.write('ledger.json', f.ledger);
   assert.equal(validate(f.root, f.manifest, 'verify', f.now).confirmedOpen, 0);
+});
+test('a full source hash cannot conceal a missing lockfile target', t => {
+  const f = fixture(t); f.manifest.scans[0].targets = f.write('wrong-targets.json', ['source.ts']);
+  assert.throws(() => validate(f.root, f.manifest, 'verify', f.now), /discovered target/);
+});
+test('raw vulnerability report must cover every nonempty discovered lockfile', t => {
+  const f = fixture(t); f.manifest.scans[0].report = f.write('wrong-report.json', { SchemaVersion: 2, Results: [{ Target: 'source.ts' }] });
+  assert.throws(() => validate(f.root, f.manifest, 'verify', f.now), /omitted discovered lockfile/);
+});
+test('manifest cannot silently remove a configured image or swap scanner identity', t => {
+  const f = fixture(t); f.manifest.images = [];
+  assert.throws(() => validate(f.root, f.manifest, 'verify', f.now), /missing image/);
+  f.manifest.images = [{ id: 'image-runtime', reference: image, platform: 'linux/arm64' }];
+  f.manifest.scans[0].tool.image = `other:2@sha256:${'c'.repeat(64)}`;
+  assert.throws(() => validate(f.root, f.manifest, 'verify', f.now), /configured tool/);
+});
+test('real empty Trivy secret results require sealed execution evidence', t => {
+  const f = fixture(t), scan = f.manifest.scans[1], source = JSON.parse(fs.readFileSync(path.join(f.root, f.manifest.source.path)));
+  scan.report = f.write('clean-secret.json', { SchemaVersion: 2, ArtifactName: '.', ArtifactType: 'filesystem' });
+  scan.coverageReceipt = { kind: 'sealed-tree-invocation', fileCount: source.files.length, sourceSha256: source.sha256 };
+  scan.executionLog = f.write('secret-execution.json', { command: 'docker', exitCode: 0, args: ['run', '--network', 'none', '--scanners', 'secret'], stderr: 'Secret scanning is enabled' });
+  assert.equal(validate(f.root, f.manifest, 'verify', f.now).confirmedOpen, 0);
+  scan.coverageReceipt.fileCount = 0;
+  assert.throws(() => validate(f.root, f.manifest, 'verify', f.now), /empty Trivy/);
+});
+test('presence of a Dockerfile cannot waive manual review of unsupported configuration', t => {
+  const f = fixture(t), manual = JSON.parse(fs.readFileSync(path.join(f.root, f.manifest.manualReview.path)));
+  manual.configurationReviewedTargets = [];
+  f.manifest.manualReview = f.write('manual-incomplete.json', manual);
+  assert.throws(() => validate(f.root, f.manifest, 'verify', f.now), /unsupported-configuration coverage/);
 });

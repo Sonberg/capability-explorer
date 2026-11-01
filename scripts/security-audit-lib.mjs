@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { inventories, validateConfig } from './security-collect-inventory.mjs';
 
 export const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const fail = message => { throw new Error(message); };
@@ -57,14 +58,17 @@ const freshness = (value, maximum, now, label) => {
 export function findings(scan, raw) {
   let rows;
   if (scan.tool.name === 'trivy') {
-    need(raw.SchemaVersion === 2 && Array.isArray(raw.Results), `${scan.id}: invalid Trivy JSON`);
+    const emptySupported = ['fs-secrets', 'fs-misconfig'].includes(scan.id) && scan.coverageReceipt?.kind === 'sealed-tree-invocation' &&
+      typeof raw.ArtifactName === 'string' && raw.ArtifactType === 'filesystem';
+    need(raw.SchemaVersion === 2 && (Array.isArray(raw.Results) || (emptySupported && raw.Results === undefined)), `${scan.id}: invalid Trivy JSON`);
+    const results = raw.Results ?? [];
     need(!raw.Errors?.length, `${scan.id}: Trivy scan errors`);
-    for (const result of raw.Results) {
+    for (const result of results) {
       need(nonempty(result.Target), `${scan.id}: missing Trivy target`);
       for (const field of ['Vulnerabilities', 'Secrets', 'Misconfigurations'])
         need(result[field] === undefined || Array.isArray(result[field]), `${scan.id}: invalid Trivy finding array`);
     }
-    rows = raw.Results.flatMap(result => [
+    rows = results.flatMap(result => [
       ...(result.Vulnerabilities ?? []).map(x => ({ rule: x.VulnerabilityID, location: `${result.Target}:${x.PkgName}@${x.InstalledVersion}`, severity: x.Severity })),
       ...(result.Secrets ?? []).map(x => ({ rule: x.RuleID, location: `${result.Target}:${x.StartLine}`, severity: x.Severity })),
       ...(result.Misconfigurations ?? []).filter(x => x.Status !== 'PASS').map(x => ({ rule: x.ID, location: `${result.Target}:${x.CauseMetadata?.StartLine ?? 0}`, severity: x.Severity }))
@@ -86,7 +90,11 @@ export function findings(scan, raw) {
 export function validate(root, manifest, mode, now = Date.now()) {
   const p = policy(root);
   need(manifest.schemaVersion === 1 && Array.isArray(manifest.scans) && Array.isArray(manifest.images) && manifest.images.length > 0, 'invalid manifest or missing image inventory');
-  const current = snapshot(root, p);
+  need(['baseline', 'verify'].includes(mode), 'unknown audit mode');
+  need(manifest.collectionCompleted === true, 'incomplete collection');
+  const config = validateConfig(readJson(root, 'config/security/collector.json'));
+  need(JSON.stringify(manifest.images) === JSON.stringify(config.images), 'configured image inventory mismatch');
+  const current = snapshot(root, p), inventory = inventories(current.files);
   const saved = JSON.parse(fs.readFileSync(artifact(root, manifest.source, 'source snapshot'), 'utf8'));
   need(saved.sha256 === current.sha256 && JSON.stringify(saved.files) === JSON.stringify(current.files), 'source mismatch');
   const history = JSON.parse(fs.readFileSync(artifact(root, manifest.history, 'history inventory'), 'utf8'));
@@ -104,7 +112,14 @@ export function validate(root, manifest, mode, now = Date.now()) {
     need(nonempty(scan.tool.version) && digest(scan.tool.image) && /^(linux)\/(amd64|arm64)$/.test(scan.tool.platform), `${scan.id}: missing tool identity`);
     artifact(root, scan.rules, `${scan.id} rules`);
     const targets = JSON.parse(fs.readFileSync(artifact(root, scan.targets, `${scan.id} targets`), 'utf8'));
-    need(Array.isArray(targets) && targets.length > 0 && targets.every(nonempty) && new Set(targets).size === targets.length, `${scan.id}: empty/invalid target inventory`);
+    const notApplicable = scan.id === 'fs-misconfig' && inventory.misconfiguration.length === 0 && scan.applicability === 'not-applicable';
+    need(Array.isArray(targets) && (targets.length > 0 || notApplicable) && targets.every(nonempty) && new Set(targets).size === targets.length, `${scan.id}: empty/invalid target inventory`);
+    const expectedTargets = scan.id === 'dependencies' ? inventory.dependencies : scan.id === 'sast' ? inventory.sast :
+      ['fs-secrets', 'source-secrets'].includes(scan.id) ? inventory.source : scan.id === 'fs-misconfig' ? inventory.misconfiguration :
+      scan.id === 'history-secrets' ? history.refs.map(x => `${x.name}@${x.sha}`) : [manifest.images.find(x => x.id === scan.id)?.reference];
+    need(JSON.stringify([...targets].sort()) === JSON.stringify([...expectedTargets].sort()), `${scan.id}: discovered target inventory mismatch`);
+    const configured = config.tools[scan.tool.name];
+    need(scan.tool.image === configured.image && scan.tool.platform === configured.platform, `${scan.id}: configured tool identity mismatch`);
     need(Array.isArray(scan.coverage) && scan.coverage.includes(scan.id) && scan.skipped === 0, `${scan.id}: incomplete coverage`);
     need(scan.sourceSha256 === saved.sha256, `${scan.id}: stale source identity`);
     freshness(scan.completedAt, p.maximumScanAgeHours, now, `${scan.id} scan`);
@@ -120,12 +135,36 @@ export function validate(root, manifest, mode, now = Date.now()) {
     if (image) need(scan.targetImage === image.reference && scan.targetPlatform === image.platform && targets.includes(image.reference), `${scan.id}: image target mismatch`);
     const raw = JSON.parse(fs.readFileSync(artifact(root, scan.report, `${scan.id} report`), 'utf8'));
     const found = findings(scan, raw);
-    if (scan.tool.name === 'trivy' && !image) need(raw.Results.length > 0, `${scan.id}: empty Trivy coverage`);
+    if (scan.tool.name === 'trivy' && !image && !(raw.Results?.length)) {
+      const covered = scan.coverageReceipt;
+      need(['fs-secrets', 'fs-misconfig'].includes(scan.id) && covered?.kind === 'sealed-tree-invocation', `${scan.id}: empty Trivy coverage`);
+      const log = JSON.parse(fs.readFileSync(artifact(root, scan.executionLog, `${scan.id} execution log`), 'utf8'));
+      need(['fs-secrets', 'fs-misconfig'].includes(scan.id) && covered?.kind === 'sealed-tree-invocation' &&
+        covered.fileCount === inventory.source.length && covered.sourceSha256 === saved.sha256 &&
+        log.command === 'docker' && log.exitCode === 0 && Array.isArray(log.args) && log.args.includes('--network') &&
+        log.args[log.args.indexOf('--network') + 1] === 'none' && log.args.includes('--scanners') &&
+        log.args[log.args.indexOf('--scanners') + 1] === (scan.id === 'fs-secrets' ? 'secret' : 'misconfig'), `${scan.id}: empty Trivy coverage`);
+      if (scan.id === 'fs-misconfig') need(notApplicable && /Detected config files[^\n]*num=0/.test(log.stderr), 'misconfig zero-target evidence missing');
+    }
+    if (scan.id === 'dependencies') {
+      const scanned = new Set((raw.Results ?? []).map(x => x.Target));
+      need(targets.every(x => {
+        if (scanned.has(x)) return true;
+        // NuGet emits dependency-free project locks; Trivy legitimately omits these.
+        if (!x.endsWith('/packages.lock.json') && x !== 'packages.lock.json') return false;
+        const lock = readJson(root, x);
+        return lock.version === 2 && lock.dependencies && Object.keys(lock.dependencies).length > 0 &&
+          Object.values(lock.dependencies).every(group => group && typeof group === 'object' && Object.keys(group).length === 0);
+      }), 'dependency report omitted discovered lockfile');
+    }
     if (scan.tool.name === 'semgrep') need(targets.every(x => raw.paths.scanned.includes(x)), `${scan.id}: missing scanned target`);
     all.push(...found);
   }
   const manual = JSON.parse(fs.readFileSync(artifact(root, manifest.manualReview, 'manual review'), 'utf8'));
   need(manual.completed === true && nonempty(manual.reviewer) && Array.isArray(manual.limitations) && Array.isArray(manual.findings), 'incomplete manual review');
+  need(
+    JSON.stringify([...(manual.configurationReviewedTargets ?? [])].sort()) === JSON.stringify(inventory.unsupportedConfiguration) &&
+    manual.sourceSha256 === saved.sha256, 'manual unsupported-configuration coverage missing');
   for (const finding of manual.findings) {
     need(hash(finding.id) && nonempty(finding.externalId) && nonempty(finding.location) && nonempty(finding.severity), 'invalid manual finding');
     all.push({ ...finding, scanId: 'manual' });
