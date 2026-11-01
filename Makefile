@@ -90,10 +90,9 @@ restore:
 
 # Explorer UI: React + Tailwind (Vite). Dependencies are installed with network, the build runs offline.
 UI := platform/src/CapabilityExplorer.Explorer/client
-ui: likec4-dist
+ui: likec4-deps
 	$(NODE) sh -c 'cd $(UI) && npm ci'
 	$(OFFLINE) node sh -c 'cd $(UI) && npm run -s build'
-	$(OFFLINE) node sh -c 'cp -R spikes/likec4/dist platform/src/CapabilityExplorer.Explorer/wwwroot/likec4'
 
 build: restore ui
 	$(OFFLINE) dotnet sh -c 'cd platform && dotnet build --no-restore -nologo CapabilityExplorer.slnx'
@@ -255,10 +254,12 @@ clean:
 	find platform -type d \( -name bin -o -name obj \) -prune -exec rm -rf {} +
 
 # Isolated LikeC4 experiment; production Explorer dependencies stay unchanged.
-.PHONY: likec4-dist likec4-check likec4-preview
+.PHONY: likec4-deps likec4-dist likec4-check likec4-preview
 ci: likec4-check
-likec4-dist:
+likec4-deps:
 	$(NODE) sh -c 'cd spikes/likec4 && npm ci'
+
+likec4-dist: likec4-deps
 	$(OFFLINE) node sh -c 'cd spikes/likec4 && npm run build'
 
 likec4-check: likec4-dist
@@ -280,3 +281,13 @@ likec4-interaction-check:
 .PHONY: likec4-trace-check
 likec4-trace-check:
 	SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node sh -c 'cd spikes/likec4 && node test/routing-trace-browser.mjs && node test/immediate-layout-browser.mjs && node test/routing-lifecycle.mjs'
+
+# Live model invariants run without a browser or additional service image.
+.PHONY: live-architecture-check live-architecture-browser-check
+live-architecture-check: likec4-deps
+	$(OFFLINE) node sh -c 'cd spikes/likec4 && node --experimental-strip-types --test test/live-model*.test.mjs'
+
+# Use an already running isolated explorer; network/credentials remain explicit.
+LIVE_ARCHITECTURE_URL ?= http://host.docker.internal:5096
+live-architecture-browser-check:
+	CE_LIVE_ARCHITECTURE_BASE_URL='$(LIVE_ARCHITECTURE_URL)' SANDBOX_PASS_ENV=CE_LIVE_ARCHITECTURE_BASE_URL SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node node scripts/test-live-architecture.mjs

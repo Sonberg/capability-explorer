@@ -198,12 +198,12 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
             mantineTheme={{fontFamily:'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'}} style={{width:'100%', height:'100%'}}>
             <SelectionBridge onSelection={setSelected}/><LiveSourceBridge graph={visibleGraph} result={result} selectedId={selectedId}/>
             <RoutingTraceBridge view={currentView} context={routing.trace} ready={routing.state === 'ready'}/>
-            <style>{`.ce-live-diagram .react-flow__node[data-neighborhood="outside"], .ce-live-diagram .react-flow__edge[data-neighborhood="outside"] { opacity:.18; }
-              .ce-live-diagram .react-flow__node[data-source-selected="true"] { outline:3px solid #60a5fa; outline-offset:3px; }
-              .ce-live-diagram .react-flow__edge[data-source-selected="true"] .react-flow__edge-path { stroke-width:4; }
-              ${motion ? '.ce-live-diagram .react-flow__edge-path { animation:ce-live-edge-flow 2.4s ease-in-out infinite; }' : '.ce-live-diagram *, .ce-live-diagram *::before, .ce-live-diagram *::after { animation:none!important; transition:none!important; }'}
+            <style>{`:host(.ce-live-diagram) .react-flow__node[data-neighborhood="outside"], :host(.ce-live-diagram) .react-flow__edge[data-neighborhood="outside"] { opacity:.18; }
+              :host(.ce-live-diagram) .react-flow__node[data-source-selected="true"] { outline:3px solid #60a5fa; outline-offset:3px; }
+              :host(.ce-live-diagram) .react-flow__edge[data-source-selected="true"] .react-flow__edge-path { stroke-width:4; }
+              ${motion ? ':host(.ce-live-diagram) .react-flow__edge-path { animation:ce-live-edge-flow 2.4s ease-in-out infinite; }' : ':host(.ce-live-diagram) *, :host(.ce-live-diagram) *::before, :host(.ce-live-diagram) *::after { animation:none!important; transition:none!important; }'}
               @keyframes ce-live-edge-flow { 0%,100% { filter:drop-shadow(0 0 0 currentColor); } 50% { filter:drop-shadow(0 0 5px currentColor); } }
-              @media (prefers-reduced-motion: reduce) { .ce-live-diagram *, .ce-live-diagram *::before, .ce-live-diagram *::after { animation:none!important; transition:none!important; } }`}</style>
+              @media (prefers-reduced-motion: reduce) { :host(.ce-live-diagram) *, :host(.ce-live-diagram) *::before, :host(.ce-live-diagram) *::after { animation:none!important; transition:none!important; } }`}</style>
           </ReactLikeC4>
         </LikeC4EditorProvider></LikeC4ModelProvider></div>
       </section></div>

@@ -19,9 +19,9 @@ export function LiveSourceBridge({graph, result, selectedId}:{graph:LiveGraph; r
     if (selectedEdge) {neighbors.add(selectedEdge.from); neighbors.add(selectedEdge.to);}
     const edgesById = new Map(graph.edges.map(edge => [edge.id, edge]));
     const sourceIds = (id:string):readonly string[] => {
-      const known = result.nodeSourceIds[id];
-      if (known?.length) return known;
       const node = view.nodes.find(node => node.id === id);
+      const known = result.nodeSourceIds[id];
+      if (node?.kind !== '@group' && known?.length) return known;
       return [...new Set((node?.children ?? []).flatMap(child => sourceIds(child)))];
     };
     const sync = () => {

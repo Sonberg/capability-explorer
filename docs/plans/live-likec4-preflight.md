@@ -6,17 +6,13 @@ The shared glossary canvas from PR #20 is included in parity requirements.
 
 ## Dependency and source state
 
-The approved prompt explicitly requires PR #20 to land before overlapping
-implementation. At inspection it is OPEN; hosted CI succeeded. Stage is
-`94213b14cd40c619a23f7947296109e51b85aaf8`; PR #20 head is
-`2126bd340728b088dc656b6ecca72dd5fb1c51c6`. No merge/auto-merge is authorized.
-
-Preflight uses an isolated detached-stage checkout, now a local documentation
-branch `docs/live-likec4-preflight`. No production source or dependency changes,
-implementation ownership claim, second PR stack or main changes were made.
-After merge, freshly fetch stage and verify PR #20's merged content before starting
-one integration branch and isolated writing workers. Transfer this preflight then.
-Do not assume an identical ancestor SHA if the owner squash-merges.
+PR #20 merged into `stage-1-contract-and-fixtures` at
+`9aa05475848d27328a2253cb66db87fb77975ffe` on 2026-11-01. The approved prerequisite
+is satisfied. Integration branch `feat/live-likec4-architecture` starts from that
+commit with this preflight cherry-picked. Three isolated writing worktrees cover
+model projection, shared renderer and browser parity; the coordinator owns wiring,
+shared manifests and documentation. Issue #3 records ownership and preview port 5096.
+No main changes, merge or auto-merge are authorized.
 
 ## Runtime proof and remaining choice
 
@@ -124,15 +120,15 @@ Unreleased/compatibility; do not publish a version. Keep #6 general extractor
 repairs, #12 owner-controlled BPMN/DMN scope and #13 unmet final-paint target honest.
 Do not close #13 using provisional routing or two-frame-opportunity measurements.
 
-## Receipts and limitations
+## Historical preflight receipts and limitations
 
 Brain grounding: `sparc/capability-cards.md#sparc` describes phased methodology;
 it is not executable harness evidence. Two native gpt-6.1-sol/high workers performed
 read-only runtime/parity research; the coordinator ran the sandbox probe. No model
 inference endpoints, new paid providers or package installations. Native spend is
 not measurable here. No SPARC implementation phase is graded complete from this
-preflight; baseline/integration gates remain pending the merge prerequisite.
+preflight. The prerequisite has since merged; see [execution evidence](live-likec4-execution.md) for implementation and current gates.
 
-Not tested: browser runtime model construction/layout, full replacement rendering,
+Not tested at preflight time: browser runtime model construction/layout, full replacement rendering,
 layout parity/performance, new acceptance targets or production migration. These
 are required implementation work, not completed claims.

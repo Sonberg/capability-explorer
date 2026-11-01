@@ -7,7 +7,7 @@ const cache = new Map<string, {result:LiveModelResult; bytes:number}>();
 const MAX_BYTES = 12 * 1024 * 1024;
 let retainedBytes = 0;
 function remember(key:string, result:LiveModelResult) {
-  const bytes = 2 * (key.length + result.source.length + JSON.stringify(result.modelData).length);
+  const bytes = 2 * (key.length + JSON.stringify(result).length);
   if (bytes > MAX_BYTES) return;
   const previous = cache.get(key);
   if (previous) retainedBytes -= previous.bytes;

@@ -12,7 +12,9 @@
   "dependencies": {
     "likec4": "1.60.0",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "@likec4/core": "1.60.0",
+    "@dagrejs/dagre": "3.1.1"
   },
   "devDependencies": {
     "@types/node": "22.19.0",
