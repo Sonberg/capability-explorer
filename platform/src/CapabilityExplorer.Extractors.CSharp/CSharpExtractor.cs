@@ -33,7 +33,6 @@ public sealed class CSharpExtractor(ExtractorOptions options)
     public IReadOnlyList<UnitResult> Extract()
     {
         var projects = ProjectModel.Discover(options.SourceRoot);
-        var resolver = new PackageResolver(options.PackagesRoot);
         var compilations = new Dictionary<string, Unit>(StringComparer.Ordinal);
 
         Unit Build(ProjectModel p, HashSet<string> visiting)
@@ -48,6 +47,8 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             var issues = new List<ResolutionIssue>(p.ResolutionIssues);
             var frameworkFiles = ReferenceSelection.FrameworkFiles(options.ReferencePacks, p, issues);
             var frameworkPaths = frameworkFiles.ToHashSet(StringComparer.Ordinal);
+            var frameworkPackages = FrameworkPackageCoverage.Read(frameworkFiles);
+            var resolver = new PackageResolver(options.PackagesRoot, frameworkPackages.Packages);
             references.AddRange(ReferenceSelection.FileReferences(frameworkFiles, issues));
             var resolution = resolver.Resolve(p.PackageRoots(), options.Lock?.For(p.RelativePath) ?? (options.Lock is null ? null : []), p.TargetFramework);
             issues.AddRange(resolution.Issues);
@@ -97,7 +98,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             var compilation = CSharpCompilation.Create(p.AssemblyName, trees, distinctReferences,
                 new CSharpCompilationOptions(p.IsExecutable ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: p.Nullable ? NullableContextOptions.Enable : NullableContextOptions.Disable, checkOverflow: p.CheckedArithmetic));
             var decisions = string.Join("\n", issues.Distinct().OrderBy(i => i.Code, StringComparer.Ordinal).ThenBy(i => i.Message, StringComparer.Ordinal).Select(i => $"{i.Code}:{i.Message}"));
-            var referenceFingerprint = ArtifactBuilder.Sha256($"{ReferenceSelection.Fingerprint(references, frameworkFiles.Concat(packageAssemblies))}|packages={resolution.InputFingerprint}|{string.Join("\n", projectReferenceInputs.Order(StringComparer.Ordinal))}|{decisions}");
+            var referenceFingerprint = ArtifactBuilder.Sha256($"{ReferenceSelection.Fingerprint(references, frameworkFiles.Concat(packageAssemblies))}|frameworkPackages={frameworkPackages.Fingerprint}|packages={resolution.InputFingerprint}|{string.Join("\n", projectReferenceInputs.Order(StringComparer.Ordinal))}|{decisions}");
             var unit = new Unit(p, compilation, missingPackages, missingProjects, resolution.Resolved, issues, frameworkPaths, referenceFingerprint);
             compilations[p.FullPath] = unit;
             visiting.Remove(p.FullPath);

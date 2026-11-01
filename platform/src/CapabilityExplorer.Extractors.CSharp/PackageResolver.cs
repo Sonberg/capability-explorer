@@ -10,7 +10,7 @@ public sealed record PackageResolution(IReadOnlyList<string> Assemblies, IReadOn
     public string InputFingerprint { get; init; } = "";
 }
 
-public sealed class PackageResolver(string? packagesRoot)
+public sealed class PackageResolver(string? packagesRoot, IReadOnlyDictionary<string, string>? frameworkPackages = null)
 {
     private static readonly string[] AssemblyFolders = ["ref", "lib"];
 
@@ -40,7 +40,7 @@ public sealed class PackageResolver(string? packagesRoot)
 
             }
 
-            missing.AddRange(roots.Where(p => !byId.ContainsKey(p.Id)));
+            missing.AddRange(roots.Where(p => !byId.ContainsKey(p.Id) && !FrameworkPackageCoverage.Satisfies(frameworkPackages, p.Id, p.Version)));
             var queue = new Queue<string>(roots.Select(p => p.Id));
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             while (queue.TryDequeue(out var id))
@@ -52,7 +52,7 @@ public sealed class PackageResolver(string? packagesRoot)
                 foreach (var dependency in FrameworkSelection.DependencyElements(root, targetFramework))
                 {
                     if ((string?)dependency.Attribute("id") is not { } depId) continue;
-                    if (!byId.ContainsKey(depId))
+                    if (!byId.ContainsKey(depId) && !FrameworkPackageCoverage.Satisfies(frameworkPackages, depId, (string?)dependency.Attribute("version")))
                     {
                         issues.Add(new("UNRESOLVED_TRANSITIVE_PACKAGE", $"Locked package {package.Id} requires {depId} for {targetFramework}, which is absent from the lock; run the packages step again"));
                     }
@@ -134,6 +134,7 @@ public sealed class PackageResolver(string? packagesRoot)
 
     private bool Visit(string id, string? versionRange, List<string> assemblies, List<LockedPackage> resolved, HashSet<string> seen, List<ResolutionIssue> issues, string? target, int depth)
     {
+        if (FrameworkPackageCoverage.Satisfies(frameworkPackages, id, versionRange)) return true;
         if (packagesRoot is null || depth > 6)
         {
             return false;

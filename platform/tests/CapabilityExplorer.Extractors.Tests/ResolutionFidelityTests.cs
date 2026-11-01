@@ -264,6 +264,86 @@ public sealed class ResolutionFidelityTests : IDisposable
         Assert.Equal([expected], new PackageResolver(Cache).Resolve([new("Docs", "1.0.0", 1)], targetFramework: "net8.0").Assemblies);
     }
 
+    [Fact]
+    public void Sdk_declared_framework_packages_supply_pruned_diagnostic_source_and_memory_references()
+    {
+        Project("<PackageReference Include=\"System.Diagnostics.DiagnosticSource\" Version=\"6.0.1\" /><PackageReference Include=\"System.Memory\" Version=\"4.5.4\" />",
+            "public class App { public void Run() { var activity = new System.Diagnostics.Activity(\"test\"); activity.Start(); } }");
+        var output = Extract();
+        Assert.DoesNotContain("UNRESOLVED_", output);
+        Assert.DoesNotContain("COMPILER_", output);
+        Assert.Contains("cs|@ext|System.Diagnostics.DiagnosticSource|M:System.Diagnostics.Activity.Start", output);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Pruned_framework_dependencies_are_satisfied_in_folder_and_locked_package_graphs(bool locked)
+    {
+        Package("Root", "net8.0", "public class RootApi { }");
+        File.WriteAllText(Path.Combine(Cache, "root", "1.0.0", "root.nuspec"), "<package><metadata><dependencies><dependency id=\"System.Diagnostics.DiagnosticSource\" version=\"6.0.1\" /><dependency id=\"System.Memory\" version=\"4.5.4\" /></dependencies></metadata></package>");
+        Project("<PackageReference Include=\"Root\" Version=\"1.0.0\" />", "public class App { }");
+        var packageLock = new PackageLock();
+        packageLock.Set("App.csproj", [new("Root", "1.0.0")]);
+        var output = Assert.Single(new CSharpExtractor(new ExtractorOptions(Path.Combine(_root, "src"), "resolution", "0123456789abcdef0123456789abcdef01234567", Cache, Packs, locked ? packageLock : null)).Extract()).Jsonl;
+        Assert.DoesNotContain("UNRESOLVED_TRANSITIVE_PACKAGE", output);
+        Assert.Contains("\"status\":\"full\"", output);
+    }
+
+    [Fact]
+    public void Framework_coverage_does_not_bypass_explicit_locked_package_folder_validation()
+    {
+        Project("<PackageReference Include=\"System.Memory\" Version=\"4.5.4\" />", "public class App { }");
+        var packageLock = new PackageLock();
+        packageLock.Set("App.csproj", [new("System.Memory", "4.5.4")]);
+        Assert.Throws<InvalidOperationException>(() => new CSharpExtractor(new ExtractorOptions(Path.Combine(_root, "src"), "resolution", "0123456789abcdef0123456789abcdef01234567", Cache, Packs, packageLock)).Extract());
+    }
+
+    [Theory]
+    [InlineData("6.0.1", true)]
+    [InlineData("[6.0.1]", true)]
+    [InlineData("[10.0.14,)", true)]
+    [InlineData("(10.0.14,)", false)]
+    [InlineData("10.0.15", false)]
+    [InlineData("[11.0.0,)", false)]
+    [InlineData("6.0.1-preview.1", false)]
+    [InlineData("*", false)]
+    [InlineData("(,6.0.1)", false)]
+    public void Framework_package_proof_requires_a_known_id_and_covered_stable_constraint(string range, bool satisfied)
+    {
+        var coverage = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Known.Package"] = "10.0.14" };
+        var result = new PackageResolver(Cache, coverage).Resolve([new("Known.Package", range, 1)], targetFramework: "net10.0");
+        Assert.Equal(satisfied, result.Missing.Count == 0);
+        Assert.Single(new PackageResolver(Cache, coverage).Resolve([new("Unknown.Package", range, 1)], targetFramework: "net10.0").Missing);
+    }
+
+    [Fact]
+    public void A_newer_cached_version_satisfies_a_naked_NuGet_minimum()
+    {
+        Directory.CreateDirectory(Path.Combine(Cache, "cached", "6.0.2"));
+        var result = new PackageResolver(Cache).Resolve([new("Cached", "6.0.1", 1)], targetFramework: "net10.0");
+        Assert.Empty(result.Missing);
+        Assert.Equal("6.0.2", Assert.Single(result.Resolved).Version);
+    }
+
+    [Fact]
+    public void Framework_package_metadata_is_bound_to_the_analysis_identity()
+    {
+        var packs = Path.Combine(_root, "packs");
+        var pack = Path.Combine(packs, "Microsoft.NETCore.App.Ref", "10.0.0");
+        var refs = Directory.CreateDirectory(Path.Combine(pack, "ref", "net10.0")).FullName;
+        var data = Directory.CreateDirectory(Path.Combine(pack, "data")).FullName;
+        File.Copy(Directory.EnumerateFiles(Path.Combine(Packs, "Microsoft.NETCore.App.Ref"), "System.Runtime.dll", SearchOption.AllDirectories).Single(), Path.Combine(refs, "System.Runtime.dll"));
+        Project("", "public class App { }");
+        var metadata = Path.Combine(data, "PackageOverrides.txt");
+        File.WriteAllText(metadata, "System.Memory|5.0.0\n");
+        var first = Extract(packs);
+        File.WriteAllText(metadata, "System.Memory|5.0.1\n");
+        var second = Extract(packs);
+        Assert.NotEqual(JsonDocument.Parse(first.Split('\n')[0]).RootElement.GetProperty("configHash").GetString(),
+            JsonDocument.Parse(second.Split('\n')[0]).RootElement.GetProperty("configHash").GetString());
+    }
+
     private string Package(string id, string tfm, string source, string? assembly = null)
     {
         var dir = Path.Combine(Cache, id.ToLowerInvariant(), "1.0.0", "lib", tfm);
