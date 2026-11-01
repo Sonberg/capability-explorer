@@ -6,13 +6,16 @@ It extends [the existing desk assessment](../research/code-analysis-options.md)
 and its 17 scored modes. Planning baseline: main `1e1122b62587eda7f3e2817c1619ba29ce292923`.
 The [research register](../research/code-insights-research-register.json) preserves
 historical scores and records refreshed upstream pins without claiming new tests.
+The [per-tool council protocol](code-insights-tool-council-protocol.md) is part of
+this contract. No individual tool council or candidate runtime trial has run yet.
 
 ## GOAL
 
 <goal>Identify the smallest, safest combination of existing and complementary tools
 that measurably improves the evidence-backed insights capability-explorer obtains
 from other repositories, publish a reproducible comparison and actionable GitHub
-recommendations, and leave adoption to an explicit implementation decision.</goal>
+recommendations through independent per-tool councils, and specify separately
+validated, single-tool PRs for candidates that earn introduction.</goal>
 
 ## ASSUMPTIONS
 
@@ -34,6 +37,11 @@ recommendations, and leave adoption to an explicit implementation decision.</goa
 - Private Glufs input remains unavailable under #23. Use sealed public/synthetic
   corpora; report unavailable acceptance rather than substitute invented results.
 - Default outcome may be “retain the current implementation”; no tool must win.
+- Run unattended within existing authority. Default to reversible, local, opt-in
+  work; park decisions needing new access, spending or irreversible authority.
+  Record the blocker and continue independent work without questioning the user.
+- This prompt plans later implementation. Each introduced tool gets its own PR;
+  the judge permits proposing an introduction, while the owner controls merging.
 
 ## STACK
 
@@ -59,6 +67,10 @@ recommendations, and leave adoption to an explicit implementation decision.</goa
 - Native read-only research workers may run in parallel; root integrates the
   reference/score registers and issue. Ruflo is a coordination ledger, not proof
   that research, experiments or a distributed release gate actually ran.
+- Independent review method: `sparc/skills/sparc-review/SKILL.md` distinguishes
+  evidence presence from gate success and requires exact evidence bindings and
+  disclosure of shared control. Apply that principle, not an uninstalled MCP
+  dependency. The council protocol is a project design, not a claimed Ruflo feature.
 
 ## PHASES
 
@@ -81,6 +93,8 @@ recommendations, and leave adoption to an explicit implementation decision.</goa
    only when they address a named gap, including Tree-sitter/SCIP/ast-grep,
    CodeQL/Joern and cloc, and relevant protocol-specific parsers under MADR-0013.
 5. Create the small phase validator described below before claiming phase success.
+   Open a separate dossier for each candidate/mode, including baseline comparators.
+   Complete the council's desk round before reserving a runtime trial slot.
 
 Deliver: updated inventory, requirements-to-insight matrix, claim-level references,
 candidate/mode register, and explicit safety/budget assumptions.
@@ -139,10 +153,11 @@ measurement limits15. Gate: `node scripts/research/check-code-insights.mjs pseud
 6. Retain compiler-backed facts as canonical unless an independently verified
    replacement meets their role's evidence contract. Design a thin producer or
    research sidecar first; do not mutate ce.v1/schema to accommodate vague edges.
-7. Give each writer a separate worktree and exact paths. Use up to root + two
-   researchers + independent reviewer if actual session capacity permits. Do not
-   promise eight executors merely because a config says eight. Only root changes
-   shared registers/manifests; source research can overlap, timed trials cannot.
+7. Follow the council protocol: root coordinates; separate SME, adversary and
+   advisor agents independently assess each tool; a fourth independent agent
+   judges after a slot frees. Actual capacity is four including root, not eight.
+   Reuse agents across tools, never conflicting roles within one tool decision.
+   Separate writer worktrees and root-only shared manifest integration still apply.
 
 Rubric /100: role fit and score integrity30; safety/provenance30; integration25;
 frugal execution15. Gate: `node scripts/research/check-code-insights.mjs architecture`.
@@ -156,6 +171,9 @@ them into truth. Report adapter effort, runtime/dependency footprint, peak memor
 disk, elapsed time and marginal value beyond the current baseline. Run failure
 paths and prove no writes/egress. No installation or runtime behavior can be marked
 verified from README prose alone. Record blocked trials without inventing scores.
+After each trial, reconvene its council against the exact receipts. The judge
+must resolve every blocker with evidence before approving an introduction proposal.
+Reject/defer is a complete evaluation outcome, not a passed runtime/adoption gate.
 
 For any separately authorized model trial, use fixed inputs and record exact
 model/artifact, prompt hash, parameters, repetition history, citation validity and
@@ -165,16 +183,18 @@ results. Human-validated truth and uncertainty must remain visible in outputs.
 Rubric /100: correctness/evidence40; isolation/failures25; measured marginal value25;
 reproducibility10. Gate: `node scripts/research/check-code-insights.mjs refinement`.
 
-### C — Completion: owner recommendations, not automatic adoption
+### C — Completion: per-tool verdicts and independently reviewable delivery
 
 Produce an updated readable report plus machine-readable references, per-mode
 scores/uncertainty and raw trial receipts. Every recommendation names a current
 insight gap, observed value, hard-gate status, rejected alternatives, dependency
 cost and smallest implementation slice. Recommend retain, trial, thin adapter,
-defer or reject; no dependency or implementation MADR is adopted automatically.
+defer or reject. Record each council's signed-by-agent-ID rationale and dissent;
+this identifies authorship, not cryptographic attestation or proof of truth.
+No dependency or implementation MADR is adopted automatically.
 
 Create/update ONE dedicated research issue, link #6/#12/#23/#24 and the existing
-report, and include a traceable checklist and owner decisions. Avoid duplicate
+report, and include per-tool council status, PR links and owner decisions. Avoid duplicate
 issues; create separate implementation issues only for supported, non-overlapping
 gaps. Update HANDOFF/changelog only for actual published work. Commit changes.
 For a source PR, integrate fresh main before normal local act/security and PR
@@ -182,6 +202,15 @@ checks, target main explicitly, and leave merge to the owner. For a planning-onl
 handoff, publish the complete prompt/results on the issue without pretending a
 full CI or experimental run occurred. Apply MADR-0014 to recoverable inactive
 worktrees after publication; preserve private evidence and active previews.
+
+Plan a tool-free foundation PR first for validator/oracles/council records. For
+later execution, introduce exactly one independently judged tool/mode per PR,
+including its thin adapter, tests, pin/license review, opt-in setting, rollback,
+MADR and changelog where applicable. Never bundle competing packers or adapters.
+Base each PR on fresh main with its required foundation merged; do not stack
+unmerged dependencies. Independent evaluations can continue while reviews wait.
+Owner merges only; no auto-merge. A changed tool/config/base invalidates affected
+receipts and requires relevant council revalidation and mandatory local CI.
 
 Rubric /100: source/claim traceability35; actionable role-based decisions30;
 honest limits20; owner handoff/cost15.
@@ -205,7 +234,9 @@ Gate: `node scripts/research/check-code-insights.mjs completion`.
   readback. Do not create a competing store or rely on failed automatic hooks.
 - No main writes, force-push, merges, paid calls, private-source uploads, source
   dependency execution, broad plugin setup or silent eligibility exceptions.
-- Batch essential questions with recommended defaults. “Status” gets a table.
+- Do not interrupt the sleeping user. Park essential approval/access questions
+  with safe defaults in the handoff; elapsed time never grants approval.
+  “Status” gets a table.
   READY means the stated research proofs ran; a plan or a high score is not proof.
 
 ## COST GUARDRAILS
@@ -218,9 +249,14 @@ Gate: `node scripts/research/check-code-insights.mjs completion`.
   estimate and approval. Report actual paid calls and unknown subscription cost.
 - Reuse cached pinned sandbox images. No browser, graph database, large model or
   additional service in ordinary CI merely to compare tools. No `[all]` bundles.
-- Initial budget: desk research plus at most three candidate trials, 20 minutes
-  each for a small corpus. A packaging failure permits one targeted retry; otherwise
+- Initial budget: desk research plus at most three candidate attempts, 20 minutes
+  cumulative preparation/execution each for a small corpus. Failed candidates
+  consume a slot. A packaging failure permits one targeted retry within that cap; otherwise
   record unavailable evidence. No 1M/10M experiment is authorized by this brief.
+  Freeze the protocol's download/output/resource envelope before preparation.
+- Per tool/round: three concise independent briefs, one bounded rebuttal pass,
+  then one independent judgment. No recursive councils or debate until consensus.
+  At most two council rounds (desk and trial); unresolved blockers mean defer.
 - Keep at least10GiB actual free disk for experiments, plus their estimated output.
   Tiny CI fixtures must use deterministic capacity inputs and separately test the
   real guard; do not require a hosted runner to have the experimental reserve.
@@ -235,6 +271,9 @@ negative cases: missing refs, incorrect weights/totals, cross-role ranking,
 unverified adoption, mixed fact/inference outputs, absent runtime receipts and
 inaccessible sources asserted as tested must fail. It must distinguish a complete
 research decision to defer/reject from a passed candidate adoption gate.
+Also fail absent/conflicting role identities, unaddressed adversarial blockers,
+post-hoc changed success criteria, multi-tool introduction PRs, stale receipts,
+or a judge verdict unsupported by the cited tool/config/corpus/base identities.
 
 ```sh
 node scripts/research/check-code-insights.mjs specification
@@ -244,6 +283,13 @@ node scripts/research/check-code-insights.mjs refinement
 node scripts/research/check-code-insights.mjs completion
 node scripts/research/check-code-insights.mjs all
 ```
+
+The same proposed validator must support a per-tool dossier gate:
+`node scripts/research/check-code-insights.mjs tool --id scc --stage desk`
+and stages `trial`, `decision`, `pr`. These interfaces do not exist yet.
+Validate each selected tool separately before advancing it; no aggregate score
+or another tool's passing result may waive its gate. A defer/reject decision
+does not make the tool's trial or PR gate pass.
 
 Completion additionally requires the real GitHub issue URL/number and explicit
 unverified results. If a PR is published, ordinary `make EXECUTION=sandbox local-check`

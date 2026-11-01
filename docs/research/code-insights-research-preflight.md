@@ -21,6 +21,11 @@ license review or permission to redistribute it.
 
 The [complete Brain Prompt](../plans/code-insights-research-brain-prompt.md)
 defines the future research, trial protocol, scoring and owner decisions.
+Its [council protocol](../plans/code-insights-tool-council-protocol.md) adds the
+unattended package order, independent SME/adversary/advisor/judge roles for each
+tool/mode, separate gates and one introduction PR per accepted tool. A tool-free
+foundation comes first; later dependent PRs wait for owner merge. All tool council
+verdicts and runtime trials remain pending. Review of this plan is not tool approval.
 
 ## Recommendations for the research issue
 
@@ -33,7 +38,7 @@ defines the future research, trial protocol, scoring and owner decisions.
 | Security/dataflow | Evaluate CodeQL/Joern separately alongside existing Semgrep/Trivy/Gitleaks | Different engines may address different security questions | Rules, taint/dataflow, dependencies and image scans are distinct scopes |
 | Interpretation/navigation | Study Understand-Anything and mixed Graphify workflows separately | Useful navigation/domain-proposal ideas | Model output, deterministic derivation and reviewed assertions must remain distinct |
 
-These recommendations select experiments, not dependencies. No implementation
+These recommendations propose experiment candidates, not approved trials or dependencies. No implementation
 issue should be justified solely by a desk score or an upstream performance claim.
 An implementation recommendation needs a concrete missing insight, incremental
 correct output, provenance, failure behavior, cost and the smallest compatible adapter.

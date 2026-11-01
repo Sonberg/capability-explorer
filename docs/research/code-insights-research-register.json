@@ -2,6 +2,8 @@
   "schemaVersion": 1,
   "trackingIssue": "https://github.com/Sonberg/capability-explorer/issues/31",
   "scope": "research execution plan; not candidate adoption or completed experimental research",
+  "councilPolicy": {"protocol": "docs/plans/code-insights-tool-council-protocol.md", "roles": ["sme", "adversary", "advisor", "independent-judge"], "distinctAgentsPerTool": true, "authorMayJudge": false, "actualConcurrentSlotsIncludingCoordinator": 4, "roundsPerToolMaximum": 2, "rebuttalsPerRoundMaximum": 1, "toolCouncilStatus": "not yet executed", "unresolvedBlockerVerdict": "defer"},
+  "deliveryPolicy": {"base": "main", "toolFreeFoundationFirst": true, "introducedToolsPerPR": 1, "introducedModesPerPR": 1, "unmergedPrerequisiteStacking": false, "mergeAuthority": "repository owner", "autoMerge": false, "initialTrialLimit": 3, "userQuestionsDuringUnattendedPlanning": false, "newSpendingAuthority": false},
   "baseline": "1e1122b62587eda7f3e2817c1619ba29ce292923",
   "createdAt": "2026-11-01T23:33:24.126944+00:00",
   "localResearchDate": "2026-11-02 Europe/Stockholm",
