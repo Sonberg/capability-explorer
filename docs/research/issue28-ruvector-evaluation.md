@@ -72,8 +72,8 @@ share that defect.
 The existing `EmbeddingStore.cs` uses `real[]::vector`, cosine `<=>` and
 `CREATE EXTENSION vector` in migration `0003_embeddings.sql`. A functioning
 `ruvector` distance operator does not establish drop-in compatibility. Separate
-instances were used; coexistence with pgvector was not tested. The current
-source SQL also registers access method `hnsw`, making namespace/operator/type
+instances were used; coexistence with pgvector was not tested. The inspected
+image SQL also registers access method `hnsw`, making namespace/operator/type
 coexistence a required explicit test, not an assumption.
 
 No meaningful speedup claim can follow from these runs: CPU architecture and
