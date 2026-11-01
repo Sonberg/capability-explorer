@@ -14,6 +14,7 @@ public sealed class HttpTargetTests : IDisposable
     [InlineData("$\"https://graph.example/v1/{id}/events?token=secret#fragment\"", "host=graph.example", "/v1/{}/events")]
     [InlineData("\"https://graph.example:8443/events\"", "host=graph.example:8443", "/events")]
     [InlineData("\"/relative?token=secret#fragment\"", "client=HttpFixture", "/relative")]
+    [InlineData("\"/a/../relative\"", "client=HttpFixture", "/relative")]
     public void Separates_host_path_and_safe_metadata(string expression, string hint, string route)
     {
         var records = Extract(expression);
@@ -48,10 +49,34 @@ public sealed class HttpTargetTests : IDisposable
         Assert.Equal($"http|@unbound:mapping/HttpFixture:{hint}|GET {route}", edge.GetProperty("to").GetString());
     }
 
-    private JsonElement[] Extract(string expression, bool withBase = false)
+    [Fact]
+    public void Multiple_base_registrations_are_ambiguous_but_absolute_request_overrides_them()
+    {
+        var unknown = Request(Extract("\"events\"", true, true));
+        Assert.False(unknown.TryGetProperty("to", out _));
+        Assert.Equal("dynamic-string", unknown.GetProperty("unresolvedReason").GetString());
+        var absolute = Request(Extract("\"https://other.example/events\"", true, true));
+        Assert.Equal("http|@unbound:mapping/HttpFixture:host=other.example|GET /events", absolute.GetProperty("to").GetString());
+    }
+
+    [Fact]
+    public void Base_derived_target_cites_registration_evidence()
+    {
+        var records = Extract("\"events\"", true);
+        var edge = Request(records);
+        var evidence = edge.GetProperty("evidence").EnumerateArray().Select(e => e.GetString()).ToHashSet();
+        var registrationLine = File.ReadAllLines(Path.Combine(_root, "HttpFixture.cs"))
+            .Select((line, index) => (line, index)).Single(x => x.line.Contains("static void Register", StringComparison.Ordinal)).index + 1;
+        Assert.Contains(records, r => r.GetProperty("kind").GetString() == "evidence"
+            && evidence.Contains(r.GetProperty("id").GetString())
+            && r.GetProperty("span").GetProperty("startLine").GetInt32() == registrationLine);
+    }
+
+    private JsonElement[] Extract(string expression, bool withBase = false, bool duplicate = false)
     {
         File.WriteAllText(Path.Combine(_root, "HttpFixture.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>");
         var registration = withBase ? "static void Register() => AddHttpClient<HttpFixture>(c => c.BaseAddress = new System.Uri(\"https://base.example/prefix/\")); static void AddHttpClient<T>(System.Action<System.Net.Http.HttpClient> configure) {}" : "";
+        if (duplicate) registration += " static void Other() => AddHttpClient<HttpFixture>(c => c.BaseAddress = new System.Uri(\"https://other.example/\"));";
         File.WriteAllText(Path.Combine(_root, "HttpFixture.cs"), $$"""
             using System.Net.Http;
             public class HttpFixture {

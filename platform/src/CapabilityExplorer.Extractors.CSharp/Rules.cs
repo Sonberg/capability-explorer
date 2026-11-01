@@ -682,7 +682,7 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
     private void HttpClients(List<CSharpExtractor.SourceFile> files)
     {
         // Typed clients: AddHttpClient<T>(c => c.BaseAddress = new Uri(<expr>)).
-        var bases = new Dictionary<string, string>(StringComparer.Ordinal);
+        var bases = new Dictionary<string, (string Hint, List<(CSharpExtractor.SourceFile File, SyntaxNode Node)> Sources, bool Ambiguous)>(StringComparer.Ordinal);
         foreach (var (tree, model, _) in context.Trees())
         {
             foreach (var inv in tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>().Where(i => MethodName(i) == "AddHttpClient" && TypeArguments(i).Any()))
@@ -692,7 +692,8 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                     continue;
                 }
 
-                var assignment = inv.DescendantNodes().OfType<AssignmentExpressionSyntax>().FirstOrDefault(a => a.Left.ToString().EndsWith("BaseAddress", StringComparison.Ordinal));
+                var assignments = inv.DescendantNodes().OfType<AssignmentExpressionSyntax>().Where(a => a.Left.ToString().EndsWith("BaseAddress", StringComparison.Ordinal)).ToArray();
+                var assignment = assignments.FirstOrDefault();
                 var uriArg = assignment?.Right.DescendantNodesAndSelf().OfType<BaseObjectCreationExpressionSyntax>().FirstOrDefault()?.ArgumentList?.Arguments.FirstOrDefault()?.Expression;
                 var hint = uriArg switch
                 {
@@ -701,7 +702,12 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                     _ when ConstString(model, uriArg) is { } literal => $"base={literal.Value}",
                     _ => $"client={clientType.Name}",
                 };
-                bases[keys.Of(clientType)] = hint;
+                var key = keys.Of(clientType);
+                var source = new CSharpExtractor.SourceFile(relative(tree.FilePath), tree.GetText().ToString(), tree, model);
+                var proof = new List<(CSharpExtractor.SourceFile File, SyntaxNode Node)> { (source, inv) };
+                var ambiguous = assignments.Length != 1;
+                if (bases.TryGetValue(key, out var previous)) { proof.AddRange(previous.Sources); ambiguous = true; }
+                bases[key] = (hint, proof, ambiguous);
             }
         }
 
@@ -728,18 +734,24 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
 
                 var verb = HttpVerbs.First(v => name.StartsWith(v, StringComparison.Ordinal)).ToUpperInvariant();
                 var containing = CSharpExtractor.Owner(f.Model, inv.SpanStart)?.ContainingType;
-                var hint = containing is not null && bases.TryGetValue(keys.Of(containing), out var h) ? h : $"client={containing?.Name ?? "unknown"}";
-                var target = HttpRequestTarget.Parse(url.Value, hint);
+                var hasBase = containing is not null && bases.ContainsKey(keys.Of(containing));
+                var configured = hasBase ? bases[keys.Of(containing!)] : default;
+                var hint = hasBase ? configured.Hint : $"client={containing?.Name ?? "unknown"}";
+                // A literal absolute request ignores any base; otherwise ambiguous registrations cannot bind it.
+                var absolute = url.Value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || url.Value.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+                var proof = url.Sources.Select(s => f.Evidence(b, s)).Append(f.Evidence(b, inv)).ToList();
+                if (hasBase && !absolute) proof.AddRange(configured.Sources.Select(s => s.File.Evidence(b, s.Node)));
+                var target = hasBase && configured.Ambiguous && !absolute ? null : HttpRequestTarget.Parse(url.Value, hint);
                 if (target is null)
                 {
-                    b.Edge(owner, "REQUESTS", null, url.Sources.Select(s => f.Evidence(b, s)).Append(f.Evidence(b, inv)), "rule", "unresolved", "dynamic-string", Http);
+                    b.Edge(owner, "REQUESTS", null, proof, "rule", "unresolved", "dynamic-string", Http);
                     continue;
                 }
 
                 var props = new JsonObject { ["method"] = verb, ["normalizedRoute"] = target.Route };
                 if (target.Scheme is not null) props["scheme"] = target.Scheme;
                 if (target.QueryNames.Length > 0) props["query"] = new JsonArray(target.QueryNames.Select(q => (JsonNode)JsonValue.Create(q)!).ToArray());
-                b.Edge(owner, "REQUESTS", $"http|{Unbound(target.Kind, target.Hint)}|{verb} {target.Route}", url.Sources.Select(s => f.Evidence(b, s)).Append(f.Evidence(b, inv)), "rule", "unresolved", "configuration", Http, props);
+                b.Edge(owner, "REQUESTS", $"http|{Unbound(target.Kind, target.Hint)}|{verb} {target.Route}", proof, "rule", "unresolved", "configuration", Http, props);
             }
         }
     }

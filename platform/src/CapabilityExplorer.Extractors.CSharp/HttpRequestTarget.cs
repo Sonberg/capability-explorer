@@ -7,7 +7,7 @@ internal sealed partial record HttpRequestTarget(string Kind, string Hint, strin
 {
     public static HttpRequestTarget? Parse(string value, string hint)
     {
-        if (value.StartsWith("//", StringComparison.Ordinal) || value.Contains('\\')) return null;
+        if (value.StartsWith("//", StringComparison.Ordinal) || value.Any(c => c is '\\' or '|' or '\r' or '\n')) return null;
         var parts = hint.Split('=', 2);
         var marker = "ceplaceholder";
         while (value.Contains(marker, StringComparison.OrdinalIgnoreCase) || hint.Contains(marker, StringComparison.OrdinalIgnoreCase)) marker += "x";
@@ -29,10 +29,11 @@ internal sealed partial record HttpRequestTarget(string Kind, string Hint, strin
             }
         }
 
-        var path = uri is null ? value.Split('?', '#')[0] : uri.AbsolutePath.Replace(marker, "{}", StringComparison.Ordinal);
+        if (!Uri.TryCreate(new Uri("http://ce.invalid/"), safe, out var relativeUri)) return null;
+        var path = (uri ?? relativeUri).AbsolutePath.Replace(marker, "{}", StringComparison.Ordinal);
         var query = uri is null ? value.Split('#')[0].Split('?', 2).Skip(1).FirstOrDefault() : uri.Query.TrimStart('?');
         var names = (query ?? "").Split('&', StringSplitOptions.RemoveEmptyEntries).Select(q => q.Split('=')[0])
-            .Where(q => q.Length > 0 && !q.Contains(marker, StringComparison.Ordinal) && !q.Contains('{')).ToArray();
+            .Where(q => q.Length > 0 && !q.Contains(marker, StringComparison.Ordinal) && !q.Contains('{')).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
         return new HttpRequestTarget(uri is null ? parts[0] : "host", uri is null ? parts[1] : uri.Authority.ToLowerInvariant(),
             Rules.NormaliseRoute(path), uri?.Scheme, names);
     }
