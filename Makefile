@@ -9,7 +9,7 @@ OFFLINE := $(SANDBOX) --offline
 
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
         restore ui build test-ts test-contracts test-evaluation test-extractors test-explorer test-store evaluate evaluate-golden \
-        extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze analyze-worker explore ollama postgres dev dev-data dev-down clean local-check pr-check install-git-hooks actions-audit test-local-ci security-check
+        analyze-all extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze analyze-worker explore ollama postgres dev dev-data dev-down clean local-check pr-check install-git-hooks actions-audit test-local-ci security-check
 
 help:
 	@echo "make local-check     run the full GitHub CI workflow locally through nektos/gh-act before pushing"
@@ -158,6 +158,11 @@ test-explorer: fixtures build
 analyze: build
 	@test -n "$(CAPABILITY)" || { echo "usage: make analyze CAPABILITY=<id>  (see $(CAPABILITIES))"; exit 2; }
 	GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) scripts/analyze $(CAPABILITY) $(CAPABILITIES)
+
+# Every capability in $(CAPABILITIES), one after another; stops at the first failure.
+analyze-all:
+	@for c in $$(python3 -c "import json,sys;print(' '.join(c['id'] for c in json.load(open(sys.argv[1]))['capabilities']))" $(CAPABILITIES)); do \
+	  echo "#### $$c"; $(MAKE) --no-print-directory analyze CAPABILITY=$$c || exit 1; done
 
 # Read-only UI over artifacts. The container publishes the port on 127.0.0.1 only.
 # Analysed artifacts come after the golden set: for the same repository, commit and unit, the later one wins.

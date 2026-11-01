@@ -147,7 +147,14 @@ public sealed class CSharpExtractor(ExtractorOptions options)
         // Source generators are not run (that would execute package code), so code that relies on them
         // (e.g. [LoggerMessage] partial methods) reports missing implementations. That is not a gap in the
         // analysed code: note it once, and do not count it against coverage.
-        var errors = unit.Compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error && d.Location.IsInSource && d.Location.SourceTree!.FilePath != "<implicit-usings>").ToList();
+        var errors = unit.Compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error && d.Location.IsInSource && d.Location.SourceTree!.FilePath is { Length: > 0 } and not "<implicit-usings>").ToList();
+        // Roslyn's synthesized tree (the implicit entry point of top-level statements) has no path, so its errors, typically
+        // CS0518 for a missing core library, belong to the project, not to a file.
+        foreach (var d in unit.Compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error && d.Location.IsInSource && d.Location.SourceTree!.FilePath.Length == 0).DistinctBy(d => d.Id))
+        {
+            b.Diagnostic("warning", $"COMPILER_{d.Id}", d.GetMessage(System.Globalization.CultureInfo.InvariantCulture), null, false);
+        }
+
         var generated = errors.Where(d => GeneratorDependent.Contains(d.Id)).ToList();
         if (generated.Count > 0)
         {
