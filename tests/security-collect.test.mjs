@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { validateConfig, inventories, parseVersion, ensureImage, copyCacheSnapshot, recordAttempt, inventoryFindings, dockerArgs, outputDirectory, copySealed, historyInventory, historyCheck } from '../scripts/security-collect.mjs';
+import { validateConfig, inventories, parseVersion, trivyScanArgs, ensureImage, copyCacheSnapshot, recordAttempt, inventoryFindings, dockerArgs, outputDirectory, copySealed, historyInventory, historyCheck } from '../scripts/security-collect.mjs';
 import { runtimeInventory } from '../scripts/security-collect-inventory.mjs';
 import { sha } from '../scripts/security-audit-lib.mjs';
 const image = `scanner:1@sha256:${'a'.repeat(64)}`;
@@ -129,4 +129,12 @@ test('per-run database snapshot preserves bytes without writable sharing and rej
   assert.equal(fs.readFileSync(path.join(target, 'db'), 'utf8'), 'original');
   fs.symlinkSync('/etc/passwd', path.join(source, 'link'));
   assert.throws(() => copyCacheSnapshot(source, target), /symlink/);
+});
+
+test('filesystem dev dependency flag is never sent to image scanner', () => {
+  assert.ok(trivyScanArgs('fs').includes('--include-dev-deps'));
+  assert.ok(!trivyScanArgs('image').includes('--include-dev-deps'));
+  assert.equal(trivyScanArgs('image')[0], 'image');
+  assert.ok(trivyScanArgs('image').includes('--list-all-pkgs'));
+  assert.throws(() => trivyScanArgs('unknown'), /unsupported/);
 });

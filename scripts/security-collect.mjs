@@ -8,6 +8,11 @@ import { snapshot, sha, readJson, findings } from './security-audit-lib.mjs';
 const need = (ok, message) => { if (!ok) throw new Error(message); };
 export { validateConfig, inventories } from './security-collect-inventory.mjs';
 import { validateConfig, inventories, runtimeInventory } from './security-collect-inventory.mjs';
+export function trivyScanArgs(mode) {
+  need(['fs', 'image'].includes(mode), 'unsupported Trivy scan mode');
+  const common = ['--cache-dir', '/cache', '--skip-db-update', '--skip-check-update', '--offline-scan', '--skip-version-check', '--secret-config', '', '--disable-telemetry', '--config', '', '--ignorefile', '/rules/empty-ignore', '--format', 'json', '--list-all-pkgs', '--severity', 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL', '--exit-code', '0'];
+  return [mode, ...common, ...(mode === 'fs' ? ['--include-dev-deps'] : [])];
+}
 export function dockerArgs(tool, mounts, network = 'none') {
   const args = ['run', '--rm', '--pull=missing', '--platform', tool.platform, '--network', network, '--user', `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`, '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--pids-limit', '512', '--memory', '2g', '--cpus', '2', '--tmpfs', '/tmp:rw,nosuid,size=1g', '-e', 'HOME=/tmp', '-e', 'SEMGREP_SEND_METRICS=off', '-e', 'SEMGREP_ENABLE_VERSION_CHECK=0', '-e', 'GIT_CONFIG_NOSYSTEM=1', '-e', 'GIT_CONFIG_GLOBAL=/dev/null'];
   if (tool.name) { need(['trivy', 'gitleaks', 'semgrep'].includes(tool.name), 'invalid tool entrypoint'); args.push('--entrypoint', tool.name); }
@@ -172,11 +177,11 @@ export async function collect(root, relative, ledgerPath, manualPath, run = runn
     write('manifest.json', manifest);
   };
   const attemptScan = (id, ...args) => recordAttempt(manifest, id, () => addScan(id, ...args), () => write('manifest.json', manifest));
-  const common = ['--cache-dir', '/cache', '--skip-db-update', '--skip-check-update', '--offline-scan', '--skip-version-check', '--secret-config', '', '--disable-telemetry', '--config', '', '--ignorefile', '/rules/empty-ignore', '--format', 'json', '--list-all-pkgs', '--severity', 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL', '--include-dev-deps', '--exit-code', '0'];
+
   need(inventory.dependencies.length && inventory.sast.length, 'required dependency/SAST scope is empty');
-  attemptScan('dependencies', 'trivy', ['fs', ...common, '--scanners', 'vuln', '--output', '/reports/dependencies.json', '.'], inventory.dependencies, { database, severities: ['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], includeDevDependencies: true });
-  attemptScan('fs-secrets', 'trivy', ['fs', ...common, '--scanners', 'secret', '--output', '/reports/fs-secrets.json', '.'], inventory.source, { coverageReceipt: { kind: 'sealed-tree-invocation', fileCount: inventory.source.length, sourceSha256: source.sha256 } });
-  attemptScan('fs-misconfig', 'trivy', ['fs', ...common, '--scanners', 'misconfig', '--misconfig-scanners', 'dockerfile,terraform', '--include-non-failures', '--output', '/reports/fs-misconfig.json', '.'], inventory.misconfiguration, { applicability: inventory.misconfiguration.length ? 'applicable' : 'not-applicable', coverageReceipt: { kind: 'sealed-tree-invocation', fileCount: inventory.source.length, sourceSha256: source.sha256 }, unsupportedTargets: inventory.unsupportedConfiguration });
+  attemptScan('dependencies', 'trivy', [...trivyScanArgs('fs'), '--scanners', 'vuln', '--output', '/reports/dependencies.json', '.'], inventory.dependencies, { database, severities: ['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], includeDevDependencies: true });
+  attemptScan('fs-secrets', 'trivy', [...trivyScanArgs('fs'), '--scanners', 'secret', '--output', '/reports/fs-secrets.json', '.'], inventory.source, { coverageReceipt: { kind: 'sealed-tree-invocation', fileCount: inventory.source.length, sourceSha256: source.sha256 } });
+  attemptScan('fs-misconfig', 'trivy', [...trivyScanArgs('fs'), '--scanners', 'misconfig', '--misconfig-scanners', 'dockerfile,terraform', '--include-non-failures', '--output', '/reports/fs-misconfig.json', '.'], inventory.misconfiguration, { applicability: inventory.misconfiguration.length ? 'applicable' : 'not-applicable', coverageReceipt: { kind: 'sealed-tree-invocation', fileCount: inventory.source.length, sourceSha256: source.sha256 }, unsupportedTargets: inventory.unsupportedConfiguration });
   const leak = ['--config', '/rules/gitleaks.toml', '--gitleaks-ignore-path', '/rules/empty-ignore', '--ignore-gitleaks-allow', '--redact=100', '--no-banner', '--no-color', '--report-format', 'json', '--timeout', '600'];
   attemptScan('source-secrets', 'gitleaks', ['dir', ...leak, '--report-path', '/reports/source-secrets.json', '.'], inventory.source);
   const historyDir = path.join(out, 'history.git');
@@ -209,7 +214,7 @@ export async function collect(root, relative, ledgerPath, manualPath, run = runn
     }
     const archiveHash = await fileHash(archive);
     mounts.push({ source: archiveDirectory, target: '/archives' });
-    attemptScan(image.id, 'trivy', ['image', ...common, '--scanners', 'vuln', '--input', `/archives/${archiveName}`, '--output', `/reports/${image.id}.json`], [image.reference], { targetImage: image.reference, targetPlatform: image.platform, archiveSha256: archiveHash, database, severities: ['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], includeDevDependencies: true });
+    attemptScan(image.id, 'trivy', [...trivyScanArgs('image'), '--scanners', 'vuln', '--input', `/archives/${archiveName}`, '--output', `/reports/${image.id}.json`], [image.reference], { targetImage: image.reference, targetPlatform: image.platform, archiveSha256: archiveHash, database, severities: ['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], packageScope: 'installed-os-and-language-packages' });
     mounts.pop(); // Reuse exact image bytes on later DB snapshots; no daemon socket reaches scanners.
     } catch (error) {
       if (mounts.at(-1)?.target === '/archives') mounts.pop();

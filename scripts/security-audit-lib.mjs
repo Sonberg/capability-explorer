@@ -129,7 +129,7 @@ export function validate(root, manifest, mode, now = Date.now()) {
     if (scan.id === 'dependencies' || manifest.images.some(x => x.id === scan.id)) {
       need(scan.database && hash(scan.database.sha256) && nonempty(scan.database.version), `${scan.id}: missing database identity`);
       freshness(scan.database.updatedAt, p.maximumDatabaseAgeHours, now, `${scan.id} database`);
-      need(scan.severities?.join(',') === 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL' && scan.includeDevDependencies === true, `${scan.id}: incomplete severity/dependency coverage`);
+      need(scan.severities?.join(',') === 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL' && (scan.id === 'dependencies' ? scan.includeDevDependencies === true : scan.packageScope === 'installed-os-and-language-packages'), `${scan.id}: incomplete severity/dependency coverage`);
     }
     if (scan.id === 'history-secrets') need(scan.historySha256 === manifest.history.sha256, 'history scan mismatch');
     const image = manifest.images.find(x => x.id === scan.id);
