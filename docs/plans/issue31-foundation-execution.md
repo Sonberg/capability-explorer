@@ -68,6 +68,38 @@ reproducibility20, measurement limits12/15: no runtime candidate evidence exists
 Instrument: explicit F1–F7 trace and algorithm/failure-path inspection.
 Not tested: production implementation or candidate execution.
 
+### Architecture
+
+- `scripts/research/evidence.mjs`: standard-library bounded path/JSON/hash API.
+  Public inputs have JSDoc types; references are `{path, sha256}` values.
+- `scripts/research/tool-gates.mjs`: pure council/stage checks plus injected
+  evidence reader. No shell, network, package loading or promotion capability.
+- `scripts/research/check-code-insights.mjs`: strict CLI dispatch and foundation
+  arithmetic/corpus checks. Global research phases fail closed until a separately
+  reviewed study executor provides actual phase evidence; this foundation does
+  not turn the master prompt's future commands into fabricated green results.
+- `tests/research-foundation.test.mjs`: real temporary files and mutation tests;
+  synthetic passing tool receipts are labelled test-only, never public trial data.
+- `config/research/foundation.json`: frozen source corpus and oracle references.
+  `tests/fixtures/research/` is independent of protected product goldens.
+- Existing sandbox Make profile adds only `node --test` in its cached Node image.
+  No manifest/lockfile change, model/service/image or mandatory candidate install.
+
+Dependency direction: CLI → gates → evidence; tests import the same public APIs.
+No new ce.v1 schema or production path. Evidence references cannot escape their
+root or follow symlink components. A JSON declaration is not an authenticated
+attestation; bytes and identities are checked, truth is independently reviewed.
+The root integrator alone writes shared files. Deferred global phase gates are
+intentional scope boundaries, not completed research claims.
+
+Final architecture score: 97/100 (fit30, provenance30, integration25, cost12/15:
+runtime deployment costs of future candidates remain unknown). Instrument:
+acyclic module/scope inspection and F1–F7 to module/test mapping above.
+Grounding: `sparc/docs/tutorial.md` and
+`sparc/plugins/sparc/skills/sparc-review/SKILL.md`, retrieved this run: immutable
+evidence identity is distinct from evidence truth. No SPARC package installed.
+Not tested: implementation, candidates, containment or deployment.
+
 Each later phase records its instrument, final grade, limits and source-bound
 commit. Phase commits are milestones; final PR checks bind the final clean HEAD.
 No new router is installed: standard-library scripts do mechanical work; native
