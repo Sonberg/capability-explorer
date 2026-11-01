@@ -1,11 +1,11 @@
-import {ledgerColors} from './ledger-palette.mjs';
+import {ledgerColors} from './ledger-palette.ts';
 // Decorative particles overlay the paths without changing certainty line styles.
 // SVG motion is created only while enabled; cleanup removes every animation.
-export function animateEdges(container) {
-  const particles = new Map();
+export function animateEdges(container:HTMLElement) {
+  const particles = new Map<SVGPathElement,SVGCircleElement>();
   const ns = 'http://www.w3.org/2000/svg';
-  function pathsIn(root) {
-    return [...root.querySelectorAll('.react-flow__edge-path'),
+  function pathsIn(root:ParentNode):SVGPathElement[] {
+    return [...root.querySelectorAll<SVGPathElement>('.react-flow__edge-path'),
       ...[...root.querySelectorAll('*')].flatMap(el => el.shadowRoot ? pathsIn(el.shadowRoot) : [])];
   }
   function sync() {
@@ -19,9 +19,9 @@ export function animateEdges(container) {
         particle.setAttribute('class','ce-motion-particle');particle.style.pointerEvents='none';
         const motion=document.createElementNS(ns,'animateMotion');
         motion.setAttribute('dur','4s');motion.setAttribute('repeatCount','indefinite');
-        particle.append(motion);path.parentNode.append(particle);particles.set(path,particle);
+        particle.append(motion);path.parentNode?.appendChild(particle);particles.set(path,particle);
       }
-      const motion=particle.firstChild, d=path.getAttribute('d') ?? '';
+      const motion=particle.firstElementChild!, d=path.getAttribute('d') ?? '';
       if (motion.getAttribute('path') !== d) motion.setAttribute('path',d);
     }
   }

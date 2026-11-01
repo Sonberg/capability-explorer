@@ -1,6 +1,6 @@
 import graph from './all-repositories.graph.json' with {type:'json'};
-import {automaticGroups,modelIdentities} from '../src/grouping.mjs';
-import {sqlResources} from '../src/sql-resources.mjs';
+import {automaticGroups,modelIdentities} from '../src/grouping.ts';
+import {sqlResources} from '../src/sql-resources.ts';
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -20,7 +20,7 @@ try {
     console.log(`Checking ${width}×${height}`);
     page.on('pageerror',e=>errors.push(e.message));
     page.on('request',r=>{const u=new URL(r.url());if(u.protocol.startsWith('http') && u.hostname!=='host.docker.internal')external.push(r.url());});
-    await page.goto('http://host.docker.internal:5091');
+    await page.goto(process.env.LIKEC4_PREVIEW_URL??'http://host.docker.internal:5091');
     await page.locator('.react-flow__node').first().waitFor();
     await page.evaluate(() => document.fonts.ready);
     await page.locator('[data-routing-state=ready]').waitFor();

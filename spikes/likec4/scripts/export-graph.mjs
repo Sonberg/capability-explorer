@@ -1,8 +1,8 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { ledgerPalette, ledgerToken } from '../src/ledger-palette.mjs';
-import { sqlResources, sqlObjectDescription } from '../src/sql-resources.mjs';
-import { automaticGroups, modelIdentities } from '../src/grouping.mjs';
+import { ledgerPalette, ledgerToken } from '../src/ledger-palette.ts';
+import { sqlResources, sqlObjectDescription } from '../src/sql-resources.ts';
+import { automaticGroups, modelIdentities } from '../src/grouping.ts';
 
 // Canonical serialization also stabilizes nested evidence objects across API serializers.
 function canonical(value) {

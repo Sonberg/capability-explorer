@@ -39,7 +39,7 @@ The exporter sorts identities, canonicalizes evidence object keys, validates ide
 Regenerate through the sandbox:
 
 ```sh
-scripts/sandbox --offline node sh -c 'cd spikes/likec4 && node scripts/export-graph.mjs test/all-repositories.graph.json src/model/architecture.c4'
+scripts/sandbox --offline node sh -c 'cd spikes/likec4 && node --experimental-strip-types scripts/export-graph.mjs test/all-repositories.graph.json src/model/architecture.c4'
 ```
 
 The supplied six-language reference HTML informed the comparison. Its LikeC4-looking diagram was hand-rendered SVG; this experiment actually compiles LikeC4 source. The private reference HTML and its generated experiments are not committed.
@@ -109,3 +109,13 @@ Full three-pass routing no longer runs during React rendering. The immediate upd
 Measured in the final embedded dark-theme run (12 moves, headless Chromium at 1920×1080): provisional computation maximum/p95 1.6 ms. This is a local fixture result, not a universal performance guarantee. Full worker and end-to-end timings are retained separately in the interaction receipt.
 
 Follow-up performance work is tracked in [issue #13](https://github.com/Sonberg/capability-explorer/issues/13): proposed 200 ms p95 final settling with separately measured immediate feedback, based on cited interaction research. This spike does not close that issue. Its captured pricing revisions predate the fixture dependency patch included by #11; the snapshot remains historical evidence, not a live view of the new fixture selection.
+
+## TypeScript migration
+
+The viewer source is strict TypeScript/TSX, pinned to TypeScript 7.0.2. `npm run build` runs both browser and Web Worker type checks before Vite bundles the application. Geometry transformations use LikeC4's native model types; worker requests and responses have a shared discriminated protocol. Saved browser preferences enter as unknown values and are validated before use.
+
+The Node test/export harness remains JavaScript and explicitly strips TypeScript syntax when loading source modules. This keeps tests on the actual source without another transpilation dependency. Generated `.c4`, graph fixtures, evidence and routing algorithms remain unchanged. This migration improves development checks; it does not claim a reduction in interaction settling time (issue #13).
+
+This is isolated to the spike. The extractor still needs the JavaScript TypeScript compiler API (`createProgram`), which TypeScript 7 does not provide. Its compiler dependency and the main Explorer client are unchanged. See the [TypeScript 7 release announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/) and [Vite's separate type-checking requirement](https://vite.dev/guide/features.html#typescript).
+
+The follow-up branch depends on PR #14 (which includes #11), targets `stage-1-contract-and-fixtures`, and leaves both existing PRs available for owner review. No automatic merge is configured. A separate candidate preview may use port 5092; set `LIKEC4_PREVIEW_URL` inside the sandbox when running the browser harness against it.

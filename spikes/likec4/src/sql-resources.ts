@@ -1,7 +1,8 @@
+import type {SourceGraph,SourceNode} from './types.ts';
 // ce.v1 SQL identity: sql|<exact store reference>|<schema>.<object>[#column].
 // A scoped @unbound reference is not a physical database identity.
-export function sqlResources(graph) {
-  const scopes=new Map();
+export function sqlResources(graph:Pick<SourceGraph,'nodes'>) {
+  const scopes=new Map<string,{storeRef:string;nodeIds:string[]}>();
   for(const node of graph.nodes) {
     if(node.category!=='datastore'||typeof node.symbolKey!=='string'||!node.symbolKey.startsWith('sql|'))continue;
     const parts=node.symbolKey.split('|');
@@ -17,8 +18,8 @@ export function sqlResources(graph) {
     return {...scope,id:`sql_scope_${index}`,nodeIds:scope.nodeIds.sort(),kind,title,description,binding:unbound?'unbound':'bound'};
   });
 }
-export function sqlObjectDescription(node, graph) {
+export function sqlObjectDescription(node:SourceNode, graph:SourceGraph) {
   const facts=graph.edges.flatMap(e=>e.facts??[]);
-  const declaration=facts.find(f=>f.relation==='DECLARES'&&f.to?.key===node.symbolKey&&f.to?.declared&&['Table','View','Routine'].includes(f.to.kind));
-  return declaration?`Declared SQL ${declaration.to.kind.toLowerCase()}`:'SQL object reference · object type or declaration not established';
+  const declaration=facts.find(f=>f.relation==='DECLARES'&&f.to?.key===node.symbolKey&&f.to?.declared&&['Table','View','Routine'].includes(f.to.kind??''));
+  return declaration?`Declared SQL ${declaration.to!.kind!.toLowerCase()}`:'SQL object reference · object type or declaration not established';
 }

@@ -1,7 +1,8 @@
 import React,{useState} from 'react';
-import {ledgerPalette,ledgerColors} from './ledger-palette.mjs';
-function Symbol({kind}) {
-  const category={service:'application',application:'application',channel:'interface',reference:'itComponent','sql-model':'itComponent','sql-object':'dataObject'}[kind];
+import {ledgerPalette,ledgerColors} from './ledger-palette.ts';
+function Symbol({kind}:{kind:string}) {
+  const categories:Record<string,string>={service:'application',application:'application',channel:'interface',reference:'itComponent','sql-model':'itComponent','sql-object':'dataObject'};
+  const category=categories[kind];
   const color=category?ledgerColors[category]:undefined;
   if(kind.startsWith('line'))return <svg viewBox="0 0 44 20" aria-hidden="true" style={{color:ledgerColors.interface}}><path d="M2 10H38" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray={kind==='line-solid'?undefined:'5 3'}/>{kind!=='line-association'&&<path d="M33 5L39 10L33 15" fill="none" stroke="currentColor" strokeWidth="2"/>}</svg>;
   return <svg viewBox="0 0 44 26" aria-hidden="true"><rect x="3" y="3" width="36" height="20" rx="2" className={`legend-symbol ${kind}`} style={color?{fill:color,stroke:color}:undefined}/>{(kind==='reference'||kind==='sql-model')&&<><rect x="0" y="7" width="8" height="5" className={`legend-symbol ${kind}`} style={color?{fill:color,stroke:color}:undefined}/><rect x="0" y="15" width="8" height="5" className={`legend-symbol ${kind}`} style={color?{fill:color,stroke:color}:undefined}/></>}</svg>;

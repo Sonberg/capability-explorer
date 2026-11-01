@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {sqlResources,sqlObjectDescription} from '../src/sql-resources.mjs';
+import {sqlResources,sqlObjectDescription} from '../src/sql-resources.ts';
 const graph=JSON.parse(readFileSync(new URL('./weekly-sales.graph.json',import.meta.url),'utf8'));
 test('five SQL objects roll up into three exact logical scopes, not physical databases',()=>{
  const resources=sqlResources(graph);

@@ -1,20 +1,23 @@
+import type {LayoutedView,DiagramNode} from 'likec4/model';
+import type {DiagramApi,LikeC4EditorCallbacks} from 'likec4/react';
+import type {Group} from './types.ts';
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useLikeC4Model } from 'likec4:single-project';
 import { ReactLikeC4, LikeC4ModelProvider, LikeC4EditorProvider, createLikeC4Editor } from 'likec4/react';
 import { LikeC4Model } from 'likec4/model';
-import {useRouting} from './use-routing.jsx';
-import { animateEdges } from './edge-motion.mjs';
-import { automaticGroups, applyGroups, saveGroup, validateGroups } from './grouping.mjs';
-import { GroupControls, SelectionBridge } from './group-controls.jsx';
-import {ViewpointMenu,viewpointLabel} from './viewpoint-menu.jsx';
-import {DiagramLegend} from './diagram-legend.jsx';
+import {useRouting} from './use-routing.tsx';
+import { animateEdges } from './edge-motion.ts';
+import { automaticGroups, applyGroups, saveGroup, validateGroups } from './grouping.ts';
+import { GroupControls, SelectionBridge } from './group-controls.tsx';
+import {ViewpointMenu,viewpointLabel} from './viewpoint-menu.tsx';
+import {DiagramLegend} from './diagram-legend.tsx';
 import graph from '../test/all-repositories.graph.json';
 import selection from '../test/all-repositories.selection.json';
 import source from './model/architecture.c4?raw';
 import './style.css';
 
-function OptionalEditor({enabled,editor,children}) {
+function OptionalEditor({enabled,editor,children}:{enabled:boolean;editor:LikeC4EditorCallbacks;children:React.ReactNode}) {
   return enabled?<LikeC4EditorProvider editor={editor}>{children}</LikeC4EditorProvider>:children;
 }
 const embedded=new URLSearchParams(location.search).get('embed')==='1';
@@ -23,21 +26,21 @@ function App() {
   const [orthogonal,setOrthogonal]=useState(true);
   const [view, setView] = useState('flow');
   const [resetKey, setResetKey] = useState(0);
-  const [customView, setCustomView] = useState(null);
-  const [selected, setSelected] = useState([]);
-  const [editing, setEditing] = useState(null);
-  const [draftMembers, setDraftMembers] = useState([]);
+  const [customView, setCustomView] = useState<LayoutedView|null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [editing, setEditing] = useState<string|null>(null);
+  const [draftMembers, setDraftMembers] = useState<string[]>([]);
   const [groupName, setGroupName] = useState('');
   const [error, setError] = useState('');
   const [groups, setGroups] = useState(() => {
     try {
-      const saved=JSON.parse(localStorage.getItem('ce.likec4.groups.v1'));
-      if (saved?.source===source) return validateGroups(saved.groups,sourceModel.$data.views.flow);
+      const saved:unknown=JSON.parse(localStorage.getItem('ce.likec4.groups.v1')??'null');
+      if (saved && typeof saved==='object' && 'source' in saved && saved.source===source && 'groups' in saved) return validateGroups(saved.groups,sourceModel.$data.views.flow);
     } catch { /* Invalid or obsolete saved preferences cannot change the source model. */ }
     return automaticGroups(graph);
   });
-  const api = useRef(null);
-  const canvas = useRef(null);
+  const api = useRef<DiagramApi|null>(null);
+  const canvas = useRef<HTMLElement|null>(null);
   const editable=view==='flow'||view==='vertical';
   const generatedView=useMemo(()=>editable?applyGroups(sourceModel.$data.views[view],groups):sourceModel.$data.views[view],[sourceModel,view,groups,editable]);
   const layoutView = editable ? (customView ?? generatedView) : generatedView;
@@ -51,23 +54,23 @@ function App() {
     try {localStorage.setItem('ce.likec4.groups.v1',JSON.stringify({source,groups}));}
     catch {setError('Browser storage is unavailable; groups will last only for this page.');}
   },[groups]);
-  function changeGroups(next) {
+  function changeGroups(next:Group[]) {
     setCustomView(applyGroups(currentView,next));setGroups(next);setSelected([]);setEditing(null);setError('');setResetKey(k=>k+1);
   }
-  function edit(group) {
+  function edit(group?:Group) {
     const ids=group?.members ?? selectedLeaves;
     setEditing(group?.id ?? 'new');setGroupName(group?.title ?? 'My group');setDraftMembers(ids);setError('');
-    api.current?.select({nodes:ids});
+    api.current?.select({nodes:currentView.nodes.filter(node=>ids.includes(node.id)).map(node=>node.id)});
   }
   function save() {
-    try {changeGroups(saveGroup(groups,currentView,{id:editing==='new'?undefined:editing,title:groupName,members:draftMembers}));}
-    catch(e){setError(e.message);}
+    try {changeGroups(saveGroup(groups,currentView,{id:editing==='new'?undefined:editing??undefined,title:groupName,members:draftMembers}));}
+    catch(e){setError(e instanceof Error?e.message:String(e));}
   }
-  function switchView(id) {setView(id);setCustomView(null);setSelected([]);setEditing(null);setError('');}
-  function nodeClick(node) {
+  function switchView(id:string) {setView(id);setCustomView(null);setSelected([]);setEditing(null);setError('');}
+  function nodeClick(node:DiagramNode) {
     if(!editing || node.kind==='@group')return;
     const ids=draftMembers.includes(node.id)?draftMembers.filter(id=>id!==node.id):[...draftMembers,node.id];
-    setDraftMembers(ids);api.current?.select({nodes:ids});
+    setDraftMembers(ids);api.current?.select({nodes:currentView.nodes.filter(node=>ids.includes(node.id)).map(node=>node.id)});
   }
   const [dark, setDark] = useState(()=>embedded?matchMedia('(prefers-color-scheme: dark)').matches:true);
   useEffect(()=>{if(!embedded)return;const query=matchMedia('(prefers-color-scheme: dark)');const update=()=>setDark(query.matches);query.addEventListener('change',update);return ()=>query.removeEventListener('change',update);},[]);
@@ -106,8 +109,8 @@ function App() {
         {routing.state==='error'&&<div className="routing-status" role="status">Routing refinement failed; reset layout to retry.</div>}
         <div className="canvas-hint">{editable?'Click a group to manage it · Shift-click nodes to group · edits stay with this snapshot':'Source hierarchy · choose a repository or SQL-resource detail viewpoint to explore its contents'}</div>
         {editable && <GroupControls group={activeGroup} selectedCount={selectedLeaves.length} editing={editing} name={groupName} setName={setGroupName}
-          memberCount={draftMembers.length} onCreate={()=>edit(null)} onRename={()=>edit(activeGroup)} onEdit={()=>edit(activeGroup)}
-          onOpen={activeGroup && sourceModel.$data.views[`${activeGroup.id}_detail`] ? ()=>switchView(`${activeGroup.id}_detail`) : null} onSave={save} onCancel={()=>{setEditing(null);setError('');}} onDelete={()=>changeGroups(groups.filter(g=>g.id!==activeGroup.id))} error={error}/>}
+          memberCount={draftMembers.length} onCreate={()=>edit()} onRename={()=>edit(activeGroup)} onEdit={()=>edit(activeGroup)}
+          onOpen={activeGroup && sourceModel.$data.views[`${activeGroup.id}_detail`] ? ()=>switchView(`${activeGroup.id}_detail`) : null} onSave={save} onCancel={()=>{setEditing(null);setError('');}} onDelete={()=>changeGroups(groups.filter(g=>g.id!==activeGroup?.id))} error={error}/>}
         {error && !editing && <div className="storage-notice" role="status">{error}</div>}
         <div className="diagram-surface"><LikeC4ModelProvider likec4model={model}><OptionalEditor enabled={editable} editor={editor}>
         <ReactLikeC4 key={`${view}-${resetKey}-${currentView.nodes.length}`} onNodeClick={nodeClick} onInitialized={({diagram}) => {api.current=diagram;}} reactFlowProps={{nodesDraggable:editable,elementsSelectable:true,multiSelectionKeyCode:['Shift','Control','Meta']}} injectFontCss={false} viewId={view} onNavigateTo={switchView} pannable zoomable keepAspectRatio={false}
@@ -127,4 +130,4 @@ function App() {
     <footer>Pan to explore · scroll to zoom · animation is optional decoration, not observed traffic. Source and evidence remain authoritative.</footer>
   </div>;
 }
-createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById('root')!).render(<App />);

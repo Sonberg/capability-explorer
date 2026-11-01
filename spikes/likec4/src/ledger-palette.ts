@@ -74,4 +74,4 @@ export const ledgerPalette = [
   }
 ];
 export const ledgerColors = Object.fromEntries(ledgerPalette.map(item => [item.key,item.color]));
-export const ledgerToken = key => `ledger${key[0].toUpperCase()}${key.slice(1)}`;
+export const ledgerToken = (key:string) => `ledger${key[0].toUpperCase()}${key.slice(1)}`;
