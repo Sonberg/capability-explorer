@@ -205,6 +205,13 @@ try {
   const component = currentGraph.nodes.find((node) => node.drill?.level === 'component');
   check(!!component, 'repository graph must expose a code component drill');
   await sourceNode(component.id).dispatchEvent('click');
+  if (component.symbolKey) { await page.getByText(component.symbolKey, { exact: true }).first().waitFor(); receipt.assertions++; }
+  check(await sourceNode(component.id).getAttribute('data-source-selected') === 'true', 'selected node must retain its exact source selection identity');
+  const neighbors = new Set([component.id]);
+  for (const edge of currentGraph.edges) if (edge.from === component.id || edge.to === component.id) { neighbors.add(edge.from); neighbors.add(edge.to); }
+  if (currentGraph.nodes.some((node) => !neighbors.has(node.id))) {
+    check(await canvas().locator('.react-flow__node[data-neighborhood="outside"]').count() > 0, 'node selection must highlight its neighborhood while retaining other source nodes');
+  }
   const codeResponse = graphResponse((params) => params.get('level') === 'component' && params.get('focus') === component.drill.focus);
   await page.getByRole('button', { name: /Open code/ }).click();
   currentGraph = await (await codeResponse).json(); await ready();
