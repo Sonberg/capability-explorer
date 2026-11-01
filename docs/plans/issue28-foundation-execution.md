@@ -167,6 +167,19 @@ resource envelope remains provisional; see the unverified-scale list above.
 The closing Brain pass found relevant SPARC evidence/trace guidance, without a
 source-grounded reason to add another runtime dependency.
 
+### Foundation architecture gate: 95/100
+
+`issue28-gate PHASE=architecture` passed 39 real PostgreSQL query/HTTP tests.
+Typed `IExplorerQueries` keeps runtime reads outside file indexes; the migration,
+normalizer, snapshot store, cursor and bounded serializer make their respective
+trust and resource boundaries explicit. The independent RuVector experiment
+failed its own adoption prerequisites and cannot alter the canonical store.
+The existing PostgreSQL/Npgsql stack is retained. Five points are deducted for
+the still-proposed owner architecture decision and absent larger-tier capacity
+evidence described in MADR-0017/0018. Brain source review included the RuVector
+graph implementation and compatibility documentation; actual image tests take
+precedence over its broad compatibility claims. No new library is added.
+
 One root integrator owns shared migrations/manifests/CLI/API registration; isolated
 native workers own Store/query/UI, independent tests and the RuVector experiment.
 Actual session capacity is root plus three workers; Ruflo records a hierarchical
