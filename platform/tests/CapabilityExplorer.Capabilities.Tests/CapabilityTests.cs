@@ -64,6 +64,19 @@ public sealed class CapabilityStoreTests
     private static RepositorySource Repo(string id, string location) => new(id, location, SourceKind.Local);
 
     [Fact]
+    public void Include_tests_is_read_from_capability_configuration_and_defaults_to_false()
+    {
+        var (defs, snaps) = Paths();
+        Directory.CreateDirectory(Path.GetDirectoryName(defs)!);
+        File.WriteAllText(defs, """{"capabilities":[{"id":"with-tests","name":"With tests","includeTests":true,"repositories":[]},{"id":"production","name":"Production","repositories":[]}]}""");
+
+        using var store = CapabilityStore.Open(defs, snaps);
+
+        Assert.True(store.Find("with-tests")!.IncludeTests);
+        Assert.False(store.Find("production")!.IncludeTests);
+    }
+
+    [Fact]
     public async Task Definitions_round_trip_and_snapshots_live_in_their_own_file()
     {
         var (defs, snaps) = Paths();

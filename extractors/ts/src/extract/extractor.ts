@@ -7,13 +7,13 @@ import { calls, HANDLER_MAP } from "./calls.ts";
 import { calculations } from "./calculations.ts";
 import { Ctx } from "./context.ts";
 import { declare, detectGenerated } from "./declarations.ts";
-import { discoverUnits, posix, type UnitConfig } from "./project.ts";
+import { discoverUnits, isTestPath, posix, type UnitConfig } from "./project.ts";
 import { nextRoutes } from "./next.ts";
 import { axiosRule, express, fetchRule, openApiRule, pgRule, projectNode, serviceBusRule, serviceNode } from "./rules.ts";
 
 export const EXTRACTOR: ToolRef = { name: "ts-compiler", version: "0.1.0" };
 
-export interface ExtractOptions { source: string; repository: string; commit: string }
+export interface ExtractOptions { source: string; repository: string; commit: string; includeTests?: boolean }
 export interface UnitResult { unitPath: string; unitName: string; jsonl: string; language: "typescript" | "javascript" }
 
 /** Module specifiers that did not resolve: packages that are not installed (nothing is ever installed). */
@@ -31,7 +31,7 @@ function missingModules(program: ts.Program, files: readonly ts.SourceFile[]): s
 
 export function extract(options: ExtractOptions): UnitResult[] {
   const root = resolve(options.source);
-  const units = discoverUnits(root);
+  const units = discoverUnits(root, options.includeTests ?? false);
   const programs = new Map<UnitConfig, ts.Program>();
   for (const unit of units) programs.set(unit, ts.createProgram({ rootNames: unit.rootNames, options: unit.options }));
 
@@ -41,6 +41,7 @@ export function extract(options: ExtractOptions): UnitResult[] {
     for (const sf of program.getSourceFiles()) {
       const file = resolve(sf.fileName);
       if (!file.startsWith(root + "/") || sf.isDeclarationFile || file.includes("/node_modules/")) continue;
+      if (!options.includeTests && isTestPath(file.slice(root.length + 1))) continue;
       const current = ownerOf.get(file);
       if (!current || dirname(unit.configFile).length > dirname(current.configFile).length) ownerOf.set(file, unit);
     }
@@ -89,7 +90,7 @@ export function extract(options: ExtractOptions): UnitResult[] {
 
     const language = ctx.files.some((f) => /\.(m|c)?tsx?$/.test(f.fileName)) ? "typescript" : "javascript";
     const inputs = [...owned].sort().map((f) => `${posix(f.slice(root.length + 1))}\0${sha256(readFileSync(f, "utf8"))}\n`).join("");
-    const configHash = sha256(`build=${BUILD}|typescript=${ts.version}|` + JSON.stringify(Object.keys(unit.options).sort().map((k) => [k, unit.options[k]])));
+    const configHash = sha256(`build=${BUILD}|typescript=${ts.version}|includeTests=${options.includeTests === true}|` + JSON.stringify(Object.keys(unit.options).sort().map((k) => [k, unit.options[k]])));
     const ordered = [...rules].sort((a, b2) => a.name.localeCompare(b2.name));
     const unitPath = ctx.rel(unit.configFile);
     results.push({ unitPath, unitName: unit.packageName, language, jsonl: b.toJsonl({ path: unitPath, name: unit.packageName }, language, ordered, configHash, sha256(inputs), owned.size) });

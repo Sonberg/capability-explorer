@@ -222,6 +222,7 @@ switch (command)
 
         Directory.CreateDirectory(exportDir);
         await File.WriteAllTextAsync(Path.Combine(exportDir, "manifest.tsv"), string.Concat(manifest.Select(m => m + "\n")));
+        await File.WriteAllTextAsync(Path.Combine(exportDir, "include-tests"), capability.IncludeTests ? "1\n" : "0\n");
         return manifest.Count > 0 ? 0 : 1;
     }
 

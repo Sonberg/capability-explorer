@@ -1,4 +1,5 @@
-import type { Integrations as Data, ResourceGroup } from "../api";
+import { useState } from "react";
+import { request, shortSha, type Integrations as Data, type Mark, type ResourceGroup } from "../api";
 import { EvidenceLinks } from "../components/source";
 import { ResolutionPill, SymbolLink } from "../components/symbols";
 import { Card, ErrorBox, H1, H2, Key, Loading, Mono, Muted, Note, Pill, Table, type Tone } from "../components/ui";
@@ -6,76 +7,182 @@ import { revisionLabel, symbolHref, useApi, useSelection } from "../state";
 
 const matchTone: Record<string, Tone> = { bound: "ok", binding: "ok", broken: "bad", route: "warn", none: "bad", dynamic: "neutral" };
 
-export function Integrations() {
+type Direction = "exposed" | "consumed";
+type Marks = { map: Map<string, Mark>; reload: () => void };
+
+const consumedRelations = ["READS", "CONSUMES", "REQUESTS"];
+
+export function Integrations({ direction }: { direction: Direction }) {
   const { meta, scope } = useSelection();
-  const { data: d, error } = useApi<Data>(`/api/integrations?${scope}`);
+  const { data: d, error, reload } = useApi<Data>(`/api/integrations?${scope}`);
+  const [onlyObsolete, setOnlyObsolete] = useState(false);
+  const [repo, setRepo] = useState("");
   if (error) return <ErrorBox message={error} />;
   if (!d) return <Loading />;
+  const marks: Marks = { map: new Map(d.marks.map((m) => [m.key, m])), reload };
+  const repos = [...new Set([
+    ...d.services.map((s) => s.service.repositoryId),
+    ...d.http.map((l) => l.request.repositoryId),
+    ...[...d.channels, ...d.data].flatMap((g) => g.keys.flatMap((k) => k.edges.map((e) => e.repositoryId))),
+  ])].sort();
+  const inRepo = (r: string) => !repo || r === repo;
+  const keep = (...keys: string[]) => !onlyObsolete || keys.some((k) => marks.map.has(k));
+  const exposed = direction === "exposed";
+  // Channels and data are one list of keys each; a relation puts a use on one side.
+  const side = (groups: ResourceGroup[]) =>
+    groups
+      .map((g) => ({ ...g, keys: g.keys.map((k) => ({ ...k, edges: k.edges.filter((e) => consumedRelations.includes(e.relation) !== exposed && inRepo(e.repositoryId)) })).filter((k) => k.edges.length > 0) }))
+      .filter((g) => g.keys.length > 0)
+      .filter((g) => keep(groupKey(g), ...g.keys.map((k) => k.key)));
+  const http = d.http.filter((l) => inRepo(l.request.repositoryId) && keep(`group|http|${l.group}`, l.request.to?.key ?? ""));
+  const services = d.services
+    .map((s) => ({ ...s, endpoints: s.endpoints.filter((ep) => keep(ep.endpoint.key)) }))
+    .filter((s) => inRepo(s.service.repositoryId))
+    .filter((s) => !onlyObsolete || s.endpoints.length > 0 || marks.map.has(s.service.key));
+  const removed = d.marks.filter((m) => m.removal);
   return (
     <div>
-      <H1>How services connect</H1>
+      <div className="flex flex-wrap items-center gap-3">
+        <H1>{exposed ? "What services expose" : "What services consume"}</H1>
+        <select value={repo} onChange={(e) => setRepo(e.target.value)} aria-label="Repository" className="ml-auto rounded border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700">
+          <option value="">All repositories</option>
+          {repos.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <label className="flex items-center gap-1.5 text-sm">
+          <input type="checkbox" checked={onlyObsolete} onChange={(e) => setOnlyObsolete(e.target.checked)} />
+          Only obsolete / deprecated
+        </label>
+      </div>
       <Muted>
         Derived from rule-based extraction. A cross-repo match by route or name is a candidate, not a proven connection: base URLs, namespaces and connection strings stay unbound until configuration is
         analysed.
       </Muted>
 
-      <H2 className="mt-6">Services and endpoints</H2>
-      <div className="grid gap-3 sm:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
-        {d.services.map((s) => (
-          <Card key={s.service.key}>
-            <div className="flex flex-wrap items-baseline gap-2">
-              <a href={symbolHref(s.service.key)} className="font-semibold text-blue-700 hover:underline dark:text-blue-300">
-                {s.service.name}
-              </a>
-              <span className="text-xs text-zinc-500">
-                {s.service.repositoryId} @ {revisionLabel(meta, s.service.repositoryId, s.service.commitSha)}
-              </span>
-            </div>
-            {s.endpoints.length === 0 && <Muted className="mt-2 text-xs">No endpoints exposed.</Muted>}
-            <ul className="mt-2 space-y-1.5">
-              {s.endpoints.map((ep) => (
-                <li key={ep.endpoint.key}>
-                  <span className="mr-1.5 rounded bg-blue-50 px-1.5 py-px font-mono text-[11px] font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">{String(ep.endpoint.props?.method ?? "")}</span>
-                  <a href={symbolHref(ep.endpoint.key)} className="font-mono text-[12.5px] text-blue-700 hover:underline dark:text-blue-300">
-                    {String(ep.endpoint.props?.route ?? ep.endpoint.name)}
-                  </a>
-                  <div className="text-xs text-zinc-500">
-                    handled by{" "}
-                    {ep.handlers.length
-                      ? ep.handlers.map((h, i) => (
-                          <span key={h.key}>
-                            {i > 0 && ", "}
-                            <a href={symbolHref(h.key)} className="text-blue-700 hover:underline dark:text-blue-300">
-                              {h.name}
-                            </a>
-                          </span>
-                        ))
-                      : "—"}
-                  </div>
+      {removed.length > 0 && (
+        <>
+          <H2 className="mt-6">Removed from the codebase</H2>
+          <Card>
+            <ul className="space-y-1.5 text-sm">
+              {removed.map((m) => (
+                <li key={m.key}>
+                  <Mono className="text-xs">{m.key}</Mono> <Pill tone="bad">{m.status}</Pill> gone in{" "}
+                  <Mono className="text-xs">{m.removal!.repositoryId}@{shortSha(m.removal!.removedIn)}</Mono>
+                  {m.removal!.subject && <span className="text-zinc-500"> “{m.removal!.subject}”</span>}
+                  <span className="text-xs text-zinc-500"> (last seen {shortSha(m.removal!.lastSeen)}; analysed commits only)</span>
+                  {m.note && <div className="text-xs text-zinc-500">{m.note}</div>}
                 </li>
               ))}
             </ul>
           </Card>
-        ))}
-      </div>
+        </>
+      )}
 
-      <H2 className="mt-6">HTTP calls</H2>
-      <Muted className="mb-2 text-xs">Grouped by who each request talks to: the domain of its host, or the namespace of a typed client (…Infrastructure.Klarna → Klarna). “Via” is the exact host, client or configuration name.</Muted>
-      <div className="space-y-2">
-        {[...d.http.reduce((m, l) => m.set(l.group, [...(m.get(l.group) ?? []), l]), new Map<string, Data["http"]>())].map(([base, links]) => (
-          <HttpGroup key={base} base={base} links={links} />
-        ))}
-      </div>
+      {exposed && (
+        <>
+          <H2 className="mt-6">Services and endpoints</H2>
+          <div className="grid gap-3 sm:grid-cols-[repeat(auto-fit,minmax(320px,1fr))]">
+            {services.map((s) => (
+              <Card key={s.service.key}>
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <a href={symbolHref(s.service.key)} className="font-semibold text-blue-700 hover:underline dark:text-blue-300">
+                    {s.service.name}
+                  </a>
+                  <span className="text-xs text-zinc-500">
+                    {s.service.repositoryId} @ {revisionLabel(meta, s.service.repositoryId, s.service.commitSha)}
+                  </span>
+                  <MarkControl id={s.service.key} marks={marks} />
+                </div>
+                {s.endpoints.length === 0 && <Muted className="mt-2 text-xs">No endpoints exposed.</Muted>}
+                <ul className="mt-2 space-y-1.5">
+                  {s.endpoints.map((ep) => (
+                    <li key={ep.endpoint.key}>
+                      <span className="mr-1.5 rounded bg-blue-50 px-1.5 py-px font-mono text-[11px] font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">{String(ep.endpoint.props?.method ?? "")}</span>
+                      <a href={symbolHref(ep.endpoint.key)} className="font-mono text-[12.5px] text-blue-700 hover:underline dark:text-blue-300">
+                        {String(ep.endpoint.props?.route ?? ep.endpoint.name)}
+                      </a>{" "}
+                      <MarkControl id={ep.endpoint.key} marks={marks} />
+                      <div className="text-xs text-zinc-500">
+                        handled by{" "}
+                        {ep.handlers.length
+                          ? ep.handlers.map((h, i) => (
+                              <span key={h.key}>
+                                {i > 0 && ", "}
+                                <a href={symbolHref(h.key)} className="text-blue-700 hover:underline dark:text-blue-300">
+                                  {h.name}
+                                </a>
+                              </span>
+                            ))
+                          : "—"}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
+
+      {!exposed && (
+        <>
+          <H2 className="mt-6">HTTP calls</H2>
+          <Muted className="mb-2 text-xs">Grouped by who each request talks to: the domain of its host, or the namespace of a typed client (…Infrastructure.Klarna → Klarna). “Via” is the exact host, client or configuration name.</Muted>
+          <div className="space-y-2">
+            {[...http.reduce((m, l) => m.set(l.group, [...(m.get(l.group) ?? []), l]), new Map<string, Data["http"]>())].map(([base, links]) => (
+              <HttpGroup key={base} base={base} links={links} marks={marks} />
+            ))}
+          </div>
+        </>
+      )}
 
       <H2 className="mt-6">Messaging</H2>
-      <div className="space-y-3">{d.channels.map((g) => <Resource key={g.name} group={g} />)}</div>
+      <div className="space-y-3">{side(d.channels).map((g) => <Resource key={g.name} group={g} marks={marks} />)}</div>
       <H2 className="mt-6">Data</H2>
-      <div className="space-y-3">{d.data.map((g) => <Resource key={g.name} group={g} />)}</div>
+      <div className="space-y-3">{side(d.data).map((g) => <Resource key={g.name} group={g} marks={marks} />)}</div>
     </div>
   );
 }
 
-function HttpGroup({ base, links }: { base: string; links: Data["http"] }) {
+const groupKey = (g: ResourceGroup) => `group|${g.kind}|${g.name}`;
+
+/** Marks a whole integration (a `group|…` key) or one element; shows the mark, its note and the commit that removed it. */
+function MarkControl({ id, marks }: { id: string; marks: Marks }) {
+  const mark = marks.map.get(id);
+  const [editing, setEditing] = useState(false);
+  const [status, setStatus] = useState<Mark["status"]>(mark?.status ?? "deprecated");
+  const [note, setNote] = useState(mark?.note ?? "");
+  const save = () => request("/api/deprecations", { method: "PUT", body: JSON.stringify({ key: id, status, note }) }).then(() => { setEditing(false); marks.reload(); });
+  const clear = () => request(`/api/deprecations?key=${encodeURIComponent(id)}`, { method: "DELETE" }).then(() => { setEditing(false); marks.reload(); });
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5 align-middle">
+      {mark && (
+        <Pill tone={mark.status === "obsolete" ? "bad" : "warn"} title={mark.note}>
+          {mark.status}
+        </Pill>
+      )}
+      {mark?.note && !editing && <span className="text-xs text-zinc-500">{mark.note}</span>}
+      {!editing && (
+        <button type="button" onClick={() => setEditing(true)} className="text-xs text-zinc-500 hover:underline">
+          {mark ? "edit" : "mark…"}
+        </button>
+      )}
+      {editing && (
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <select value={status} onChange={(e) => setStatus(e.target.value as Mark["status"])} className="rounded border border-zinc-300 bg-transparent px-1 text-xs dark:border-zinc-700">
+            <option value="deprecated">deprecated</option>
+            <option value="obsolete">obsolete</option>
+          </select>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="note" aria-label="Note" className="rounded border border-zinc-300 bg-transparent px-1.5 text-xs dark:border-zinc-700" />
+          <button type="button" onClick={save} className="text-xs font-semibold text-blue-700 dark:text-blue-300">save</button>
+          {mark && <button type="button" onClick={clear} className="text-xs text-red-600">unmark</button>}
+          <button type="button" onClick={() => setEditing(false)} className="text-xs text-zinc-500">cancel</button>
+        </span>
+      )}
+    </span>
+  );
+}
+
+function HttpGroup({ base, links, marks }: { base: string; links: Data["http"]; marks: Marks }) {
   const matched = links.filter((l) => l.candidates.length > 0).length;
   const repos = [...new Set(links.map((l) => l.request.repositoryId))];
   return (
@@ -88,10 +195,13 @@ function HttpGroup({ base, links }: { base: string; links: Data["http"] }) {
         </Pill>
         {matched > 0 && <Pill tone="ok">{matched} matched</Pill>}
         <span className="text-xs text-zinc-500">from {repos.join(", ")}</span>
+        <span onClick={(e) => e.preventDefault()}>
+          <MarkControl id={`group|http|${base}`} marks={marks} />
+        </span>
       </summary>
       <div className="border-t border-zinc-200 dark:border-zinc-800 [&>div]:rounded-none [&>div]:border-0">
         <Table
-          columns={["Client", "Via", "Request", "Match", "Candidate endpoint", "Why"]}
+          columns={["Client", "Via", "Request", "Match", "Candidate endpoint", "Why", "Status"]}
           rows={links.map((l) => [
             <SymbolLink symbol={l.request.from} />,
             <Mono className="text-xs text-zinc-500">{l.base}</Mono>,
@@ -99,6 +209,7 @@ function HttpGroup({ base, links }: { base: string; links: Data["http"] }) {
             <Pill tone={matchTone[l.match]}>{l.match}</Pill>,
             l.candidates.length ? l.candidates.map((c) => <div key={c.key}><SymbolLink symbol={c} /></div>) : <span className="text-zinc-400">—</span>,
             <span className="text-xs text-zinc-500">{l.note}</span>,
+            l.request.to ? <MarkControl id={l.request.to.key} marks={marks} /> : null,
           ])}
         />
       </div>
@@ -106,7 +217,7 @@ function HttpGroup({ base, links }: { base: string; links: Data["http"] }) {
   );
 }
 
-function Resource({ group: g }: { group: ResourceGroup }) {
+function Resource({ group: g, marks }: { group: ResourceGroup; marks: Marks }) {
   const isData = g.kind === "data";
   return (
     <Card>
@@ -115,6 +226,7 @@ function Resource({ group: g }: { group: ResourceGroup }) {
         <Pill>
           {g.keys.length} key{g.keys.length === 1 ? "" : "s"}
         </Pill>
+        <MarkControl id={groupKey(g)} marks={marks} />
       </div>
       {g.note && <Note>{g.note}</Note>}
       {g.keys.map((k) => (
@@ -122,6 +234,7 @@ function Resource({ group: g }: { group: ResourceGroup }) {
           <div className="flex flex-wrap items-center gap-2">
             <Pill tone={k.bound ? "ok" : "warn"}>{k.bound ? "bound" : "unbound"}</Pill>
             <Key value={k.key} />
+            <MarkControl id={k.key} marks={marks} />
           </div>
           {k.declaration && (
             <div className="text-xs">

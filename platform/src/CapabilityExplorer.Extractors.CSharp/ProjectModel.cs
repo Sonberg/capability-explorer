@@ -22,6 +22,8 @@ public sealed record ProjectModel(
     IReadOnlyList<ProjectRef> ProjectReferences,
     IReadOnlyList<string> SourceFiles)
 {
+    private static readonly string[] TestProjectSuffixes = [".Test", ".Tests", ".UnitTests", ".IntegrationTests"];
+
     /// <summary>The packages this project resolves: its references plus the implicit hosting package of worker projects. Sorted, one per id.</summary>
     public IReadOnlyList<PackageRef> PackageRoots() =>
         Packages.Concat(IsWorker ? [new PackageRef("Microsoft.Extensions.Hosting", null, 0)] : [])
@@ -35,17 +37,21 @@ public sealed record ProjectModel(
 
     public bool IsWorker => Sdk.Contains("Worker", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Test projects are available for opt-in analysis but excluded from the default production graph.</summary>
+    public bool IsTestProject { get; init; }
+
     /// <summary>Web, Worker and OutputType=Exe projects are executables (top-level statements need that).</summary>
     public bool IsExecutable { get; init; }
 
-    public static IReadOnlyList<ProjectModel> Discover(string root)
+    public static IReadOnlyList<ProjectModel> Discover(string root, bool includeTests = true)
     {
         var projects = Directory.EnumerateFiles(root, "*.csproj", SearchOption.AllDirectories)
             .Where(p => !Ignored(Path.GetRelativePath(root, p)))
             .Order(StringComparer.Ordinal)
             .ToList();
         var projectDirs = projects.Select(p => Path.GetDirectoryName(p)!).ToList();
-        return projects.Select(p => Read(root, p, projectDirs)).ToList();
+        var models = projects.Select(p => Read(root, p, projectDirs));
+        return (includeTests ? models : models.Where(p => !p.IsTestProject)).ToList();
     }
 
     private static bool Ignored(string relative) =>
@@ -87,9 +93,18 @@ public sealed record ProjectModel(
         var sdkAttr = project.Attribute("Sdk");
         var outputType = Prop("OutputType");
         var sdk = sdkAttr?.Value ?? "Microsoft.NET.Sdk";
+        var explicitTestProject = Prop("IsTestProject");
+        var relativePath = Path.GetRelativePath(root, path).Replace('\\', '/');
+        var projectName = Path.GetFileNameWithoutExtension(path);
+        var testByConvention = relativePath.Split('/').Any(s => s.Equals("test", StringComparison.OrdinalIgnoreCase) || s.Equals("tests", StringComparison.OrdinalIgnoreCase) || s.Equals("__tests__", StringComparison.OrdinalIgnoreCase))
+            || TestProjectSuffixes.Any(s => projectName.EndsWith(s, StringComparison.OrdinalIgnoreCase));
+        var isTestProject = string.Equals(explicitTestProject, "true", StringComparison.OrdinalIgnoreCase)
+            || explicitTestProject is null && (sdk.Contains("Test", StringComparison.OrdinalIgnoreCase)
+                || packages.Any(p => p.Id.Equals("Microsoft.NET.Test.Sdk", StringComparison.OrdinalIgnoreCase))
+                || testByConvention);
         return new ProjectModel(
             path,
-            Path.GetRelativePath(root, path).Replace('\\', '/'),
+            relativePath,
             Prop("AssemblyName") is { Length: > 0 } name ? name : Path.GetFileNameWithoutExtension(path),
             sdk,
             sdkAttr is null ? 1 : Line(project),
@@ -100,6 +115,7 @@ public sealed record ProjectModel(
             sources)
         {
             CheckedArithmetic = string.Equals(Prop("CheckForOverflowUnderflow"), "true", StringComparison.OrdinalIgnoreCase),
+            IsTestProject = isTestProject,
             IsExecutable = string.Equals(outputType, "Exe", StringComparison.OrdinalIgnoreCase) || string.Equals(outputType, "WinExe", StringComparison.OrdinalIgnoreCase)
                 || sdk.Contains("Web", StringComparison.OrdinalIgnoreCase) || sdk.Contains("Worker", StringComparison.OrdinalIgnoreCase),
         };

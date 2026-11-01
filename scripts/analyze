@@ -15,7 +15,8 @@
 #
 # Step 3 runs the C# (Roslyn), TypeScript/JavaScript and SQL extractors.
 # Knobs: GITHUB_AUTH=auto|git|none (see scripts/github-token), LOCKED=1 analyses the last check instead of
-# re-checking the refs, BINDINGS=bindings.json binds @unbound hints when storing, PACKAGES=0 skips the package download
+# re-checking the refs, BINDINGS=bindings.json binds @unbound hints when storing, PACKAGES=0 skips the package download,
+# INCLUDE_TESTS=1 includes test projects and test source files (excluded from the production graph by default)
 # (fewer resolved symbols, fully offline after 1).
 # Private NuGet feeds: declare them in the repository's nuget.config with credentials as %VAR% references and
 # list the variable names in NUGET_PASS_ENV=VAR1,VAR2. Only step 2 receives them; they are never printed.
@@ -41,14 +42,18 @@ SANDBOX_SOURCES="$(scripts/capability-sources "$capabilities")" \
   scripts/sandbox dotnet dotnet "$ce" export --capability "$cap" --capabilities "$capabilities" \
     --workspace .sandbox-cache/sources --out "$work" ${LOCKED:+--locked 1}
 
+include_tests_setting="${INCLUDE_TESTS:-$(cat "$work/include-tests" 2>/dev/null || echo 0)}"
+[[ "$include_tests_setting" == 0 || "$include_tests_setting" == 1 ]] || { echo "INCLUDE_TESTS must be 0 or 1" >&2; exit 2; }
+include_tests=""; [[ "$include_tests_setting" == 1 ]] && include_tests="--include-tests"
+
 if [[ "${PACKAGES:-1}" != 0 ]]; then
   echo "== 2/3 fetch referenced NuGet packages (data only: nuspec + reference assemblies)"
   rm -rf "$locks"; mkdir -p "$locks"
   SANDBOX_PASS_ENV="${NUGET_PASS_ENV:-}" SANDBOX_SOURCES="" scripts/sandbox dotnet bash -c '
     set -euo pipefail
     while IFS=$'"'"'\t'"'"' read -r repo sha path; do
-      dotnet "$1" fetch-packages --source "$2/$path" --packages "$3" --lock "$4/$repo.json" </dev/null | sed "s#^#  $repo  #"
-    done < "$2/manifest.tsv"' _ "$cs" "$work" "$packages" "$locks"
+      dotnet "$1" fetch-packages --source "$2/$path" --packages "$3" --lock "$4/$repo.json" ${5:+$5} </dev/null | sed "s#^#  $repo  #"
+    done < "$2/manifest.tsv"' _ "$cs" "$work" "$packages" "$locks" "$include_tests"
 else
   rm -rf "$locks"
 fi
@@ -62,15 +67,15 @@ while IFS=$'\t' read -r repo sha path; do mkdir -p "$staging/$repo/$sha"; done <
 SANDBOX_PASS_ENV="" SANDBOX_SOURCES="" scripts/sandbox --offline dotnet bash -c '
   set -euo pipefail
   while IFS=$'"'"'\t'"'"' read -r repo sha path; do
-    dotnet "$1" extract --source "$2/$path" --repository "$repo" --commit "$sha" --out "$3/$repo/$sha" ${5:+--packages "$4"} $([[ -f "$5/$repo.json" ]] && echo "--lock $5/$repo.json") </dev/null | sed "s#^#  $repo  cs  #"
-  done < "$2/manifest.tsv"' _ "$cs" "$work" "$staging" "$packages" "$( [[ -d "$locks" ]] && echo "$locks" )"
+    dotnet "$1" extract --source "$2/$path" --repository "$repo" --commit "$sha" --out "$3/$repo/$sha" ${5:+--packages "$4"} $([[ -f "$5/$repo.json" ]] && echo "--lock $5/$repo.json") ${6:+$6} </dev/null | sed "s#^#  $repo  cs  #"
+  done < "$2/manifest.tsv"' _ "$cs" "$work" "$staging" "$packages" "$( [[ -d "$locks" ]] && echo "$locks" )" "$include_tests"
 
 if [[ -f "$ts" ]] && grep -q '"extract"' "$ts"; then
   SANDBOX_PASS_ENV="" SANDBOX_SOURCES="" scripts/sandbox --offline node bash -c '
     set -euo pipefail
     while IFS=$'"'"'\t'"'"' read -r repo sha path; do
-      node "$1" extract --source "$2/$path" --repository "$repo" --commit "$sha" --out "$3/$repo/$sha" </dev/null | sed "s#^#  $repo  ts  #"
-    done < "$2/manifest.tsv"' _ "$ts" "$work" "$staging" "$packages"
+      node "$1" extract --source "$2/$path" --repository "$repo" --commit "$sha" --out "$3/$repo/$sha" ${5:+$5} </dev/null | sed "s#^#  $repo  ts  #"
+    done < "$2/manifest.tsv"' _ "$ts" "$work" "$staging" "$packages" "$include_tests"
 fi
 
 if [[ -f "$ts" ]] && grep -q '"extract-sql"' "$ts"; then

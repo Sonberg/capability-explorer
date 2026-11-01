@@ -55,6 +55,7 @@ test("next routes: exported verbs become endpoints with handlers; pages and non-
     "app/api/subscribe/route.ts": "export async function POST(req: Request) { return new Response('ok'); }\nexport function helper() {}\n",
     "app/api/orders/[id]/route.ts": "const read = async () => new Response('x');\nexport const GET = read;\nexport const DELETE = async () => new Response(null);\nexport { read as PUT };\nexport const dynamic = 'force-dynamic';\n",
     "app/api/[...path]/route.ts": "export const GET = async () => new Response('proxy');\n",
+    "app/api/external/route.ts": "export const PATCH = Response.json;\n",
     "app/page.tsx": "export default function Page() { return null; }\n",
   });
   const endpoints = unit!.records.filter((r) => r.nodeKind === "Endpoint").map((r) => r.symbolKey).sort();
@@ -62,14 +63,20 @@ test("next routes: exported verbs become endpoints with handlers; pages and non-
     "http|web/@shop/web|DELETE /api/orders/{}",
     "http|web/@shop/web|GET /api/orders/{}",
     "http|web/@shop/web|GET /api/{...}",
+    "http|web/@shop/web|PATCH /api/external",
     "http|web/@shop/web|POST /api/subscribe",
     "http|web/@shop/web|PUT /api/orders/{}",
   ]);
   const catchAll = unit!.records.find((r) => r.symbolKey === "http|web/@shop/web|GET /api/{...}")!;
   assert.equal(catchAll.props?.catchAll, true);
   assert.equal(catchAll.name, "GET /api/{...path}");
-  assert.equal(unit!.records.filter((r) => r.relation === "EXPOSES").length, 5);
-  assert.equal(unit!.records.filter((r) => r.relation === "HANDLES").length, 5);
+  assert.equal(unit!.records.filter((r) => r.relation === "EXPOSES").length, 6);
+  const handles = unit!.records.filter((r) => r.relation === "HANDLES");
+  assert.equal(handles.length, 6);
+  const kinds = new Map(unit!.records.filter((r) => r.symbolKey).map((r) => [r.symbolKey, r.nodeKind]));
+  assert.ok(handles.every((r) => ["Function", "Method", "File"].includes(kinds.get(r.from) ?? "")));
+  assert.ok(handles.some((r) => r.from?.endsWith("|read#value") && r.to === "http|web/@shop/web|GET /api/orders/{}"));
+  assert.ok(handles.some((r) => r.from?.endsWith("|app/api/external/route.ts|(module)#namespace") && r.to === "http|web/@shop/web|PATCH /api/external"));
   assert.ok(unit!.records.some((r) => r.nodeKind === "Service" && r.props?.framework === "next"));
 });
 

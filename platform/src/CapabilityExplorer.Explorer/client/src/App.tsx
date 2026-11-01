@@ -21,7 +21,8 @@ const ArchitectureView = lazy(() => import("./views/Architecture").then((m) => (
 const VIEWS = [
   ["explore", "Explore"],
   ["architecture", "Architecture"],
-  ["integrations", "Integrations"],
+  ["integrations/exposed", "Integrations: Exposed"],
+  ["integrations/consumed", "Integrations: Consumed"],
   ["calculations", "Calculations"],
   ["glossary", "Glossary"],
   ["changes", "Changes"],
@@ -89,7 +90,21 @@ function Shell() {
           <span className="hidden sm:inline">Capability Explorer</span>
         </a>
         <nav aria-label="Views" className="flex min-w-0 gap-0.5 overflow-x-auto">
-          {VIEWS.map(([id, label]) => (
+          {VIEWS.map(([id, label]) => id === "integrations/consumed" ? null : id === "integrations/exposed" ? (
+            <select
+              key="integrations"
+              aria-label="Integrations"
+              value={view.startsWith("integrations") ? view : ""}
+              onChange={(e) => { window.location.hash = href(e.target.value); }}
+              className={`cursor-pointer rounded-md bg-transparent px-3 py-1.5 ${
+                view.startsWith("integrations") ? "bg-blue-50 font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300" : "text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              }`}
+            >
+              <option value="" disabled>Integrations</option>
+              <option value="integrations/exposed">Integrations: Exposed</option>
+              <option value="integrations/consumed">Integrations: Consumed</option>
+            </select>
+          ) : (
             <a
               key={id}
               href={href(id)}
@@ -151,8 +166,13 @@ function Routed({ path, params }: { path: string; params: URLSearchParams }) {
           <ArchitectureView params={params} />
         </Suspense>
       );
+    case "integrations/exposed":
+      return <Integrations direction="exposed" />;
+    case "integrations/consumed":
+      return <Integrations direction="consumed" />;
     case "integrations":
-      return <Integrations />;
+      window.location.replace("#/integrations/exposed");
+      return null;
     case "calculations":
       return <Calculations params={params} />;
     case "glossary":

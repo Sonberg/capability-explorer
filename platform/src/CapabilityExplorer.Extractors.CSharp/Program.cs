@@ -2,13 +2,15 @@ using CapabilityExplorer.Contracts;
 using CapabilityExplorer.Extractors.CSharp;
 
 // ce-cs fetch-packages --source <dir> --packages <folder>   (network: downloads referenced packages as data)
-// ce-cs extract --source <dir> --repository <id> --commit <sha> --out <dir> [--packages <nuget folder>]
+// ce-cs extract --source <dir> --repository <id> --commit <sha> --out <dir> [--packages <nuget folder>] [--include-tests]
 // Writes one ce.v1 artifact per .csproj. Every artifact is validated before it is written.
 string? Arg(string name)
 {
     var i = Array.IndexOf(args, $"--{name}");
     return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
 }
+
+bool Has(string name) => args.Contains($"--{name}", StringComparer.Ordinal);
 
 if (args.FirstOrDefault() == "fetch-packages")
 {
@@ -21,7 +23,7 @@ if (args.FirstOrDefault() == "fetch-packages")
         return 2;
     }
 
-    var models = ProjectModel.Discover(Path.GetFullPath(fetchSource));
+    var models = ProjectModel.Discover(Path.GetFullPath(fetchSource), Has("include-tests"));
     var feeds = NuGetConfig.Discover(Path.GetFullPath(fetchSource), models.Select(m => Path.GetDirectoryName(m.FullPath)!), Environment.GetEnvironmentVariable);
     using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(2) };
     http.DefaultRequestHeaders.UserAgent.ParseAdd("capability-explorer/0.1");
@@ -43,13 +45,13 @@ if (args.FirstOrDefault() == "fetch-packages")
 
 if (args.FirstOrDefault() != "extract" || Arg("source") is not { } source || Arg("repository") is not { } repo || Arg("commit") is not { } commit || Arg("out") is not { } outDir)
 {
-    Console.Error.WriteLine("usage: ce-cs extract --source <dir> --repository <id> --commit <sha> --out <dir> [--packages <nuget folder>] [--lock <file>] [--packs <dotnet packs dir>]");
+    Console.Error.WriteLine("usage: ce-cs extract --source <dir> --repository <id> --commit <sha> --out <dir> [--packages <nuget folder>] [--lock <file>] [--packs <dotnet packs dir>] [--include-tests]");
     return 2;
 }
 
 var packs = Arg("packs") ?? Path.GetFullPath(Path.Combine(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", "..", "packs"));
 var packages = Arg("packages") is { } p && Directory.Exists(p) ? Path.GetFullPath(p) : null;
-var extractor = new CSharpExtractor(new ExtractorOptions(Path.GetFullPath(source), repo, commit, packages, packs, Arg("lock") is { } lockPath ? PackageLock.Load(lockPath) : null));
+var extractor = new CSharpExtractor(new ExtractorOptions(Path.GetFullPath(source), repo, commit, packages, packs, Arg("lock") is { } lockPath ? PackageLock.Load(lockPath) : null, Has("include-tests")));
 var results = extractor.Extract();
 Directory.CreateDirectory(outDir);
 var failed = 0;

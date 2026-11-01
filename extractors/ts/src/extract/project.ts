@@ -19,6 +19,11 @@ const SKIP_DIRS = new Set(["node_modules", ".git", "bin", "obj", "dist", "build"
 
 export const posix = (p: string) => p.split(sep).join("/");
 
+export function isTestPath(path: string): boolean {
+  const p = posix(path);
+  return p.split("/").some((s) => /^(?:test|tests|__tests__)$/i.test(s)) || /^(?:.*\.)?(?:test|spec)\.[cm]?[jt]sx?$/i.test(p.split("/").at(-1) ?? "");
+}
+
 function walk(dir: string, found: (file: string) => void, depth = 0) {
   if (depth > 12) return;
   let entries: import("node:fs").Dirent[];
@@ -57,7 +62,7 @@ function nearestPackage(start: string, root: string): { dir: string; name: strin
  * Finds units without running anything from the repository: tsconfig.json files are parsed with the compiler's
  * own JSON reader, `extends` to packages that are not installed degrade to a config error. Nothing is installed.
  */
-export function discoverUnits(root: string): UnitConfig[] {
+export function discoverUnits(root: string, includeTests = true): UnitConfig[] {
   const tsconfigs: string[] = [];
   const packages: string[] = [];
   walk(root, (f) => {
@@ -75,7 +80,8 @@ export function discoverUnits(root: string): UnitConfig[] {
       // "No inputs were found" is normal for solution-style configs that only list references.
       if (e.code !== 18003) errors.push(ts.flattenDiagnosticMessageText(e.messageText, "\n"));
     }
-    const rootNames = parsed.fileNames.filter((f) => resolve(f).startsWith(root) && !f.includes(`${sep}node_modules${sep}`) && !f.includes("/node_modules/"));
+    const rootNames = parsed.fileNames.filter((f) => resolve(f).startsWith(root) && !f.includes(`${sep}node_modules${sep}`) && !f.includes("/node_modules/")
+      && (includeTests || !isTestPath(relative(root, f))));
     if (rootNames.length === 0) continue;
     const pkg = nearestPackage(dirname(configFile), root);
     units.push({
@@ -95,7 +101,7 @@ export function discoverUnits(root: string): UnitConfig[] {
       if (/\.(m|c)?jsx?$/.test(f) && !f.endsWith(".min.js")) sources.push(f);
     });
     // Nested packages are their own units.
-    const own = sources.filter((s) => nearestPackage(dirname(s), root).dir === dir);
+    const own = sources.filter((s) => nearestPackage(dirname(s), root).dir === dir && (includeTests || !isTestPath(relative(root, s))));
     if (own.length === 0) continue;
     const pkg = nearestPackage(dir, root);
     units.push({

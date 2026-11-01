@@ -42,7 +42,7 @@ public sealed record ResourceKey(string Key, bool Bound, IReadOnlyList<EdgeDto> 
 
 public sealed record ResourceGroup(string Name, string Kind, IReadOnlyList<ResourceKey> Keys, string? Note);
 
-public sealed record Integrations(IReadOnlyList<ServiceDto> Services, IReadOnlyList<HttpLink> Http, IReadOnlyList<ResourceGroup> Channels, IReadOnlyList<ResourceGroup> Data);
+public sealed record Integrations(IReadOnlyList<ServiceDto> Services, IReadOnlyList<HttpLink> Http, IReadOnlyList<ResourceGroup> Channels, IReadOnlyList<ResourceGroup> Data, IReadOnlyList<MarkDto> Marks);
 
 public sealed record ArtifactSummary(
     int Id, string Label, string RepositoryId, string CommitSha, string Revision, string Unit, string UnitPath, string Language,
@@ -183,7 +183,7 @@ public static class Queries
     /// Services, endpoints and the resources that connect repositories. Cross-repo HTTP matches are
     /// <em>candidates</em> by normalised route only: the client's base URL is unbound unless the service map (bindings.json) names it.
     /// </summary>
-    public static Integrations Integrations(ViewIndex view)
+    public static Integrations Integrations(ViewIndex view, IReadOnlyList<MarkDto>? marks = null)
     {
         var endpoints = view.Nodes.Values.Select(l => l[0]).Where(o => o.Record.NodeKind == "Endpoint").ToList();
         var services = view.Nodes.Values.Select(l => l[0]).Where(o => o.Record.NodeKind == "Service").Select(s =>
@@ -247,7 +247,36 @@ public static class Queries
             g.Count() > 1 ? "Same object name under different store bindings: the same table only once a binding says so." : null))
             .OrderBy(g => g.Name, StringComparer.Ordinal).ToList();
 
-        return new Integrations(services, http, channels, data);
+        return new Integrations(services, http, channels, data, marks ?? []);
+    }
+
+    private static string KeyTail(string key) => key[(key.LastIndexOf('|') + 1)..];
+
+    /// <summary>Every key a mark can point at that this artifact shows: nodes, edge targets, and the group keys ("group|http|Klarna").</summary>
+    internal static void PresenceKeys(IReadOnlyList<NodeRecord> nodes, IReadOnlyList<EdgeRecord> edges, HashSet<string> into)
+    {
+        foreach (var n in nodes)
+        {
+            into.Add(n.SymbolKey);
+        }
+
+        foreach (var e in edges.Where(e => e.To is not null))
+        {
+            var to = e.To!;
+            into.Add(to);
+            if (e.Relation == "REQUESTS")
+            {
+                into.Add($"group|http|{Vendor(to, e.From)}");
+            }
+            else if (to.StartsWith("chan|", StringComparison.Ordinal))
+            {
+                into.Add($"group|channel|{EntityName(KeyTail(to))}");
+            }
+            else if (to.StartsWith("sql|", StringComparison.Ordinal))
+            {
+                into.Add($"group|data|{KeyTail(TableKey(to))}");
+            }
+        }
     }
 
     private static string EntityName(string entity) => entity.Contains('/', StringComparison.Ordinal) ? entity[(entity.IndexOf('/', StringComparison.Ordinal) + 1)..] : entity;

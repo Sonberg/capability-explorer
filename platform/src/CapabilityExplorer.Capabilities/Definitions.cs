@@ -11,7 +11,11 @@ public enum SourceKind
 /// <summary>One repository in a capability: a GitHub URL or a local git working copy, at a ref (default HEAD).</summary>
 public sealed record RepositorySource(string Id, string Location, SourceKind Kind, string Ref = "HEAD");
 
-public sealed record CapabilityDefinition(string Id, string Name, string? Description, IReadOnlyList<RepositorySource> Repositories);
+public sealed record CapabilityDefinition(string Id, string Name, string? Description, IReadOnlyList<RepositorySource> Repositories)
+{
+    /// <summary>Whether analyses include test projects and conventional test source files. Defaults to the production graph only.</summary>
+    public bool IncludeTests { get; init; }
+}
 
 /// <summary>The revision a repository resolved to when the capability was last checked.</summary>
 public sealed record LockedRepository(string Id, string Ref, string? CommitSha, string? Subject, DateTimeOffset? CommitTime, string? Error);

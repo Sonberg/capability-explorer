@@ -171,6 +171,10 @@ repository content is rendered as text, never as markup.
 make analyze CAPABILITY=weekly-sales     # while `make explore` runs, the UI picks up the results by itself
 ```
 
+Test projects and conventional test files (`tests/`, `__tests__/`, `*.test.*`, `*.spec.*`) are excluded from the
+default production graph and therefore from imports and embeddings. Set `"includeTests": true` on a capability in
+`capabilities.json` when it should retain tests. `INCLUDE_TESTS=0|1 make analyze ...` overrides that setting for one run.
+
 Each step runs in its own sandbox and gets only what it needs:
 
 | Step | Sandbox | What happens |

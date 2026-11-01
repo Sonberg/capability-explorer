@@ -53,6 +53,7 @@
     {
       "id": "glufs",
       "name": "Glufs",
+      "includeTests": false,
       "repositories": [
         {
           "id": "glufs-checkout-api",

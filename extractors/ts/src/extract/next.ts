@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import type { ToolRef } from "../contracts/records.ts";
-import type { Ctx } from "./context.ts";
+import { isFunctionInit, type Ctx } from "./context.ts";
 
 export const NEXT = { name: "next.routes", version: "1" };
 
@@ -77,6 +77,41 @@ export function usesNext(ctx: Ctx): boolean {
 
 interface Handler { method: string; decl: ts.Declaration; node: ts.Node }
 
+const unwrap = (e: ts.Expression): ts.Expression => {
+  while (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isNonNullExpression(e) || ts.isSatisfiesExpression(e)) e = e.expression;
+  return e;
+};
+
+/**
+ * Resolve an exported verb alias to the callable declaration it names. If the
+ * callable is external or otherwise not represented in this artifact, the
+ * route module is the nearest valid HANDLES source.
+ */
+function handlerOwner(ctx: Ctx, h: Handler, sf: ts.SourceFile): string {
+  let decl: ts.Declaration | undefined = h.decl;
+  const seen = new Set<ts.Declaration>();
+  while (decl && !seen.has(decl)) {
+    seen.add(decl);
+    if (ts.isFunctionDeclaration(decl) || ts.isMethodDeclaration(decl) || ts.isGetAccessor(decl) || ts.isSetAccessor(decl)) {
+      const key = ctx.keyOf(decl);
+      if (key && ctx.b.hasNode(key)) return key;
+      break;
+    }
+    if ((ts.isVariableDeclaration(decl) || ts.isPropertyDeclaration(decl)) && decl.initializer) {
+      if (isFunctionInit(decl.initializer)) {
+        const key = ctx.keyOf(decl);
+        if (key && ctx.b.hasNode(key)) return key;
+        break;
+      }
+      const init = unwrap(decl.initializer);
+      decl = ctx.resolveSymbol(init)?.valueDeclaration;
+      continue;
+    }
+    break;
+  }
+  return ctx.fileKey(sf);
+}
+
 /** Statically exported HTTP handlers of a route module: `export function GET`, `export const POST = ...`, `export { x as PUT }`. */
 function exportedHandlers(ctx: Ctx, sf: ts.SourceFile): Handler[] {
   const out: Handler[] = [];
@@ -121,8 +156,8 @@ export function nextRoutes(ctx: Ctx, rules: Set<ToolRef>) {
         props: { method: h.method, route: route.route, normalizedRoute: route.normalized, style: "next-app-router", catchAll: route.catchAll, optionalCatchAll: route.optionalCatchAll },
       });
       ctx.b.edge({ from: service, rel: "EXPOSES", to: endpoint, derivation: "rule", rule: NEXT, evidence: [ev] });
-      const from = ctx.keyOf(h.decl);
-      if (from) ctx.b.edge({ from, rel: "HANDLES", to: endpoint, derivation: "rule", rule: NEXT, evidence: [ev] });
+      const from = handlerOwner(ctx, h, sf);
+      ctx.b.edge({ from, rel: "HANDLES", to: endpoint, derivation: "rule", rule: NEXT, evidence: [ev] });
       any = true;
     }
   }

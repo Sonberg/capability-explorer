@@ -10,14 +10,14 @@ import { normaliseRoute, parseSql } from "../src/extract/rules.ts";
 interface Rec { kind: string; symbolKey?: string; nodeKind?: string; from?: string; relation?: string; to?: string; resolution?: string; unresolvedReason?: string; props?: Record<string, unknown> }
 
 /** Writes a throwaway project and extracts it; nothing is installed, as in a real analysis. */
-function run(files: Record<string, string>) {
+function run(files: Record<string, string>, includeTests = false) {
   const dir = mkdtempSync(join(tmpdir(), "ce-ts-"));
   try {
     for (const [path, text] of Object.entries(files)) {
       mkdirSync(dirname(join(dir, path)), { recursive: true });
       writeFileSync(join(dir, path), text);
     }
-    const results = extract({ source: dir, repository: "shop", commit: "0".repeat(40) });
+    const results = extract({ source: dir, repository: "shop", commit: "0".repeat(40), includeTests });
     return results.map((r) => {
       const check = validateArtifact(r.jsonl);
       assert.deepEqual(check.problems, [], r.unitPath);
@@ -27,6 +27,24 @@ function run(files: Record<string, string>) {
     rmSync(dir, { recursive: true, force: true });
   }
 }
+
+test("test files are excluded by default and available when requested", () => {
+  const files = {
+    "package.json": JSON.stringify({ name: "app" }),
+    "tsconfig.json": tsconfig,
+    "src/live.ts": "export function live() { return 1; }\n",
+    "src/live.test.ts": "export function testOnly() { return 2; }\n",
+    "src/__tests__/integration.ts": "export function integrationOnly() { return 3; }\n",
+  };
+
+  const production = run(files)[0]!.records;
+  assert.ok(production.some((r) => r.symbolKey?.endsWith("|live#value")));
+  assert.ok(!production.some((r) => r.symbolKey?.includes("testOnly") || r.symbolKey?.includes("integrationOnly")));
+
+  const withTests = run(files, true)[0]!.records;
+  assert.ok(withTests.some((r) => r.symbolKey?.endsWith("|testOnly#value")));
+  assert.ok(withTests.some((r) => r.symbolKey?.endsWith("|integrationOnly#value")));
+});
 
 const tsconfig = JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", strict: true, resolveJsonModule: true }, include: ["src"] });
 

@@ -163,6 +163,17 @@ export interface Integrations {
   http: { request: Edge; candidates: SymbolRef[]; match: "bound" | "binding" | "broken" | "route" | "none" | "dynamic"; note: string; base: string; group: string }[];
   channels: ResourceGroup[];
   data: ResourceGroup[];
+  marks: Mark[];
+}
+
+/** key: "group|http|Klarna" for a whole integration, otherwise an endpoint, request, channel or table key. */
+export interface Mark {
+  key: string;
+  status: "deprecated" | "obsolete";
+  note: string;
+  markedAt: string;
+  /** Set when the key is gone from the newest analysed revision: the first analysed commit without it. */
+  removal?: { repositoryId: string; lastSeen: string; removedIn: string; subject?: string };
 }
 
 export interface ResourceGroup {

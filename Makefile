@@ -35,6 +35,7 @@ help:
 	@echo "make evaluate ACTUAL=out/ [REPO=id,id]  score extractor output against fixtures/expected (report: out/evaluation.json)"
 	@echo "make analyze CAPABILITY=id  check out, extract and store artifacts for one capability (picked up live by explore)"
 	@echo "     GITHUB_AUTH=auto|git|none  LOCKED=1 (analyse the last check)  PACKAGES=0 (skip nuget.org downloads)"
+	@echo "     INCLUDE_TESTS=1 includes test projects/files; tests are excluded from the production graph by default"
 	@echo "     private NuGet feeds: nuget.config in the repo, credentials via %VAR% + NUGET_PASS_ENV=VAR,VAR (only the packages step sees them)"
 	@echo "     CE_DATABASE='Host=...;Database=...;...' also imports into PostgreSQL (off otherwise); BINDINGS=bindings.json binds @unbound hints"
 	@echo "     with CE_DATABASE and a model (make ollama, the Settings page, or CE_MODEL_ENDPOINT + CE_EMBEDDING_MODEL) it also embeds for similarity search"
@@ -157,7 +158,7 @@ test-explorer: fixtures build
 # Analyse a capability's repositories: export (network + token) -> packages (nuget.org) -> extract (offline).
 analyze: build
 	@test -n "$(CAPABILITY)" || { echo "usage: make analyze CAPABILITY=<id>  (see $(CAPABILITIES))"; exit 2; }
-	GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) scripts/analyze $(CAPABILITY) $(CAPABILITIES)
+	GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) INCLUDE_TESTS=$(INCLUDE_TESTS) scripts/analyze $(CAPABILITY) $(CAPABILITIES)
 
 # Every capability in $(CAPABILITIES), one after another; stops at the first failure.
 analyze-all:

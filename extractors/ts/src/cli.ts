@@ -26,12 +26,12 @@ if (command === "validate" && rest.length > 0) {
 if (command === "extract") {
   // Parses the sources with the TypeScript compiler API. Nothing in the analysed repository is installed,
   // built or executed; packages it imports are simply absent.
-  const { values } = parseArgs({ args: rest, options: { source: { type: "string" }, repository: { type: "string" }, commit: { type: "string" }, out: { type: "string" } } });
+  const { values } = parseArgs({ args: rest, options: { source: { type: "string" }, repository: { type: "string" }, commit: { type: "string" }, out: { type: "string" }, "include-tests": { type: "boolean" } } });
   if (!values.source || !values.repository || !values.commit || !values.out) {
-    console.error("usage: ce-ts extract --source <dir> --repository <id> --commit <sha> --out <dir>");
+    console.error("usage: ce-ts extract --source <dir> --repository <id> --commit <sha> --out <dir> [--include-tests]");
     process.exit(2);
   }
-  const results = extract({ source: values.source, repository: values.repository, commit: values.commit });
+  const results = extract({ source: values.source, repository: values.repository, commit: values.commit, includeTests: values["include-tests"] });
   mkdirSync(values.out, { recursive: true });
   let failed = 0;
   for (const r of results) {
@@ -78,5 +78,5 @@ if (command === "extract-sql") {
   process.exit(failed ? 1 : 0);
 }
 
-console.error("usage:\n  ce-ts validate <artifact.jsonl...>\n  ce-ts extract --source <dir> --repository <id> --commit <sha> --out <dir>\n  ce-ts extract-sql --source <dir> --repository <id> --commit <sha> --out <dir>");
+console.error("usage:\n  ce-ts validate <artifact.jsonl...>\n  ce-ts extract --source <dir> --repository <id> --commit <sha> --out <dir> [--include-tests]\n  ce-ts extract-sql --source <dir> --repository <id> --commit <sha> --out <dir>");
 process.exit(2);

@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CapabilityExplorer.Extractors.CSharp;
 
-public sealed record ExtractorOptions(string SourceRoot, string RepositoryId, string CommitSha, string? PackagesRoot, string ReferencePacks, PackageLock? Lock = null);
+public sealed record ExtractorOptions(string SourceRoot, string RepositoryId, string CommitSha, string? PackagesRoot, string ReferencePacks, PackageLock? Lock = null, bool IncludeTests = false);
 
 public sealed record UnitResult(string UnitPath, string UnitName, string Jsonl);
 
@@ -35,7 +35,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
 
     public IReadOnlyList<UnitResult> Extract()
     {
-        var projects = ProjectModel.Discover(options.SourceRoot);
+        var projects = ProjectModel.Discover(options.SourceRoot, options.IncludeTests);
         var resolver = new PackageResolver(options.PackagesRoot);
         var compilations = new Dictionary<string, Unit>(StringComparer.Ordinal);
 
@@ -210,7 +210,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             .Select(f => $"{Relative(f)}\0{ArtifactBuilder.Sha256(File.ReadAllText(f))}\n")));
         // The exact package set is part of the configuration: a different set is a different analysis, never silently different bytes.
         var packageSet = string.Concat(unit.ResolvedPackages.Select(r => $"{r.Id.ToLowerInvariant()}@{r.Version.ToLowerInvariant()}\n"));
-        var configHash = ArtifactBuilder.Sha256($"{Tool.Name}/{Tool.Version}|build={Build}|packages={(options.PackagesRoot is null ? "none" : options.Lock is null ? "folder" : "lock")}\n{packageSet}");
+        var configHash = ArtifactBuilder.Sha256($"{Tool.Name}/{Tool.Version}|build={Build}|packages={(options.PackagesRoot is null ? "none" : options.Lock is null ? "folder" : "lock")}|includeTests={options.IncludeTests}\n{packageSet}");
         var jsonl = b.ToJsonl(p.RelativePath, p.AssemblyName, "csharp", Rules.Tools, configHash, inputHash, p.SourceFiles.Count);
         return new UnitResult(p.RelativePath, p.AssemblyName, jsonl);
     }
