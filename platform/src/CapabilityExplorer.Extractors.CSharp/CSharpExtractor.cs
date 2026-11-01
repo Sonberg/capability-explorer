@@ -28,7 +28,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
     /// <summary>Errors that only mean "a source generator would have produced this".</summary>
     private static readonly HashSet<string> GeneratorDependent = ["CS8795", "CS8796", "CS8797"];
 
-    internal sealed record Unit(ProjectModel Project, CSharpCompilation Compilation, IReadOnlyList<PackageRef> MissingPackages, IReadOnlyList<ProjectRef> MissingProjects, IReadOnlyList<LockedPackage> ResolvedPackages);
+    internal sealed record Unit(ProjectModel Project, CSharpCompilation Compilation, IReadOnlyList<PackageRef> MissingPackages, IReadOnlyList<ProjectRef> MissingProjects, IReadOnlyList<LockedPackage> ResolvedPackages, IReadOnlyList<ResolutionIssue> ResolutionIssues, IReadOnlySet<string> FrameworkPaths, string ReferenceFingerprint);
 
     public IReadOnlyList<UnitResult> Extract()
     {
@@ -45,24 +45,44 @@ public sealed class CSharpExtractor(ExtractorOptions options)
 
             visiting.Add(p.FullPath);
             var references = new List<MetadataReference>();
-            references.AddRange(FrameworkReferences(p));
-            var resolution = resolver.Resolve(p.PackageRoots(), options.Lock?.For(p.RelativePath) ?? (options.Lock is null ? null : []));
+            var issues = new List<ResolutionIssue>(p.ResolutionIssues);
+            var frameworkFiles = ReferenceSelection.FrameworkFiles(options.ReferencePacks, p, issues);
+            var frameworkPaths = frameworkFiles.ToHashSet(StringComparer.Ordinal);
+            references.AddRange(ReferenceSelection.FileReferences(frameworkFiles, issues));
+            var resolution = resolver.Resolve(p.PackageRoots(), options.Lock?.For(p.RelativePath) ?? (options.Lock is null ? null : []), p.TargetFramework);
+            issues.AddRange(resolution.Issues);
             var (packageAssemblies, missingPackages) = (resolution.Assemblies, resolution.Missing);
-            references.AddRange(packageAssemblies.Select(a => MetadataReference.CreateFromFile(a)));
+            references.AddRange(ReferenceSelection.FileReferences(packageAssemblies, issues));
             var missingProjects = new List<ProjectRef>();
+            var projectReferenceInputs = new List<string>();
             foreach (var r in p.ProjectReferences)
             {
                 var target = r.ResolvedPath is null ? null : projects.FirstOrDefault(x => x.FullPath == r.ResolvedPath);
+                projectReferenceInputs.Add(target is null ? $"{r.Include}:missing" : $"{target.RelativePath}:{ArtifactBuilder.Sha256(File.ReadAllText(target.FullPath))}");
                 if (target is null || visiting.Contains(target.FullPath))
                 {
                     missingProjects.Add(r);
                     continue;
                 }
 
+                if (p.TargetFramework is null || target.TargetFramework is null)
+                {
+                    issues.Add(new("UNSUPPORTED_PROJECT_TARGET", $"Project reference {target.RelativePath} cannot be checked because a target framework is unresolved; its symbols are omitted"));
+                    continue;
+                }
+
+                if (FrameworkSelection.Nearest(p.TargetFramework, [target.TargetFramework]) is null)
+                {
+                    issues.Add(new("INCOMPATIBLE_PROJECT_TARGET", $"Project {target.RelativePath} targets {target.TargetFramework}, incompatible with {p.TargetFramework}; its symbols are omitted"));
+                    continue;
+                }
+
                 var dep = Build(target, visiting);
+                var sourceInputs = dep.Compilation.SyntaxTrees.Select(t => $"{(t.FilePath == "<implicit-usings>" ? t.FilePath : Relative(t.FilePath))}:{ArtifactBuilder.Sha256(t.GetText().ToString())}");
+                projectReferenceInputs.Add($"{target.RelativePath}|{ArtifactBuilder.Sha256(File.ReadAllText(target.FullPath))}|{dep.ReferenceFingerprint}|{string.Join("|", sourceInputs.Order(StringComparer.Ordinal))}");
                 references.Add(dep.Compilation.ToMetadataReference());
                 references.AddRange(dep.Compilation.References.Where(x => x is CompilationReference
-                    || x is PortableExecutableReference pe && packageAssemblies.All(a => a != pe.FilePath)));
+                    || x is PortableExecutableReference pe && !dep.FrameworkPaths.Contains(pe.FilePath!) && packageAssemblies.All(a => a != pe.FilePath)));
             }
 
             var parse = new CSharpParseOptions(LanguageVersion.Latest);
@@ -73,15 +93,12 @@ public sealed class CSharpExtractor(ExtractorOptions options)
                 trees.Add(CSharpSyntaxTree.ParseText(string.Concat(usings.Select(u => $"global using global::{u};\n")), parse, path: "<implicit-usings>"));
             }
 
-            // Compilation references can share a display name; cached compilation identity also deduplicates diamonds.
-            var referencedCompilations = new HashSet<Compilation>(ReferenceEqualityComparer.Instance);
-            var referenceDisplays = new HashSet<string?>(StringComparer.Ordinal);
-            var distinctReferences = references.Where(r => r is CompilationReference cr
-                ? referencedCompilations.Add(cr.Compilation)
-                : referenceDisplays.Add(r.Display)).ToList();
+            var distinctReferences = ReferenceSelection.Resolve(references, frameworkPaths, issues);
             var compilation = CSharpCompilation.Create(p.AssemblyName, trees, distinctReferences,
                 new CSharpCompilationOptions(p.IsExecutable ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: p.Nullable ? NullableContextOptions.Enable : NullableContextOptions.Disable, checkOverflow: p.CheckedArithmetic));
-            var unit = new Unit(p, compilation, missingPackages, missingProjects, resolution.Resolved);
+            var decisions = string.Join("\n", issues.Distinct().OrderBy(i => i.Code, StringComparer.Ordinal).ThenBy(i => i.Message, StringComparer.Ordinal).Select(i => $"{i.Code}:{i.Message}"));
+            var referenceFingerprint = ArtifactBuilder.Sha256($"{ReferenceSelection.Fingerprint(references, frameworkFiles.Concat(packageAssemblies))}|packages={resolution.InputFingerprint}|{string.Join("\n", projectReferenceInputs.Order(StringComparer.Ordinal))}|{decisions}");
+            var unit = new Unit(p, compilation, missingPackages, missingProjects, resolution.Resolved, issues, frameworkPaths, referenceFingerprint);
             compilations[p.FullPath] = unit;
             visiting.Remove(p.FullPath);
             return unit;
@@ -93,30 +110,6 @@ public sealed class CSharpExtractor(ExtractorOptions options)
         return units.Select(u => ExtractUnit(u, context)).ToList();
     }
 
-    private IEnumerable<MetadataReference> FrameworkReferences(ProjectModel p)
-    {
-        IEnumerable<string> Pack(string name)
-        {
-            var root = Path.Combine(options.ReferencePacks, name);
-            if (!Directory.Exists(root))
-            {
-                return [];
-            }
-
-            var version = Directory.EnumerateDirectories(root).OrderBy(d => d, StringComparer.Ordinal).Last();
-            var refDir = Directory.EnumerateDirectories(Path.Combine(version, "ref")).OrderBy(d => d, StringComparer.Ordinal).Last();
-            return Directory.EnumerateFiles(refDir, "*.dll");
-        }
-
-        var files = Pack("Microsoft.NETCore.App.Ref");
-        if (p.IsWeb)
-        {
-            files = files.Concat(Pack("Microsoft.AspNetCore.App.Ref"));
-        }
-
-        return files.Select(f => MetadataReference.CreateFromFile(f));
-    }
-
     private UnitResult ExtractUnit(Unit unit, RuleContext context)
     {
         var p = unit.Project;
@@ -125,6 +118,11 @@ public sealed class CSharpExtractor(ExtractorOptions options)
         var projectText = File.ReadAllText(p.FullPath);
         var projectKey = $"proj|{options.RepositoryId}|{p.RelativePath}";
         b.Node(projectKey, "Project", p.AssemblyName, [b.LineEvidence(p.RelativePath, p.SdkLine, projectText)]);
+
+        foreach (var issue in unit.ResolutionIssues.Distinct().OrderBy(i => i.Code, StringComparer.Ordinal).ThenBy(i => i.Message, StringComparer.Ordinal))
+        {
+            b.Diagnostic("warning", issue.Code, issue.Message, p.RelativePath, true, b.LineEvidence(p.RelativePath, p.SdkLine, projectText));
+        }
 
         foreach (var r in unit.MissingProjects)
         {
@@ -200,7 +198,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             .Select(f => $"{Relative(f)}\0{ArtifactBuilder.Sha256(File.ReadAllText(f))}\n")));
         // The exact package set is part of the configuration: a different set is a different analysis, never silently different bytes.
         var packageSet = string.Concat(unit.ResolvedPackages.Select(r => $"{r.Id.ToLowerInvariant()}@{r.Version.ToLowerInvariant()}\n"));
-        var configHash = ArtifactBuilder.Sha256($"{Tool.Name}/{Tool.Version}|build={Build}|packages={(options.PackagesRoot is null ? "none" : options.Lock is null ? "folder" : "lock")}\n{packageSet}");
+        var configHash = ArtifactBuilder.Sha256($"{Tool.Name}/{Tool.Version}|build={Build}|target={p.TargetFramework}|references={unit.ReferenceFingerprint}|packages={(options.PackagesRoot is null ? "none" : options.Lock is null ? "folder" : "lock")}\n{packageSet}");
         var jsonl = b.ToJsonl(p.RelativePath, p.AssemblyName, "csharp", Rules.Tools, configHash, inputHash, p.SourceFiles.Count);
         return new UnitResult(p.RelativePath, p.AssemblyName, jsonl);
     }

@@ -1,18 +1,18 @@
-using System.Xml.Linq;
-
 namespace CapabilityExplorer.Extractors.CSharp;
 
 /// <summary>
 /// Finds package assemblies in a NuGet global-packages layout (&lt;root&gt;/&lt;id&gt;/&lt;version&gt;/lib/&lt;tfm&gt;),
 /// following nuspec dependencies. Read-only: it never downloads, restores or runs package code.
 /// </summary>
-public sealed record PackageResolution(IReadOnlyList<string> Assemblies, IReadOnlyList<PackageRef> Missing, IReadOnlyList<LockedPackage> Resolved);
+public sealed record PackageResolution(IReadOnlyList<string> Assemblies, IReadOnlyList<PackageRef> Missing, IReadOnlyList<LockedPackage> Resolved)
+{
+    public IReadOnlyList<ResolutionIssue> Issues { get; init; } = [];
+    public string InputFingerprint { get; init; } = "";
+}
 
 public sealed class PackageResolver(string? packagesRoot)
 {
     private static readonly string[] AssemblyFolders = ["ref", "lib"];
-
-    internal static readonly string[] Frameworks = ["net10.0", "net9.0", "net8.0", "net7.0", "net6.0", "netstandard2.1", "netstandard2.0", "netcoreapp3.1"];
 
     /// <summary>
     /// The reference assemblies for a project's packages. With a <paramref name="locked"/> set, exactly those versions
@@ -20,13 +20,16 @@ public sealed class PackageResolver(string? packagesRoot)
     /// never silently different output. Without one, versions are picked from the folder (cache-dependent).
     /// <see cref="PackageResolution.Resolved"/> lists what was used, for the configuration hash.
     /// </summary>
-    public PackageResolution Resolve(IEnumerable<PackageRef> packages, IReadOnlyList<LockedPackage>? locked = null)
+    public PackageResolution Resolve(IEnumerable<PackageRef> packages, IReadOnlyList<LockedPackage>? locked = null, string? targetFramework = "net10.0")
     {
         var assemblies = new List<string>();
         var resolved = new List<LockedPackage>();
         var missing = new List<PackageRef>();
+        var issues = new List<ResolutionIssue>();
         if (locked is not null)
         {
+            var roots = packages.ToList();
+            var byId = locked.ToDictionary(l => l.Id, StringComparer.OrdinalIgnoreCase);
             foreach (var l in locked)
             {
                 var root = packagesRoot is null ? null : Path.Combine(packagesRoot, l.Id.ToLowerInvariant(), l.Version.ToLowerInvariant());
@@ -35,19 +38,34 @@ public sealed class PackageResolver(string? packagesRoot)
                     throw new InvalidOperationException($"locked package {l.Id} {l.Version} is not in the packages folder; run the packages step again");
                 }
 
-                assemblies.AddRange(AssembliesIn(root));
-                resolved.Add(l);
             }
 
-            var lockedIds = locked.Select(l => l.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            missing.AddRange(packages.Where(p => !lockedIds.Contains(p.Id)));
+            missing.AddRange(roots.Where(p => !byId.ContainsKey(p.Id)));
+            var queue = new Queue<string>(roots.Select(p => p.Id));
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            while (queue.TryDequeue(out var id))
+            {
+                if (!seen.Add(id) || !byId.TryGetValue(id, out var package)) continue;
+                var root = Path.Combine(packagesRoot!, package.Id.ToLowerInvariant(), package.Version.ToLowerInvariant());
+                assemblies.AddRange(AssembliesIn(root, targetFramework, package.Id, issues));
+                resolved.Add(package);
+                foreach (var dependency in FrameworkSelection.DependencyElements(root, targetFramework))
+                {
+                    if ((string?)dependency.Attribute("id") is not { } depId) continue;
+                    if (!byId.ContainsKey(depId))
+                    {
+                        issues.Add(new("UNRESOLVED_TRANSITIVE_PACKAGE", $"Locked package {package.Id} requires {depId} for {targetFramework}, which is absent from the lock; run the packages step again"));
+                    }
+                    queue.Enqueue(depId);
+                }
+            }
         }
         else
         {
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var p in packages)
             {
-                if (!Visit(p.Id, p.Version, assemblies, resolved, seen, depth: 0))
+                if (!Visit(p.Id, p.Version, assemblies, resolved, seen, issues, targetFramework, depth: 0))
                 {
                     missing.Add(p);
                 }
@@ -57,18 +75,64 @@ public sealed class PackageResolver(string? packagesRoot)
         return new PackageResolution(
             assemblies.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList(),
             missing,
-            resolved.OrderBy(r => r.Id, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Version, StringComparer.Ordinal).ToList());
+            resolved.OrderBy(r => r.Id, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Version, StringComparer.Ordinal).ToList())
+        {
+            Issues = issues,
+            InputFingerprint = Fingerprint(resolved),
+        };
     }
 
-    private static IEnumerable<string> AssembliesIn(string root)
+    private string Fingerprint(IEnumerable<LockedPackage> packages)
     {
-        // Reference assemblies (ref/) describe the compile surface when a package ships them; lib/ otherwise.
-        var tfm = AssemblyFolders.Select(d => Path.Combine(root, d)).Where(Directory.Exists)
-            .SelectMany(d => Frameworks.Select(f => Path.Combine(d, f))).FirstOrDefault(Directory.Exists);
-        return tfm is null ? [] : Directory.EnumerateFiles(tfm, "*.dll").Order(StringComparer.Ordinal);
+        var inputs = new List<string>();
+        foreach (var package in packages.OrderBy(p => p.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            var root = Path.Combine(packagesRoot!, package.Id.ToLowerInvariant(), package.Version.ToLowerInvariant());
+            var prefix = $"{package.Id.ToLowerInvariant()}@{package.Version.ToLowerInvariant()}";
+            foreach (var file in Directory.EnumerateFiles(root, "*.nuspec"))
+                inputs.Add($"{prefix}/{Path.GetFileName(file)}:{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(file)))}");
+            foreach (var folder in AssemblyFolders.Select(f => Path.Combine(root, f)).Where(Directory.Exists))
+            {
+                foreach (var dir in Directory.EnumerateDirectories(folder)) inputs.Add($"{prefix}/dir:{Path.GetRelativePath(root, dir).Replace('\\', '/')}");
+                foreach (var file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
+                    .Where(f => f.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) || Path.GetFileName(f) == "_._"))
+                    inputs.Add($"{prefix}/{Path.GetRelativePath(root, file).Replace('\\', '/')}:{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(file)))}");
+            }
+        }
+        return ArtifactBuilder.Sha256(string.Join("\n", inputs.Order(StringComparer.Ordinal)));
     }
 
-    private bool Visit(string id, string? versionRange, List<string> assemblies, List<LockedPackage> resolved, HashSet<string> seen, int depth)
+    private static List<string> AssembliesIn(string root, string? target, string id, List<ResolutionIssue> issues)
+    {
+        if (FrameworkSelection.IncompatibleDependencyGroups(root, target))
+        {
+            issues.Add(new("PACKAGE_NO_COMPATIBLE_DEPENDENCIES", $"Package {id} declares only incompatible dependency groups for {target ?? "the unresolved target"}"));
+        }
+
+        foreach (var folder in AssemblyFolders)
+        {
+            var dir = Path.Combine(root, folder);
+            if (!Directory.Exists(dir)) continue;
+            var candidates = Directory.EnumerateDirectories(dir)
+                .Where(d => Directory.EnumerateFiles(d).Any(f => f.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) || Path.GetFileName(f) == "_._"))
+                .Select(Path.GetFileName).OfType<string>().ToList();
+            if (FrameworkSelection.Nearest(target, candidates) is not { } nearest) continue;
+            // An explicit _._ empty group intentionally suppresses compile references, including lib fallback.
+            return Directory.EnumerateFiles(Path.Combine(dir, nearest), "*.dll").Order(StringComparer.Ordinal).ToList();
+        }
+
+        var compileFiles = AssemblyFolders.Select(f => Path.Combine(root, f)).Where(Directory.Exists)
+            .Any(d => Directory.EnumerateFiles(d, "*", SearchOption.AllDirectories)
+                .Any(f => f.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) || Path.GetFileName(f) == "_._"));
+        if (compileFiles)
+        {
+            issues.Add(new("PACKAGE_NO_COMPATIBLE_ASSETS", $"Package {id} has compile assets but no compatible ref/lib group for {target ?? "the unresolved target"}"));
+        }
+        // Packages with no lib/ref assets (meta-packages, analyzers, build-only packages) need no compile assembly.
+        return [];
+    }
+
+    private bool Visit(string id, string? versionRange, List<string> assemblies, List<LockedPackage> resolved, HashSet<string> seen, List<ResolutionIssue> issues, string? target, int depth)
     {
         if (packagesRoot is null || depth > 6)
         {
@@ -94,35 +158,21 @@ public sealed class PackageResolver(string? packagesRoot)
 
         var root = Path.Combine(dir, version);
         resolved.Add(new LockedPackage(id, version));
-        assemblies.AddRange(AssembliesIn(root));
+        assemblies.AddRange(AssembliesIn(root, target, id, issues));
 
-        var nuspec = Directory.EnumerateFiles(root, "*.nuspec").FirstOrDefault();
-        if (nuspec is not null)
+        foreach (var dep in FrameworkSelection.DependencyElements(root, target))
         {
-            var doc = XDocument.Load(nuspec);
-            var groups = doc.Descendants().Where(e => e.Name.LocalName == "group").ToList();
-            var group = Frameworks.Select(f => groups.FirstOrDefault(g => Normalise((string?)g.Attribute("targetFramework")) == f)).FirstOrDefault(g => g is not null);
-            var deps = (group?.Elements() ?? doc.Descendants().Where(e => e.Name.LocalName == "dependencies").Elements())
-                .Where(e => e.Name.LocalName == "dependency");
-            foreach (var dep in deps)
+            if ((string?)dep.Attribute("id") is { } depId)
             {
-                if ((string?)dep.Attribute("id") is { } depId)
+                if (!Visit(depId, (string?)dep.Attribute("version"), assemblies, resolved, seen, issues, target, depth + 1))
                 {
-                    Visit(depId, (string?)dep.Attribute("version"), assemblies, resolved, seen, depth + 1);
+                    issues.Add(new("UNRESOLVED_TRANSITIVE_PACKAGE", $"Package {id} requires {depId} {(string?)dep.Attribute("version")}, which is unavailable"));
                 }
             }
         }
 
         return true;
     }
-
-    internal static string? Normalise(string? tfm) => tfm?.ToLowerInvariant() switch
-    {
-        null => null,
-        var t when t.StartsWith(".netstandard", StringComparison.Ordinal) => "netstandard" + t[".netstandard".Length..],
-        var t when t.StartsWith("net", StringComparison.Ordinal) && t.Contains('.', StringComparison.Ordinal) => t.Split('-')[0],
-        var t => t,
-    };
 
     /// <summary>The exact version if present, else the lowest available version satisfying a "[min, ...)" range.</summary>
     private static string? Pick(string dir, string? range)
