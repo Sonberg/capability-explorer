@@ -28,7 +28,17 @@ public sealed record ProjectModel(
             .DistinctBy(p => p.Id, StringComparer.OrdinalIgnoreCase)
             .OrderBy(p => p.Id, StringComparer.OrdinalIgnoreCase).ToList();
 
-    public bool IsWeb => Sdk.Contains("Web", StringComparison.OrdinalIgnoreCase);
+    public bool IsWeb => Sdk.Contains("Web", StringComparison.OrdinalIgnoreCase) || FrameworkReferences.Contains("Microsoft.AspNetCore.App", StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The target framework moniker the project declares literally (net8.0, without a platform suffix): TargetFramework,
+    /// else the first of TargetFrameworks, from the project or a Directory.Build.props above it. Null when it is a
+    /// property reference or missing. MSBuild is never evaluated.
+    /// </summary>
+    public string? TargetFramework { get; init; }
+
+    /// <summary>Literal &lt;FrameworkReference Include="..."&gt; items (e.g. Microsoft.AspNetCore.App in a non-Web project).</summary>
+    public IReadOnlyList<string> FrameworkReferences { get; init; } = [];
 
     /// <summary>&lt;CheckForOverflowUnderflow&gt;true: integer arithmetic throws instead of wrapping.</summary>
     public bool CheckedArithmetic { get; init; }
@@ -99,10 +109,37 @@ public sealed record ProjectModel(
             projectRefs,
             sources)
         {
+            TargetFramework = LiteralTargetFramework(Prop("TargetFramework"), Prop("TargetFrameworks")) ?? InheritedTargetFramework(root, dir),
+            FrameworkReferences = project.Descendants().Where(e => e.Name.LocalName == "FrameworkReference")
+                .Select(e => ((string?)e.Attribute("Include") ?? "").Trim()).Where(n => n.Length > 0 && !n.Contains("$(", StringComparison.Ordinal))
+                .Order(StringComparer.OrdinalIgnoreCase).ToList(),
             CheckedArithmetic = string.Equals(Prop("CheckForOverflowUnderflow"), "true", StringComparison.OrdinalIgnoreCase),
             IsExecutable = string.Equals(outputType, "Exe", StringComparison.OrdinalIgnoreCase) || string.Equals(outputType, "WinExe", StringComparison.OrdinalIgnoreCase)
                 || sdk.Contains("Web", StringComparison.OrdinalIgnoreCase) || sdk.Contains("Worker", StringComparison.OrdinalIgnoreCase),
         };
+    }
+
+    private static string? LiteralTargetFramework(string? single, string? multiple)
+    {
+        var value = !string.IsNullOrWhiteSpace(single) ? single : multiple?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
+        return value is null || value.Contains("$(", StringComparison.Ordinal) ? null : value.Split('-')[0].ToLowerInvariant();
+    }
+
+    private static string? InheritedTargetFramework(string root, string dir)
+    {
+        for (var d = Path.GetDirectoryName(dir); d is not null && d.StartsWith(Path.GetFullPath(root), StringComparison.Ordinal); d = Path.GetDirectoryName(d))
+        {
+            var props = Path.Combine(d, "Directory.Build.props");
+            if (!File.Exists(props))
+            {
+                continue;
+            }
+
+            string? Prop(string name) => XDocument.Load(props).Descendants().FirstOrDefault(e => e.Name.LocalName == name)?.Value.Trim();
+            return LiteralTargetFramework(Prop("TargetFramework"), Prop("TargetFrameworks"));
+        }
+
+        return null;
     }
 
     /// <summary>Central package management: Directory.Packages.props in the project directory or above (within root).</summary>
