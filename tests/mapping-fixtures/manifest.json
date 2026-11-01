@@ -1,0 +1,20 @@
+{
+  "format": "mapping-replay-input.v1",
+  "inputKind": "synthetic",
+  "repositoryId": "mapping-replay",
+  "commitSha": "93457da2ecaa70e26b3837ce57d43b1c937094c4",
+  "inputHash": "93457da2ecaa70e26b3837ce57d43b1c937094c443d7b1a4659f4e91b888c0c3",
+  "files": {
+    "csharp/HttpFixture.cs": "7bf8654735034d84fde2d00ec2b27cc5f291af6bd018e06708f6d674697c4cad",
+    "csharp/HttpFixture.csproj": "067f99fbc27d1722f2e9c303971c4b3385db2ac7a7fcdd986fac6e29879d78b9",
+    "ts/package.json": "0ff88068051bcdd19c1a1f72b4acbcdaf2ed5e8d07513e47dd2af82fa86b5f98",
+    "ts/src/app/api/(group)/items/[id]/route.ts": "32eebf64bcd6378420361acdd8ec3825b504f486d24686db094ccecca48df24c",
+    "ts/src/app/api/files/[...parts]/route.ts": "f5da968c946ff2089dd3811ba6b8e714d1f65c9da903c6ee32f8f12186a11bfa",
+    "ts/src/app/api/search/[[...parts]]/route.ts": "7441e86d95cc0163b0b111dd8f1cabce5d72b310107952d07356db81b013287a",
+    "ts/src/app/api/unsupported/route.ts": "51f66fac9c44a5c3f9769fcf0115628971a0826922e47d3f8d8cb96e2d9a2c4c",
+    "ts/tsconfig.json": "5429049c4a9f645aae56d39709457bc9275d1b53afc8a74891a3ddaff3a33f13"
+  },
+  "assertions": [
+    { "name": "relative fetch keeps unresolved origin", "selector": { "kind": "edge", "relation": "REQUESTS", "to": "http|@unbound:mapping-replay/mapping-replay-ts:base=origin|GET /local", "resolution": "unresolved" }, "baseline": 1, "candidate": 1 }
+  ]
+}

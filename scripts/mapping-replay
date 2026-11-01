@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Fixed, offline extractor invocations only. Analysed input is never installed or built.
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+if [[ "${1:-}" == prepare && $# == 3 ]]; then
+  scripts/sandbox --offline dotnet dotnet build platform/src/CapabilityExplorer.Extractors.CSharp --no-restore --no-incremental -nologo
+  exec scripts/sandbox --offline node node scripts/mapping-replay.mjs prepare "$2" "$3"
+fi
+[[ $# -ge 2 && $# -le 4 ]] || {
+  echo 'usage: scripts/mapping-replay prepare <bundle-dir> <source-commit>' >&2
+  echo '       scripts/mapping-replay <baseline-bundle> <candidate-bundle> [manifest] [output-dir]' >&2
+  exit 2
+}
+baseline="$1"; candidate="$2"
+manifest="${3:-tests/mapping-fixtures/manifest.json}"
+out="${4:-.sandbox-cache/mapping-replay/result}"
+scripts/sandbox --offline node node scripts/mapping-replay.mjs preflight "$baseline" "$candidate" "$manifest" "$out"
+commit="$(cat "$out/commit.txt")"
+for lane in baseline candidate; do
+  if [[ "$lane" == baseline ]]; then bundle="$baseline"; else bundle="$candidate"; fi
+  for repeat in 1 2; do
+    dest="$out/$lane/$repeat"
+    scripts/sandbox --offline node node "$bundle/ts/extractors/ts/src/cli.ts" extract \
+      --source tests/mapping-fixtures/source --repository mapping-replay --commit "$commit" --out "$dest/ts"
+    scripts/sandbox --offline dotnet dotnet "$bundle/csharp/ce-cs.dll" extract \
+      --source tests/mapping-fixtures/source --repository mapping-replay --commit "$commit" --out "$dest/csharp"
+  done
+done
+scripts/sandbox --offline node node scripts/mapping-replay.mjs verify "$baseline" "$candidate" "$manifest" "$out"
