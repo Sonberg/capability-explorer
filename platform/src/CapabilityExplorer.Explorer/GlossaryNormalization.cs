@@ -7,6 +7,18 @@ public static class GlossaryNormalization
 {
     public static string Normalize(string name)
     {
+        var words = Words(name).ToList();
+        if (words.Count > 1 && words[^1] is "dto" or "entity" or "record")
+        {
+            words.RemoveAt(words.Count - 1);
+        }
+
+        return string.Join(' ', words);
+    }
+
+    /// <summary>Lower-cased words split at separators, case changes and acronym boundaries; nothing is removed.</summary>
+    internal static IReadOnlyList<string> Words(string name)
+    {
         ArgumentNullException.ThrowIfNull(name);
         var words = new List<string>();
         var word = new StringBuilder();
@@ -31,12 +43,7 @@ public static class GlossaryNormalization
         }
 
         Flush();
-        if (words.Count > 1 && words[^1] is "dto" or "entity" or "record")
-        {
-            words.RemoveAt(words.Count - 1);
-        }
-
-        return string.Join(' ', words);
+        return words;
 
         void Flush()
         {

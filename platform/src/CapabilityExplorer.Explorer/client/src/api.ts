@@ -349,3 +349,55 @@ export interface GlossaryCandidate {
   possibleComparisons: number;
   comparisons: GlossaryComparison[];
 }
+
+/** One feature of a concept's score (MADR-0005). Zero points is still a reported fact. */
+export interface GlossaryReason {
+  feature: string;
+  points: number;
+  detail: string | null;
+}
+
+export interface GlossaryMember {
+  id: string;
+  key: string;
+  name: string;
+  kind: string;
+  fold: "declaration" | "representation" | "variant";
+  repositoryId: string;
+  commitSha: string;
+  unit: string;
+  unitPath: string;
+  evidence: Evidence[];
+}
+
+/** A property, field or column nested under the concept that declares it. */
+export interface GlossaryField {
+  label: string;
+  name: string;
+  generic: boolean;
+  declarations: number;
+  evidence: Evidence[];
+}
+
+/** Declarations with an equal stem, ranked by an explainable score. Not a reviewed domain model. */
+export interface GlossaryConcept {
+  key: string;
+  term: string;
+  tier: "core" | "supporting" | "plumbing";
+  score: number;
+  why: GlossaryReason[];
+  members: GlossaryMember[];
+  variants: GlossaryMember[];
+  attributes: GlossaryField[];
+  repositories: string[];
+  capabilities: string[];
+}
+
+export interface GlossaryConceptView {
+  weightsVersion: number;
+  concepts: GlossaryConcept[];
+  metrics: GlossaryCandidate[];
+  excludedTestDeclarations: number;
+  partialUnits: string[];
+  limits: string[];
+}

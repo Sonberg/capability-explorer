@@ -51,6 +51,10 @@ validation. Domain knowledge that code does not establish stays unknown.
 | irHash | SHA-256 of canonical JSON of the expression. Equal hashes identify equal serialized IR, not equal full artifact bytes or universally equivalent runtime behavior. |
 | Term candidate | Read-only grouping by an exact normalized explicit name. It is navigation assistance, not a reviewed shared concept or assertion that values are interchangeable. |
 | Glossary occurrence | One source observation identified by repository, revision, unit, symbol and role; calculation observations also retain a stable record discriminator. |
+| Glossary concept | Read-only group of declarations with an equal stem (representation suffixes and plurals folded, nothing else), ranked by an explainable score. A concept is a navigation aid, not a reviewed domain model or an assertion that values are interchangeable. See [MADR-0005](adr/0005-glossary-concepts.md). Example: `Reseller`, `ResellerDto` and a web `ResellerDto` form one concept. |
+| Concept tier | Presentation band of a concept: core, supporting or plumbing. Derived from the score; plumbing stays reachable with its reasons. |
+| Concept feature | A boolean fact from the artifacts (for example persisted, message contract, role suffix) with a checked-in integer weight. Features are the explanation of a tier. |
+| Attribute | A property, field or column nested under the concept that declares it. |
 | Comparison completeness | Whether every possible calculation pair in a candidate was compared. A bounded partial comparison cannot establish absence of differences. |
 | Interpretation proposal | An optional model-produced explanation or conceptual suggestion, separate from immutable extracted facts and validated against permitted input. |
 | Review | Human judgment attached separately to a fact/proposal; it does not silently rewrite original observations. |

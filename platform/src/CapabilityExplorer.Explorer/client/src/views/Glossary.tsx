@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { shortSha, type AttributeValue, type Comparison, type GlossaryCandidate, type GlossaryOccurrence } from "../api";
 import { SourceView } from "../components/source";
+import { GlossaryConcepts } from "./GlossaryConcepts";
 import { Card, ErrorBox, H1, H2, inputClass, jsonText, Loading, Mono, Muted, Note, Pill, Table } from "../components/ui";
 import { href, useApi, useSelection } from "../state";
 
@@ -8,9 +9,20 @@ type Difference = Comparison["differences"][number];
 
 export function Glossary({ params }: { params: URLSearchParams }) {
   const { scope } = useSelection();
+  const mode = params.get("mode") === "candidates" ? "candidates" : "concepts";
   // useApi retains its previous response while fetching. Remount on scope changes
   // so evidence from a previous capability or revision cannot remain visible.
-  return <ScopedGlossary key={scope} scope={scope} selectedTerm={params.get("term")} />;
+  return <div className="space-y-3">
+    <nav aria-label="Glossary view" className="flex gap-1 text-[13px]">
+      {([["concepts", "Concepts", "Ranked, with reasons"], ["candidates", "Candidates", "Exact normalized labels"]] as const).map(([id, label, hint]) => (
+        <a key={id} href={href("glossary", id === "candidates" ? { mode: id } : {})} aria-current={mode === id ? "page" : undefined} title={hint}
+          className={`rounded-md px-3 py-1 font-semibold ${mode === id ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300" : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"}`}>{label}</a>
+      ))}
+    </nav>
+    {mode === "concepts"
+      ? <GlossaryConcepts key={scope} scope={scope} selectedKey={params.get("concept")} />
+      : <ScopedGlossary key={scope} scope={scope} selectedTerm={params.get("term")} />}
+  </div>;
 }
 
 function ScopedGlossary({ scope, selectedTerm }: { scope: string; selectedTerm: string | null }) {
@@ -50,7 +62,7 @@ function ScopedGlossary({ scope, selectedTerm }: { scope: string; selectedTerm: 
               columns={["Candidate label", "Occurrences", "Repositories / capabilities", "Types", "Observed comparisons"]}
               selected={(index) => rows[index].term === selectedTerm}
               rows={rows.map((candidate) => [
-                <a href={href("glossary", { term: candidate.term })} aria-current={candidate.term === selectedTerm ? "true" : undefined} className="font-semibold text-blue-700 hover:underline dark:text-blue-300">{candidate.term}</a>,
+                <a href={href("glossary", { mode: "candidates", term: candidate.term })} aria-current={candidate.term === selectedTerm ? "true" : undefined} className="font-semibold text-blue-700 hover:underline dark:text-blue-300">{candidate.term}</a>,
                 candidate.occurrences.length,
                 <Membership candidate={candidate} />,
                 <TypeSummary occurrences={candidate.occurrences} />,
