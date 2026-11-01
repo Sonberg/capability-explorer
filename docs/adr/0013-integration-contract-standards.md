@@ -42,7 +42,7 @@ MADR-0007 compatibility assessment; do not invent unsupported ce.v1 fields.
 | AsyncAPI | 3.1.0 | Channels, messages, application-relative send/receive operations, replies and declared servers; second adapter candidate. Older versions require explicit adapters. |
 | JSON Schema | Draft 2020-12 for ce.v1 | OpenAPI 3.2 defaults to its 2020-12-based dialect; respect `jsonSchemaDialect` and resource `$schema`. AsyncAPI 3.1.0 defaults to its Draft-07-based Schema Object, with alternatives selected by `schemaFormat`. Never reinterpret all payloads as 2020-12. |
 | AsyncAPI protocol bindings | Individually pinned `bindingVersion` | Preserve Kafka/AMQP/MQTT/etc. protocol-specific metadata when actually supported. AsyncAPI core version does not pin binding versions. |
-| CloudEvents | 1.0.2 specification baseline | Event envelope metadata, distinct from broker/channel identity and payload schema. Specification patch version is not the event's `specversion` value. |
+| CloudEvents | 1.0.2 core and separately pinned HTTP/Kafka binding baselines | Event envelope metadata, distinct from broker/channel identity and payload schema. These transport bindings are separate from AsyncAPI's binding registry. Specification patch version is not the event's `specversion` value. |
 | HTTP | RFC 9110 | Method and authority semantics; retain unknown server variables and unresolved deployment configuration. |
 | gRPC / Protocol Buffers | Declared proto2/proto3 syntax or edition; parser version pinned per adapter | Candidate future service/message declarations. No target generators/plugins or analyzed builds execute. No claim of current support. |
 | GraphQL | September 2025 edition as evaluated baseline | Candidate future SDL/operation adapter; no live introspection or resolver execution. No claim of current support. |
@@ -56,6 +56,9 @@ These are research-date baselines, not instructions to download moving versions.
 
 Preserve repository, full revision, document path/hash, document version, JSON
 Pointer and source range where available, adapter version and configuration hash.
+ce.v1 canonical facts require valid evidence spans: missing spans produce a
+diagnostic or separate noncanonical report, not an unsupported graph fact. Any
+relaxation requires an explicit contract extension and validator review.
 Retain operation direction from the described application's perspective. Servers,
 addresses, protocol, environment and binding evidence constrain resource identity;
 channel/message display names alone never establish cross-repository equivalence.
@@ -113,6 +116,8 @@ where available. This is a desk review, not parser certification.
 - [AsyncAPI 3.1.0, including schema formats and bindings](https://www.asyncapi.com/docs/reference/specification/v3.1.0)
 - [JSON Schema 2020-12](https://json-schema.org/draft/2020-12)
 - [CloudEvents 1.0.2](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md)
+- [CloudEvents HTTP binding 1.0.2](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/bindings/http-protocol-binding.md)
+- [CloudEvents Kafka binding 1.0.2](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/bindings/kafka-protocol-binding.md)
 - [AsyncAPI protocol bindings](https://github.com/asyncapi/bindings)
 - [HTTP semantics](https://www.rfc-editor.org/rfc/rfc9110.html)
 - [Protobuf editions](https://protobuf.dev/editions/overview/)

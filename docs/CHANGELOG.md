@@ -11,6 +11,9 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Proposed integration-contract standards MADR covering versioned OpenAPI/AsyncAPI and evidence-preserving adjacent standards; parser implementation remains future work.
+- Referenced, weighted comparison of deterministic analysis, context packaging and model inference tools, including the existing implementation.
+
 - Contributor policies for curated release notes and explicit product compatibility/versioning.
 - Revision-bound glossary connection graphs with bounded traversal, explicit source/binding evidence, calculation-input dependencies and visible coverage gaps.
 - PostgreSQL-backed reviewed terms, occurrence assertions and mismatch issues, with optimistic concurrency, audit attribution and stale-source detection.
