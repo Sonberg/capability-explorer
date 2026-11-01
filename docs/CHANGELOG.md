@@ -41,9 +41,9 @@ history or imply that existing private package versions are product releases.
 
 - Validate source records, package identifiers and Git revisions; bound process/archive output and reject unsafe export/cache paths.
 - Disable source-view Git transport helpers and lazy fetching. Restrict package redirects and credential forwarding.
-- Keep evidence-verification Git reads offline and bounded; omit source text from mismatch diagnostics.
+- Keep evidence-verification Git reads offline and bounded; omit source text from mismatch diagnostics and ignore Git replacement refs for original-commit evidence and source viewing.
 - Exclude credentials from C#/TypeScript Service Bus identities and TypeScript PostgreSQL hints and dynamic-expression metadata.
-- Restrict TypeScript source/config/JSON reads to the selected repository, with a narrow compiler builtin-library allowance and explicit unresolved-source diagnostics; final validation is pending.
+- Restrict TypeScript source/config/JSON reads to the selected repository, with a narrow compiler builtin-library allowance and explicit unresolved-source diagnostics.
 - Protect API routes with trusted-local browser checks; these do not provide authentication for remote deployments.
 - Prevent model credentials or ambient Azure identity from silently following saved endpoint changes; restrict default model transport and create settings files exclusively with owner-only permissions.
 

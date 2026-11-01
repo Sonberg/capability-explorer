@@ -1,6 +1,6 @@
 # Security, corpus replay and binding review: execution record
 
-Status: local implementation; validation incomplete; no PR or push. Target only
+Status: local implementation; final security validation incomplete; no PR or push. Target only
 `stage-1-contract-and-fixtures`. Last checked base: `d4389b4` (2026-11-01).
 No merge, release or change to main is authorized by this record.
 
@@ -51,17 +51,20 @@ the Docker service remaining available.
 - Run6 was also invalidated by newly generated Ruflo database files in `.swarm`.
   These were runtime-state additions, not changed application source. Preserve
   this failed receipt; do not edit it into a successful one.
-- Docker became unavailable during CI. Restore the shared service before
-  sandboxed validation; do not bypass sandboxing or restart others' workloads.
-- Local follow-up commits `83bbee5` (exact generated-memory exclusions) and
-  `5f3d6dc` (TypeScript source/config read boundaries) have not run their new
-  tests because Docker is unavailable. The JSON-boundary regression reproduced
-  four failures before the fix; that is not passing-after evidence. No fixture
-  or golden changes were made. File checks assume stable input, not protection
-  against concurrent hostile filesystem mutation.
-- Git replacement refs need a separate provenance review; disabling transport
-  helpers alone does not establish original-object identity under replacement
-  refs. This follow-up is unverified and is not recorded as a resolved finding.
+- Docker became unavailable during CI and was subsequently restored. The
+  interrupted receipt remains invalid; final validation uses a fresh run.
+- Follow-up TypeScript filesystem/configuration/fingerprint boundaries and exact
+  generated-memory exclusions now pass 53 audit harness tests, 147 TypeScript
+  tests and typechecking on `f3fa6a5`; no tests skipped. The JSON-boundary
+  regression reproduced four failures before the fix. No fixture or golden
+  changes were made. File checks assume stable input, not protection against
+  concurrent hostile filesystem mutation. Log: `.sandbox-cache/resume-focused.log`.
+- Git replacement refs were confirmed to substitute different source beneath a
+  requested commit in both public APIs. `ffed5d3` disables replacements for source
+  viewing and evidence verification. Both regressions failed before the fix;
+  isolated Contracts 108/108 and Explorer 151/151 tests passed afterward. Full
+  integration results belong to the exact-source local CI receipt, not those
+  focused worker results.
 - Brain lifecycle hooks reported failed exact turn readback. An explicit
   checkpoint was stored and read back as `project-state-current-1793555198027`,
   but this does not prove automatic turn capture, learning or routing savings.
@@ -78,3 +81,17 @@ the agreed publication gates are satisfied or the user explicitly revises them.
 Keep parser coverage, upstream image remediation and unavailable Glufs acceptance
 separate from product implementation. No claim that the project is vulnerability
 free follows from any one scanner or this record.
+
+## Cost and coverage follow-up
+
+Native workers used isolated worktrees for security implementation and independent
+read-only review; the coordinator integrated changes. No external paid inference
+was invoked. Native token usage and dollar savings were unavailable, so no savings
+or routing-learning uplift is claimed. Recorded AgentDB checkpoint readback proves
+that entry's persistence only.
+
+The reviewed Semgrep profile remains a sink inventory, not a complete taint
+analysis. A possible next package reuses existing Roslyn for unchanged modern C#
+syntax and independently checks exact targets and parse diagnostics. This is a
+proposal, not implemented coverage. A scanner parser limitation is not a reason
+to rewrite valid application syntax or silently exclude files.
