@@ -267,6 +267,22 @@ try {
   currentGraph = await navigate('system');
   receipt.checks.push('landscape, capability, repository and component levels with real drills');
   await groupJourney();
+  const dataIds = currentGraph.edges.filter((edge) => edge.kind === 'data').map((edge) => edge.id);
+  check(dataIds.length > 0, 'fixture must guarantee real data relationships for the kind filter regression');
+  const sourceBeforeFilter = await sourceDownload(currentGraph);
+  await page.getByLabel('data', { exact: true }).uncheck(); await ready();
+  check((await mapping(currentGraph)).edgeIds.every((id) => !dataIds.includes(id)), 'hiding data after group edits must hide every data relationship');
+  equal(await sourceDownload(currentGraph), sourceBeforeFilter, 'presentation filtering after drag must preserve the complete canonical source');
+  await page.getByLabel('data', { exact: true }).check(); await ready();
+  const restoredData = (await mapping(currentGraph)).edgeIds;
+  check(dataIds.some((id) => restoredData.includes(id)), 'showing data after group edits must restore original relationship IDs');
+  const viewpoints = page.getByRole('navigation', { name: 'Viewpoints', exact: true });
+  await viewpoints.locator('[data-view-id="data"]').first().click(); await ready();
+  const dataNodes = new Set(currentGraph.nodes.filter((node) => node.category === 'datastore').map((node) => node.id));
+  check((await mapping(currentGraph)).mapped.some((id) => dataNodes.has(id)), 'Data viewpoint must render actual scoped datastore sources');
+  equal(await sourceDownload(currentGraph), sourceBeforeFilter, 'generated viewpoint navigation must preserve the complete canonical source');
+  await viewpoints.locator('[data-view-id="flow"]').first().click(); await ready();
+  receipt.checks.push('real data-kind hide/show after group drag, canonical source preservation and generated Data viewpoint');
 
   for (const viewport of [{ width: 1440, height: 900 }, { width: 5120, height: 2160 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport); await ready();
@@ -301,10 +317,25 @@ try {
   await page.getByRole('switch', { name: 'Orthogonal', exact: true }).uncheck();
   equal(await page.getByRole('switch', { name: 'Orthogonal', exact: true }).isChecked(), false, 'routing setting must be interactive');
   await page.getByRole('switch', { name: 'Orthogonal', exact: true }).check();
+  const shell = canvas().locator('.live-canvas-shell');
+  equal(await shell.getAttribute('data-theme'), 'dark', 'diagram theme must initially be dark');
+  const darkBackground = await canvas().locator('.canvas').evaluate((element) => getComputedStyle(element).backgroundColor);
+  await page.getByRole('switch', { name: 'Dark mode', exact: true }).uncheck();
+  equal(await shell.getAttribute('data-theme'), 'light', 'dark-mode toggle must activate the light diagram theme');
+  check(await canvas().locator('.canvas').evaluate((element) => getComputedStyle(element).backgroundColor) !== darkBackground, 'theme toggle must change the rendered canvas background');
+  await page.getByRole('switch', { name: 'Dark mode', exact: true }).check();
+  const paths = canvas().locator('.react-flow__edge-path');
+  await ready();
+  const geometry = await paths.evaluateAll((elements) => elements.map((element) => element.getAttribute('d')));
+  await page.getByRole('switch', { name: 'Animation', exact: true }).check();
+  await canvas().locator('.ce-motion-particle animateMotion').first().waitFor({ state: 'attached' }); receipt.assertions++;
+  check((await canvas().locator('.ce-motion-particle animateMotion').first().getAttribute('path')).length > 0, 'enabled animation must follow actual connector geometry');
+  equal(await paths.evaluateAll((elements) => elements.map((element) => element.getAttribute('d'))), geometry, 'decorative animation must preserve relationship geometry');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.getByText('Animation disabled by reduced-motion preference.', { exact: true }).waitFor();
   check(await page.getByRole('switch', { name: 'Animation', exact: true }).isDisabled(), 'reduced motion must disable animation');
   equal(await page.getByRole('switch', { name: 'Animation', exact: true }).isChecked(), false, 'reduced motion must keep animation off');
+  await canvas().locator('.ce-motion-particle').first().waitFor({ state: 'detached' }); receipt.assertions++;
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   receipt.checks.push('1440/5120/390 layout, pinned viewpoints, favorites, ledger and settings');
 
