@@ -46,5 +46,6 @@ test('cancelled edit and queue bookkeeping do not emit; geometry keys ignore evi
   await Promise.resolve();assert.equal(layouts.length,0);
   assert.equal(geometryKey(s.base),geometryKey({...s.base,nodes:s.base.nodes.map(n=>({...n,metadata:{changed:'evidence'}}))}));
   assert.notEqual(geometryKey(s.base),geometryKey({...s.base,nodes:s.base.nodes.map(n=>({...n,x:n.x+1}))}));
+  assert.notEqual(geometryKey(s.base),geometryKey({...s.base,nodes:s.base.nodes.map(n=>({...n,color:'blue'}))}));
   detach();
 });

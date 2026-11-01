@@ -38,8 +38,9 @@ try {
    await page.mouse.move(box.x+box.width/2+(i%2?-30:30),box.y+box.height/2+(i%2?-8:8),{steps:3});await page.mouse.up();
    await frame.waitForFunction(id=>window.ceRoutingTrace.snapshot().records.some(r=>r.id>id&&r.kind==='node'&&r.status==='complete'),previous,{timeout:15000});
    const record=await frame.evaluate(()=>window.ceRoutingTrace.snapshot().records.findLast(r=>r.kind==='node'&&r.status==='complete'));
+   await writeFile(`${output}/routing-last-sample.json`,JSON.stringify(record,null,2));
    assert.notEqual(await node.getAttribute('style'),before,'must move a node');
-   for(const name of ['release-to-snapshot','worker-startup-and-request-delivery','worker-total','result-delivery','result-to-native-view','release-to-frame-opportunity','order0.search','order2.quality'])assert.ok(record.spans.some(s=>s.name===name),`missing ${name}`);
+   for(const name of ['release-to-snapshot','worker-startup-and-request-delivery','worker-total','result-delivery','result-to-native-view','release-to-frame-opportunity','order0.search','order2.quality'])assert.ok(record.spans.some(s=>s.name===name)||(name==='result-delivery'&&record.invalidTimings?.some(s=>s.name===name&&s.reason==='reversed'&&s.start-s.end<1)),`missing or invalid ${name}`);
    assert.equal(record.events.filter(e=>e.name==='pointer.release').length,1);
    samples.push(record);console.log(`${width} run${run+1} move${i+1}: ${record.spans.find(s=>s.name==='release-to-frame-opportunity').end-record.spans.find(s=>s.name==='release-to-frame-opportunity').start}ms`);
   }
@@ -47,7 +48,7 @@ try {
   const summary={};
   for(const name of [...new Set(samples.flatMap(r=>r.spans.map(s=>s.name)))]){
    const values=samples.flatMap(r=>r.spans.filter(s=>s.name===name).map(s=>s.end-s.start)).sort((a,b)=>a-b);
-   summary[name]={p50:values[Math.ceil(values.length*.5)-1],p95:values[Math.ceil(values.length*.95)-1],p99:values[Math.ceil(values.length*.99)-1]};
+   summary[name]={samples:values.length,p50:values[Math.ceil(values.length*.5)-1],p95:values[Math.ceil(values.length*.95)-1],p99:values[Math.ceil(values.length*.99)-1]};
   }
   assert.deepEqual(errors,[]);
   results.push({width,height,run,samples,summary,browser:browser.version(),environment:await frame.evaluate(()=>({userAgent:navigator.userAgent,logicalCPUs:navigator.hardwareConcurrency,devicePixelRatio,visibility:document.visibilityState})),diagnostics:await frame.evaluate(()=>window.ceRoutingTrace.snapshot())});

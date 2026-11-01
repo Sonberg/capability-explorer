@@ -5,7 +5,7 @@ type Initialized=Parameters<OnInitialized>[0];
 // A stable key deliberately excludes evidence, selection and editor bookkeeping.
 export function geometryKey(layout:LayoutedView):string {
   return JSON.stringify({id:layout.id,bounds:layout.bounds,
-    nodes:layout.nodes.map(n=>[n.id,n.x,n.y,n.width,n.height,n.labelBBox]),
+    nodes:layout.nodes.map(n=>[n.id,n.x,n.y,n.width,n.height,n.labelBBox,n.shape,n.color,n.style]),
     edges:layout.edges.map(e=>[e.id,e.points,e.controlPoints??null,e.labelBBox??null,e.isLabelCustomized??false])});
 }
 

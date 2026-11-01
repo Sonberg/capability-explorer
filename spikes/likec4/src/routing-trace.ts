@@ -40,7 +40,7 @@ export function traceContext(layout:{nodes:readonly unknown[];edges:readonly unk
 }
 export function traceEvent(context:TraceContext|undefined,name:string,at=timestamp()) {if(context)routingTrace.event(context.id,`g${context.generation}.${name}`,at);}
 export function traceSpan(context:TraceContext|undefined,name:string,start:number,end=timestamp()) {
-  routingTrace.span(context,name,start,end);
+  if(!routingTrace.span(context,name,start,end))return;
   if(!context||!routingTrace.enabled)return;
   const key=`ce.routing.${context.id}.${context.generation}.${name}`;
   // User Timing is visible in DevTools. Bound its independent global buffer too.

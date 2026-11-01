@@ -279,4 +279,4 @@ likec4-interaction-check:
 # Opt-in diagnostics against the candidate preview; reuse the existing browser image.
 .PHONY: likec4-trace-check
 likec4-trace-check:
-	SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node sh -c 'cd spikes/likec4 && node test/routing-trace-browser.mjs && node test/routing-lifecycle.mjs'
+	SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea $(SANDBOX) node sh -c 'cd spikes/likec4 && node test/routing-trace-browser.mjs && node test/immediate-layout-browser.mjs && node test/routing-lifecycle.mjs'

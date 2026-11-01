@@ -4,10 +4,10 @@ import type {Point,MutablePoint,Box,DiagramNode,DiagramEdge,DiagramView} from '.
 // Deterministic presentation routing: no evidence or node positions are changed.
 // Inspired by the supplied HTML: spaced ports, obstacle-aware A*, lane costs.
 export const MIN_LINE_GAP=24;
-interface End {point:MutablePoint;stub:MutablePoint;side:number}
+import {createSearch} from './routing-search.ts';
+import type {RouteEnd as End,SearchFunction} from './routing-search.ts';
 interface PortEntry {edge:string;node:DiagramNode;side:number;index:number;wrap:boolean;other:number}
-type Grid=NonNullable<ReturnType<typeof gridFor>>;
-const GRID=12, MARGIN=144, DIRECTIONS=[[1,0],[0,1],[-1,0],[0,-1]];
+const GRID=12, MARGIN=144;
 const routedCounts=new WeakMap<DiagramView,number>();
 const compare=(a:string,b:string)=>a<b?-1:a>b?1:0;
 const overlaps=(a:Box,b:Box)=>a.x<b.x+b.width&&b.x<a.x+a.width&&a.y<b.y+b.height&&b.y<a.y+a.height;
@@ -23,11 +23,6 @@ export function cubicPoints(points:readonly Point[]):[Point,...Point[]] {
   return [points[0],...points.slice(1).flatMap((p,i)=>[points[i],p,p])];
 }
 export const routeSegments=(points:readonly Point[]):[Point,Point][]=>points.slice(1).map((p,i)=>[points[i],p]);
-class Heap {
-  values:[number,number][]=[];
-  push(item:[number,number]){let i=this.values.length;this.values.push(item);while(i){const p=(i-1)>>1;if(this.values[p][0]<=item[0])break;this.values[i]=this.values[p];i=p;}this.values[i]=item;}
-  pop(){const first=this.values[0],last=this.values.pop()!;if(this.values.length){let i=0;while(i*2+1<this.values.length){let c=i*2+1;if(c+1<this.values.length&&this.values[c+1][0]<this.values[c][0])c++;if(this.values[c][0]>=last[0])break;this.values[i]=this.values[c];i=c;}this.values[i]=last;}return first;}
-}
 function ports(edges:DiagramEdge[],nodes:Map<string,DiagramNode>) {
   const ends=new Map<string,End[]>(), buckets=new Map<string,PortEntry[]>();
   for(const e of edges){const a=nodes.get(e.source),b=nodes.get(e.target);if(!a||!b)continue;
@@ -101,37 +96,6 @@ function gridFor(view:DiagramView) {
   obstacles.forEach(r=>mark(r,blocked));titles.forEach(r=>mark(r,headers));
   return {left,top,width,height,blocked,headers,obstacles,titles,terminalClearance:new Uint16Array(width*height),horizontal:new Uint16Array(width*height),vertical:new Uint16Array(width*height)};
 }
-function search(grid:Grid,start:End,end:End):Point[]|null {
-  const {width,height,left,top,blocked,headers,horizontal,vertical}=grid;
-  const cell=(p:Point)=>Math.round((p[1]-top)/GRID)*width+Math.round((p[0]-left)/GRID);
-  const horizontalJourney=Math.abs(end.stub[0]-start.stub[0])>=Math.abs(end.stub[1]-start.stub[1]);
-  const midX=((start.stub[0]+end.stub[0])/2-left)/GRID,midY=((start.stub[1]+end.stub[1])/2-top)/GRID;
-  const first=cell(start.stub),last=cell(end.stub),tx=last%width,ty=Math.floor(last/width);
-  if(blocked[first]||blocked[last])return null;
-  const distance=new Float64Array(width*height*4).fill(Infinity),parent=new Int32Array(distance.length).fill(-1),heap=new Heap();
-  const heuristic=(c:number)=>Math.abs(c%width-tx)+Math.abs(Math.floor(c/width)-ty);
-  distance[first*4+start.side]=0;heap.push([heuristic(first),first*4+start.side]);
-  while(heap.values.length){const [score,state]=heap.pop(),c=state>>2,dir=state&3,x=c%width,y=Math.floor(c/width);
-    if(score>distance[state]+heuristic(c)+.001)continue;
-    if(c===last&&dir===(end.side+2)%4){const path:Point[]=[];for(let p=state;p>=0;p=parent[p]){const v=p>>2;path.push([left+(v%width)*GRID,top+Math.floor(v/width)*GRID]);}return path.reverse();}
-    for(let d=0;d<4;d++){if(d===(dir+2)%4)continue;const nx=x+DIRECTIONS[d][0],ny=y+DIRECTIONS[d][1];if(nx<0||ny<0||nx>=width||ny>=height)continue;
-      const nc=ny*width+nx;if(blocked[nc])continue;
-      const same=d%2===0?horizontal:vertical,other=d%2===0?vertical:horizontal;
-      let nearby=0;
-      for(let offset=1;offset<MIN_LINE_GAP/GRID;offset++){
-        if(d%2===0){if(ny>=offset)nearby+=same[nc-offset*width];if(ny+offset<height)nearby+=same[nc+offset*width];}
-        else {if(nx>=offset)nearby+=same[nc-offset];if(nx+offset<width)nearby+=same[nc+offset];}
-      }
-      // A stable corridor preference prevents opposite-direction routes choosing
-      // incompatible far-end bends. It does not depend on node/relationship names.
-      const corridor=horizontalJourney?(d%2===1?Math.abs(nx-midX)*.01:0):(d%2===0?Math.abs(ny-midY)*.01:0);
-      const cost=grid.terminalClearance[nc]*1000+corridor+nearby*1000+1+(dir!==d?16:0)+(headers[nc]?30:0)+same[nc]*1000+other[nc]*200;
-      const ns=nc*4+d,nd=distance[state]+cost;
-      if(nd<distance[ns]){distance[ns]=nd;parent[ns]=state;heap.push([nd+heuristic(nc),ns]);}
-    }
-  }
-  return null;
-}
 const labelPadding=8;
 const padded=(box:Box):Box=>({x:box.x-labelPadding,y:box.y-labelPadding,width:box.width+labelPadding*2,height:box.height+labelPadding*2});
 function placeLabel(edge:DiagramEdge,points:readonly Point[],occupied:Box[],lineSegments:[Point,Point][]) {
@@ -155,7 +119,7 @@ function placeLabel(edge:DiagramEdge,points:readonly Point[],occupied:Box[],line
   }
   occupied.push(padded(best));return best!;
 }
-function routeOnce(view:DiagramView,order:number,report?:PhaseReporter):DiagramView {
+function routeOnce(view:DiagramView,order:number,report:PhaseReporter|undefined,searcher:SearchFunction):DiagramView {
   if(!view.nodes.length||!view.edges.length||view.edges.length>250)return {...view,routing:'ortho'};
   const gridStart=report?clock():0;
   const grid=gridFor(view);if(!grid)return {...view,routing:'ortho'};
@@ -178,7 +142,7 @@ function routeOnce(view:DiagramView,order:number,report?:PhaseReporter):DiagramV
     const stubBlocked=ends.some((end,i)=>view.nodes.some(n=>!n.children?.length&&n.id!==(i===0?edge.source:edge.target)&&segmentHits(end.point,end.stub,n)));
     if(stubBlocked)continue;
     reserve(ends,-1);
-    const path=search(grid,ends[0],ends[1]);
+    const path=searcher(grid,ends[0],ends[1]);
     reserve(ends,1);
     if(!path)continue;
     const points=simplify([ends[0].point,...path,ends[1].point]);routes.set(edge.id,points);
@@ -215,11 +179,11 @@ function quality(view:DiagramView) {
   }
   return [(view.edges.length-(routedCounts.get(view)??0)),shared+near,crossings,segments.length,length];
 }
-export function routeOrthogonal(view:DiagramView,report?:PhaseReporter):DiagramView {
+export function routeOrthogonal(view:DiagramView,report?:PhaseReporter,searcher:SearchFunction=createSearch()):DiagramView {
   if(view.edges.length>250)return {...view,routing:'ortho'};
   // Three bounded, deterministic orders reduce the greedy router's ordering bias.
   let best:DiagramView|null=null,score:number[]|null=null;
-  for(const order of [0,1,2]){const candidate=routeOnce(view,order,report),qualityStart=report?clock():0,next=quality(candidate);
+  for(const order of [0,1,2]){const candidate=routeOnce(view,order,report,searcher),qualityStart=report?clock():0,next=quality(candidate);
     report?.(`order${order}.quality`,qualityStart,clock());
     const diff=score?next.findIndex((n,i)=>n!==score![i]):-1;
     if(!best||(diff>=0&&next[diff]<score![diff])){best=candidate;score=next;}

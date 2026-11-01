@@ -1,3 +1,4 @@
+import {attachImmediateLayout,geometryKey} from './immediate-layout.ts';
 import {cancelTraceInteraction,configureTracing,downloadTrace,tracePointerDown,tracePointerUp,traceCancel,traceSnapshot} from './routing-trace.ts';
 import {RoutingTraceBridge} from './routing-trace-bridge.tsx';
 import type {LayoutedView,DiagramNode} from 'likec4/model';
@@ -45,6 +46,16 @@ function App() {
     return automaticGroups(graph);
   });
   const api = useRef<DiagramApi|null>(null);
+  const detachImmediate=useRef<(()=>void)|null>(null);
+  const acceptedGeometry=useRef<string|null>(null);
+  const acceptLayout=useRef<(layout:LayoutedView)=>void>(()=>{});
+  acceptLayout.current=layout=>{
+    if(layout.id!==view)return;
+    const key=geometryKey(layout);
+    if(key===acceptedGeometry.current)return;
+    acceptedGeometry.current=key;traceSnapshot(layout);setCustomView(layout);
+  };
+  useEffect(()=>()=>{detachImmediate.current?.();},[]);
   const canvas = useRef<HTMLElement|null>(null);
   const editable=view==='flow'||view==='vertical';
   const generatedView=useMemo(()=>editable?applyGroups(sourceModel.$data.views[view],groups):sourceModel.$data.views[view],[sourceModel,view,groups,editable]);
@@ -52,7 +63,9 @@ function App() {
   const routing=useRouting(layoutView,orthogonal,resetKey,tracing);
   const currentView=routing.view;
   const model = useMemo(() => LikeC4Model.create({...sourceModel.$data,views:{...sourceModel.$data.views,[view]:currentView},manualLayouts:{}}), [sourceModel,currentView]);
-  const editor = useMemo(() => createLikeC4Editor({fetchView: id => model.$data.views[id],handleChange: (id, change) => {if (id === view && change.op === 'save-view-snapshot') {traceSnapshot(change.layout);setCustomView(change.layout);} return {waitForViewSync:false};}}), [model,view]);
+  // Native history remains authoritative; its deferred persistence callback must
+  // not replay an already captured edit after worker refinement.
+  const editor = useMemo(() => createLikeC4Editor({fetchView: id => model.$data.views[id],handleChange: (id, change) => {if (id === view && change.op === 'save-view-snapshot' && !detachImmediate.current) {acceptLayout.current(change.layout);} return {waitForViewSync:false};}}), [model,view]);
   const selectedLeaves=selected.filter(id=>currentView.nodes.some(n=>n.id===id&&n.kind!=='@group'));
   const activeGroup=groups.find(g=>selected.includes(g.id));
   useEffect(()=>{
@@ -119,7 +132,7 @@ function App() {
           onOpen={activeGroup && sourceModel.$data.views[`${activeGroup.id}_detail`] ? ()=>switchView(`${activeGroup.id}_detail`) : null} onSave={save} onCancel={()=>{setEditing(null);setError('');}} onDelete={()=>changeGroups(groups.filter(g=>g.id!==activeGroup?.id))} error={error}/>}
         {error && !editing && <div className="storage-notice" role="status">{error}</div>}
         <div className="diagram-surface"><LikeC4ModelProvider likec4model={model}><OptionalEditor enabled={editable} editor={editor}>
-        <ReactLikeC4 key={`${view}-${resetKey}-${currentView.nodes.length}`} onNodeClick={nodeClick} onInitialized={({diagram}) => {api.current=diagram;}} reactFlowProps={{nodesDraggable:editable,elementsSelectable:true,multiSelectionKeyCode:['Shift','Control','Meta']}} injectFontCss={false} viewId={view} onNavigateTo={switchView} pannable zoomable keepAspectRatio={false}
+        <ReactLikeC4 key={`${view}-${resetKey}-${currentView.nodes.length}`} onNodeClick={nodeClick} onInitialized={initialized => {detachImmediate.current?.();api.current=initialized.diagram;acceptedGeometry.current=null;detachImmediate.current=editable?attachImmediateLayout(initialized,layout=>acceptLayout.current(layout)):null;}} reactFlowProps={{nodesDraggable:editable,elementsSelectable:true,multiSelectionKeyCode:['Shift','Control','Meta']}} injectFontCss={false} viewId={view} onNavigateTo={switchView} pannable zoomable keepAspectRatio={false}
           reduceGraphics={!motion} enableDynamicViewWalkthrough={false}
           controls={!embedded} mantineTheme={embedded?{fontFamily:'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',colors:{dark:['#fafafa','#f4f4f5','#d4d4d8','#a1a1aa','#71717a','#3f3f46','#27272a','#18181b','#09090b','#09090b']}}:undefined} enableElementDetails enableRelationshipDetails showNavigationButtons={!embedded} background="dots" colorScheme={dark ? 'dark' : 'light'}
           style={{ width: '100%', height: '100%' }}>

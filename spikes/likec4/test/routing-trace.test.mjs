@@ -24,6 +24,8 @@ test('bad exporters and malformed timing cannot break routing or corrupt termina
  recorder.span(context,'work',100,110);assert.equal(recorder.exporterErrors,1);
  recorder.span(context,'bad',200,100);recorder.span(context,'bad',NaN,100);
  assert.equal(recorder.get(id).spans.length,1);
+ assert.deepEqual(recorder.get(id).invalidTimings,[{name:'bad',start:200,end:100,reason:'reversed'},{name:'bad',start:null,end:100,reason:'non-finite'}]);
+ assert.equal(recorder.exporterErrors,1,'invalid observations never reach exporter');
  recorder.finish(id,'complete');recorder.finish(id,'cancelled');assert.equal(recorder.get(id).status,'complete');
  recorder.enabled=false;recorder.event(id,'disabled');assert.equal(recorder.get(id).events.length,1);
 });
@@ -53,4 +55,11 @@ test('unrelated layouts and explicit navigation cannot complete a pending drag',
  tracePointerDown('group',5);cancelTraceInteraction();
  assert.equal(routingTrace.snapshot().records.at(-1).status,'cancelled');
  configureTracing(false);
+});
+
+test('invalid timing evidence is bounded and never fabricated as a successful duration',()=>{
+ const recorder=new TraceRecorder(()=>100,1,1);recorder.enabled=true;const id=recorder.begin('node'),ctx={id,generation:1};
+ assert.equal(recorder.span(ctx,'result-delivery',100.1,100),false);recorder.span(ctx,'result-delivery',100.1,100);
+ assert.equal(recorder.get(id).invalidTimings.length,1);assert.equal(recorder.dropped,1);assert.equal(recorder.get(id).spans.length,0);
+ recorder.reset();assert.equal(recorder.snapshot().records.length,0);
 });
