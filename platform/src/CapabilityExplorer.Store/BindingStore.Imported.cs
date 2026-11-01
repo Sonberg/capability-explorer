@@ -9,6 +9,9 @@ namespace CapabilityExplorer.Store;
 
 public sealed partial class BindingStore
 {
+    /// <summary>Occurrence-safe derived identity; legacy snapshots remain immutable and are never reused.</summary>
+    public const string ImportedSnapshotIdentityVersion = "ce-binding-occurrences.v2";
+
     /// <summary>Bind imported immutable facts using server-side staging and bounded edge-ID batches.</summary>
     public async Task<BindingSaveResult> SaveImportedAsync(IReadOnlyList<long> artifactIds, BindingFile file, CancellationToken cancellationToken = default)
     {
@@ -33,7 +36,8 @@ public sealed partial class BindingStore
             while (await reader.ReadAsync(cancellationToken)) hashes.Add(reader.GetString(0));
         }
         if (hashes.Count != ids.Length) throw new ArgumentException("Every artifact must already be imported.", nameof(artifactIds));
-        var snapshot = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n', hashes) + "\n" + file.Sha256)));
+        var snapshot = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(ImportedSnapshotIdentityVersion + "\n" + Binder.RuleName + "\n" + Binder.RuleVersion + "\n"
+            + string.Join('\n', hashes) + "\n" + file.Sha256)));
         await Execute("create temporary table ce_binding_map(hint text primary key,target text not null,note text) on commit drop");
         await Execute("insert into ce_binding_map select * from unnest($1::text[],$2::text[],$3::text[])",
             file.Entries.Select(e => e.Hint).ToArray(), file.Entries.Select(e => e.Target).ToArray(), file.Entries.Select(e => e.Note).ToArray());

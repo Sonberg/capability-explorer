@@ -25,7 +25,7 @@ public sealed class ImportedBindingStoreTests(PostgresFixture db)
     [Theory]
     [InlineData("v1-base", 1, 0)]
     [InlineData("v2-contract", 0, 1)]
-    public async Task Imported_binding_matches_Binder_and_legacy_snapshot_identity(string revision, int bound, int broken)
+    public async Task Imported_binding_matches_Binder_with_an_occurrence_versioned_identity(string revision, int bound, int broken)
     {
         var pricing = await Import("pricing-node/v1-base/_fixture_pricing.jsonl");
         var forecast = await Import($"forecast-cs/{revision}/Forecast.Api.jsonl");
@@ -40,8 +40,9 @@ public sealed class ImportedBindingStoreTests(PostgresFixture db)
         var expected = Binder.Bind(inputs.Select(a=>(new LoadedFrom(a.Artifact.Header.RepositoryId,a.Artifact.Header.CommitSha,a.Artifact.Header.Unit.Path,a.ArtifactId),a.Artifact)),file);
         await AssertRows(saved.SnapshotId, expected);
         var legacy = await store.SaveAsync(inputs.Select(a=>(a.ArtifactId,a.Artifact)),file);
-        Assert.False(legacy.Created);
-        Assert.Equal(saved.SnapshotId,legacy.SnapshotId);
+        Assert.True(legacy.Created);
+        Assert.NotEqual(saved.SnapshotId,legacy.SnapshotId);
+        await AssertRows(legacy.SnapshotId,expected);
         Assert.Equal((legacy.BoundEdges,legacy.BrokenEdges),(saved.BoundEdges,saved.BrokenEdges));
         Assert.Equal(before,await db.CountAllAsync());
         var again = await store.SaveImportedAsync([pricing.ArtifactId,forecast.ArtifactId],file);
