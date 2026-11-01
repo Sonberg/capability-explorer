@@ -51,7 +51,7 @@ export async function benchmark(o) {
   const canonical=x=>JSON.stringify(Object.entries(x).sort(([a],[b])=>a.localeCompare(b)));
   if(canonical(meta.selection)!==canonical(manifest.selection))throw Error('Published selection does not match corpus manifest');
   const common={snapshot:meta.snapshotId,limit:50},key=manifest.query.symbol;
-  const work=manifest.query.terms.map(q=>({name:'search:'+q,endpoint:'search',params:{...common,q},kind:'page'}));
+  const work=[...new Set(['',...manifest.query.terms])].map(q=>({name:'search:'+q,endpoint:'search',params:{...common,q},kind:'page'}));
   work.push({name:'symbol',endpoint:'symbol',params:{...common,key},kind:'symbol',key});
   work.push({name:'hub-outgoing',endpoint:'symbol/edges',params:{...common,key,direction:'outgoing'},kind:'page'});
   const notMeasured=['process startup duration','app peak/idle memory unless supplied separately','DB pool wait','import peak/WAL/disk','query plans unless supplied separately','file baseline','cold OS cache','large-corpus latency','full issue28 endpoint coverage'];

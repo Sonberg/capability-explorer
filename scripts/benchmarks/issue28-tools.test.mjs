@@ -56,11 +56,13 @@ test('HTTP measurement runner consumes real HTTP test-double pages with bounded 
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const dir=path.join(root,'.sandbox-cache/issue28-bench/http-test-'+randomUUID());fs.mkdirSync(dir,{recursive:true});
  const manifest=path.join(dir,'manifest.json'),metadata=path.join(dir,'metadata.json');
- fs.writeFileSync(manifest,JSON.stringify({version:1,nodes:1000,selection:{'bench-0':'a'.repeat(40)},query:{terms:['x'],symbol}}));
+ fs.writeFileSync(manifest,JSON.stringify({version:1,nodes:1000,selection:{'bench-0':'a'.repeat(40)},query:{terms:['','x'],symbol}}));
  fs.writeFileSync(metadata,JSON.stringify({appSourceSha:'a'.repeat(40),sourceState:'dirty',databaseImage:'test/fixture@sha256:'+'b'.repeat(64)}));
  try {
   const result=await benchmark({baseUrl:`http://127.0.0.1:${server.address().port}`,manifest,metadata,samples:5,warmup:0});
-  assert.equal(result.status,'MEASURED_FOUNDATION_ONLY');assert.equal(result.results.length,5);
+  assert.equal(result.status,'MEASURED_FOUNDATION_ONLY');assert.equal(result.results.length,6);
+  assert.equal(result.results[0].name,'search:');
+  assert.equal(result.results.filter(r=>r.name==='search:').length,1);
   assert.ok(result.results.every(r=>r.samples===5&&r.maxRows===1&&r.p99Ms>=r.p50Ms));
   assert.ok(result.notMeasured.includes('full issue28 endpoint coverage'));
  }finally{await new Promise(resolve=>server.close(resolve));}
