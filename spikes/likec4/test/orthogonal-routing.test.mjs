@@ -66,3 +66,32 @@ test('backward drawing direction retains the semantic arrow endpoint',()=>{
   assert.equal(result.points[0][0],480);assert.equal(result.points.at(-1)[0],120);
   assert.equal(result.source,'a');assert.equal(result.target,'b');assert.equal(result.head,'normal');
 });
+
+test('long connections bypass intervening nodes through a shared outside corridor',()=>{
+  for(const rotate of [false,true]){
+    const nodes=[node('top',300,0),node('middle',300,300),node('lower',300,600),node('bottom',300,900)];
+    const view={bounds:{x:0,y:0,width:1200,height:1200},nodes:rotate?nodes.map(n=>({...n,x:n.y,y:n.x,width:n.height,height:n.width})):nodes,
+      edges:[edge('first','top','lower'),edge('second','top','bottom')]};
+    const routed=routeOrthogonal(view);
+    for(const e of routed.edges){
+      assert.equal(segments(e).length,3,'outside corridor needs only two turns');
+      const [start,end]=[e.points[0],e.points.at(-1)];
+      assert.equal(rotate?start[1]:start[0],300,'exit from the outer side');
+      assert.equal(rotate?end[1]:end[0],300,'enter from the same outer side');
+    }
+  }
+});
+
+test('labels have clearance from other labels and every routed line',()=>{
+  const view={bounds:{x:0,y:0,width:1000,height:1200},nodes:[node('a',300,0),node('block',300,300),node('b',300,600),node('c',300,900)],
+    edges:[{...edge('long-first','a','b'),labelBBox:{x:0,y:0,width:262,height:18}}, {...edge('long-second','a','c'),labelBBox:{x:0,y:0,width:262,height:18}}]};
+  const routed=routeOrthogonal(view);
+  const boxes=routed.edges.map(e=>({...e.labelBBox,x:e.labelBBox.x-8,y:e.labelBBox.y-8,width:e.labelBBox.width+16,height:e.labelBBox.height+16}));
+  const [a,b]=boxes;
+  assert.ok(a.x>=b.x+b.width||b.x>=a.x+a.width||a.y>=b.y+b.height||b.y>=a.y+a.height,'label clearance');
+  for(const box of boxes)for(const e of routed.edges)for(const [p,q] of segments(e)){
+    const hit=p[0]===q[0]?p[0]>box.x&&p[0]<box.x+box.width&&Math.max(p[1],q[1])>box.y&&Math.min(p[1],q[1])<box.y+box.height:
+      p[1]>box.y&&p[1]<box.y+box.height&&Math.max(p[0],q[0])>box.x&&Math.min(p[0],q[0])<box.x+box.width;
+    assert.ok(!hit,'label must not cover a route');
+  }
+});

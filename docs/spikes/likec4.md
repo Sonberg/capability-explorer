@@ -79,3 +79,19 @@ The default **All repositories · integrations** viewpoint spans api-cs, forecas
 This reuses the existing unscoped Architecture API; no alternate graph service, extraction rules or resource identity scheme were introduced. HTTP, data and messaging integrations are included where supported by the selected evidence. This is not a claim of every code dependency or every repository in an organization. Same-name resources remain distinct; broken bindings and candidate matches are preserved. Evidence lists may be capped at 40 facts per edge by the API while the edge count remains larger.
 
 The earlier routing benchmark applies only to the retained three-repository Weekly sales snapshot at commit d6a7c2f. It does not certify zero crossings or clearance in this larger system snapshot. Browser regression checks now use the five-repository snapshot; no full-project act gate or PR publication is claimed while #11 remains pending.
+
+## Long associations and label clearance
+
+Aligned endpoints separated by other nodes now use a common outside corridor with side-entry ports. Same-side ports use a stable nested ordering, avoiding unnecessary wraparound paths at shared endpoints. This is geometry-based and applies after rotation; it does not inspect repository names, resource labels or fixture IDs. For the all-repository overview, the forecast/worker and pricing/worker channel associations decrease from seven/nine straight segments to three each, with node positions and relationship metadata unchanged.
+
+Label placement searches along segments at text-sized intervals, reserves eight model units of padding, and checks every routed line as well as nodes, group headers and previous labels. Retained native labels/routes are included when a route falls back. Browser checks inspect actual rendered label rectangles at all four supported viewport sizes. Dense layouts may still exhaust available label space; this is bounded placement, not a universal collision-free layout guarantee.
+
+The three `article-stats-updated` nodes are three source references, not three proven deployed topics:
+
+| Repository | Evidence establishes | Namespace identity |
+|---|---|---|
+| forecast-cs | Topic reference with subscription `forecast` | Unbound configuration reference |
+| worker-cs | Sender to a queue-or-topic reference | Separate unbound configuration reference |
+| pricing-node | Queue reference | Explicit `sb-pricing.servicebus.windows.net` |
+
+`CreateSender(TopicName)` does not establish a topic type from the variable name. `CreateProcessor(TopicName, SubscriptionName)` establishes a topic/subscription reference, while pricing uses the queue receiver overload. The candidate same-name association edges have no supporting integration facts and are undirected; they do not establish message flow or shared identity. Binding evidence is required before consolidating unresolved references. The references and their distinct scopes remain unchanged by the visual correction.

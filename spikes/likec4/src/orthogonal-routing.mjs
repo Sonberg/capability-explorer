@@ -26,13 +26,30 @@ function ports(edges,nodes) {
     const gapX=Math.max(a.x,b.x)-Math.min(a.x+a.width,b.x+b.width);
     const gapY=Math.max(a.y,b.y)-Math.min(a.y+a.height,b.y+b.height);
     const horizontal=gapX>=gapY;
-    const sides=e.source===e.target?[0,1]:horizontal?(dx>=0?[0,2]:[2,0]):(dy>=0?[1,3]:[3,1]);
+    let sides=e.source===e.target?[0,1]:horizontal?(dx>=0?[0,2]:[2,0]):(dy>=0?[1,3]:[3,1]);
+    // Aligned endpoints with intervening nodes need a shared outside corridor.
+    // Facing ports otherwise trap long connections behind their own endpoints.
+    const lo=horizontal?Math.max(a.y,b.y):Math.max(a.x,b.x);
+    const hi=horizontal?Math.min(a.y+a.height,b.y+b.height):Math.min(a.x+a.width,b.x+b.width);
+    const leaves=[...nodes.values()].filter(n=>!n.children?.length);
+    if(e.source!==e.target&&hi>lo){
+      const along=(lo+hi)/2;
+      const p=horizontal?[Math.min(a.x+a.width,b.x+b.width),along]:[along,Math.min(a.y+a.height,b.y+b.height)];
+      const q=horizontal?[Math.max(a.x,b.x),along]:[along,Math.max(a.y,b.y)];
+      if(leaves.some(n=>n.id!==a.id&&n.id!==b.id&&segmentHits(p,q,n))){
+        const low=horizontal?Math.min(...leaves.map(n=>n.y)):Math.min(...leaves.map(n=>n.x));
+        const high=horizontal?Math.max(...leaves.map(n=>n.y+n.height)):Math.max(...leaves.map(n=>n.x+n.width));
+        const side=along-low<=high-along?(horizontal?3:2):(horizontal?1:0);
+        sides=[side,side];
+      }
+    }
     ends.set(e.id,[]);
     [a,b].forEach((n,i)=>{const side=sides[i],key=`${n.id}:${side}`,list=buckets.get(key)??[];
-      list.push({edge:e.id,node:n,side,index:i,other:(i===0?cb:ca)[side%2===0?1:0]});buckets.set(key,list);});
+      list.push({edge:e.id,node:n,side,index:i,wrap:sides[0]===sides[1],other:(i===0?cb:ca)[side%2===0?1:0]});buckets.set(key,list);});
   }
   for(const list of buckets.values()){
-    list.sort((a,b)=>a.other-b.other||compare(a.edge,b.edge));
+    // Same-side connections nest: reverse the remote order at shared terminals.
+    list.sort((a,b)=>Number(a.wrap)-Number(b.wrap)||(a.wrap?-1:1)*(a.other-b.other)||compare(a.edge,b.edge));
     list.forEach((entry,i)=>{const {node:n,side}=entry,vertical=side%2===0;
       const lo=vertical?n.y:n.x,len=vertical?n.height:n.width;
       const min=Math.ceil((lo+8)/GRID)*GRID,max=Math.floor((lo+len-8)/GRID)*GRID;
@@ -106,18 +123,28 @@ function search(grid,start,end) {
   }
   return null;
 }
-function placeLabel(edge,points,occupied) {
+const labelPadding=8;
+const padded=box=>({x:box.x-labelPadding,y:box.y-labelPadding,width:box.width+labelPadding*2,height:box.height+labelPadding*2});
+function placeLabel(edge,points,occupied,lineSegments) {
   if(!edge.labelBBox)return edge.labelBBox;
   const {width,height}=edge.labelBBox;
   const segments=routeSegments(points).sort(([a,b],[c,d])=>(Math.abs(d[0]-c[0])+Math.abs(d[1]-c[1]))-(Math.abs(b[0]-a[0])+Math.abs(b[1]-a[1])));
   let best=edge.labelBBox,bestCost=Infinity;
-  for(const [a,b] of segments)for(const fraction of [.5,.25,.75])for(const side of [-1,1]){
-    const horizontal=a[1]===b[1],x=a[0]+(b[0]-a[0])*fraction,y=a[1]+(b[1]-a[1])*fraction;
-    const box={x:horizontal?x-width/2:x+(side<0?-width-8:8),y:horizontal?y+(side<0?-height-8:8):y-height/2,width,height};
-    const cost=occupied.filter(r=>overlaps(box,r)).length;
-    if(cost<bestCost){best=box;bestCost=cost;}if(cost===0){occupied.push(box);return box;}
+  // Search along each segment at label-sized intervals, not just three fractions.
+  // Include every routed line and padded label so text cannot hide a connection.
+  for(const [a,b] of segments){
+    const horizontal=a[1]===b[1],length=Math.abs(b[0]-a[0])+Math.abs(b[1]-a[1]);
+    const step=horizontal?width+labelPadding*2:height+labelPadding*2;
+    const fractions=[.5,...Array.from({length:Math.min(80,Math.floor(length/step))},(_,i)=>(i+.5)*step/length)];
+    for(const fraction of fractions)for(const side of [-1,1]){
+      const x=a[0]+(b[0]-a[0])*fraction,y=a[1]+(b[1]-a[1])*fraction;
+      const box={x:horizontal?x-width/2:x+(side<0?-width-16:16),y:horizontal?y+(side<0?-height-16:16):y-height/2,width,height};
+      const clearance=padded(box);
+      const cost=occupied.filter(r=>overlaps(clearance,r)).length*100+lineSegments.filter(([p,q])=>segmentHits(p,q,clearance)).length;
+      if(cost<bestCost){best=box;bestCost=cost;}if(cost===0){occupied.push(clearance);return box;}
+    }
   }
-  occupied.push(best);return best;
+  occupied.push(padded(best));return best;
 }
 function routeOnce(view,order) {
   if(!view.nodes.length||!view.edges.length||view.edges.length>250)return {...view,routing:'ortho'};
@@ -145,8 +172,11 @@ function routeOnce(view,order) {
     const points=simplify([ends[0].point,...path,ends[1].point]);routes.set(edge.id,points);
     for(let i=1;i<path.length;i++){const buffer=path[i][1]===path[i-1][1]?grid.horizontal:grid.vertical;for(const p of [path[i-1],path[i]])buffer[Math.round((p[1]-grid.top)/GRID)*grid.width+Math.round((p[0]-grid.left)/GRID)]++;}
   }
-  const occupied=[...grid.obstacles,...grid.titles];
-  const labels=new Map(ordered.filter(e=>routes.has(e.id)).map(e=>[e.id,placeLabel(e,routes.get(e.id),occupied)]));
+  const fallback=ordered.filter(e=>!routes.has(e.id));
+  const occupied=[...grid.obstacles,...grid.titles,...fallback.filter(e=>e.labelBBox).map(e=>padded(e.labelBBox))];
+  // Retained native geometry still occupies space when a route cannot be replaced.
+  const lineSegments=[...routes.values(),...fallback.map(e=>(e.points??[]).filter((_,i)=>i%3===0))].flatMap(routeSegments);
+  const labels=new Map(ordered.filter(e=>routes.has(e.id)).map(e=>[e.id,placeLabel(e,routes.get(e.id),occupied,lineSegments)]));
   const edges=view.edges.map(edge=>routes.has(edge.id)?{...edge,points:cubicPoints(edge.dir==='back'?[...routes.get(edge.id)].reverse():routes.get(edge.id)),controlPoints:null,labelBBox:labels.get(edge.id),isLabelCustomized:true}:edge);
   const points=edges.flatMap(e=>e.points??[]),boxes=[...view.nodes,...occupied];
   const x=Math.min(...boxes.map(b=>b.x),...points.map(p=>p[0]))-12,y=Math.min(...boxes.map(b=>b.y),...points.map(p=>p[1]))-12;

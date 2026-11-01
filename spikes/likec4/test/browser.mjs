@@ -25,6 +25,15 @@ try {
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(500); // allow the renderer's initial fit to settle
     assert.equal(await page.locator('.react-flow__node').count(), overviewCount);
+    const labelCollisions=await page.locator('.likec4-edge-label').evaluateAll(elements=>{
+      const boxes=elements.map(e=>({...e.getBoundingClientRect().toJSON(),id:e.dataset.edgeId})),pairs=[];
+      for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){
+        const a=boxes[i],b=boxes[j];
+        if(a.x<b.right&&b.x<a.right&&a.y<b.bottom&&b.y<a.bottom)pairs.push([a.id,b.id]);
+      }
+      return pairs;
+    });
+    assert.deepEqual(labelCollisions,[],'rendered label text boxes must not overlap');
     const edgeCount=await page.locator('.react-flow__edge').count();
     assert.ok(edgeCount>0&&edgeCount<=graph.edges.length);
     assert.equal(await page.locator('.react-flow__node[data-id^="sql_scope_"]').count(),scopes.length,'overview shows logical resources, not SQL objects');
