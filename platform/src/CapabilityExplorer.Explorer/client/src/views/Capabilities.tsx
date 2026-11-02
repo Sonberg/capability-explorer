@@ -28,6 +28,7 @@ export function Capabilities() {
   }, [reloadList, reloadMeta]);
 
   // "Analyze code" runs on the host (scripts/analyze-worker, started by make dev): queue it, then follow it.
+  const [analysisError, setAnalysisError] = useState<string>();
   const [jobs, setJobs] = useState<Record<string, AnalysisJob>>({});
   const follow = useCallback((id: string) => request<AnalysisJob>(`/api/capabilities/${encodeURIComponent(id)}/analyze`).then((job) => {
     setJobs((s) => ({ ...s, [id]: job }));
@@ -35,14 +36,14 @@ export function Capabilities() {
   }), []);
   const ids = list.data?.map((c) => c.id).join("\n") ?? "";
   useEffect(() => {
-    for (const id of ids.split("\n").filter(Boolean)) void follow(id).catch(() => undefined);
+    for (const id of ids.split("\n").filter(Boolean)) void follow(id).catch((e: Error) => setAnalysisError(e.message));
   }, [ids, follow]);
-  const active = Object.keys(jobs).filter((id) => isActive(jobs[id])).join("\n");
+  const active = Object.keys(jobs).filter((id) => isActive(jobs[id]) || jobs[id].blocked).join("\n");
   useEffect(() => {
     if (!active) return;
     const timer = window.setInterval(() => {
       for (const id of active.split("\n")) {
-        void follow(id).then((job) => !isActive(job) && refresh(), () => undefined);
+        void follow(id).then((job) => !isActive(job) && refresh(), (e: Error) => setAnalysisError(e.message));
       }
     }, 2000);
     return () => window.clearInterval(timer);
@@ -60,8 +61,10 @@ export function Capabilities() {
 
   const stop = async (id: string) => {
     setActionError(undefined);
+    const runId = jobs[id]?.runId;
+    if (!runId) { setActionError("Reload analysis status before stopping this run."); return; }
     try {
-      const job = await request<AnalysisJob>(`/api/capabilities/${encodeURIComponent(id)}/analyze`, { method: "DELETE" });
+      const job = await request<AnalysisJob>(`/api/capabilities/${encodeURIComponent(id)}/analyze?runId=${encodeURIComponent(runId)}`, { method: "DELETE" });
       setJobs((s) => ({ ...s, [id]: job }));
     } catch (e) {
       setActionError((e as Error).message);
@@ -112,6 +115,7 @@ export function Capabilities() {
         </span>
       </div>
       {actionError && <ErrorBox message={actionError} />}
+      {analysisError && <ErrorBox message={`Analysis status unavailable: ${analysisError}. Reload this page before starting another run.`} />}
       {list.error && <ErrorBox message={list.error} />}
       {!list.data && !list.error && <Loading />}
       {list.data?.length === 0 && <Card className="text-zinc-500">No capabilities yet. Define one below.</Card>}
@@ -128,11 +132,11 @@ export function Capabilities() {
                 {capability === c.id ? "Selected" : "Select"}
               </Button>
               {isActive(jobs[c.id]) ? (
-                <Button variant="danger" onClick={() => stop(c.id)} disabled={jobs[c.id]?.state === "stopping"}>
+                <Button variant="danger" onClick={() => stop(c.id)} disabled={!jobs[c.id]?.runId || jobs[c.id]?.state === "stopping" || jobs[c.id]?.state === "publishing"}>
                   {jobs[c.id]?.state === "queued" ? "Queued · Stop" : jobs[c.id]?.state === "stopping" ? "Stopping…" : "Analyzing · Stop"}
                 </Button>
               ) : (
-                <Button onClick={() => analyze(c.id)} disabled={busy !== null}>
+                <Button onClick={() => analyze(c.id)} disabled={busy !== null || !!analysisError || !jobs[c.id] || jobs[c.id]?.blocked || Object.values(jobs).some((job) => job.blocked)}>
                   Analyze code
                 </Button>
               )}
@@ -197,18 +201,21 @@ export function Capabilities() {
   );
 }
 
-const isActive = (job?: AnalysisJob) => job?.state === "queued" || job?.state === "running" || job?.state === "stopping";
+const isActive = (job?: AnalysisJob) => job?.state === "queued" || job?.state === "running" || job?.state === "stopping" || job?.state === "publishing";
 
 function AnalysisProgress({ job }: { job?: AnalysisJob }) {
-  if (!job || (!isActive(job) && job.state !== "failed" && job.state !== "stopped")) return null;
+  if (!job || job.state === "idle") return null;
   return (
     <div className="my-2">
+      {job.runId && <p className="text-xs text-zinc-500">Run <Mono>{job.runId}</Mono> · {job.stage ?? job.state} · {job.outcome ?? job.state}</p>}
+      {job.blocked && <ErrorBox message={job.blockReason ?? "Analysis requires host worker reconciliation before another run can start."} />}
+      {["interrupted", "unknown", "partial"].includes(job.state) && <Note>Analysis {job.state}. Execution or publication may be incomplete; inspect the host worker before starting another run.</Note>}
       {job.state === "queued" && (
         <Note>
           Waiting for the analyze worker on the host: <Mono>make dev</Mono> starts one, or run <Mono className="select-all">make analyze-worker</Mono>.
         </Note>
       )}
-      {job.state === "stopped" && <Note>Analysis stopped. Artifacts from earlier runs are unchanged.</Note>}
+      {job.state === "stopped" && <Note>Analysis termination confirmed. Review publication outcomes before relying on artifacts.</Note>}
       {job.state === "failed" && <ErrorBox message="Analysis failed. The last lines of its log are below." />}
       {job.log && <pre className="mt-2 max-h-64 overflow-auto rounded-md bg-zinc-100 p-2 text-xs dark:bg-zinc-900">{job.log}</pre>}
     </div>

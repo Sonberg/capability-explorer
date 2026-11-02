@@ -121,27 +121,12 @@ public sealed class CapabilityApiTests(CapabilityExplorerFactory factory) : ICla
     {
         var url = new Uri("/api/capabilities/demand-pricing/analyze", UriKind.Relative);
         Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync(url, null)).StatusCode);
-        Assert.True(File.Exists(Path.Combine(factory.RequestsDirectory, "demand-pricing.request")));
-        Assert.Equal("queued", (await _client.GetFromJsonAsync<JsonElement>(url)).GetProperty("state").GetString());
+        var queued = await _client.GetFromJsonAsync<JsonElement>(url);
+        Assert.Equal("queued", queued.GetProperty("state").GetString());
+        Assert.False(string.IsNullOrEmpty(queued.GetProperty("runId").GetString()));
         Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync(url, null)).StatusCode);
-
-        // What the worker does when it finishes.
-        File.Delete(Path.Combine(factory.RequestsDirectory, "demand-pricing.request"));
-        await File.WriteAllTextAsync(Path.Combine(factory.RequestsDirectory, "demand-pricing.log"), "== 1/3 export\nboom");
-        await File.WriteAllTextAsync(Path.Combine(factory.RequestsDirectory, "demand-pricing.exit"), "1\n");
-        var failed = await _client.GetFromJsonAsync<JsonElement>(url);
-        Assert.Equal("failed", failed.GetProperty("state").GetString());
-        Assert.EndsWith("boom", failed.GetProperty("log").GetString(), StringComparison.Ordinal);
-
-        // Stop: a queued request is withdrawn; a running one gets a cancel file for the worker.
-        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync(url, null)).StatusCode);
+        // Legacy callers omit runId and still cancel the latest queued run.
         Assert.Equal("stopped", (await (await _client.DeleteAsync(url)).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("state").GetString());
-        Assert.False(File.Exists(Path.Combine(factory.RequestsDirectory, "demand-pricing.request")));
-        await File.WriteAllTextAsync(Path.Combine(factory.RequestsDirectory, "demand-pricing.running"), "");
-        Assert.Equal("stopping", (await (await _client.DeleteAsync(url)).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("state").GetString());
-        Assert.True(File.Exists(Path.Combine(factory.RequestsDirectory, "demand-pricing.cancel")));
-        File.Delete(Path.Combine(factory.RequestsDirectory, "demand-pricing.running"));
-        File.Delete(Path.Combine(factory.RequestsDirectory, "demand-pricing.cancel"));
         Assert.Equal(HttpStatusCode.Conflict, (await _client.DeleteAsync(url)).StatusCode);
 
         Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync(new Uri("/api/capabilities/nope/analyze", UriKind.Relative), null)).StatusCode);

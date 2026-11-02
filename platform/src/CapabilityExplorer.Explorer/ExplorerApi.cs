@@ -437,32 +437,38 @@ public static class ExplorerApi
             }
         });
 
-        // "Analyze code": extraction needs its own offline sandboxes, which the explorer cannot start. It queues a request
-        // file; scripts/analyze-worker on the host (make dev) runs scripts/analyze, which checks, extracts, imports and embeds.
+        // Admission is one journal operation. The host worker consumes frozen accepted inputs.
         api.MapPost("/capabilities/{id}/analyze", (CapabilityService caps, ExplorerOptions options, string id) =>
-        {
-            if (caps.Store.Find(id) is null)
+            AnalysisJob.Respond(() =>
             {
-                return Results.NotFound(new { error = $"no capability '{id}'" });
-            }
+                if (caps.Store.Find(id) is null) return Results.NotFound(new { error = $"no capability '{id}'" });
+                var store = new CapabilityExplorer.Capabilities.Analysis.FileRunStore(options.RequestsDirectory);
+                var result = store.Admit(id, options.CapabilitiesFile, options.BindingsFile,
+                    new CapabilityExplorer.Capabilities.Analysis.AnalysisSettings());
+                var job = AnalysisJob.Project(store, result.Run);
+                return result.Accepted
+                    ? Results.Accepted($"/api/capabilities/{id}/analyze?runId={result.Run.RunId}", job)
+                    : Results.Conflict(new { error = "An unresolved analysis already exists for this capability.", job });
+            }));
 
-            var job = AnalysisJob.Read(options.RequestsDirectory, id);
-            if (job.State is "queued" or "running" or "stopping")
+        // Omitting runId retains the legacy latest-capability target. New clients always send the observed run ID.
+        api.MapDelete("/capabilities/{id}/analyze", (CapabilityService caps, ExplorerOptions options, string id, string? runId) =>
+            AnalysisJob.Respond(() =>
             {
-                return Results.Conflict(new { error = $"an analysis of '{id}' is already {job.State}" });
-            }
+                if (caps.Store.Find(id) is null) return Results.NotFound(new { error = $"no capability '{id}'" });
+                var store = new CapabilityExplorer.Capabilities.Analysis.FileRunStore(options.RequestsDirectory);
+                var target = AnalysisJob.Read(store, id, runId);
+                if (target.RunId is null) return Results.Conflict(new { error = "No cancellable analysis run exists." });
+                var result = store.Cancel(target.RunId);
+                var job = AnalysisJob.Project(store, result.Run, result.Outcome);
+                return result.Outcome is "accepted" or "already-cancelled" ? Results.Ok(job)
+                    : Results.Conflict(new { error = "Cancellation is too late or the run is already terminal.", job });
+            }));
 
-            AnalysisJob.Queue(options.RequestsDirectory, id);
-            return Results.Accepted($"/api/capabilities/{id}/analyze", AnalysisJob.Read(options.RequestsDirectory, id));
-        });
-
-        api.MapDelete("/capabilities/{id}/analyze", (CapabilityService caps, ExplorerOptions options, string id) =>
-            caps.Store.Find(id) is null ? Results.NotFound(new { error = $"no capability '{id}'" })
-            : AnalysisJob.Stop(options.RequestsDirectory, id) ? Results.Ok(AnalysisJob.Read(options.RequestsDirectory, id))
-            : Results.Conflict(new { error = $"no analysis of '{id}' is queued or running" }));
-
-        api.MapGet("/capabilities/{id}/analyze", (CapabilityService caps, ExplorerOptions options, string id) =>
-            caps.Store.Find(id) is null ? Results.NotFound(new { error = $"no capability '{id}'" }) : Results.Ok(AnalysisJob.Read(options.RequestsDirectory, id)));
+        api.MapGet("/capabilities/{id}/analyze", (CapabilityService caps, ExplorerOptions options, string id, string? runId) =>
+            AnalysisJob.Respond(() => caps.Store.Find(id) is null
+                ? Results.NotFound(new { error = $"no capability '{id}'" })
+                : Results.Ok(AnalysisJob.Read(new CapabilityExplorer.Capabilities.Analysis.FileRunStore(options.RequestsDirectory), id, runId))));
 
         api.MapDelete("/capabilities/{id}", async (CapabilityService caps, string id, CancellationToken ct) =>
             await caps.Store.RemoveAsync(id, ct) ? Results.NoContent() : Results.NotFound(new { error = $"no capability '{id}'" }));
