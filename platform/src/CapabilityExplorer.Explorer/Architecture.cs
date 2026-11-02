@@ -127,7 +127,7 @@ public static class Architecture
         SystemEdges(view, b, repo => [$"repo:{repo}"]);
         return Collapse(b.Graph("system", null, title, crumbs,
             ["Repositories are connected through candidate HTTP route matches until base URLs are bound.",
-             "Data stores, channels and unresolved hosts are summarised per kind once there are more than a few; click a connection to list every underlying fact."]));
+             "Data stores, channels, external hosts and unresolved targets are summarised per kind once there are more than a few; click a connection to list every underlying fact."]));
     }
 
     private const int CollapseAbove = 4;
@@ -138,7 +138,7 @@ public static class Architecture
     /// </summary>
     private static ArchitectureGraph Collapse(ArchitectureGraph g)
     {
-        var titles = new Dictionary<string, string> { ["datastore"] = "Data stores", ["channel"] = "Channels", ["unmatched"] = "Unresolved hosts" };
+        var titles = new Dictionary<string, string> { ["datastore"] = "Data stores", ["channel"] = "Channels", ["host"] = "External hosts", ["unmatched"] = "Unresolved hosts" };
         var folded = titles.Keys.Where(c => g.Nodes.Count(n => n.Category == c) > CollapseAbove).ToHashSet(StringComparer.Ordinal);
         if (folded.Count == 0)
         {
@@ -194,7 +194,8 @@ public static class Architecture
                         }
                         else if (target is null)
                         {
-                            b.Edge(from, Unmatched(b, r.To), "http", r.To is null ? "dynamic request" : Route(r.To), "unresolved", e);
+                            var sink = Unmatched(b, r.To);
+                            b.Edge(from, sink, "http", r.To is null ? "dynamic request" : Route(r.To), sink.StartsWith("host:", StringComparison.Ordinal) ? "static" : "unresolved", e);
                         }
                         else if (target.Artifact.RepositoryId != e.Artifact.RepositoryId)
                         {
@@ -309,7 +310,8 @@ public static class Architecture
                     }
                     else if (target is null)
                     {
-                        b.Edge(from.Id, Unmatched(b, r.To), "http", r.To is null ? "dynamic request" : Route(r.To), "unresolved", e);
+                        var sink = Unmatched(b, r.To);
+                        b.Edge(from.Id, sink, "http", r.To is null ? "dynamic request" : Route(r.To), sink.StartsWith("host:", StringComparison.Ordinal) ? "static" : "unresolved", e);
                     }
                     else if (target.Artifact.RepositoryId == repo)
                     {
@@ -375,7 +377,13 @@ public static class Architecture
             return "unmatched:dynamic request";
         }
 
-        var cluster = BaseOf(to);
+        var (cluster, isHost) = BaseInfo(to);
+        if (isHost)
+        {
+            b.Node(new ArchNode($"host:{cluster}", "host", cluster, "external host", "External", null, null, new Drill("requests", cluster), []));
+            return $"host:{cluster}";
+        }
+
         b.Node(new ArchNode($"base:{cluster}", "unmatched", cluster, "no endpoint in scope", "Unmatched", null, null, new Drill("requests", cluster), ["unmatched"]));
         return $"base:{cluster}";
     }
@@ -384,18 +392,21 @@ public static class Architecture
     /// What a request goes through, from the base segment of its key: the host of a base URL, else the configuration
     /// name (env var, config key, client type) it is known by, else the declared service.
     /// </summary>
-    internal static string BaseOf(string key)
+    internal static string BaseOf(string key) => BaseInfo(key).Name;
+
+    /// <summary><see cref="BaseOf"/>, plus whether the name is the host of a validated absolute base URL.</summary>
+    internal static (string Name, bool IsHost) BaseInfo(string key)
     {
         var seg = key.Split('|');
         if (seg.Length < 3)
         {
-            return "unknown base";
+            return ("unknown base", false);
         }
 
         var store = seg[1];
         if (!store.StartsWith("@unbound:", StringComparison.Ordinal))
         {
-            return store;
+            return (store, false);
         }
 
         var colon = store.IndexOf(':', "@unbound:".Length);
@@ -404,9 +415,10 @@ public static class Architecture
         var (kind, value) = eq < 0 ? ("", hint) : (hint[..eq], hint[(eq + 1)..]);
         return kind switch
         {
-            "base" when Uri.TryCreate(value, UriKind.Absolute, out var uri) => uri.Host,
-            "base" or "host" or "client" => value,
-            _ => $"{kind} {value}",
+            "base" when Uri.TryCreate(value, UriKind.Absolute, out var uri) => (uri.Host, true),
+            "host" when value.Contains('.', StringComparison.Ordinal) && !value.Contains(' ', StringComparison.Ordinal) => (value, true),
+            "base" or "host" or "client" => (value, false),
+            _ => ($"{kind} {value}", false),
         };
     }
 

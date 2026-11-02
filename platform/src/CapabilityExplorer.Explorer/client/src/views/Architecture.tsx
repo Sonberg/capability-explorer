@@ -22,6 +22,7 @@ const categoryStyle: Record<string, { box: string; strip: string; name: string }
   endpoint: { box: "border-emerald-300 dark:border-emerald-800", strip: "bg-emerald-500", name: "endpoint" },
   datastore: { box: "border-amber-300 dark:border-amber-800", strip: "bg-amber-500", name: "data" },
   channel: { box: "border-violet-300 dark:border-violet-800", strip: "bg-violet-500", name: "channel" },
+  host: { box: "border-teal-300 border-dashed dark:border-teal-800", strip: "bg-teal-400", name: "external host" },
   unmatched: { box: "border-red-300 border-dashed dark:border-red-800", strip: "bg-red-500", name: "unresolved" },
 };
 

@@ -82,3 +82,14 @@ public sealed class VendorTests
     public void Requests_group_by_who_they_talk_to(string to, string from, string vendor) =>
         Assert.Equal(vendor, CapabilityExplorer.Explorer.Queries.Vendor(to, from));
 }
+
+public sealed class BaseInfoTests
+{
+    [Theory]
+    [InlineData("http|@unbound:shop/Infra:base=https://api.fortnox.se/3/|POST /3/invoices", "api.fortnox.se", true)]
+    [InlineData("http|@unbound:web/web:host=api.klarna.com|POST /x", "api.klarna.com", true)]
+    [InlineData("http|@unbound:web/web:env=CHECKOUT_API_URL|GET /x", "env CHECKOUT_API_URL", false)]
+    [InlineData("http|@unbound:shop/Infra:client=FooClient|GET /x", "FooClient", false)]
+    public void Only_validated_base_urls_are_hosts(string key, string name, bool isHost) =>
+        Assert.Equal((name, isHost), CapabilityExplorer.Explorer.Architecture.BaseInfo(key));
+}
