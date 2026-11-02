@@ -441,10 +441,11 @@ public static class ExplorerApi
         api.MapPost("/capabilities/{id}/analyze", (CapabilityService caps, ExplorerOptions options, string id) =>
             AnalysisJob.Respond(() =>
             {
-                if (caps.Store.Find(id) is null) return Results.NotFound(new { error = $"no capability '{id}'" });
+                var definition = caps.Store.Find(id);
+                if (definition is null) return Results.NotFound(new { error = $"no capability '{id}'" });
                 var store = new CapabilityExplorer.Capabilities.Analysis.FileRunStore(options.RequestsDirectory);
                 var result = store.Admit(id, options.CapabilitiesFile, options.BindingsFile,
-                    new CapabilityExplorer.Capabilities.Analysis.AnalysisSettings());
+                    new CapabilityExplorer.Capabilities.Analysis.AnalysisSettings(IncludeTests: definition.IncludeTests));
                 var job = AnalysisJob.Project(store, result.Run);
                 return result.Accepted
                     ? Results.Accepted($"/api/capabilities/{id}/analyze?runId={result.Run.RunId}", job)

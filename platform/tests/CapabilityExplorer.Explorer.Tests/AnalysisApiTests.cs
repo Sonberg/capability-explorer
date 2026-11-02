@@ -76,4 +76,42 @@ public sealed class AnalysisApiTests
         Assert.True(File.Exists(Path.Combine(factory.RequestsDirectory, "another-capability.running")));
         Assert.Equal(HttpStatusCode.Conflict, (await client.DeleteAsync(new Uri(Url, UriKind.Relative))).StatusCode);
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Incomplete_or_malformed_run_evidence_returns_blocked_unknown(bool malformed)
+    {
+        using var factory = new CapabilityExplorerFactory();
+        using var client = factory.CreateClient();
+        var store = new CapabilityExplorer.Capabilities.Analysis.FileRunStore(factory.RequestsDirectory);
+        var orphan = store.RunDirectory(Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(orphan);
+        if (malformed) await File.WriteAllTextAsync(Path.Combine(orphan, "run.json"), "{invalid");
+        var response = await client.GetAsync(new Uri(Url, UriKind.Relative));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var status = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("unknown", status.GetProperty("state").GetString());
+        Assert.True(status.GetProperty("blocked").GetBoolean());
+        Assert.DoesNotContain(factory.RequestsDirectory, await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.True(Directory.Exists(orphan));
+    }
+
+    [Fact]
+    public async Task Admission_freezes_the_capability_include_tests_setting()
+    {
+        using var factory = new CapabilityExplorerFactory();
+        var configuration = Path.Combine(Path.GetDirectoryName(factory.RequestsDirectory)!, "capabilities.json");
+        var original = await File.ReadAllTextAsync(configuration);
+        await File.WriteAllTextAsync(configuration, original.Replace("\"name\": \"Demand pricing\"", "\"name\": \"Demand pricing\", \"includeTests\": true", StringComparison.Ordinal));
+        using var client = factory.CreateClient();
+        var response = await client.PostAsync(new Uri(Url, UriKind.Relative), null);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var accepted = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var runId = accepted.GetProperty("runId").GetString()!;
+        var store = new CapabilityExplorer.Capabilities.Analysis.FileRunStore(factory.RequestsDirectory);
+        Assert.True(store.ReadRun(runId).Settings.IncludeTests);
+        await File.WriteAllTextAsync(configuration, original);
+        Assert.True(store.ReadRun(runId).Settings.IncludeTests);
+    }
+
 }

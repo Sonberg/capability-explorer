@@ -9,7 +9,14 @@ public sealed record AnalysisJob(string State, DateTimeOffset? Since, string? Lo
 {
     public static AnalysisJob Read(FileRunStore store, string capabilityId, string? runId = null)
     {
-        var run = runId is null ? store.ReadLatest(capabilityId) : store.ReadRun(runId);
+        var reason = store.ReadBlockReason();
+        AnalysisRun? run;
+        try { run = runId is null ? store.ReadLatest(capabilityId) : store.ReadRun(runId); }
+        catch (Exception e) when (runId is null && reason is not null &&
+            e is IOException or KeyNotFoundException or System.Text.Json.JsonException or ArgumentException)
+        {
+            return new("unknown", null, null, Blocked: true, BlockReason: reason);
+        }
         if (run is not null && run.CapabilityId != capabilityId)
             throw new KeyNotFoundException("No analysis run for this capability.");
         return Project(store, run);
