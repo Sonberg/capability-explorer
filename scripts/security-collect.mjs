@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { snapshot, sha, readJson, findings } from './security-audit-lib.mjs';
+import { requireDockerRuntime } from './lib/docker-only.mjs';
 
 const need = (ok, message) => { if (!ok) throw new Error(message); };
 export { validateConfig, inventories } from './security-collect-inventory.mjs';
@@ -46,6 +47,7 @@ export function copySealed(root, destination, source) {
   }
 }
 export function ensureImage(reference, targetPlatform, run, record) {
+  requireDockerRuntime('full audit image preparation');
   need(typeof reference === 'string' && /^[\w./:-]+@sha256:[a-f0-9]{64}$/.test(reference) && /^linux\/(arm64|amd64)$/.test(targetPlatform), 'image acquisition requires a digest pin and explicit platform');
   const invoke = (suffix, args) => { const result = run('docker', args); record(suffix, { command: 'docker', args, ...result }); return result; };
   let inspected = invoke('inspect-before', ['image', 'inspect', reference]);
@@ -114,6 +116,7 @@ export function historyCheck(root, manifestPath, run = runner) {
   need(JSON.stringify(historyInventory(root, run)) === JSON.stringify(prior), 'reachable Git history changed since collection');
 }
 export async function collect(root, relative, ledgerPath, manualPath, run = runner) {
+  requireDockerRuntime('full source/history/image security audit collection');
   root = fs.realpathSync(root);
   const config = validateConfig(readJson(root, 'config/security/collector.json'));
   const runtimeImages = runtimeInventory(root, config);

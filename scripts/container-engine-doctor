@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# -eq 0 ]] || { echo 'usage: scripts/container-engine-doctor' >&2; exit 2; }
+root="$(cd "$(dirname "$0")/.." && pwd)"
+source "$root/scripts/lib/container-engine.sh"
+ce_engine_init
+printf '{"schemaVersion":1,"backend":"%s","clientVersion":"%s","serverVersion":"%s","serverOs":"%s","architecture":"%s","rootless":%s,"connection":"%s","contextSha256":"%s","qualification":"probe-only","profile":"core","capabilities":["sandbox-without-socket","lockfile-scan"]}\n' \
+  "$CE_ENGINE" "$CE_ENGINE_CLIENT_VERSION" "$CE_ENGINE_SERVER_VERSION" "$CE_ENGINE_OS" "$CE_ENGINE_ARCH" \
+  "$CE_ENGINE_ROOTLESS" "$CE_ENGINE_CONTEXT" "$CE_ENGINE_CONTEXT_HASH"

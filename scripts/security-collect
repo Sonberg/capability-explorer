@@ -3,4 +3,6 @@
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
+source "$root/scripts/lib/container-engine.sh"
+ce_require_docker 'full source/history/image security audit collection'
 exec node scripts/security-collect.mjs "$@"

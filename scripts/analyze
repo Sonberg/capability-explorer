@@ -22,6 +22,8 @@
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
+source "$root/scripts/lib/container-engine.sh"
+ce_require_docker 'complete analysis pipeline'
 cap="${1:-}"; capabilities="${2:-capabilities.json}"
 [[ "$cap" =~ ^[a-z0-9][a-z0-9._-]{0,99}$ ]] || { echo "usage: make analyze CAPABILITY=<id>   (ids are in $capabilities)" >&2; exit 2; }
 

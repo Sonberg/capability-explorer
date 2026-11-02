@@ -104,6 +104,8 @@ test('analysis orchestration invalidates stale receipts before invalid input or 
  for(const invalidInput of [true,false])fixture(root=>{
   mkdirSync(join(root,'scripts'),{recursive:true});
   for(const name of ['analyze-all','analysis-capability-ids.mjs','analysis-receipt.mjs'])copyFileSync(join(repository,'scripts',name),join(root,'scripts',name));
+  mkdirSync(join(root,'scripts/lib'),{recursive:true});
+  copyFileSync(join(repository,'scripts/lib/container-engine.sh'),join(root,'scripts/lib/container-engine.sh'));
   write(root,'scripts/sandbox','#!/bin/sh\nshift\nshift\nexec "$@"\n');
   write(root,'scripts/analyze','#!/bin/sh\nprintf "%s\\n" "$1" >> .sandbox-cache/attempted\nexit 1\n');
   write(root,'bin/git',`#!/bin/sh\ncase "$1" in rev-parse) printf '%s\\n' '${application}';; status) exit 0;; *) exit 1;; esac\n`);

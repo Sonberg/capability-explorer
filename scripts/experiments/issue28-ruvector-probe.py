@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Opt-in disposable PG17 smoke/recovery probe. No models, ports or existing DBs."""
 import argparse, json, pathlib, platform, shutil, subprocess, time, uuid
+import os
+
+engine = os.environ.get('CE_CONTAINER_ENGINE', 'docker')
+if engine not in ('docker', 'podman'):
+    raise SystemExit('CE_CONTAINER_ENGINE must be docker or podman')
+if engine == 'podman':
+    raise SystemExit('Database experiment is not qualified for the partial Podman core profile; no Docker fallback attempted')
 
 BASELINE = 'pgvector/pgvector:0.8.6-pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f'
 CANDIDATE = 'ruvnet/ruvector-postgres@sha256:7fb09d439d82fccbe6e0035d09f91c9dce456bb2d70cb2e8d6afb12a6afa2051'

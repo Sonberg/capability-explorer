@@ -5,6 +5,8 @@ fail() { echo "pr-check: $*" >&2; exit 1; }
 [[ $# -eq 0 ]] || fail 'usage: scripts/pr-check'
 root="$(git rev-parse --show-toplevel)" || fail 'run inside a Git checkout'
 cd "$root"
+source "$root/scripts/lib/container-engine.sh"
+ce_require_docker 'legacy local CI receipt verification'
 [[ "$(git symbolic-ref --quiet --short HEAD || true)" != main ]] ||
   fail 'work on a feature branch targeting main; do not work directly on main'
 clean() {
