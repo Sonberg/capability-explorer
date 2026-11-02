@@ -22,9 +22,7 @@ internal static class AnalysisPackagePreparation
                 inputs["npm-lock:" + repo.Id + ":" + Relative(repo.Source, file)] = AnalysisWorkerCommand.HashFile(file);
         if (!run.Settings.Packages) return inputs;
 
-        var path = Path.GetFullPath(Environment.GetEnvironmentVariable("CE_PACKAGE_FEEDS_FILE") ?? Path.Combine(root, ".sandbox-cache/package-feeds/settings.json"));
-        AnalysisPreparation.RejectLinks(path);
-        var settings = File.Exists(path) ? ReadBounded(path, MaximumSettingsBytes) : "{\"feeds\":[]}";
+        var settings = HostPackageFeeds.Read(root);
         using var configuration = JsonDocument.Parse(settings);
         var feeds = ValidateFeeds(configuration.RootElement);
         // Hash descriptors only: credential values and credential-derived hashes never enter run evidence.
@@ -99,20 +97,30 @@ internal static class AnalysisPackagePreparation
         return environment;
     }
 
-    private static List<JsonElement> ValidateFeeds(JsonElement settings)
+    internal static List<JsonElement> ValidateFeeds(JsonElement settings)
     {
-        if (settings.ValueKind != JsonValueKind.Object || !settings.TryGetProperty("feeds", out var list) || list.ValueKind != JsonValueKind.Array || list.GetArrayLength() > 32)
+        if (settings.ValueKind != JsonValueKind.Object || settings.EnumerateObject().Any(property => property.Name != "feeds") ||
+            !settings.TryGetProperty("feeds", out var list) || list.ValueKind != JsonValueKind.Array || list.GetArrayLength() > 32)
             throw new InvalidDataException("invalid operator package feed settings");
         var feeds = list.EnumerateArray().ToList();
         var identifiers = new HashSet<string>(StringComparer.Ordinal);
         foreach (var feed in feeds)
         {
+            if (feed.ValueKind != JsonValueKind.Object || feed.EnumerateObject().Any(property =>
+                property.Name is not ("id" or "kind" or "name" or "url" or "scope" or "username" or "secret")))
+                throw new InvalidDataException("invalid operator feed schema");
             var id = Optional(feed, "id");
             var kind = Optional(feed, "kind");
             if (id is null || !Regex.IsMatch(id, @"\A[a-z0-9][a-z0-9._-]{0,63}\z") || !identifiers.Add(id) || kind is not ("nuget" or "npm"))
                 throw new InvalidDataException("invalid operator feed identity");
             if (!Uri.TryCreate(Optional(feed, "url"), UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || uri.UserInfo.Length > 0 || uri.Query.Length > 0 || uri.Fragment.Length > 0)
                 throw new InvalidDataException("operator feeds require HTTPS URLs without credentials");
+            if (uri.AbsoluteUri.Length > 2048) throw new InvalidDataException("operator feed URL exceeds bounds");
+            foreach (var field in new[] { "name", "username", "scope" })
+                if (Optional(feed, field) is { } value && (value.Length > 100 || value.Any(char.IsControl)))
+                    throw new InvalidDataException("operator feed descriptor exceeds bounds");
+            if (Optional(feed, "scope") is { Length: > 0 } scope && !Regex.IsMatch(scope, @"\A@[a-z0-9][a-z0-9._-]{0,98}\z"))
+                throw new InvalidDataException("invalid npm package scope");
             var secret = Optional(feed, "secret");
             if (secret?.Length > 8192 || secret?.Any(character => character is '\r' or '\n' or '\0') == true)
                 throw new InvalidDataException("invalid operator feed credential");

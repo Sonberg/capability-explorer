@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO.Pipes;
 using System.Reflection;
 using System.Text.Json;
+using CapabilityExplorer.Capabilities;
 using CapabilityExplorer.Capabilities.Analysis;
 using analysiscli::CapabilityExplorer.Cli;
 using CapabilityExplorer.Store;
@@ -270,6 +271,35 @@ public sealed class AnalysisExecutionTests(PostgresFixture database)
         Assert.Equal("ce-analyze=" + AnalysisWorkerCommand.HashText(f.Root)[..16] + "-" + f.Run.RunId + "-" + f.Run.AttemptId,runtime.CleanupLabel);
         Assert.False(process.TerminationConfirmed);
         Assert.Equal("unknown",f.Store.FinishExecution(f.Owner,f.Identity,1,process.TerminationConfirmed).State);
+    }
+
+    [Fact]
+    public async Task Cancellation_during_host_git_interrupts_acquisition_and_preserves_unknown_execution()
+    {
+        if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Unix host qualification required");
+        using var f = new ExecutionFixture();
+        var bin = Path.Combine(f.Root, "bin");
+        Directory.CreateDirectory(bin);
+        var marker = Path.Combine(f.Root, "git-started");
+        var git = Path.Combine(bin, "git");
+        File.WriteAllText(git, "#!/bin/sh\n: > '" + marker + "'\nexec sleep 30\n");
+        File.SetUnixFileMode(git, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var path = Environment.GetEnvironmentVariable("PATH");
+        try
+        {
+            Environment.SetEnvironmentVariable("PATH", bin + Path.PathSeparator + path);
+            using var process = new AnalysisProcess(f.Root, f.Store, f.Run, CancellationToken.None, new FakeRuntime());
+            var sync = new SourceSync(Path.Combine(f.Root, "sources"));
+            var source = new RepositorySource("private", "https://github.com/fixture/private", SourceKind.GitHub);
+            var execution = process.AcquireSource(sync, token => sync.LockAsync(source, token));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (!File.Exists(marker)) await Task.Delay(20, timeout.Token);
+            f.Store.Cancel(f.Run.RunId);
+            await Assert.ThrowsAsync<OperationCanceledException>(() => execution.WaitAsync(timeout.Token));
+            Assert.False(process.TerminationConfirmed);
+            Assert.Equal("unknown", f.Store.FinishExecution(f.Owner, f.Identity, 1, process.TerminationConfirmed).State);
+        }
+        finally { Environment.SetEnvironmentVariable("PATH", path); }
     }
 
     private static string Hash(string path) => Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path)));

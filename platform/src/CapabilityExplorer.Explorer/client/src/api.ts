@@ -22,7 +22,7 @@ export interface Meta {
   /** Increases whenever the server reloaded artifacts or capabilities from disk. */
   generation: number;
   capabilities: CapabilitySummary[];
-  githubAuth: { configured: boolean; source: string };
+  githubAuth: { source: string; hostManaged: boolean };
   interpretation: { enabled: boolean; chat: boolean; provider: string; model?: string };
   /** Vector search: needs the database (CE_DATABASE) and an embedding model (make ollama, or Settings). */
   similarity: { database: boolean; embeddings?: string };
@@ -306,6 +306,28 @@ export interface CapabilityStatus {
   checkedAt?: string;
   repositories: RepositoryStatus[];
   analysed: number;
+  check?: SourceCheckStatus;
+  checkStale: boolean;
+}
+
+export interface SourceCheckStatus {
+  requestId: string;
+  capabilityId: string;
+  configurationHash: string;
+  state: "queued" | "working" | "cancelling" | "done" | "failed" | "cancelled" | "unknown";
+  acceptedAt: string;
+  attemptId?: string;
+  cancellationRequested: boolean;
+  stale: boolean;
+  statusUrl: string;
+  duplicate: boolean;
+}
+
+export interface CapabilityCreated {
+  created: boolean;
+  queued: boolean;
+  capability: CapabilityStatus;
+  check?: SourceCheckStatus;
 }
 
 export interface Ratio {

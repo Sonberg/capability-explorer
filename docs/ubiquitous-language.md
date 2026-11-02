@@ -22,6 +22,12 @@ For the local lifecycle ([MADR-0022](adr/0022-local-analysis-lifecycle.md)):
   records intent and confirmation for each affected surface.
 - **Unknown** means execution or publication cannot be positively reconciled.
   It blocks conflicting work; it does not mean failed, stopped or safe to retry.
+- **Source-check request** is frozen operational intent to resolve a capability's
+  repository refs under the trusted host owner. It is not an AnalysisRun, an
+  extracted fact or evidence that a worker is alive.
+- **Feed catalogue** is a host-published non-secret descriptor/configuration
+  projection. A configured credential reference is not a credential value or
+  proof of successful authentication. See [MADR-0023](adr/0023-host-acquisition-boundary.md).
 
 
 The executable [ce.v1 schema](../schema/v1/record.schema.json),

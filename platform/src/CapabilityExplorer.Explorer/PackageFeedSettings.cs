@@ -1,190 +1,118 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using CapabilityExplorer.Capabilities;
 
 namespace CapabilityExplorer.Explorer;
 
-public sealed record PackageFeedInput(
-    string? Id,
-    string? Kind,
-    string? Name,
-    string? Url,
-    string? Scope,
-    string? Username,
-    string? Secret,
-    bool ClearCredential = false);
+public sealed record PackageFeedSettingsStatus(string SettingsPath, IReadOnlyList<PackageFeedDescriptor> Feeds, string? Problem);
 
-public sealed record PackageFeedSettingsRequest(IReadOnlyList<PackageFeedInput>? Feeds);
-
-public sealed record PackageFeedStatus(
-    string Id,
-    string Kind,
-    string Name,
-    string Url,
-    string? Scope,
-    string? Username,
-    bool HasCredential);
-
-public sealed record PackageFeedSettingsStatus(string SettingsPath, IReadOnlyList<PackageFeedStatus> Feeds, string? Problem);
-
-public sealed class PackageFeedSettingsStore
+/// <summary>Reads only the host's bounded, public catalogue. Never opens legacy credential settings.</summary>
+public sealed class PackageFeedSettingsStore(string catalogPath)
 {
-    public const string DefaultPath = ".sandbox-cache/package-feeds/settings.json";
-
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
-    private static readonly Regex SafeId = new("^[a-z0-9][a-z0-9._-]{0,63}$", RegexOptions.CultureInvariant);
-    private static readonly Regex SafeScope = new("^@[a-z0-9][a-z0-9._-]{0,63}$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private readonly object _gate = new();
-    private List<StoredFeed> _feeds = [];
-
-    public PackageFeedSettingsStore(string settingsPath)
+    public const string DefaultPath = ".sandbox-cache/package-feed-catalog/catalog.json";
+    private const int MaxBytes = 128 * 1024;
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
-        SettingsPath = settingsPath;
-        try
-        {
-            if (File.Exists(settingsPath))
-            {
-                _feeds = JsonSerializer.Deserialize<StoredSettings>(File.ReadAllText(settingsPath), Json)?.Feeds ?? [];
-                Problem = Validate(_feeds.Select(ToInput).ToList(), _feeds.ToDictionary(f => f.Id, StringComparer.Ordinal)).Problem;
-            }
-        }
-        catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException)
-        {
-            Problem = $"Could not read package feed settings: {e.GetType().Name}";
-        }
-    }
-
-    public string SettingsPath { get; }
-
-    public string? Problem { get; private set; }
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        MaxDepth = 8,
+    };
+    private static readonly Regex SafeId = new("^[a-z0-9][a-z0-9._-]{0,63}$", RegexOptions.CultureInvariant);
+    private static readonly Regex SafeScope = new("^@[a-z0-9][a-z0-9._-]{0,63}$", RegexOptions.CultureInvariant);
 
     public PackageFeedSettingsStatus Status()
     {
-        lock (_gate)
-        {
-            return new(SettingsPath, _feeds.Select(f => new PackageFeedStatus(f.Id, f.Kind, f.Name, f.Url, f.Scope, f.Username, !string.IsNullOrEmpty(f.Secret))).ToList(), Problem);
-        }
-    }
-
-    public string? Save(PackageFeedSettingsRequest request)
-    {
-        if (request.Feeds is null) return "feeds is required";
-        lock (_gate)
-        {
-            var current = _feeds.ToDictionary(f => f.Id, StringComparer.Ordinal);
-            var validation = Validate(request.Feeds, current);
-            if (validation.Problem is not null) return validation.Problem;
-
-            var next = validation.Feeds!;
-            SaveFile(next);
-            _feeds = next;
-            Problem = null;
-            return null;
-        }
-    }
-
-    private void SaveFile(List<StoredFeed> feeds)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(SettingsPath))!);
-        var temp = SettingsPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            using (var stream = OperatingSystem.IsWindows()
-                ? new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None)
-                : new FileStream(temp, new FileStreamOptions
-                {
-                    Mode = FileMode.CreateNew,
-                    Access = FileAccess.Write,
-                    Share = FileShare.None,
-                    UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite,
-                }))
+            var path = Path.GetFullPath(catalogPath);
+            if (Path.GetFileName(path).Equals("settings.json", StringComparison.OrdinalIgnoreCase)
+                || path.Split(Path.DirectorySeparatorChar).Contains("package-feeds", StringComparer.OrdinalIgnoreCase))
+                return Problem("Legacy package feed settings are host-only. Configure the public catalogue instead.");
+            for (var entry = path; entry is not null; entry = Path.GetDirectoryName(entry))
             {
-                JsonSerializer.Serialize(stream, new StoredSettings(feeds), Json);
-                stream.Flush(flushToDisk: true);
+                if ((File.Exists(entry) || Directory.Exists(entry)) && (File.GetAttributes(entry) & FileAttributes.ReparsePoint) != 0)
+                    return Problem("Package feed catalogue must not use symbolic links.");
             }
-            File.Move(temp, SettingsPath, overwrite: true);
+            if (!File.Exists(path))
+                return Problem("Public package feed catalogue is missing. Configure or migrate feeds on the host.");
+            var info = new FileInfo(path);
+            if (info.Length <= 0 || (info.Attributes & (FileAttributes.Directory | FileAttributes.Device)) != 0)
+                return Problem("Package feed catalogue must be a nonempty regular JSON file.");
+            if (info.Length > MaxBytes) return Problem("Package feed catalogue exceeds its size limit.");
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            if (stream.Length > MaxBytes) return Problem("Package feed catalogue exceeds its size limit.");
+            var bytes = new byte[MaxBytes + 1];
+            var count = 0;
+            int read;
+            while (count < bytes.Length && (read = stream.Read(bytes, count, bytes.Length - count)) > 0) count += read;
+            if (count > MaxBytes) return Problem("Package feed catalogue exceeds its size limit.");
+            using var document = JsonDocument.Parse(bytes.AsMemory(0, count), new JsonDocumentOptions { MaxDepth = 8 });
+            if (!Schema(document.RootElement))
+                return Problem("Package feed catalogue has an invalid schema.");
+            var catalog = JsonSerializer.Deserialize<PackageFeedCatalog>(bytes.AsSpan(0, count), Json);
+            if (catalog is not { Version: 1, Feeds: not null } || !Valid(catalog.Feeds))
+                return Problem("Package feed catalogue has an unsupported version or invalid descriptors.");
+            return new(catalogPath, catalog.Feeds, null);
         }
-        finally
+        catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
-            if (File.Exists(temp)) File.Delete(temp);
+            return Problem("Package feed catalogue is unreadable or malformed. Repair it on the host.");
         }
     }
 
-    private static (List<StoredFeed>? Feeds, string? Problem) Validate(IReadOnlyList<PackageFeedInput> inputs, IReadOnlyDictionary<string, StoredFeed> current)
+    private PackageFeedSettingsStatus Problem(string message) => new(catalogPath, [], message);
+
+    private static bool Schema(JsonElement root)
     {
-        if (inputs.Count > 32) return (null, "at most 32 package feeds can be configured");
-        var feeds = new List<StoredFeed>();
+        if (root.ValueKind != JsonValueKind.Object || !UniqueProperties(root)
+            || !root.TryGetProperty("version", out _) || !root.TryGetProperty("feeds", out var feeds)
+            || feeds.ValueKind != JsonValueKind.Array || feeds.GetArrayLength() > 32) return false;
+        foreach (var feed in feeds.EnumerateArray())
+        {
+            if (feed.ValueKind != JsonValueKind.Object || !UniqueProperties(feed)) return false;
+            foreach (var field in new[] { "id", "kind", "name", "url", "hasCredential" })
+                if (!feed.TryGetProperty(field, out _)) return false;
+        }
+        return true;
+    }
+
+    private static bool UniqueProperties(JsonElement element)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        return element.EnumerateObject().All(p => names.Add(p.Name));
+    }
+
+    private static bool Valid(IReadOnlyList<PackageFeedDescriptor> feeds)
+    {
+        if (feeds.Count > 32) return false;
         var ids = new HashSet<string>(StringComparer.Ordinal);
-        var scopes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var hasDefaultNpm = false;
-
-        foreach (var input in inputs)
+        var scopes = new HashSet<string>(StringComparer.Ordinal);
+        var defaultNpm = false;
+        foreach (var feed in feeds)
         {
-            var id = input.Id?.Trim();
-            var kind = input.Kind?.Trim().ToLowerInvariant();
-            var name = input.Name?.Trim();
-            var urlText = input.Url?.Trim();
-            if (id is null || !SafeId.IsMatch(id) || !ids.Add(id)) return (null, "feed IDs must be unique lowercase letters, digits, '.', '_' or '-'");
-            if (kind is not ("nuget" or "npm")) return (null, "feed kind must be nuget or npm");
-            if (string.IsNullOrWhiteSpace(name) || name.Length > 100 || name.Any(char.IsControl)) return (null, "feed name is required and must be at most 100 characters");
-            if (!Uri.TryCreate(urlText, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || uri.UserInfo.Length > 0 || uri.Query.Length > 0 || uri.Fragment.Length > 0)
-                return (null, "feed URL must be an HTTPS URL without credentials, query, or fragment");
-
-            string? scopeProblem = null;
-            var scope = kind == "npm" ? NormalizeScopes(input.Scope, out scopeProblem) : null;
-            if (scopeProblem is not null) return (null, scopeProblem);
-            if (kind == "npm")
+            if (feed is null || feed.Id is null || !SafeId.IsMatch(feed.Id) || !ids.Add(feed.Id)
+                || feed.Kind is not ("nuget" or "npm")
+                || string.IsNullOrWhiteSpace(feed.Name) || feed.Name.Length > 100 || feed.Name.Any(char.IsControl)
+                || feed.Url is null || feed.Url.Length > 4096
+                || !Uri.TryCreate(feed.Url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps
+                || string.IsNullOrEmpty(uri.Host) || uri.UserInfo.Length > 0 || uri.Query.Length > 0 || uri.Fragment.Length > 0
+                || feed.Username is { Length: > 1024 } || feed.Username?.Any(char.IsControl) == true
+                || feed.Scope is { Length: > 4096 }) return false;
+            if (feed.Kind == "nuget")
             {
-                if (scope is null)
-                {
-                    if (hasDefaultNpm) return (null, "only one npm registry can be the default registry");
-                    hasDefaultNpm = true;
-                }
-                else
-                {
-                    foreach (var value in scope.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                        if (!scopes.Add(value)) return (null, $"npm scope {value} is configured more than once");
-                }
+                if (feed.Scope is not null) return false;
             }
-
-            var username = input.Username?.Trim();
-            if (username?.Any(char.IsControl) == true) return (null, "username contains invalid control characters");
-            if (username is { Length: > 1024 }) return (null, "username is too long");
-            var secret = input.Secret;
-            if (secret?.Length > 8192 || secret?.Any(c => c is '\r' or '\n' or '\0') == true) return (null, "credential is too long or contains invalid characters");
-            if (string.IsNullOrWhiteSpace(secret) && !input.ClearCredential && current.TryGetValue(id, out var previous))
+            else if (string.IsNullOrWhiteSpace(feed.Scope))
             {
-                if (previous.Kind != kind || !SameUrl(previous.Url, uri.AbsoluteUri))
-                    return (null, "changing a feed URL or type requires entering a new credential or clearing the saved one");
-                secret = previous.Secret;
-                if (string.IsNullOrEmpty(username)) username = previous.Username;
+                if (defaultNpm) return false;
+                defaultNpm = true;
             }
-            if (input.ClearCredential) secret = null;
-            if (kind == "nuget" && !string.IsNullOrEmpty(secret) && string.IsNullOrWhiteSpace(username)) return (null, "NuGet credentials require a username; use your token as the password when applicable");
-            if (kind == "npm" && !string.IsNullOrEmpty(username) && string.IsNullOrEmpty(secret)) return (null, "npm username authentication requires a password or token");
-
-            feeds.Add(new StoredFeed(id, kind, name, uri.AbsoluteUri, scope, username, string.IsNullOrEmpty(secret) ? null : secret));
+            else
+            {
+                foreach (var scope in feed.Scope.Split(',', StringSplitOptions.TrimEntries))
+                    if (!SafeScope.IsMatch(scope) || !scopes.Add(scope)) return false;
+            }
         }
-
-        return (feeds, null);
+        return true;
     }
-
-    private static string? NormalizeScopes(string? value, out string? problem)
-    {
-        problem = null;
-        var parts = (value ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(s => s.ToLowerInvariant()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        if (parts.Any(s => !SafeScope.IsMatch(s)))
-        {
-            problem = "npm scopes must use the form @scope-name, separated by commas";
-            return null;
-        }
-        return parts.Length == 0 ? null : string.Join(",", parts);
-    }
-
-    private static bool SameUrl(string before, string after) => string.Equals(before.TrimEnd('/'), after.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
-
-    private static PackageFeedInput ToInput(StoredFeed feed) => new(feed.Id, feed.Kind, feed.Name, feed.Url, feed.Scope, feed.Username, feed.Secret);
-
-    private sealed record StoredSettings(List<StoredFeed> Feeds);
-    private sealed record StoredFeed(string Id, string Kind, string Name, string Url, string? Scope, string? Username, string? Secret);
 }

@@ -51,6 +51,12 @@ history or imply that existing private package versions are product releases.
 
 ### Changed
 
+- Source Check/Create-and-check becomes explicitly asynchronous under the single
+  trusted host worker. Package-feed Settings is a non-secret host catalogue;
+  credential configuration/migration belongs to the host, not Explorer.
+  Supported Explorer launchers exclude acquisition credentials while retaining
+  separate database/model authentication (MADR-0023).
+
 - Add explicit Docker/Podman selection for direct sandbox and lockfile scans, with rootless-machine diagnosis and fail-closed guards on unqualified Podman paths. Full Podman act/Testcontainers/dev/audit support remains future work (MADR-0021).
 - PRs now merge only into main (MADR-0016); main-only local/hosted gates replace the historical stage-only policy. Existing PR #27 reconciles both histories without merging the separate catalog feature.
 - Preserve trusted native development alongside the sandbox CI profile; `make dev` now re-analyzes configured repositories in sandboxes before importing artifacts, with a private revision/hash receipt.

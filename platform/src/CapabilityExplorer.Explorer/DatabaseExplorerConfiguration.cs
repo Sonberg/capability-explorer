@@ -11,11 +11,10 @@ public sealed class DatabaseExplorerConfiguration
         ArgumentNullException.ThrowIfNull(options);
         _options = options;
         using var definitions = OpenDefinitions();
-        var sync = new SourceSync(options.Workspace);
         Git = new GitSource(id =>
         {
             using var current = OpenDefinitions();
-            return current.FindRepository(id) is { } repo ? sync.GitDirectory(repo)
+            return current.FindRepository(id) is { } repo ? SourcePathResolver.GitDirectory(repo, options.Workspace)
                 : options.RepositoriesDirectory is not null && GitSource.IsSafeSegment(id) ? Path.Combine(options.RepositoriesDirectory, id) : null;
         });
     }

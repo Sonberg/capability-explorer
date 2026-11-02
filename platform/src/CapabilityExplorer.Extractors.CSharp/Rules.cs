@@ -616,6 +616,17 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
     private static Conn ConnFor(EfModel ef, string entity) =>
         ef.Connections.GetValueOrDefault(entity) ?? (ef.Fallback.Name == "unknown" && ef.Fallback.File is null && entity.Split('|') is [_, _, var assembly, ..] ? ef.Fallback with { Assembly = assembly } : ef.Fallback);
 
+    private static bool IsEfModelConfiguration(IMethodSymbol method)
+    {
+        var receiver = method.IsExtensionMethod
+            ? (method.ReducedFrom ?? method).Parameters.FirstOrDefault()?.Type : method.ContainingType;
+        if (receiver is not INamedTypeSymbol type) return false;
+        var ns = type.ContainingNamespace.ToDisplayString();
+        return (ns == "Microsoft.EntityFrameworkCore" && type.Name is "ModelBuilder" or "EntityTypeBuilder")
+            || ns == "Microsoft.EntityFrameworkCore.Metadata.Builders"
+            || ns.StartsWith("Microsoft.EntityFrameworkCore.Metadata.Builders.", StringComparison.Ordinal);
+    }
+
     private void EntityFramework(List<CSharpExtractor.SourceFile> files)
     {
         var ef = LoadEf();
@@ -672,6 +683,7 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                 }
                 // Any other generic call on a mapped entity (Supabase From<T>(), Marten Query<T>(), ...), written when the fluent chain ends in a mutation.
                 else if (node is InvocationExpressionSyntax call && f.Model.GetSymbolInfo(call).Symbol is IMethodSymbol { TypeArguments: [var model], ContainingType: var clientType } clientMethod
+                    && !IsEfModelConfiguration(clientMethod)
                     && ef.Entities.TryGetValue(keys.Of(model), out var modelTable) && CSharpExtractor.Owner(f.Model, call.SpanStart) is IMethodSymbol && OwnerKey(f, call) is { } caller2)
                 {
                     var chain = call.Ancestors().TakeWhile(a => a is MemberAccessExpressionSyntax or InvocationExpressionSyntax or AwaitExpressionSyntax).OfType<InvocationExpressionSyntax>().Select(MethodName);

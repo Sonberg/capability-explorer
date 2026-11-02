@@ -17,7 +17,7 @@ internal static class AnalysisWorkerCommand
             foreach (var key in options.Keys)
                 if (key is not ("capability" or "capabilities" or "bindings" or "include-tests" or "packages" or "locked" or "github-auth" or "extraction-jobs"))
                     throw new ArgumentException("unsupported analysis option");
-            if (ResolveEngine() != "docker")
+            if (command != "analysis-worker" && ResolveEngine() != "docker")
                 throw new InvalidOperationException("analysis requires the qualified Docker host profile");
             var root = Path.GetFullPath(Environment.CurrentDirectory);
             if (!File.Exists(Path.Combine(root, "scripts/sandbox")) || !File.Exists(Path.Combine(root, "config/runtime/images.env")))
@@ -27,6 +27,7 @@ internal static class AnalysisWorkerCommand
             var store = new FileRunStore(Path.Combine(root, ".sandbox-cache/requests"));
             using var owner = store.AcquireWorker(); // precedes recovery, admission and every shared write
             if (store.Recover(owner).Blocked) throw new InvalidOperationException("unreconciled execution/publication blocks analysis; inspect run history");
+            HostPackageFeeds.Publish(root);
             using var stop = new CancellationTokenSource();
             ConsoleCancelEventHandler interrupt = (_, e) => { e.Cancel = true; stop.Cancel(); };
             Console.CancelKeyPress += interrupt;
@@ -47,6 +48,13 @@ internal static class AnalysisWorkerCommand
 
                     while (!stop.IsCancellationRequested)
                     {
+                        var check = store.ClaimCheck(owner);
+                        if (check is not null)
+                        {
+                            await HostSourceAcquisition.ExecuteCheck(root, store, owner, check, stop.Token);
+                            if (store.ReadBlockReason() is not null) return 1;
+                            continue;
+                        }
                         var next = store.ClaimNext(owner);
                         if (next is null) { await Task.Delay(300, stop.Token); continue; }
                         if (await Execute(root, store, owner, next, stop.Token) != 0) return 1;
@@ -94,8 +102,8 @@ internal static class AnalysisWorkerCommand
             }
         }
         catch (OperationCanceledException) { return 130; }
-        catch (Exception e) when (e is IOException or InvalidOperationException or ArgumentException or FormatException or JsonException or System.ComponentModel.Win32Exception)
-        { Console.Error.WriteLine("analysis: " + e.Message); return 2; }
+        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or FormatException or JsonException or System.ComponentModel.Win32Exception)
+        { Console.Error.WriteLine("analysis: host operation failed (" + e.GetType().Name + ")"); return 2; }
     }
 
     private static async Task<int> Execute(string root, FileRunStore store, WorkerOwnership owner, AnalysisRun run, CancellationToken stop)
@@ -104,6 +112,7 @@ internal static class AnalysisWorkerCommand
         using var process = new AnalysisProcess(root, store, run, stop);
         try
         {
+            if (ResolveEngine() != "docker") throw new InvalidOperationException("analysis requires the qualified Docker host profile");
             var prepared = await AnalysisPreparation.Prepare(root, store, run, process);
             process.CheckCancellation();
             var manifest = store.BindResolved(owner, attempt, new ResolvedManifest(run.AcceptedInputsHash, prepared.Inputs));

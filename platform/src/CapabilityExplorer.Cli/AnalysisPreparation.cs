@@ -56,12 +56,9 @@ internal static class AnalysisPreparation
         var work = Path.GetFullPath(store.AttemptDirectory(attempt));
         RejectLinks(work);
         Directory.CreateDirectory(work);
-        var relative = Path.GetRelativePath(root, work).Replace('\\','/');
-        if (relative.StartsWith("../", StringComparison.Ordinal)) throw new IOException("attempt must be inside project root");
-        string InContainer(string p) => "/work/" + Path.GetRelativePath(root,p).Replace('\\','/');
-        using var definitions = CapabilityStore.Open(run.ConfigurationPath, Path.Combine(root,".sandbox-cache/sources/snapshots.json"));
+        if (Path.GetRelativePath(root, work).StartsWith("../", StringComparison.Ordinal)) throw new IOException("attempt must be inside project root");
+        using var definitions = CapabilityStore.Open(run.ConfigurationPath, Path.Combine(root,".sandbox-cache/sources/snapshots.json"), loadSnapshots: false);
         var definition = definitions.Find(run.CapabilityId) ?? throw new FormatException("frozen configuration lacks capability");
-        var mounts = new List<string>();
         foreach (var source in definition.Repositories)
         {
             SourceParser.Validate(source);
@@ -69,17 +66,35 @@ internal static class AnalysisPreparation
             var expanded = Path.GetFullPath(SourceSync.ExpandHome(source.Location));
             if (expanded.Contains(',') || expanded.Contains(':') || expanded.Contains('\n')) throw new IOException("unsupported local mount path");
             RejectLinks(expanded);
-            if (Path.IsPathRooted(SourceSync.ExpandHome(source.Location))) mounts.Add(expanded);
         }
         var tokenEnv = new Dictionary<string,string>();
         foreach (var name in TokenVariables)
             if (Environment.GetEnvironmentVariable(name) is {} value) tokenEnv[name] = value;
         var token = await process.Run("scripts/github-token", [run.Settings.GitHubAuth], tokenEnv, capture:true);
-        var exportEnv = new Dictionary<string,string> { ["GITHUB_TOKEN"] = token.Trim(), ["CE_HOST_HOME"] = Environment.GetEnvironmentVariable("CE_HOST_HOME") ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ["SANDBOX_PASS_ENV"] = "GITHUB_TOKEN,CE_HOST_HOME", ["SANDBOX_SOURCES"] = string.Join(',', mounts.Distinct()) };
-        var export = new List<string> { "dotnet", "dotnet", Cli, "export", "--capability", run.CapabilityId, "--capabilities", InContainer(run.ConfigurationPath), "--workspace", ".sandbox-cache/sources", "--out", relative };
-        if (run.Settings.Locked) export.AddRange(["--locked", "1"]);
-        await process.Run("scripts/sandbox", export, exportEnv);
+        // Acquisition executes only in this exclusive trusted host, not a second CLI with a claimed lock token.
+        // Git never executes repository code; subsequent extraction children retain the offline sandbox profile.
+        var sync = new SourceSync(Path.Combine(root, ".sandbox-cache/sources"), auth: GitHubAuth.FromToken(token.Trim(), "host credential helper"));
+        var priorCheck = store.ReadLatestCheck(definition.Id);
+        var snapshot = run.Settings.Locked
+            ? priorCheck is { State: "done", Snapshot: not null } && FileRunStore.CheckMatches(priorCheck, run.ConfigurationPath, run.Settings.GitHubAuth)
+                ? priorCheck.Snapshot : throw new InvalidOperationException("locked analysis requires a matching completed host source check")
+            : await process.AcquireSource(sync, token => sync.CheckAsync(definition, token));
+        if (sync.ExecutionUncertain) { process.MarkUncertainAcquisition(); throw new InvalidOperationException("source acquisition requires reconciliation"); }
+        process.CheckCancellation();
+        if (snapshot.Repositories.Count != definition.Repositories.Count || snapshot.Repositories.Any(repo => repo.CommitSha is null || repo.Error is not null))
+            throw new InvalidOperationException("source acquisition failed");
+        var manifest = new List<string>();
+        foreach (var repository in snapshot.Repositories)
+        {
+            process.CheckCancellation();
+            var source = definition.Repositories.Single(source => source.Id == repository.Id && source.Ref == repository.Ref);
+            var destination = Path.Combine(work, "src", source.Id);
+            await process.AcquireSource(sync, token => sync.ExportAsync(source, repository.CommitSha!, destination, token));
+            manifest.Add($"{source.Id}\t{repository.CommitSha}\tsrc/{source.Id}");
+        }
+        process.CheckCancellation();
+        await File.WriteAllLinesAsync(Path.Combine(work, "manifest.tsv"), manifest);
+        await File.WriteAllTextAsync(Path.Combine(work, "include-tests"), definition.IncludeTests ? "1\n" : "0\n");
         var manifestPath = Path.Combine(work,"manifest.tsv");
         if (new FileInfo(manifestPath).Length > 1024 * 1024) throw new IOException("manifest too large");
         var repositories = new List<AnalysisRepository>();

@@ -15,6 +15,7 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
     private readonly TimeSpan _timeout = timeout ?? TimeSpan.FromMinutes(3);
 
     public GitHubAuth Auth { get; } = auth ?? GitHubAuth.None;
+    public bool ExecutionUncertain { get; private set; }
 
     /// <summary>The directory git commands for this repository run against.</summary>
     public string GitDirectory(RepositorySource source)
@@ -22,11 +23,15 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
         SourceParser.Validate(source);
         if (source.Kind == SourceKind.Local)
         {
-            return Path.GetFullPath(ExpandHome(source.Location));
+            var local = Path.GetFullPath(ExpandHome(source.Location));
+            SourceSafety.RejectLinks(local);
+            return local;
         }
 
         var path = new Uri(source.Location).AbsolutePath.Trim('/'); // owner/repo
-        return Path.Combine(Path.GetFullPath(workspace), "github", path + ".git");
+        var target = Path.Combine(Path.GetFullPath(workspace), "github", path + ".git");
+        SourceSafety.RejectLinks(target);
+        return target;
     }
 
     /// <summary>
@@ -219,12 +224,14 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
         }
         catch (OperationCanceledException)
         {
+            ExecutionUncertain = true;
             SourceSafety.Kill(process);
             throw new InvalidOperationException($"git archive timed out after {(_timeout * 4).TotalSeconds:0}s");
         }
 
         catch
         {
+            ExecutionUncertain = true;
             SourceSafety.Kill(process);
             throw;
         }
@@ -330,11 +337,13 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
         }
         catch (OperationCanceledException)
         {
+            ExecutionUncertain = true;
             SourceSafety.Kill(process);
             throw new InvalidOperationException($"git {args[0]} timed out after {_timeout.TotalSeconds:0}s");
         }
         catch
         {
+            ExecutionUncertain = true;
             SourceSafety.Kill(process);
             throw;
         }

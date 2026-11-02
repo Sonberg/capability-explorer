@@ -99,10 +99,22 @@ public sealed partial class ExplorerState(ExplorerOptions options, ILogger<Explo
             }
         }
 
-        foreach (var file in new[] { options.CapabilitiesFile, Path.Combine(options.Workspace, "snapshots.json"), options.BindingsFile ?? "" }.Where(f => f.Length > 0))
+        foreach (var file in new[] { options.CapabilitiesFile,
+            Path.ChangeExtension(options.CapabilitiesFile, $".local{Path.GetExtension(options.CapabilitiesFile)}"),
+            options.BindingsFile ?? "" }.Where(f => f.Length > 0))
         {
             var info = new FileInfo(file);
             parts.Add(info.Exists ? $"{file}|{info.Length}|{info.LastWriteTimeUtc.Ticks}" : $"{file}|-");
+        }
+
+        var checks = Path.Combine(options.RequestsDirectory, "checks");
+        if (Directory.Exists(checks))
+        {
+            foreach (var file in Directory.EnumerateFiles(checks, "check.json", SearchOption.AllDirectories))
+            {
+                var info = new FileInfo(file);
+                parts.Add($"{file}|{info.Length}|{info.LastWriteTimeUtc.Ticks}");
+            }
         }
 
         parts.Sort(StringComparer.Ordinal);

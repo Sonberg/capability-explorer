@@ -44,7 +44,7 @@ if (source == "postgres")
 }
 var intelligence = new Intelligence(interpretation, builder.Configuration["modelSettings"] ?? ModelSettings.DefaultPath, dataSource is null ? null : new EmbeddingStore(dataSource)) { DataSource = dataSource };
 builder.Services.AddSingleton(intelligence);
-builder.Services.AddSingleton(new PackageFeedSettingsStore(builder.Configuration["packageFeeds"] ?? PackageFeedSettingsStore.DefaultPath));
+builder.Services.AddSingleton(new PackageFeedSettingsStore(builder.Configuration["packageFeedCatalog"] ?? PackageFeedSettingsStore.DefaultPath));
 builder.Services.AddSingleton(new GlossaryReviewService(dataSource));
 builder.Services.AddTransient(_ => intelligence.Layer);
 builder.Services.ConfigureHttpJsonOptions(o =>

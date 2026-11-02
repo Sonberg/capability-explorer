@@ -276,6 +276,25 @@ test('sandbox rejects incompatible offline published ports before run', t => {
   assert.ok(!f.calls().some(c => operation(c)[0] === 'run'));
 });
 
+test('Explorer sandbox mounts only the public feed directory and masks legacy secrets', t => {
+  const f = fixture(t);
+  passed(f.run('scripts/sandbox', ['--feed-catalog', 'dotnet', 'true'], { CE_CONTAINER_ENGINE: 'docker' }));
+  const args = operation(f.calls().find(c => operation(c)[0] === 'run'));
+  assert.ok(args.includes('/work/.sandbox-cache/package-feeds:rw,noexec,nosuid,size=1m'));
+  assert.ok(args.includes(`${f.root}/.sandbox-cache/package-feed-catalog:/work/.sandbox-cache/package-feed-catalog:ro`));
+  assert.ok(!args.some(a => a.endsWith('/package-feeds:/work/.sandbox-cache/package-feeds')));
+  const refusedLegacy = f.run('scripts/sandbox', ['--package-settings', 'dotnet', 'true']);
+  refused(refusedLegacy, /migrate credentials on the host/);
+});
+
+test('Explorer public feed mount rejects a symbolic-link directory', t => {
+  const f = fixture(t);
+  mkdirSync(join(f.root, '.sandbox-cache'), { recursive: true });
+  symlinkSync(f.dir, join(f.root, '.sandbox-cache/package-feed-catalog'));
+  refused(f.run('scripts/sandbox', ['--feed-catalog', 'dotnet', 'true']), /symbolic link/);
+  assert.ok(!f.calls().some(c => operation(c)[0] === 'run'));
+});
+
 for (const engine of ['docker', 'podman']) test(`${engine} scanner preserves pinned policy and propagates findings failure`, t => {
   const f = fixture(t), r = f.run('scripts/security-check', [], { CE_CONTAINER_ENGINE: engine, MOCK_RUN_EXIT: '7' });
   assert.equal(r.status, 7, resultError(r));
