@@ -129,6 +129,40 @@ Not tested: candidate runtime/containment/performance, private repositories,
 larger-than-limit artifacts, research phase executor, release/deployment.
 Full local CI and publication remain the Completion gate.
 
+### Completion: foundation only
+
+Final scoped score: 97/100, one completion iteration. Full local act CI passed
+for implementation commit `1dad7d660b46fe6abe1f3370088c78dea619e0bb` against main
+`1e1122b62587eda7f3e2817c1619ba29ce292923`. The CI job runs normal security,
+fixtures/goldens, .NET/Node/extractor/UI regressions and 58 new research tests.
+The independent implementation review passed after the source-manifest fix.
+
+F1–F6 map to `tests/research-foundation.test.mjs`; F7 maps to the ordinary
+`make EXECUTION=sandbox local-check` job with the new dependency-free target.
+`make EXECUTION=sandbox pr-check` verifies the receipt's exact head/main base.
+This documentation-only completion commit must receive its own ordinary pre-push
+gate before publication; the implementation receipt is not reused for that push.
+The final published HEAD and final CI receipt belong in the PR handoff.
+
+Rubric: traceability35/35, actionable scoped decisions30/30, honest limits20/20,
+handoff/cost12/15. Deduction: full study completion and owner adoption remain
+outside this bounded package. No known unaddressed foundation architecture flaw.
+Scope is reviewable foundation delivery, not a release/deployment or issue close.
+
+External paid inference calls: zero. Standard-library scripts did mechanical
+validation; native subscription agents supplied independent reviews. No cheap
+router/checkpoint scripts were invented or installed. Subscription cost/savings
+remain unknown. Canonical AgentDB checkpoints use exact-key readback.
+
+Parked: expanded scc oracle/executable qualification, other tool councils and
+trial executor, private-corpus/image-audit acceptance (#23/#24). No merge or
+auto-merge is authorized. After owner foundation merge, refresh main and begin
+one tool's next evidence slice; separate PR per introduced tool/mode.
+
+What was not tested: candidate runtime, large-artifact streaming qualification,
+candidate containment/performance, private repositories or production deployment.
+Full research phases deliberately remain incomplete and fail closed.
+
 Each later phase records its instrument, final grade, limits and source-bound
 commit. Phase commits are milestones; final PR checks bind the final clean HEAD.
 No new router is installed: standard-library scripts do mechanical work; native
