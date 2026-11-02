@@ -133,7 +133,7 @@ test('symlink artifact files, inventory roots and receipt destinations are refus
 });
 
 test('make defaults to git authentication while preserving explicit overrides',()=>{
- const env={...process.env};
+ const env={...process.env,CE_CONTAINER_ENGINE:'docker'};
  delete env.GITHUB_AUTH;
  for(const profile of ['native','sandbox']){
   for(const mode of [undefined,'auto','none']){
@@ -156,7 +156,7 @@ test('development startup imports saved artifacts unless re-analysis is explicit
   write(root,'bin/dotnet','#!/bin/sh\nprintf "%s\\n" "$2" >> .sandbox-cache/startup-import\n');
   for(const path of ['scripts/analyze-all','scripts/sandbox','bin/dotnet'])chmodSync(join(root,path),0o700);
   const args=['-s','-f',join(repository,'config/build',`${profile}.mk`),'dev-data','-o','build','-o','postgres','DEV_OLLAMA=0','ARTIFACTS=.sandbox-cache/artifacts'];
-  const env={...process.env,PATH:join(root,'bin')+':'+process.env.PATH};
+  const env={...process.env,PATH:join(root,'bin')+':'+process.env.PATH,CE_CONTAINER_ENGINE:'docker'};
   delete env.DEV_REANALYZE;
   const startup=spawnSync('make',args,{cwd:root,encoding:'utf8',timeout:20000,env});
   assert.equal(startup.status,0,startup.stderr);
@@ -188,9 +188,10 @@ case "$2" in
  *) exit 1;;
 esac
 `);
+ write(root,'bin/docker','#!/bin/sh\nexit 0\n');
  write(root,'.sandbox-cache/analyze/one/src/stale/obj/sentinel','STALE_EXPORT');
- for(const path of ['scripts/analyze','scripts/github-token','scripts/capability-sources','scripts/sandbox','bin/dotnet'])chmodSync(join(root,path),0o700);
- const env={...process.env,PATH:join(root,'bin')+':'+process.env.PATH,PACKAGES:'0',CE_DATABASE:'',SANDBOX_PASS_ENV:''};
+ for(const path of ['scripts/analyze','scripts/github-token','scripts/capability-sources','scripts/sandbox','bin/dotnet','bin/docker'])chmodSync(join(root,path),0o700);
+ const env={...process.env,PATH:join(root,'bin')+':'+process.env.PATH,CE_CONTAINER_ENGINE:'docker',PACKAGES:'0',CE_DATABASE:'',SANDBOX_PASS_ENV:''};
  const result=spawnSync('bash',['scripts/analyze','one','capabilities.json'],{cwd:root,encoding:'utf8',timeout:20000,env});
  assert.equal(result.status,0,result.stderr);
  assert.equal(readFileSync(join(root,'.sandbox-cache/analyze/one/src/stale/obj/sentinel'),'utf8'),'STALE_EXPORT');
@@ -333,7 +334,7 @@ test('parallel analysis preserves package lock arguments when optional extractor
 }));
 
 test('both make profiles export default and overridden analysis job limits to recipes',()=>{
- const env={...process.env};delete env.ANALYZE_JOBS;
+ const env={...process.env,CE_CONTAINER_ENGINE:'docker'};delete env.ANALYZE_JOBS;
  for(const profile of ['native','sandbox'])for(const jobs of [undefined,1,4]){
   const args=['-s','-f',join(repository,'config/build',profile+'.mk'),'-f','/dev/stdin','print-analysis-jobs'];
   if(jobs!==undefined)args.push('ANALYZE_JOBS='+jobs);
@@ -351,10 +352,11 @@ test('analysis orchestration invalidates stale receipts before invalid input or 
   write(root,'scripts/sandbox','#!/bin/sh\nshift\nshift\nexec "$@"\n');
   write(root,'scripts/analyze','#!/bin/sh\nprintf "%s\\n" "$1" >> .sandbox-cache/attempted\nexit 1\n');
   write(root,'bin/git',`#!/bin/sh\ncase "$1" in rev-parse) printf '%s\\n' '${application}';; status) exit 0;; *) exit 1;; esac\n`);
-  for(const path of ['scripts/analyze-all','scripts/sandbox','scripts/analyze','bin/git'])chmodSync(join(root,path),0o700);
+  write(root,'bin/docker','#!/bin/sh\nexit 0\n');
+  for(const path of ['scripts/analyze-all','scripts/sandbox','scripts/analyze','bin/git','bin/docker'])chmodSync(join(root,path),0o700);
   write(root,receiptPath,'{"stale-success":true}\n');
   if(invalidInput)write(root,'capabilities.json','{"capabilities":[{"id":"../escape"}]}');
-  const result=spawnSync('bash',['scripts/analyze-all','capabilities.json'],{cwd:root,encoding:'utf8',timeout:20000,env:{PATH:join(root,'bin')+':'+process.env.PATH}});
+  const result=spawnSync('bash',['scripts/analyze-all','capabilities.json'],{cwd:root,encoding:'utf8',timeout:20000,env:{PATH:join(root,'bin')+':'+process.env.PATH,CE_CONTAINER_ENGINE:'docker'}});
   assert.equal(result.error,undefined);assert.notEqual(result.status,0);assert.equal(existsSync(join(root,receiptPath)),false);
   if(invalidInput)assert.equal(existsSync(join(root,'.sandbox-cache/attempted')),false);
   else assert.equal(readFileSync(join(root,'.sandbox-cache/attempted'),'utf8'),'one\n');
