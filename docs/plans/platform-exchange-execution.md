@@ -32,6 +32,45 @@ existing source/contract inspection. Not tested: implementation or a central API
 
 ## Phase ledger
 
+### Pseudocode
+
+Dispatch on a closed `schema`/`kind` discriminator; validate the appropriate
+enrollment, evidence-bundle or intake-receipt definition. Reject unknown fields,
+unsafe paths, malformed identity/digest/coverage values and impossible receipt
+shapes. Require publication metadata only for published receipts and errors for
+rejection/quarantine. Content identity excludes publication attempt metadata.
+Collections/string/numeric bounds constrain validation cost O(document bytes).
+The schema does not read a referenced artifact or implement ordering/idempotence;
+later semantic intake verifies those bytes and transitions before publication.
+
+Instrument: criterion-to-case mapping C1–C6 and explicit unsupported semantics.
+Final pseudocode grade 97/100: trace35, failure paths30, boundedness20,
+identity12/15 (provider runtime/transport semantics intentionally not implemented).
+Not tested: executable schemas, provider, consumers or deployment.
+
+### Architecture
+
+One self-contained JSON Schema Draft 2020-12 at
+`schema/platform/v1/envelope.schema.json`, identity `ce.platform.v1`, with three
+closed discriminator profiles. Reuse existing JsonSchema.Net 9.6.0 through the
+current Contracts.Tests project. New controlled fixtures live under
+`tests/fixtures/platform/`; one new C# test file validates actual schema behavior.
+No package/project/lockfile changes; ce.v1 schema and golden sources are untouched.
+
+Enrollment maps current repositoryId to provider/authority/providerRepositoryId
+and one explicit scope membership with role IDs and versioned registry input.
+Bundle content contains exact source/unit/extractor/config/artifact identities
+and coverage; its contentSha256 excludes attempt ID/timestamps. Receipt states
+distinguish durable receipt/validation/rejection from publication metadata.
+Date-time format assertions must be enabled and tested, not merely annotated.
+
+MADR and catalogue remain proposed for owner review. Defer OpenAPI endpoints
+until artifact-transfer/authentication semantics are selected; file-schema
+validation is not API conformance. Root alone integrates Make/docs changes.
+Final architecture grade97/100: contracts30, trust30, compatibility25, cost12/15;
+the remaining3 points are external provider/transport qualification beyond scope.
+Not tested: implementation or a production trust boundary.
+
 Brain grounding: `sparc/plugins/sparc/skills/sparc-review/SKILL.md` distinguishes
 evidence presence from verified outcome. This package uses existing tools,
 not a newly installed SPARC runtime. Subscription cost/savings remain unknown;
