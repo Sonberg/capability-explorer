@@ -58,7 +58,10 @@ file presence is not ownership. Never delete or replace the lock files while
 any process might hold them.
 
 The persistent `coordination-domain` marker is created once and validated on
-every journal operation. Native macOS records `macos-native`. Linux records its
+every access. Its complete contents are flushed in a private temporary file
+before atomic publication without overwrite; concurrent cold starts cannot
+observe a partially initialized canonical marker. Existing corrupt or incomplete
+markers still require reconciliation. Native macOS records `macos-native`. Linux records its
 actual kernel boot ID, including when accessed through a same-kernel container.
 Partial, symlinked or mismatched markers fail closed. An already open store also
 refuses a missing marker. New-store initialization creates an absent marker

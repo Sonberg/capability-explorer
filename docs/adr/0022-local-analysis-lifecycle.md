@@ -31,8 +31,11 @@ replace them. Independent .NET process tests exercised exclusion and owner
 termination on native macOS and in the pinned Linux .NET sandbox. Those tests
 establish behavior in the tested kernel domains, not cross-VM locking.
 
-A persistent coordination-domain marker is created with `CreateNew` and never
-overwritten. Every store access validates it. Native macOS uses `macos-native`;
+A persistent coordination-domain marker is atomically published from a private
+`CreateNew` temporary file after writing, flushing and closing it. Publication
+uses a move without overwrite, preventing cold-start readers seeing an empty
+marker. The canonical marker is never overwritten or unlinked. Every store access
+validates it. Native macOS uses `macos-native`;
 Linux requires the actual `/proc/sys/kernel/random/boot_id`, with no fallback.
 A different domain, Linux boot, partial marker or symlink refuses access while
 preserving evidence. A macOS host worker and Linux Docker-VM Explorer cannot
