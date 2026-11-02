@@ -17,15 +17,24 @@ internal static class CoordinationDomain
         AnalysisPaths.NoLinks(path);
         if (!File.Exists(path))
         {
-            var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.Read };
+            var temporary = Path.Combine(root, ".coordination-domain." + Guid.NewGuid().ToString("N") + ".tmp");
+            var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
             if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
             try
             {
-                using var stream = new FileStream(path, options);
-                stream.Write(System.Text.Encoding.UTF8.GetBytes(Current()));
-                stream.Flush(true);
+                using (var stream = new FileStream(temporary, options))
+                {
+                    stream.Write(System.Text.Encoding.UTF8.GetBytes(Current()));
+                    stream.Flush(true);
+                }
+                // Publish only complete bytes. Never replace the canonical marker, including an invalid one.
+                try { File.Move(temporary, path, overwrite: false); }
+                catch (IOException) when (File.Exists(path)) { /* Another creator won; validate its marker below. */ }
             }
-            catch (IOException) when (File.Exists(path)) { /* Another creator won. Validate its complete marker below. */ }
+            finally
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+            }
         }
         Validate(root);
     }
