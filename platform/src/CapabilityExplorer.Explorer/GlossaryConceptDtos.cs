@@ -19,7 +19,8 @@ public sealed record GlossaryField(
 public sealed record GlossaryConcept(
     string Key, string Term, string Tier, int Score, IReadOnlyList<GlossaryReason> Why,
     IReadOnlyList<GlossaryMember> Members, IReadOnlyList<GlossaryMember> Variants,
-    IReadOnlyList<GlossaryField> Attributes, IReadOnlyList<string> Repositories, IReadOnlyList<string> Capabilities);
+    IReadOnlyList<GlossaryField> Attributes, IReadOnlyList<string> Repositories, IReadOnlyList<string> Capabilities,
+    IReadOnlyList<HttpLink> Integrations);
 
 /// <summary>Projection plus what it could not see. Limits are disclosed so a partial view is not read as complete.</summary>
 public sealed record GlossaryConceptView(

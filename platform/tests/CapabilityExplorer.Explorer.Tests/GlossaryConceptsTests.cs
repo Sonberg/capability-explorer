@@ -243,12 +243,87 @@ public sealed class GlossaryConceptsTests
         var concept = json.GetProperty("concepts")[0];
         Assert.Equal("invoice", concept.GetProperty("key").GetString());
         Assert.Equal(JsonValueKind.Array, concept.GetProperty("why").ValueKind);
+        Assert.Equal(JsonValueKind.Array, concept.GetProperty("integrations").ValueKind);
         var member = concept.GetProperty("members")[0];
         Assert.StartsWith("glossary-member:", member.GetProperty("id").GetString(), StringComparison.Ordinal);
         Assert.Equal("repo", member.GetProperty("evidence")[0].GetProperty("repositoryId").GetString());
         Assert.Contains(json.GetProperty("limits").EnumerateArray(), l => l.GetString()!.Contains("TypeScript", StringComparison.Ordinal));
         var roundTrip = JsonSerializer.Deserialize<GlossaryConceptView>(Serialize(view), JsonSerializerOptions.Web)!;
         Assert.Equal(Serialize(view), Serialize(roundTrip));
+    }
+
+    [Fact]
+    public void TypeScript_only_concept_matches_HTTP_response_type_by_repository_path_and_exported_name()
+    {
+        var types = new Unit("web", "packages/contracts/package.json", "contracts") { Language = "typescript" };
+        var subscription = types.Type("SubscriptionDto", "services/checkout/types/subscriptions.ts");
+        var client = new Unit("web", "packages/client/tsconfig.json", "client") { Language = "typescript" };
+        var request = client.Symbol("fetchSubscription", "services/checkout/api.ts");
+        client.Edge(request.Key, "REQUESTS", "http|@unbound:web/client:host=checkout.test|GET /subscriptions",
+            new JsonObject { ["responseType"] = subscription.Key, ["method"] = "GET" });
+
+        var concept = Build(types, client).Concepts.Single(c => c.Key == "subscription");
+
+        Assert.Single(concept.Integrations);
+        Assert.Equal("fetchSubscription", Assert.Single(concept.Integrations).Request.From.Name);
+    }
+
+    [Fact]
+    public void Mixed_language_concept_matches_CSharp_owner_and_TypeScript_response_type()
+    {
+        var csharp = new Unit("shared", "src/App/App.csproj", "App");
+        csharp.Type("Subscription", "src/App/Subscription.cs");
+        var contracts = new Unit("shared", "packages/contracts/package.json", "contracts") { Language = "typescript" };
+        var dto = contracts.Type("SubscriptionDto", "services/checkout/types/subscriptions.ts");
+        var csClient = new Unit("shared", "src/Client/Client.csproj", "Client");
+        var csRequest = csClient.Method("Subscription", "Get", "src/Client/Subscription.cs");
+        csClient.Edge(csRequest.Key, "REQUESTS", "http|@unbound:shared/Client:host=checkout.test|GET /subscriptions",
+            new JsonObject { ["method"] = "GET" });
+        var tsClient = new Unit("shared", "packages/client/tsconfig.json", "client") { Language = "typescript" };
+        var tsRequest = tsClient.Symbol("fetchSubscription", "services/checkout/api.ts");
+        tsClient.Edge(tsRequest.Key, "REQUESTS", "http|@unbound:shared/client:host=checkout.test|GET /subscriptions",
+            new JsonObject { ["responseType"] = dto.Key, ["method"] = "GET" });
+
+        var view = Load([csharp, contracts, csClient, tsClient]).View(null);
+        Assert.Equal(["Get", "fetchSubscription"], Queries.Integrations(view).Http.Select(link => link.Request.From.Name).Order(StringComparer.Ordinal));
+        var concept = GlossaryConcepts.Build(view).Concepts.Single(c => c.Key == "subscription");
+
+        Assert.Equal(["Get", "fetchSubscription"], concept.Integrations.Select(link => link.Request.From.Name).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void TypeScript_integration_does_not_match_an_equal_name_from_a_different_file()
+    {
+        var types = new Unit("web", "packages/contracts/package.json", "contracts") { Language = "typescript" };
+        types.Type("SubscriptionDto", "services/admin/types/subscriptions.ts");
+        var client = new Unit("web", "packages/client/tsconfig.json", "client") { Language = "typescript" };
+        var request = client.Symbol("fetchSubscription", "services/checkout/api.ts");
+        client.Edge(request.Key, "REQUESTS", "http|@unbound:web/client:host=checkout.test|GET /subscriptions",
+            new JsonObject { ["responseType"] = "ts|web|checkout|services/checkout/types/subscriptions.ts|SubscriptionDto#type", ["method"] = "GET" });
+
+        var concept = Build(types, client).Concepts.Single(c => c.Key == "subscription");
+
+        Assert.Empty(concept.Integrations);
+    }
+
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("SubscriptionDto", true)]
+    [InlineData("ts|other|contracts|types/subscriptions.ts|SubscriptionDto#type", true)]
+    [InlineData("ts|web|contracts|types/subscriptions.ts|OtherDto#type", true)]
+    [InlineData("ts|web|contracts|types/subscriptions.ts|SubscriptionDto#value", true)]
+    [InlineData("ts|web|contracts|types/subscriptions.ts|SubscriptionDto#type", false)]
+    public void TypeScript_integration_rejects_missing_unsupported_foreign_or_unexported_response_types(string? responseType, bool exported)
+    {
+        var types = new Unit("web", "packages/contracts/package.json", "contracts") { Language = "typescript" };
+        var declaration = types.Type("SubscriptionDto", "types/subscriptions.ts");
+        declaration.Node["props"]!["exported"] = exported;
+        var client = new Unit("web", "packages/client/tsconfig.json", "client") { Language = "typescript" };
+        var request = client.Symbol("fetchSubscription", "api.ts");
+        client.Edge(request.Key, "REQUESTS", "http|@unbound:web/client:host=checkout.test|GET /subscriptions",
+            new JsonObject { ["responseType"] = responseType });
+
+        Assert.Empty(Build(types, client).Concepts.Single(c => c.Key == "subscription").Integrations);
     }
 
     private static byte[] Serialize(GlossaryConceptView view) => JsonSerializer.SerializeToUtf8Bytes(view, JsonSerializerOptions.Web);
@@ -282,8 +357,22 @@ public sealed class GlossaryConceptsTests
 
         public string UnitName => name;
 
-        public Declared Type(string typeName, string file, string typeKind = "class") =>
-            Declare($"T:{typeName}", typeName, "Type", file, new JsonObject { ["typeKind"] = typeKind });
+        public Declared Type(string typeName, string file, string typeKind = "class")
+        {
+            var props = new JsonObject { ["typeKind"] = typeKind };
+            if (Language == "typescript")
+            {
+                props["exported"] = true;
+            }
+
+            return Declare(Language == "typescript" ? $"{typeName}#type" : $"T:{typeName}", typeName, "Type", file, props);
+        }
+
+        public Declared Symbol(string name, string file) =>
+            Declare($"{name}#value", name, "Function", file, null);
+
+        public Declared Method(string owner, string name, string file) =>
+            Declare($"M:{owner}.{name}()", name, "Method", file, null);
 
         public Declared Property(Declared owner, string member, string file) =>
             Declare($"P:{owner.Node["name"]}.{member}", member, "Property", file, null);
@@ -291,7 +380,9 @@ public sealed class GlossaryConceptsTests
         private Declared Declare(string local, string display, string nodeKind, string file, JsonObject? props)
         {
             var id = _next++;
-            var key = $"cs|{repository}|{name}|{local}";
+            var key = Language == "typescript"
+                ? $"ts|{repository}|{name}|{file}|{local}"
+                : $"cs|{repository}|{name}|{local}";
             _records.Add(new JsonObject
             {
                 ["schema"] = "ce.v1", ["kind"] = "evidence", ["id"] = $"ev:{id}", ["repositoryId"] = repository,
@@ -314,15 +405,26 @@ public sealed class GlossaryConceptsTests
             return new Declared(key, node);
         }
 
-        public void Edge(string from, string relation, string to)
+        public void Edge(string from, string relation, string to, JsonObject? props = null)
         {
             var id = _next++;
             var evidence = _records.Last(r => (string?)r["kind"] == "evidence")["id"]!.GetValue<string>();
             _records.Add(new JsonObject
             {
                 ["schema"] = "ce.v1", ["kind"] = "edge", ["id"] = $"e:{id}", ["from"] = from, ["relation"] = relation,
-                ["to"] = to, ["derivation"] = "compiler", ["resolution"] = "resolved", ["evidence"] = new JsonArray(evidence),
+                ["to"] = to, ["derivation"] = relation == "REQUESTS" ? "rule" : "compiler",
+                ["resolution"] = relation == "REQUESTS" ? "unresolved" : "resolved", ["evidence"] = new JsonArray(evidence),
             });
+            if (relation == "REQUESTS")
+            {
+                _records[^1]["unresolvedReason"] = "configuration";
+                _records[^1]["rule"] = JsonNode.Parse("""{"name":"test.http","version":"1"}""");
+            }
+
+            if (props is not null)
+            {
+                _records[^1]["props"] = props.DeepClone();
+            }
         }
     }
 
@@ -350,7 +452,11 @@ public sealed class GlossaryConceptsTests
                         ["node"] = Count("node"), ["edge"] = Count("edge"), ["evidence"] = Count("evidence"),
                         ["calculation"] = 0, ["diagnostic"] = 0,
                     },
-                    ["coverage"] = JsonNode.Parse("""{"filesTotal":1,"filesAnalyzed":1,"unresolvedEdges":0}"""),
+                    ["coverage"] = new JsonObject
+                    {
+                        ["filesTotal"] = 1, ["filesAnalyzed"] = 1,
+                        ["unresolvedEdges"] = records.Count(r => (string?)r["kind"] == "edge" && (string?)r["resolution"] == "unresolved"),
+                    },
                 };
                 var text = string.Join('\n', new[] { header }.Concat(records).Append(complete).Select(r => r.ToJsonString())) + "\n";
                 var validated = ArtifactValidator.Validate(text);
