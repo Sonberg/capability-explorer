@@ -1,0 +1,37 @@
+{
+  "id": "scc",
+  "mode": "inventory-only",
+  "role": "inventory",
+  "gap": "Identify languages and physical source volumes outside implemented semantic extractors; file enumeration alone is already available",
+  "executionMethod": "deterministic heuristic",
+  "epistemicStatus": "derived",
+  "baseline": "1e1122b62587eda7f3e2817c1619ba29ce292923",
+  "sourceCommit": "c651b07a7d3aa6e97a476380eef0f478a53719a3",
+  "criteria": [
+    "Before any trial freeze a 24-32 file independent oracle; the foundation three-file corpus is not sufficient trial coverage",
+    "Exact manifest reconciliation and two predefined correct insights beyond path/hash and extension classification, with no unsupported architectural fact promotion",
+    "No source writes, target execution or extraction egress; unchanged canonical results in fresh processes and relocated mounts; stay inside the fixed resource envelope"
+  ],
+  "requiredCases": [
+    "manifest-and-language",
+    "line-conventions-and-unknowns",
+    "hostile-config-and-containment",
+    "repeatability-and-marginal-value"
+  ],
+  "budget": {
+    "paidCalls": 0,
+    "minutes": 20,
+    "downloadGiB": 2,
+    "outputGiB": 1,
+    "reserveGiB": 10
+  },
+  "inputStatus": "foundation references only; expanded trial oracle not yet delivered",
+  "corpus": {
+    "path": "config/research/foundation.json",
+    "sha256": "b861bae6ca3cc98bec243e231b8d3edfcefeb979160d599b7db7d9cea6efa230"
+  },
+  "oracle": {
+    "path": "tests/fixtures/research/oracle.json",
+    "sha256": "0adf07532a3aef8afde90bdfae2a9cdf1d45323dcd0988fb308829603f7190c7"
+  }
+}

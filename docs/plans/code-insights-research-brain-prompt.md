@@ -155,7 +155,8 @@ measurement limits15. Gate: `node scripts/research/check-code-insights.mjs pseud
    research sidecar first; do not mutate ce.v1/schema to accommodate vague edges.
 7. Follow the council protocol: root coordinates; separate SME, adversary and
    advisor agents independently assess each tool; a fourth independent agent
-   judges after a slot frees. Actual capacity is four including root, not eight.
+   judges independently, after a slot frees when needed. Discover actual host
+   capacity each session, bounded by the project's eight-agent limit including root.
    Reuse agents across tools, never conflicting roles within one tool decision.
    Separate writer worktrees and root-only shared manifest integration still apply.
 

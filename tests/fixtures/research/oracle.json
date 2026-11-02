@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "purpose": "hand-declared miniature inventory/evidence oracle; not a candidate benchmark",
+  "files": [
+    {"path": "tests/fixtures/research/inventory/service.ts", "language": "TypeScript", "anchorLine": 2, "anchor": "export function total(quantity: number, price: number): number {"},
+    {"path": "tests/fixtures/research/inventory/Worker.cs", "language": "C#", "anchorLine": 2, "anchor": "public class Worker {"},
+    {"path": "tests/fixtures/research/inventory/report.sql", "language": "SQL", "anchorLine": 2, "anchor": "SELECT currency, SUM(amount) FROM example GROUP BY currency;"}
+  ],
+  "excludedConclusions": ["topic text proves broker identity", "currency column proves mixed-currency arithmetic", "declaration inventory proves resolved calls"]
+}

@@ -44,10 +44,14 @@ SME, adversary, advisor and judge within each tool's decision. The judge must no
 author that tool's adapter, oracle changes, or advocacy briefs. Root coordinates
 and integrates; it cannot substitute for an independent judge.
 
-With four actual slots: root plus SME/adversary/advisor in parallel, then a new
-independent judge after workers finish. Reuse worker identities across different
+Discover actual capacity each session and stay within the project limit of eight
+agents including root. The planning session exposed four slots; the resumed host
+exposes nine, so the project cap still applies. With four slots, run root plus
+SME/adversary/advisor, then the independent judge after workers finish. With more
+slots, overlap independent tool councils and reviews without overlapping writes.
+Reuse worker identities across different
 tools to control overhead, keeping a per-tool conflict-of-role register. No
-recursive delegation or fictional eight-agent concurrency. If independent roles
+recursive delegation or unverified concurrency claims. If independent roles
 are unavailable, leave the decision pending rather than simulate a council in
 one response. Independent agents using the same underlying model are independent
 execution contexts, not guaranteed epistemic diversity; disclose that limitation.

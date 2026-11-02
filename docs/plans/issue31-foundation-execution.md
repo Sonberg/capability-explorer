@@ -100,6 +100,35 @@ Grounding: `sparc/docs/tutorial.md` and
 evidence identity is distinct from evidence truth. No SPARC package installed.
 Not tested: implementation, candidates, containment or deployment.
 
+### Refinement
+
+Final scoped score: 97/100, four repair/verification iterations. Correctness and
+failure-path requirements F1–F6 have executable positive/negative tests. The
+independent `/root/foundation_final_review` reran 58 tests, all passed, none
+skipped, and found no remaining scoped blocker after the final fix.
+
+Fixed across iterations: diagnostic expectation; proposal-only council hashes
+replaced by complete packet binding; strict numeric budgets; recursively rehash
+the actual source entries behind corpus manifests, not only manifest bytes.
+Regression tests reject changed claim URLs/verdicts/deleted blockers and source
+mutation behind an unchanged manifest. Data integrity is not authentication.
+
+Proof commands: `node --test tests/research-foundation.test.mjs`,
+`make EXECUTION=sandbox test-research-foundation`, and
+`node scripts/research/check-code-insights.mjs tool --id scc --stage desk`.
+The scc desk record yields `defer`; its trial gate deliberately fails. Its judge
+`/root/scc_final_judge` confirmed the transcribed record and recomputed proposal
+and full packet hashes independently. This is a desk verdict, not a tool trial.
+
+Rubric: correctness/evidence40/40, isolation/failures25/25, scoped utility22/25,
+repeatability10/10. Deduction: the utility is limited to bounded evidence
+integrity; hashes cannot authenticate process claims or independent authors.
+Those boundaries are documented in MADR-0019 and the foundation guide; no claim
+is made that the validator proves underlying evidence truth.
+Not tested: candidate runtime/containment/performance, private repositories,
+larger-than-limit artifacts, research phase executor, release/deployment.
+Full local CI and publication remain the Completion gate.
+
 Each later phase records its instrument, final grade, limits and source-bound
 commit. Phase commits are milestones; final PR checks bind the final clean HEAD.
 No new router is installed: standard-library scripts do mechanical work; native
