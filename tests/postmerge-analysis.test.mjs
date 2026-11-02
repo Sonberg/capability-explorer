@@ -335,12 +335,17 @@ test('parallel analysis preserves package lock arguments when optional extractor
 
 test('both make profiles export default and overridden analysis job limits to recipes',()=>{
  const env={...process.env,CE_CONTAINER_ENGINE:'docker'};delete env.ANALYZE_JOBS;
+ const probeDir=mkdtempSync(join(tmpdir(),'ce-make-probe-'));
+ const probe=join(probeDir,'probe.mk');
+ writeFileSync(probe,'print-analysis-jobs:\n\t@printf \'%s\\n\' "$$ANALYZE_JOBS"\n');
+ try{
  for(const profile of ['native','sandbox'])for(const jobs of [undefined,1,4]){
-  const args=['-s','-f',join(repository,'config/build',profile+'.mk'),'-f','/dev/stdin','print-analysis-jobs'];
+  const args=['-s','-f',join(repository,'config/build',profile+'.mk'),'-f',probe,'print-analysis-jobs'];
   if(jobs!==undefined)args.push('ANALYZE_JOBS='+jobs);
-  const result=spawnSync('make',args,{cwd:repository,env,encoding:'utf8',input:'print-analysis-jobs:\n\t@printf \'%s\\n\' "$$ANALYZE_JOBS"\n',timeout:20000});
+  const result=spawnSync('make',args,{cwd:repository,env,encoding:'utf8',timeout:20000});
   assert.equal(result.status,0,result.stderr);assert.equal(result.stdout,String(jobs??2)+'\n');
  }
+ }finally{rmSync(probeDir,{recursive:true,force:true});}
 });
 
 test('analysis orchestration invalidates stale receipts before invalid input or a failed capability run',()=>{
