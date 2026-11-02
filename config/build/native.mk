@@ -32,7 +32,7 @@ help:
 	@echo "make fixtures-compile  check every fixture revision compiles (or fails) as intended"
 	@echo "make explore [ARTIFACTS=dir] [EVALUATION=report.json] [CAPABILITIES=file] [PORT=5080]"
 	@echo "     browse the model at http://127.0.0.1:5080"
-	@echo "     private GitHub repos: GITHUB_TOKEN, 'gh auth login', or the git credential helper (GITHUB_AUTH=git by default)"
+	@echo "     private source checks and acquisition credentials belong to make analyze-worker, not Explorer"
 	@echo "     optional LLM: make ollama (local, no key), the Settings page (gear icon), or INTERPRETATION=foundry FOUNDRY_ENDPOINT=... FOUNDRY_DEPLOYMENT=..."
 	@echo "     Cmd/Ctrl+K: command menu; with CE_DATABASE and an embedding model also similar functionality (vector search)"
 	@echo "make ollama [OLLAMA_EMBED=nomic-embed-text] [OLLAMA_CHAT=qwen2.5:7b|none]  start a local model server, pull the models, save them as the settings"
@@ -41,7 +41,7 @@ help:
 	@echo "make analyze CAPABILITY=id  check out, extract and store artifacts for one capability (picked up live by explore)"
 	@echo "     GITHUB_AUTH=auto|git|none  LOCKED=1 (analyse the last check)  PACKAGES=0 (skip nuget.org downloads)"
 	@echo "     INCLUDE_TESTS=1 includes test projects/files; tests are excluded from the production graph by default"
-	@echo "     private NuGet/npm feeds: configure in Explorer Settings; NuGet %VAR% credentials via NUGET_PASS_ENV also work"
+	@echo "     private NuGet/npm feeds: configure on the host; Explorer Settings shows only the public catalogue"
 	@echo "     CE_DATABASE='Host=...;Database=...;...' also imports into PostgreSQL (off otherwise); BINDINGS=bindings.json binds @unbound hints"
 	@echo "     with CE_DATABASE and a model (make ollama, the Settings page, or CE_MODEL_ENDPOINT + CE_EMBEDDING_MODEL) it also embeds for similarity search"
 	@echo "     PostgreSQL needs pgvector: make postgres starts one and prints its CE_DATABASE"
@@ -73,7 +73,7 @@ ci:
 test: test-local-ci test-package-feeds golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
 
 test-package-feeds:
-	node --test tests/package-feeds.test.mjs
+	node --test tests/package-feeds.test.mjs tests/explorer-environment.test.mjs
 
 fixtures:
 	scripts/build-fixtures.sh
@@ -208,8 +208,7 @@ EXPLORER_SOURCE ?= files
 BINDINGS ?= $(wildcard bindings.json)
 explore: fixtures build
 	@echo "Capability Explorer: http://127.0.0.1:$(PORT)"
-	GITHUB_TOKEN="$$(scripts/github-token $(GITHUB_AUTH))" CE_HOST_HOME="$$HOME" \
-	ASPNETCORE_URLS="http://127.0.0.1:$(PORT)" $(DOTNET) platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll \
+	ASPNETCORE_URLS="http://127.0.0.1:$(PORT)" $(NODE) scripts/explorer-host.mjs platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll \
 	  --source $(EXPLORER_SOURCE) --artifacts $(ARTIFACTS) --repos fixtures/.repos $(if $(EVALUATION),--evaluation $(EVALUATION)) \
 	  --capabilities $(CAPABILITIES) --workspace .sandbox-cache/sources $(if $(BINDINGS),--bindings $(BINDINGS)) \
 	  $(if $(INTERPRETATION),--interpretation:provider $(INTERPRETATION) --interpretation:cacheDirectory .sandbox-cache/interpretations) \
