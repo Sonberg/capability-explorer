@@ -60,7 +60,10 @@ public sealed partial class FileRunStore
         AnalysisPaths.Hash(JsonSerializer.Serialize(new { configuration = AnalysisPaths.Hash(configuration), githubAuth = auth }, AnalysisPaths.Json));
 
     public bool CheckMatches(SourceCheck check, string configurationPath) =>
-        CheckHash(CaptureConfiguration(configurationPath), ReadWorkerDefaults()?.Settings.GitHubAuth ?? "auto") == check.ConfigurationHash;
+        CheckMatches(check, configurationPath, ReadWorkerDefaults()?.Settings.GitHubAuth ?? "auto");
+
+    public static bool CheckMatches(SourceCheck check, string configurationPath, string gitHubAuth) =>
+        CheckHash(CaptureConfiguration(configurationPath), gitHubAuth) == check.ConfigurationHash;
 
     public SourceCheckAdmission AdmitCheck(string capId, string configurationPath)
     {
@@ -70,6 +73,9 @@ public sealed partial class FileRunStore
         var active = checks.Where(check => check.CapabilityId == capId && !CheckTerminal(check))
             .OrderByDescending(check => check.AcceptedAt).FirstOrDefault();
         if (active is not null) return new(false, active);
+        if (Legacy() || checks.Any(check => check.State == "unknown") ||
+            All().Any(run => run.State is "unknown" or "interrupted" or "partial"))
+            throw new InvalidOperationException("unreconciled execution blocks source check admission");
         if (checks.Count >= Math.Min(1000, _maxRunRecords)) throw new InvalidOperationException("source check retention limit reached");
         var bytes = CaptureConfiguration(configurationPath);
         var auth = ReadWorkerDefaults()?.Settings.GitHubAuth ?? "auto";

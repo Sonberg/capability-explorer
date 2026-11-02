@@ -118,7 +118,7 @@ public static class SourceCheckApi
         catch (ArgumentException) { return Results.BadRequest(new { error = "Invalid source-check identifier or configuration." }); }
         catch (KeyNotFoundException) { return Results.NotFound(new { error = "No source check with this request ID." }); }
         catch (InvalidOperationException) { return Results.Conflict(new { error = "Source checks are blocked pending host worker reconciliation." }); }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or PlatformNotSupportedException)
+        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException or System.Text.Json.JsonException or PlatformNotSupportedException)
         {
             return Results.Json(new { error = "Source-check journal is unavailable or requires reconciliation." }, statusCode: 503);
         }

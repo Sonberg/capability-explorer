@@ -59,6 +59,8 @@ public sealed class SourceCheckTests : IDisposable
         Assert.NotNull(_store.ReadBlockReason());
         Assert.Throws<InvalidOperationException>(() => _store.ClaimCheck(replacement));
         Assert.Throws<InvalidOperationException>(() => _store.ClaimNext(replacement));
+        File.WriteAllText(_configuration, """{"capabilities":[{"id":"other","repositories":[]}]}""");
+        Assert.Throws<InvalidOperationException>(() => _store.AdmitCheck("other", _configuration));
     }
 
     [Fact]
@@ -130,6 +132,8 @@ public sealed class SourceCheckTests : IDisposable
         using var owner = _store.AcquireWorker();
         _store.PublishWorkerDefaults(owner, new(GitHubAuth: "none"));
         Assert.False(_store.CheckMatches(check, check.ConfigurationPath));
+        Assert.True(FileRunStore.CheckMatches(check, check.ConfigurationPath, "auto"));
+        Assert.False(FileRunStore.CheckMatches(check, check.ConfigurationPath, "none"));
         File.AppendAllText(check.ConfigurationPath, " ");
         Assert.Throws<InvalidDataException>(() => _store.ClaimCheck(owner));
     }

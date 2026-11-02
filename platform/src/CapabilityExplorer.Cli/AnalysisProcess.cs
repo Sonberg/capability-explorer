@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using CapabilityExplorer.Capabilities;
 using CapabilityExplorer.Capabilities.Analysis;
 
 namespace CapabilityExplorer.Cli;
@@ -23,6 +24,38 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
         if (stop.IsCancellationRequested || store.ReadRun(run.RunId).CancellationRequested)
             throw new OperationCanceledException("analysis cancelled before publication");
         if (_abort.IsCancellationRequested) throw new InvalidOperationException("a sibling preparation job failed; attempt aborted");
+    }
+
+    internal async Task<T> AcquireSource<T>(SourceSync sync, Func<CancellationToken, Task<T>> operation)
+    {
+        CheckCancellation();
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(stop, _abort.Token);
+        var monitoring = Monitor();
+        async Task Monitor()
+        {
+            try
+            {
+                while (!cancel.IsCancellationRequested)
+                {
+                    CheckCancellation();
+                    await Task.Delay(100, cancel.Token);
+                }
+            }
+            catch (OperationCanceledException) when (cancel.IsCancellationRequested) { }
+            catch { cancel.Cancel(); throw; }
+        }
+        try
+        {
+            var result = await operation(cancel.Token);
+            CheckCancellation();
+            return result;
+        }
+        finally
+        {
+            cancel.Cancel();
+            if (sync.ExecutionUncertain) MarkUncertainAcquisition();
+            await monitoring;
+        }
     }
 
     public async Task<string> Run(string executable, IEnumerable<string> arguments, IReadOnlyDictionary<string,string>? environment = null, bool capture = false, int captureLimit = 65536)

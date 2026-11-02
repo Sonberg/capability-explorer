@@ -59,9 +59,12 @@ public sealed class CapabilityExplorerFactory : WebApplicationFactory<Program>
     }
 }
 
-public sealed class CapabilityApiTests(CapabilityExplorerFactory factory) : IClassFixture<CapabilityExplorerFactory>
+public sealed class CapabilityApiTests : IDisposable
 {
-    private readonly HttpClient _client = factory.CreateClient();
+    private readonly CapabilityExplorerFactory factory = new();
+    private readonly HttpClient _client;
+
+    public CapabilityApiTests() => _client = factory.CreateClient();
 
     [Fact]
     public async Task Checking_locks_every_repository_and_reports_whether_it_was_analysed()
@@ -167,5 +170,11 @@ public sealed class CapabilityApiTests(CapabilityExplorerFactory factory) : ICla
 
         var noName = await _client.PostAsJsonAsync("/api/capabilities", new { name = " ", repositories = "/x" });
         Assert.Equal(HttpStatusCode.BadRequest, noName.StatusCode);
+    }
+
+    public void Dispose()
+    {
+        _client.Dispose();
+        factory.Dispose();
     }
 }

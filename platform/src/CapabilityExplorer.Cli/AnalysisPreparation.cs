@@ -76,9 +76,9 @@ internal static class AnalysisPreparation
         var sync = new SourceSync(Path.Combine(root, ".sandbox-cache/sources"), auth: GitHubAuth.FromToken(token.Trim(), "host credential helper"));
         var priorCheck = store.ReadLatestCheck(definition.Id);
         var snapshot = run.Settings.Locked
-            ? priorCheck is { State: "done", Snapshot: not null } && store.CheckMatches(priorCheck, run.ConfigurationPath)
+            ? priorCheck is { State: "done", Snapshot: not null } && FileRunStore.CheckMatches(priorCheck, run.ConfigurationPath, run.Settings.GitHubAuth)
                 ? priorCheck.Snapshot : throw new InvalidOperationException("locked analysis requires a matching completed host source check")
-            : await sync.CheckAsync(definition);
+            : await process.AcquireSource(sync, token => sync.CheckAsync(definition, token));
         if (sync.ExecutionUncertain) { process.MarkUncertainAcquisition(); throw new InvalidOperationException("source acquisition requires reconciliation"); }
         process.CheckCancellation();
         if (snapshot.Repositories.Count != definition.Repositories.Count || snapshot.Repositories.Any(repo => repo.CommitSha is null || repo.Error is not null))
@@ -89,8 +89,7 @@ internal static class AnalysisPreparation
             process.CheckCancellation();
             var source = definition.Repositories.Single(source => source.Id == repository.Id && source.Ref == repository.Ref);
             var destination = Path.Combine(work, "src", source.Id);
-            try { await sync.ExportAsync(source, repository.CommitSha!, destination); }
-            catch { if (sync.ExecutionUncertain) process.MarkUncertainAcquisition(); throw; }
+            await process.AcquireSource(sync, token => sync.ExportAsync(source, repository.CommitSha!, destination, token));
             manifest.Add($"{source.Id}\t{repository.CommitSha}\tsrc/{source.Id}");
         }
         process.CheckCancellation();

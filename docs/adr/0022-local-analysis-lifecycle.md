@@ -107,13 +107,17 @@ profile uses standard defaults; a stale profile is only last configured policy,
 never liveness or execution authority. Already admitted settings remain immutable.
 Podman full analysis remains unqualified and is explicitly refused.
 
-Issue #37 A9's literal broader prohibition on Explorer credentials is not met:
+At this decision's original implementation, issue #37 A9's literal broader prohibition on Explorer credentials was not met:
 the existing private-source Check workflow still uses an Explorer GitHub token,
 and main also added credential-bearing package-feed Settings.
 This slice introduces no analysis credential values or engine socket into
 Explorer; offline extraction receives neither. Moving that existing check
 behind another boundary requires separate owner review. Keep #37 open; this
 decision and its tests do not establish complete A1–A11 acceptance.
+The owner-authorized [MADR-0023](0023-host-acquisition-boundary.md) follow-up moves
+source checks and feed secrets to this exclusive host and replaces synchronous
+Explorer acquisition with queued status resources. Its validation is separate
+from the historical store-only evidence below.
 
 The default retention ceiling is 1,000 run records. Admission refuses at the
 ceiling rather than deleting active, unknown or historical evidence. Individual

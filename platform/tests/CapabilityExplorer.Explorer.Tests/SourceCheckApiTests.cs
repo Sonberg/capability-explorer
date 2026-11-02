@@ -125,4 +125,20 @@ public sealed class SourceCheckApiTests
         Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync(new Uri("/api/source-checks/not-an-id", UriKind.Relative))).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync(new Uri("/api/capabilities/nope/check", UriKind.Relative), null)).StatusCode);
     }
+
+    [Fact]
+    public async Task Malformed_check_records_return_bounded_reconciliation_errors()
+    {
+        using var factory = new CapabilityExplorerFactory();
+        using var client = factory.CreateClient();
+        var accepted = await client.PostAsync(new Uri("/api/capabilities/demand-pricing/check", UriKind.Relative), null);
+        var check = await accepted.Content.ReadFromJsonAsync<JsonElement>();
+        var id = check.GetProperty("requestId").GetString()!;
+        var path = Path.Combine(factory.RequestsDirectory, "checks", id, "check.json");
+        var original = await File.ReadAllTextAsync(path);
+        await File.WriteAllTextAsync(path, original.Replace("\"queued\"", "\"invalid-record\"", StringComparison.Ordinal));
+        var response = await client.GetAsync(accepted.Headers.Location);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Contains("requires reconciliation", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
 }

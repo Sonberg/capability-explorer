@@ -5,12 +5,12 @@ Analysis uses one trusted host worker and a local run journal under
 host CLI runs credential-scoped export, package fetching, offline extraction
 and guarded publication. PostgreSQL remains optional artifact storage.
 
-This slice does not complete the literal Explorer credential prohibition in
-issue #37 A9. The existing private-source Check workflow still uses an Explorer
-GitHub token, and main also added credential-bearing package-feed Settings. Analysis admission introduces no credential values or engine
-socket into Explorer, and offline extraction receives neither. Moving existing
-private-source checks behind a credential-free boundary requires separate owner
-review; do not close #37 or describe all A1–A11 as complete on this package alone.
+Source Check/Create-and-check now admits asynchronous requests for that same
+exclusive host owner. Explorer neither resolves acquisition credentials nor
+clones/fetches sources. Supported launchers strip acquisition credentials and
+mask legacy package settings; offline extraction receives neither credentials nor
+engine sockets. This is a process/application boundary, not OS isolation between
+arbitrary same-user programs. Database/model credentials remain separate.
 
 ## Host requirements and entrypoints
 
@@ -44,6 +44,7 @@ Their managed commands are `ce analysis-run`, `ce analysis-worker` and
 analysis state. A worker already running for Explorer also excludes direct
 `analyze` and `analyze-all`; stop that controller normally before changing modes.
 A second worker refuses before recovery changes live records.
+Direct `ce export` is disabled; it cannot bypass this owner.
 
 Full analysis requires the qualified Docker host profile. Explicit Podman full
 analysis, running ownership inside an extraction container and runtime image
@@ -77,6 +78,51 @@ A Linux reboot changes the domain and requires operator reconciliation of the
 preserved journal before reuse. Tests do not establish cross-VM lock behavior.
 
 ## Run records and status
+
+Source checks have their own operational request/attempt IDs, not AnalysisRun or
+ce.v1 identities. POST `/api/capabilities/{id}/check` returns `202 Accepted` and a
+`Location` at `/api/source-checks/{requestId}`; clients poll it and may POST its
+`/cancel` subresource. Duplicate active admission returns the same request ID
+with `duplicate: true`. Create also returns 202 with separate `created`/`queued`
+flags. If a definition persisted but admission failed, the error preserves its
+ID and `created: true, queued: false`: retry Check, not Create.
+
+Checks freeze the effective shared/local definition and GitHub auth policy.
+Status distinguishes queued/working/cancelling/done/failed/cancelled/unknown.
+Only the latest completed matching check supplies current revision locks;
+configuration or policy changes mark prior results stale. Queued work is not
+proof that a worker is alive. Started cancellation/restart uncertainty becomes
+unknown and blocks checks and analyses together; completion after cancellation
+is forbidden. Private frozen paths, credentials and remote diagnostic text are
+not projected in public status. `LOCKED=1` analysis requires a matching completed
+host check.
+
+### Package-feed compatibility
+
+Explorer Settings is now a read-only, non-secret catalogue. Credential-bearing
+PUT requests return 410; there is no silent compatibility path that reads the
+legacy `.sandbox-cache/package-feeds/settings.json`. The host worker publishes
+`.sandbox-cache/package-feed-catalog/catalog.json` using atomic replacements.
+The directory, not an individual file, is mounted read-only for Explorer.
+
+Migrate existing settings explicitly on the trusted host, from the project root:
+
+```bash
+dotnet platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll package-feeds \
+  --import .sandbox-cache/package-feeds/settings.json \
+  --catalog .sandbox-cache/package-feed-catalog/catalog.json
+```
+
+The host default is `~/.config/capability-explorer/package-feeds/settings.json`;
+`--host-file` during import and `CE_PACKAGE_FEEDS_FILE` during worker execution
+must identify a path outside the workspace. The host retains verified private
+backup/settings copies before sanitizing legacy credentials; failed persistence
+does not erase the only copy. Keep backups private. Existing NuGet/npm feed and
+host `.npmrc` policies remain acquisition-only. Unmigrated legacy settings,
+unsafe permissions or in-workspace secret overrides fail explicitly. Never
+configure the public catalogue path as a secret settings path.
+
+### Analysis identities
 
 Each accepted request receives a 32-character hexadecimal run ID; each executing
 attempt receives a different ID. Requests, logs, staging, cancellation and
