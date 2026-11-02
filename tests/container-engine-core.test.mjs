@@ -17,16 +17,20 @@ const path=require('node:path');
 const engine=path.basename(process.argv[1]), full=process.argv.slice(2), args=[...full];
 fs.appendFileSync(process.env.TEST_ENGINE_LOG,JSON.stringify({engine,args:full,selectors:Object.fromEntries(
  ['DOCKER_HOST','DOCKER_CONTEXT','CONTAINER_HOST','CONTAINER_CONNECTION','CONTAINER_SSHKEY'].map(k=>[k,process.env[k]??null]))})+String.fromCharCode(10));
-while(args[0]==='--host'||args[0]==='--connection')args.splice(0,2);
+while(['--host','--connection','--url','--identity'].includes(args[0]))args.splice(0,2);
 if(args[0]==='--remote=false')args.shift();
 const op=args[0];
+if(process.env.MOCK_REPOINT_MACHINE==='1'&&op==='system'&&args[1]==='connection')
+ fs.writeFileSync(process.env.TEST_ENGINE_LOG+'.repointed','changed named connection after discovery');
+else if(process.env.MOCK_REPOINT_MACHINE==='1'&&full.includes('--connection'))process.exit(42);
 if(process.env.MOCK_METADATA_FAIL===engine+':'+op){console.error('PRIVATE-METADATA-SENTINEL');process.exit(19);}
 if(engine==='docker'){
  if(op==='context')console.log(args[1]==='show'?'fixture-context':(process.env.MOCK_DOCKER_ENDPOINT??'unix:///fixture/docker.sock'));
  else if(op==='version')console.log(process.env.MOCK_DOCKER_METADATA??'29.0.0|29.0.0|linux|arm64|Docker Engine');
  else if(op==='info')console.log(process.env.MOCK_DOCKER_ID??'fixture-daemon');
 } else if(engine==='podman'){
- if(op==='system'&&args[1]==='connection')console.log(process.env.MOCK_PODMAN_CONNECTION??'ssh://core@127.0.0.1:34567/run/user/501/podman/podman.sock|true');
+ if(op==='system'&&args[1]==='connection')console.log(process.env.MOCK_PODMAN_CONNECTION
+   ??('ssh://core@127.0.0.1:34567/run/user/501/podman/podman.sock|true|'+process.env.TEST_PODMAN_IDENTITY));
  else if(op==='info')console.log(full.some(a=>a.includes('.Store.GraphRoot'))
    ?(process.env.MOCK_PODMAN_STORAGE??'/home/core/.local/share/containers/storage|fixture-machine')
    :(process.env.MOCK_PODMAN_METADATA??'true|arm64|6.1.4|linux'));
@@ -42,6 +46,8 @@ function fixture(t, engines = ['docker', 'podman']) {
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const root = join(dir, 'checkout with spaces'), bin = join(dir, 'bin'), log = join(dir, 'engine.jsonl');
   mkdirSync(root); mkdirSync(bin);
+  const identity = join(dir, 'synthetic machine identity');
+  writeFileSync(identity, 'SYNTHETIC-KEY-MATERIAL-DO-NOT-PUBLISH', { mode: 0o600 });
   // No fallthrough to real engine CLIs installed on a developer or CI host.
   for (const utility of ['bash', 'sh', 'env', 'dirname', 'mkdir', 'cat', 'mktemp', 'rm', 'wc', 'sleep',
     'id', 'stat', 'shasum', 'sha256sum', 'sed', 'grep', 'sort', 'find', 'head', 'tail', 'tr', 'xargs', 'touch']) {
@@ -57,19 +63,20 @@ function fixture(t, engines = ['docker', 'podman']) {
   // Prevent later-slice entrypoints from contacting real Git or restoring/building code.
   for (const cmd of ['gh', 'dotnet', 'curl']) writeFileSync(join(bin, cmd), '#!/bin/sh\nexit 91\n', { mode: 0o755 });
   writeFileSync(join(bin, 'git'), '#!/bin/sh\nif [ "$1" = rev-parse ] && [ "$2" = --show-toplevel ]; then printf "%s\\n" "$TEST_FIXTURE_ROOT"; else exit 91; fi\n', { mode: 0o755 });
-  const env = { ...process.env, PATH: bin, TEST_ENGINE_LOG: log, TEST_FIXTURE_ROOT: root, MOCK_HOST_OS: 'Linux' };
+  const env = { ...process.env, PATH: bin, TEST_ENGINE_LOG: log, TEST_FIXTURE_ROOT: root,
+    TEST_PODMAN_IDENTITY: identity, MOCK_HOST_OS: 'Linux' };
   for (const key of [...selectors, ...Object.keys(env).filter(k => k.startsWith('MOCK_'))]) delete env[key];
   env.MOCK_HOST_OS = 'Linux';
   const calls = () => existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : [];
   function run(script, args = [], extra = {}, executable = '/bin/bash', timeout = 30000) {
     return spawnSync(executable, [join(root, script), ...args], { cwd: root, env: { ...env, ...extra }, encoding: 'utf8', timeout });
   }
-  return { dir, root, bin, log, env, run, calls };
+  return { dir, root, bin, log, env, identity, run, calls };
 }
 const doctor = f => JSON.parse(f.stdout);
 const operation = call => {
   const args = [...call.args];
-  while (args[0] === '--host' || args[0] === '--connection') args.splice(0, 2);
+  while (['--host', '--connection', '--url', '--identity'].includes(args[0])) args.splice(0, 2);
   if (args[0] === '--remote=false') args.shift();
   return args;
 };
@@ -102,17 +109,38 @@ test('Linux Podman works without a Docker executable and overrides ambient remot
   }
 });
 
-test('macOS Podman uses only the explicitly selected loopback machine connection', t => {
+test('macOS freezes endpoint and identity after discovering the explicitly selected machine', t => {
   const f = fixture(t), r = f.run('scripts/container-engine-doctor', [], {
-    CE_CONTAINER_ENGINE: 'podman', CE_PODMAN_CONNECTION: 'ce-validation', MOCK_HOST_OS: 'Darwin' }); passed(r);
+    CE_CONTAINER_ENGINE: 'podman', CE_PODMAN_CONNECTION: 'ce-validation', MOCK_HOST_OS: 'Darwin', MOCK_REPOINT_MACHINE: '1',
+    DOCKER_HOST: 'tcp://not-selected:2375', DOCKER_CONTEXT: 'not-selected', CONTAINER_HOST: 'ssh://not-selected',
+    CONTAINER_CONNECTION: 'changed-default', CONTAINER_SSHKEY: '/not-selected/key' }); passed(r);
   assert.equal(doctor(r).connection, 'ce-validation');
   const calls = f.calls(); assert.ok(calls.every(c => c.engine === 'podman'));
-  for (const c of calls.filter(c => operation(c)[0] !== 'system'))
-    assert.deepEqual(c.args.slice(0, 2), ['--connection', 'ce-validation']);
+  assert.equal(calls.filter(c => operation(c)[0] === 'system').length, 1);
+  for (const c of calls.filter(c => operation(c)[0] !== 'system')) {
+    assert.deepEqual(c.args.slice(0, 4), ['--url', 'ssh://core@127.0.0.1:34567/run/user/501/podman/podman.sock', '--identity', f.identity]);
+    assert.ok(!c.args.includes('--connection'));
+  }
+  for (const c of calls) assert.ok(Object.values(c.selectors).every(value => value === null));
+  assert.doesNotMatch(r.stdout, /SYNTHETIC-KEY-MATERIAL|synthetic machine identity/);
 });
+
+for (const kind of ['missing', 'relative', 'directory', 'symlink', 'control', 'extra-field'])
+  test(`macOS refuses ${kind} SSH identity metadata before server commands`, t => {
+    const f = fixture(t);
+    const alias = join(f.dir, 'linked identity'); symlinkSync(f.identity, alias);
+    const identity = { missing: join(f.dir, 'missing'), relative: 'relative-key', directory: f.root,
+      symlink: alias, control: `${f.identity}\t`, 'extra-field': `${f.identity}|extra` }[kind];
+    const r = f.run('scripts/container-engine-doctor', [], { CE_CONTAINER_ENGINE: 'podman',
+      CE_PODMAN_CONNECTION: 'ce', MOCK_HOST_OS: 'Darwin',
+      MOCK_PODMAN_CONNECTION: `ssh://core@127.0.0.1:34567/run/user/501/podman/podman.sock|true|${identity}` });
+    refused(r, /identity|connection metadata/i);
+    assert.ok(f.calls().every(c => operation(c)[0] === 'system'));
+  });
 
 for (const [name, env, message, beforeCli] of [
   ['unknown engine', { CE_CONTAINER_ENGINE: 'containerd' }, /must be docker or podman/, true],
+  ['empty explicit engine', { CE_CONTAINER_ENGINE: '' }, /must be docker or podman/, true],
   ['engine shell fragment', { CE_CONTAINER_ENGINE: 'podman; touch /tmp/never-execute' }, /must be docker or podman/, true],
   ['Linux remote request', { CE_CONTAINER_ENGINE: 'podman', CE_PODMAN_CONNECTION: 'remote' }, /native rootless/, true],
   ['missing mac machine', { CE_CONTAINER_ENGINE: 'podman', MOCK_HOST_OS: 'Darwin' }, /explicit CE_PODMAN_CONNECTION/, true],
@@ -155,7 +183,7 @@ test('fingerprints change with Docker daemon and macOS connection endpoint ident
   passed(a); passed(b); assert.notEqual(doctor(a).contextSha256, doctor(b).contextSha256);
   const env = { CE_CONTAINER_ENGINE: 'podman', CE_PODMAN_CONNECTION: 'ce', MOCK_HOST_OS: 'Darwin' };
   const c = f.run('scripts/container-engine-doctor', [], env), d = f.run('scripts/container-engine-doctor', [], {
-    ...env, MOCK_PODMAN_CONNECTION: 'ssh://core@127.0.0.1:45678/run/user/501/podman/podman.sock|true' });
+    ...env, MOCK_PODMAN_CONNECTION: `ssh://core@127.0.0.1:45678/run/user/501/podman/podman.sock|true|${f.identity}` });
   passed(c); passed(d); assert.notEqual(doctor(c).contextSha256, doctor(d).contextSha256);
 });
 
@@ -219,6 +247,29 @@ test('scanner rejects a mutable image before any engine call', t => {
   assert.equal(f.calls().length, 0);
 });
 
+test('scanner mounts an explicit certificate with spaces read-only without forwarding secret content', t => {
+  const f = fixture(t), ca = join(f.dir, 'operator certificate.pem');
+  writeFileSync(ca, 'SYNTHETIC-CERTIFICATE-CONTENT', { mode: 0o600 });
+  const r = f.run('scripts/security-check', [], { CE_CONTAINER_ENGINE: 'podman',
+    MOCK_HOST_OS: 'Darwin', CE_PODMAN_CONNECTION: 'ce-validation', MOCK_REPOINT_MACHINE: '1',
+    SANDBOX_EXTRA_CA_FILE: ca, TEST_PRIVATE_TOKEN: 'NEVER-FORWARD-THIS' }); passed(r);
+  const call = f.calls().find(c => operation(c)[0] === 'run'), args = operation(call);
+  assert.deepEqual(call.args.slice(0, 4), ['--url', 'ssh://core@127.0.0.1:34567/run/user/501/podman/podman.sock', '--identity', f.identity]);
+  assert.ok(!call.args.includes('--connection'));
+  assert.ok(args.includes(`${ca}:/etc/sandbox/extra-ca.crt:ro`));
+  assert.ok(args.includes('SSL_CERT_FILE=/etc/sandbox/extra-ca.crt'));
+  assert.ok(!args.join('\n').includes('SYNTHETIC-CERTIFICATE-CONTENT'));
+  assert.ok(!args.join('\n').includes('TEST_PRIVATE_TOKEN')); assert.ok(!args.join('\n').includes('NEVER-FORWARD-THIS'));
+});
+
+for (const kind of ['relative', 'missing', 'newline', 'colon']) test(`scanner rejects ${kind} certificate path before run`, t => {
+  const f = fixture(t), paths = { relative: 'ca.pem', missing: join(f.dir, 'missing.pem'),
+    newline: join(f.dir, 'bad\ncertificate.pem'), colon: join(f.dir, 'bad:certificate.pem') };
+  if (kind !== 'missing') writeFileSync(kind === 'relative' ? join(f.root, paths[kind]) : paths[kind], 'test-only certificate');
+  const r = f.run('scripts/security-check', [], { CE_CONTAINER_ENGINE: 'podman', SANDBOX_EXTRA_CA_FILE: paths[kind] });
+  refused(r, /SANDBOX_EXTRA_CA_FILE/); assert.ok(!f.calls().some(c => operation(c)[0] === 'run'));
+});
+
 for (const script of ['scripts/local-check', 'scripts/pr-check', 'scripts/analyze-worker', 'scripts/analyze',
   'scripts/analyze-all', 'scripts/security-collect']) test(`${script} rejects the unqualified Podman legacy path`, t => {
   const f = fixture(t), r = f.run(script, [], { CE_CONTAINER_ENGINE: 'podman' }, '/bin/bash', 1500);
@@ -238,10 +289,25 @@ for (const [script, expression] of [
   assert.ok(!existsSync(join(f.root, '.sandbox-cache/not-created')));
 });
 
+const make = process.platform === 'darwin' && existsSync('/Library/Developer/CommandLineTools/usr/bin/make')
+  ? '/Library/Developer/CommandLineTools/usr/bin/make' : '/usr/bin/make';
+
 for (const goal of ['postgres', 'ollama', 'dev-down', 'ci']) test(`Make ${goal} refuses the partial Podman profile before engine use`, t => {
-  const make = process.platform === 'darwin' && existsSync('/Library/Developer/CommandLineTools/usr/bin/make')
-    ? '/Library/Developer/CommandLineTools/usr/bin/make' : '/usr/bin/make';
   const f = fixture(t), r = spawnSync(make, ['EXECUTION=sandbox', goal], {
     cwd: f.root, env: { ...f.env, CE_CONTAINER_ENGINE: 'podman' }, encoding: 'utf8', timeout: 10000 });
   refused(r, /not qualified|unsupported|not supported/i); assert.equal(f.calls().length, 0);
+});
+
+for (const engine of ['%', 'docker podman', '']) test(`Make rejects invalid literal engine ${JSON.stringify(engine)}`, t => {
+  const f = fixture(t), r = spawnSync(make, ['-n', 'help'], {
+    cwd: f.root, env: { ...f.env, CE_CONTAINER_ENGINE: engine }, encoding: 'utf8', timeout: 5000 });
+  refused(r, /must be docker or podman/); assert.equal(f.calls().length, 0);
+});
+
+test('bare Make dry-run selects help without doctor or engine commands', t => {
+  const f = fixture(t), r = spawnSync(make, ['-n'], {
+    cwd: f.root, env: { ...f.env, CE_CONTAINER_ENGINE: 'podman' }, encoding: 'utf8', timeout: 5000 });
+  passed(r); assert.match(r.stdout, /make local-check/);
+  assert.doesNotMatch(r.stdout, /scripts\/container-engine-doctor|docker info|podman info/);
+  assert.equal(f.calls().length, 0);
 });
