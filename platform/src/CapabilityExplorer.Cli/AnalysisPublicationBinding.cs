@@ -15,7 +15,10 @@ internal static class AnalysisPublicationBinding
             (run.BindingsPath is not null && run.BindingsPath != Path.Combine(runDirectory,"bindings.json")))
             throw new InvalidDataException("publication does not reference canonical frozen inputs");
         var current = Read<AnalysisRun>(Path.Combine(runDirectory,"run.json"));
-        if (current.RunId != run.RunId || current.AttemptId != run.AttemptId || current.AcceptedInputsHash != run.AcceptedInputsHash ||
+        if (current.ConfigurationPath != "capabilities.json" ||
+            (current.BindingsPath is not null && current.BindingsPath != "bindings.json") ||
+            (current.BindingsPath is null) != (run.BindingsPath is null) ||
+            current.RunId != run.RunId || current.AttemptId != run.AttemptId || current.AcceptedInputsHash != run.AcceptedInputsHash ||
             current.ManifestHash != run.ManifestHash || current.State != "publishing" || current.CapabilityId != run.CapabilityId)
             throw new InvalidDataException("publication run differs from its durable owner record");
         var resolvedPath = Path.Combine(runDirectory,"resolved.json");
