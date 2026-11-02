@@ -15,9 +15,9 @@ internal static class AnalysisWorkerCommand
         {
             if (command is not ("analysis-worker" or "analysis-run" or "analysis-all")) throw new ArgumentException("unsupported analysis command");
             foreach (var key in options.Keys)
-                if (key is not ("capability" or "capabilities" or "bindings" or "include-tests" or "packages" or "locked" or "github-auth"))
+                if (key is not ("capability" or "capabilities" or "bindings" or "include-tests" or "packages" or "locked" or "github-auth" or "extraction-jobs"))
                     throw new ArgumentException("unsupported analysis option");
-            if ((Environment.GetEnvironmentVariable("CE_CONTAINER_ENGINE") ?? "docker") != "docker")
+            if (ResolveEngine() != "docker")
                 throw new InvalidOperationException("analysis requires the qualified Docker host profile");
             var root = Path.GetFullPath(Environment.CurrentDirectory);
             if (!File.Exists(Path.Combine(root, "scripts/sandbox")) || !File.Exists(Path.Combine(root, "config/runtime/images.env")))
@@ -40,7 +40,8 @@ internal static class AnalysisWorkerCommand
                         Locked:EnvironmentFlag("LOCKED",false), RuntimeIdentity:null,
                         GitHubAuth:Environment.GetEnvironmentVariable("GITHUB_AUTH") is { Length: > 0 } auth ? auth : "auto",
                         NugetPassEnv:Environment.GetEnvironmentVariable("NUGET_PASS_ENV") ?? "",
-                        NugetAllowedOrigins:Environment.GetEnvironmentVariable("CE_NUGET_ALLOWED_ORIGINS"));
+                        NugetAllowedOrigins:Environment.GetEnvironmentVariable("CE_NUGET_ALLOWED_ORIGINS"),
+                        ExtractionJobs: ParseJobs(Environment.GetEnvironmentVariable("ANALYZE_JOBS")));
                     AnalysisPreparation.ValidateSettings(hostDefaults);
                     store.PublishWorkerDefaults(owner,hostDefaults,includeTestsOverride);
 
@@ -68,7 +69,8 @@ internal static class AnalysisWorkerCommand
                         RuntimeIdentity: AnalysisPreparation.RuntimeIdentity(root),
                         GitHubAuth: options.GetValueOrDefault("github-auth") ?? Environment.GetEnvironmentVariable("GITHUB_AUTH") ?? "auto",
                         NugetPassEnv: Environment.GetEnvironmentVariable("NUGET_PASS_ENV") ?? "",
-                        NugetAllowedOrigins: Environment.GetEnvironmentVariable("CE_NUGET_ALLOWED_ORIGINS"));
+                        NugetAllowedOrigins: Environment.GetEnvironmentVariable("CE_NUGET_ALLOWED_ORIGINS"),
+                        ExtractionJobs: ParseJobs(options.GetValueOrDefault("extraction-jobs") ?? Environment.GetEnvironmentVariable("ANALYZE_JOBS")));
                     AnalysisPreparation.ValidateSettings(settings);
                     var admitted = store.Admit(id, configuration, bindings, settings);
                     if (!admitted.Accepted) throw new InvalidOperationException("capability has unresolved run " + admitted.Run.RunId);
@@ -99,7 +101,7 @@ internal static class AnalysisWorkerCommand
     private static async Task<int> Execute(string root, FileRunStore store, WorkerOwnership owner, AnalysisRun run, CancellationToken stop)
     {
         var attempt = new AttemptIdentity(run.RunId, run.AttemptId!);
-        var process = new AnalysisProcess(root, store, run, stop);
+        using var process = new AnalysisProcess(root, store, run, stop);
         try
         {
             var prepared = await AnalysisPreparation.Prepare(root, store, run, process);
@@ -123,6 +125,32 @@ internal static class AnalysisWorkerCommand
             Console.Error.WriteLine($"analysis {run.RunId}/{run.AttemptId}: {e.GetType().Name}; inspect run record and log");
             return 1;
         }
+    }
+
+    internal static int ParseJobs(string? value)
+    {
+        if (value is null or "") return 2;
+        if (value.Length > 4 || value[0] is < '1' or > '9' || !value.All(char.IsAsciiDigit) ||
+            !int.TryParse(value,System.Globalization.NumberStyles.None,System.Globalization.CultureInfo.InvariantCulture,out var jobs) || jobs > 9999)
+            throw new ArgumentException("ANALYZE_JOBS must be an integer from 1 to 9999");
+        return jobs;
+    }
+    internal static string ResolveEngine()
+    {
+        var configured = Environment.GetEnvironmentVariable("CE_CONTAINER_ENGINE") ?? "auto";
+        if (configured is "docker" or "podman") return configured;
+        if (configured != "auto") throw new ArgumentException("CE_CONTAINER_ENGINE must be auto, docker or podman");
+        var paths = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator);
+        foreach (var engine in new[] { "docker", "podman" })
+            if (paths.Any(path => IsExecutable(Path.Combine(path,engine)))) return engine;
+        throw new InvalidOperationException("no container engine is available");
+    }
+
+    private static bool IsExecutable(string path)
+    {
+        if (!File.Exists(path)) return false;
+        if (OperatingSystem.IsWindows()) return true;
+        return (File.GetUnixFileMode(path) & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
     }
 
     internal static string HashFile(string path)

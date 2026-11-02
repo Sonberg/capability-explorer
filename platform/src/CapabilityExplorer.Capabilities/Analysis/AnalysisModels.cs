@@ -1,7 +1,7 @@
 namespace CapabilityExplorer.Capabilities.Analysis;
 
 public sealed record AnalysisSettings(bool IncludeTests = false, bool Packages = true, bool Locked = false, string? RuntimeIdentity = null,
-    string GitHubAuth = "auto", string NugetPassEnv = "", string? NugetAllowedOrigins = null);
+    string GitHubAuth = "auto", string NugetPassEnv = "", string? NugetAllowedOrigins = null, int ExtractionJobs = 2);
 /// <summary>Last configured nonsecret worker policy, without any liveness or execution authority.</summary>
 public sealed record WorkerDefaults(AnalysisSettings Settings, bool? IncludeTestsOverride);
 public sealed record AttemptIdentity(string RunId, string AttemptId);

@@ -1,54 +1,69 @@
 using System.Diagnostics;
+using System.Text;
 using CapabilityExplorer.Capabilities.Analysis;
 
 namespace CapabilityExplorer.Cli;
 
-internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisRun run, CancellationToken stop, IAnalysisContainerRuntime? containerRuntime = null)
+internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisRun run, CancellationToken stop, IAnalysisContainerRuntime? containerRuntime = null) : IDisposable
 {
     private readonly IAnalysisContainerRuntime _runtime = containerRuntime ?? new AnalysisDockerRuntime();
-    public bool TerminationConfirmed { get; private set; } = true;
+    private readonly SemaphoreSlim _runtimeGate = new(1,1);
+    private readonly object _logGate = new();
+    private readonly CancellationTokenSource _abort = new();
+    private int _unconfirmedSpawns;
+    public bool TerminationConfirmed => Volatile.Read(ref _unconfirmedSpawns) == 0;
+    public void Abort() => _abort.Cancel();
+    public void Dispose() { _abort.Dispose(); _runtimeGate.Dispose(); }
+    public async Task CleanupAfterAbort() => await _runtime.CleanupOwned(Label);
+    private string Label => "ce-analyze=" + AnalysisWorkerCommand.HashText(root)[..16] + "-" + run.RunId + "-" + run.AttemptId;
     public void CheckCancellation()
     {
         if (stop.IsCancellationRequested) store.Cancel(run.RunId);
         if (stop.IsCancellationRequested || store.ReadRun(run.RunId).CancellationRequested)
             throw new OperationCanceledException("analysis cancelled before publication");
+        if (_abort.IsCancellationRequested) throw new InvalidOperationException("a sibling preparation job failed; attempt aborted");
     }
 
-    public async Task<string> Run(string executable, IEnumerable<string> arguments, IReadOnlyDictionary<string,string>? environment = null, bool capture = false)
+    public async Task<string> Run(string executable, IEnumerable<string> arguments, IReadOnlyDictionary<string,string>? environment = null, bool capture = false, int captureLimit = 65536)
     {
+        if (captureLimit is < 1 or > 1048576) throw new ArgumentOutOfRangeException(nameof(captureLimit));
         CheckCancellation();
         var sandbox = executable == "scripts/sandbox";
-        if (sandbox) await _runtime.EnsureFrozen();
+        if (sandbox)
+        {
+            await _runtimeGate.WaitAsync();
+            try { await _runtime.EnsureFrozen(); } finally { _runtimeGate.Release(); }
+        }
         var resolvedExecutable = executable.Contains(Path.DirectorySeparatorChar) ? Path.GetFullPath(Path.Combine(root,executable)) : executable;
         var start = new ProcessStartInfo(resolvedExecutable) { WorkingDirectory = root, UseShellExecute = false,
             RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         start.Environment.Clear();
-        // Host runtime selectors are required by the qualified Docker adapter, never forwarded into extraction.
         foreach (var name in new[] { "PATH", "HOME", "TMPDIR", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "SANDBOX_EXTRA_CA_FILE", "SANDBOX_NETWORK" })
             if (Environment.GetEnvironmentVariable(name) is { } value) start.Environment[name] = value;
         start.Environment["CE_CONTAINER_ENGINE"] = "docker";
         start.Environment["SANDBOX_PASS_ENV"] = "";
         start.Environment["SANDBOX_SOURCES"] = "";
-        start.Environment["SANDBOX_LABEL"] = "ce-analyze=" + AnalysisWorkerCommand.HashText(root)[..16] + "-" + run.RunId + "-" + run.AttemptId;
+        start.Environment["SANDBOX_LABEL"] = Label;
         if (environment is not null) foreach (var pair in environment) start.Environment[pair.Key] = pair.Value;
         if (sandbox) _runtime.ApplyEnvironment(start);
         var logPath = store.LogPath(run.RunId);
-        AnalysisPreparation.RejectLinks(logPath);
         if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("analysis host requires Linux or macOS");
-        if (!File.Exists(logPath))
+        lock (_logGate)
         {
-            using var created = new FileStream(logPath,new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite });
+            AnalysisPreparation.RejectLinks(logPath);
+            if (!File.Exists(logPath))
+            {
+                using var created = new FileStream(logPath,new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite });
+            }
         }
-        AnalysisPreparation.RejectLinks(logPath);
-        using var log = new StreamWriter(new FileStream(logPath, FileMode.Append, FileAccess.Write, FileShare.Read));
         CheckCancellation();
-        // ClaimNext durably persisted attempt intent before this method can be reached.
+        // Counts are monotonic for uncertain launches: sibling success can never clear another child's uncertainty.
+        Interlocked.Increment(ref _unconfirmedSpawns);
         using var child = Process.Start(start) ?? throw new InvalidOperationException("could not start preparation child");
-        TerminationConfirmed = false;
         using var drain = new CancellationTokenSource();
-        var stdout = Pump(child.StandardOutput, capture ? null : log, capture, drain.Token);
-        var stderr = Pump(child.StandardError, capture ? null : log, false, drain.Token);
+        var stdout = Pump(child.StandardOutput, capture ? null : logPath, capture, captureLimit, drain.Token);
+        var stderr = Pump(child.StandardError, capture ? null : logPath, false, captureLimit, drain.Token);
         try
         {
             child.StandardInput.Close();
@@ -63,35 +78,44 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
             using var drainTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             var output = await stdout.WaitAsync(drainTimeout.Token);
             await stderr.WaitAsync(drainTimeout.Token);
-            TerminationConfirmed = true;
+            Interlocked.Decrement(ref _unconfirmedSpawns);
             CheckCancellation();
             return output;
         }
         catch
         {
-            // Killing the controller cannot prove Docker/container descendants terminated. Keep unknown.
+            Abort();
             if (!child.HasExited) { try { child.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } }
             using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             try { await child.WaitForExitAsync(cleanup.Token); await Task.WhenAll(stdout,stderr).WaitAsync(cleanup.Token); }
             catch (Exception cleanupError) when (cleanupError is OperationCanceledException or IOException or InvalidOperationException or ObjectDisposedException) { }
-            if (sandbox) await _runtime.CleanupOwned(start.Environment["SANDBOX_LABEL"]!);
+            if (sandbox) await _runtime.CleanupOwned(Label);
             throw;
         }
         finally { drain.Cancel(); }
     }
 
-    private static async Task<string> Pump(StreamReader reader, StreamWriter? log, bool capture, CancellationToken token)
+    private async Task<string> Pump(StreamReader reader, string? logPath, bool capture, int captureLimit, CancellationToken token)
     {
-        var result = new System.Text.StringBuilder();
+        var result = new StringBuilder();
         var buffer = new char[4096];
         long count = 0;
         while (await reader.ReadAsync(buffer.AsMemory(),token) is var read && read != 0)
         {
             count += read;
-            if (capture && count > 65536) throw new IOException("credential helper output exceeded limit");
+            if (capture && count > captureLimit) throw new IOException("captured helper output exceeded limit");
             if (capture) result.Append(buffer, 0, read);
-            if (log is not null && count <= 16 * 1024 * 1024)
-            { lock (log) { if (log.BaseStream.Length < 16 * 1024 * 1024) { log.Write(buffer, 0, read); log.Flush(); } } }
+            if (logPath is not null)
+            {
+                var bytes = Encoding.UTF8.GetBytes(buffer,0,read);
+                lock (_logGate)
+                {
+                    AnalysisPreparation.RejectLinks(logPath);
+                    using var log = new FileStream(logPath,FileMode.Append,FileAccess.Write,FileShare.Read);
+                    var remaining = 16 * 1024 * 1024 - log.Length;
+                    if (remaining > 0) log.Write(bytes,0,(int)Math.Min(bytes.Length,remaining));
+                }
+            }
         }
         return result.ToString();
     }
