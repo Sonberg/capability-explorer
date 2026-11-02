@@ -121,3 +121,8 @@ S: 97/100 (requirements35, constraints30, edge cases25, evidence trace7/10).
 Deduction3: exact local lock and crash behavior remain implementation qualification.
 Evidence: issue A1–A11, baseline source inspection and separate read-only architect
 and adversary reports. Not tested: implementation or any runtime proof.
+
+P: 97/100 (trace35, error/recovery30, boundedness20, instrumentation12/15).
+Deduction3: interprocess and abrupt-death behavior require actual runtime tests.
+Independent architect and adversary agreed that preparation must not publish and
+that the owning .NET process retains the permit throughout actual publication.
