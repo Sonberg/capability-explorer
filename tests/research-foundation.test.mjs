@@ -85,6 +85,19 @@ test('unknown current ratings remain unknown, with no manufactured rank', () => 
   assert.equal(validateRegister(r), 17);
 });
 
+test('current desk ratings require registered nonhistorical references and cannot assert measurements', () => {
+  const r = register(), m = r.historicalModes[0];
+  m.currentAssessment = { assessmentId: 'new', role: m.role, inheritsHistoricalEvidence: false,
+    ratings: Object.fromEntries(Object.keys(r.weights).map(k => [k, { value: null }])) };
+  const rating = m.currentAssessment.ratings.D = { value: 5, reference: 'L01', evidenceClass: 'primary-doc' };
+  assert.equal(validateRegister(r), 17);
+  for (const reference of ['made-up', 'R01']) {
+    rating.reference = reference; assert.throws(() => validateRegister(r), /unknown\/historical/);
+  }
+  rating.reference = 'L01'; rating.evidenceClass = 'measured';
+  assert.throws(() => validateRegister(r), /trial-bound/);
+});
+
 for (const [label, change, error] of [
   ['wrong corpus hash', c => { c.files[0].sha256 = '0'.repeat(64); }, /changed evidence/],
   ['duplicate path', c => { c.files[1] = c.files[0]; }, /duplicate corpus/],

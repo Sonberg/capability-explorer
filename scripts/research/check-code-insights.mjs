@@ -13,6 +13,7 @@ export function validateRegister(register) {
   need(Object.values(weights).every(w => Number.isFinite(w) && w >= 0)
     && Object.values(weights).reduce((a, b) => a + b, 0) === 100, 'weights must total 100');
   const modes = list(register.historicalModes, 'historical modes');
+  const currentRefs = new Set(list(register.planningReferences, 'planning references').map(ref => ref.id));
   const names = new Set();
   for (const m of modes) {
     need(text(m.mode) && !names.has(m.mode) && text(m.role), 'duplicate/invalid historical mode'); names.add(m.mode);
@@ -32,6 +33,11 @@ export function validateRegister(register) {
         const rating = c.ratings?.[key];
         need(rating && (rating.value === null || (Number.isFinite(rating.value) && rating.value >= 0 && rating.value <= 5)), 'invalid current rating');
         need(rating.value === null || (text(rating.reference) && text(rating.evidenceClass)), 'uncited current rating');
+        if (rating.value !== null) {
+          need(currentRefs.has(rating.reference), 'unknown/historical current reference');
+          need(['source-inspected', 'primary-doc'].includes(rating.evidenceClass),
+            'measured current ratings require a future trial-bound assessment gate');
+        }
       }
     }
   }

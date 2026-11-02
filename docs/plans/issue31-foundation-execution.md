@@ -102,7 +102,7 @@ Not tested: implementation, candidates, containment or deployment.
 
 ### Refinement
 
-Final scoped score: 97/100, four repair/verification iterations. Correctness and
+Final scoped score: 97/100, five repair/verification iterations. Correctness and
 failure-path requirements F1–F6 have executable positive/negative tests. The
 independent `/root/foundation_final_review` reran 58 tests, all passed, none
 skipped, and found no remaining scoped blocker after the final fix.
@@ -128,6 +128,13 @@ is made that the validator proves underlying evidence truth.
 Not tested: candidate runtime/containment/performance, private repositories,
 larger-than-limit artifacts, research phase executor, release/deployment.
 Full local CI and publication remain the Completion gate.
+
+Final pre-push inspection additionally constrained current desk ratings to actual
+registered planning references and source/documentation confidence. Historical or
+invented reference IDs fail; measured scoring needs a later trial-bound gate.
+The focused suite now contains 59 passing tests, none skipped. This final fix
+requires renewed exact-source full local CI; the earlier 58-test receipt is
+historical and does not cover it.
 
 ### Completion: foundation only
 
