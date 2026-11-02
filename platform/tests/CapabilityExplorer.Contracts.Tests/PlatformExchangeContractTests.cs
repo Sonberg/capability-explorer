@@ -52,6 +52,31 @@ public sealed class PlatformExchangeContractTests
     public void Controlled_examples_conform_to_their_draft_profiles(string name) => Assert.True(IsValid(Example(name)));
 
     [Theory]
+    [InlineData("enrollment", "enrollmentId")]
+    [InlineData("enrollment", "registryRevisionHash")]
+    [InlineData("enrollment", "repository.repositoryId")]
+    [InlineData("enrollment", "repository.providerRepositoryId")]
+    [InlineData("enrollment", "repository.authority")]
+    [InlineData("enrollment", "repository.locator")]
+    [InlineData("bundle-full", "content.commitSha")]
+    [InlineData("bundle-full", "contentSha256")]
+    [InlineData("bundle-full", "content.artifacts.0.path")]
+    [InlineData("bundle-full", "content.artifacts.0.extractor.name")]
+    [InlineData("bundle-full", "content.artifacts.0.extractor.version")]
+    [InlineData("bundle-full", "publicationAttempt.observedAt")]
+    [InlineData("receipt-rejected", "errors.0.code")]
+    [InlineData("receipt-rejected", "errors.0.message")]
+    public void Terminal_newlines_are_not_accepted_by_dotnet_regex_anchors(string name, string path)
+    {
+        var value = Example(name);
+        JsonNode current = value;
+        foreach (var part in path.Split('.'))
+            current = current is JsonArray array ? array[int.Parse(part, CultureInfo.InvariantCulture)]! : current[part]!;
+        Set(value, path, JsonValue.Create(current.GetValue<string>() + "\n"));
+        Assert.False(IsValid(value));
+    }
+
+    [Theory]
     [InlineData("enrollment")]
     [InlineData("bundle-full")]
     [InlineData("receipt-received")]

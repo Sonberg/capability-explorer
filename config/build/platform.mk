@@ -27,7 +27,7 @@ test-platform-plan:
 # not a central provider/consumer integration test or an OpenAPI certification.
 platform-contract-check: build
 ifeq ($(EXECUTION),sandbox)
-	scripts/sandbox --offline dotnet dotnet test --no-build platform/tests/CapabilityExplorer.Contracts.Tests --filter FullyQualifiedName~PlatformExchangeContractTests
+	scripts/sandbox --offline dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Contracts.Tests --filter FullyQualifiedName~PlatformExchangeContractTests'
 else
-	dotnet test --no-build platform/tests/CapabilityExplorer.Contracts.Tests --filter FullyQualifiedName~PlatformExchangeContractTests
+	cd platform && dotnet test --no-build tests/CapabilityExplorer.Contracts.Tests --filter FullyQualifiedName~PlatformExchangeContractTests
 endif

@@ -9,15 +9,15 @@
     { "$ref": "#/$defs/intakeReceipt" }
   ],
   "$defs": {
-    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$" },
-    "repositoryId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$" },
-    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-    "commitSha": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}(?![\\s\\S])" },
+    "repositoryId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,99}(?![\\s\\S])" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}(?![\\s\\S])" },
+    "commitSha": { "type": "string", "pattern": "^[a-f0-9]{40}(?![\\s\\S])" },
     "generation": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
-    "timestamp": { "type": "string", "format": "date-time", "maxLength": 64 },
+    "timestamp": { "type": "string", "format": "date-time", "maxLength": 64, "pattern": "^[^\\u0000-\\u001f\\u007f]+(?![\\s\\S])" },
     "relativePath": {
       "type": "string",
-      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*[/]$)[^\\\\:\\u0000-\\u001f\\u007f]{1,1024}$",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*[/]$)[^\\\\:\\u0000-\\u001f\\u007f]{1,1024}(?![\\s\\S])",
       "description": "Literal relative path, not an encoded URI. Resolution/symlink checks belong to the future receiver; never URL-decode this field."
     },
     "extractor": {
@@ -25,8 +25,8 @@
       "additionalProperties": false,
       "required": ["name", "version"],
       "properties": {
-        "name": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$" },
-        "version": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001f\\u007f]+$" }
+        "name": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}(?![\\s\\S])" },
+        "version": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001f\\u007f]+(?![\\s\\S])" }
       }
     },
     "repository": {
@@ -36,9 +36,9 @@
       "properties": {
         "repositoryId": { "$ref": "#/$defs/repositoryId" },
         "provider": { "const": "github" },
-        "authority": { "type": "string", "format": "hostname", "pattern": "^[a-z0-9][a-z0-9.-]{0,252}$" },
-        "providerRepositoryId": { "type": "string", "pattern": "^[1-9][0-9]{0,19}$" },
-        "locator": { "type": "string", "format": "uri", "maxLength": 2048, "pattern": "^https://[^/@?#\\s]+/[^?#\\s]+$" }
+        "authority": { "type": "string", "format": "hostname", "pattern": "^[a-z0-9][a-z0-9.-]{0,252}(?![\\s\\S])" },
+        "providerRepositoryId": { "type": "string", "pattern": "^[1-9][0-9]{0,19}(?![\\s\\S])" },
+        "locator": { "type": "string", "format": "uri", "maxLength": 2048, "pattern": "^https://[^/@?#\\s]+/[^?#\\s]+(?![\\s\\S])" }
       }
     },
     "membership": {
@@ -149,7 +149,7 @@
       "required": ["code", "message"],
       "properties": {
         "code": { "$ref": "#/$defs/id" },
-        "message": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[^\\u0000-\\u001f\\u007f]+$" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[^\\u0000-\\u001f\\u007f]+(?![\\s\\S])" },
         "artifactPath": { "$ref": "#/$defs/relativePath" }
       },
       "description": "Sanitized diagnostics only; a schema cannot prove secret removal. Never include source snippets or credentials."
