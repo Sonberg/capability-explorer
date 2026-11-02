@@ -54,9 +54,17 @@ policy, limits, pinned tools and hook installation behavior. Hosted CI remains r
 Trusted native development remains the default outside CI. Use `EXECUTION=sandbox`
 for fully containerized development/validation; CI selects that profile and uses
 only Docker on the runner. Repository analysis is sandboxed in either profile.
-After PR #27 merges, run `make EXECUTION=sandbox dev`: by default it re-analyzes
-configured capabilities before importing artifacts. `DEV_REANALYZE=0` explicitly
-requests import-only startup. Compare the private `.sandbox-cache/analysis-receipt.json`
+Run `make dev` (or `make EXECUTION=sandbox dev`) to import saved analysis artifacts
+and start the explorer without re-analyzing repositories. Run `make analyze-all`
+separately to refresh the data, or opt in at startup with `DEV_REANALYZE=1`.
+Analysis runs up to two offline extraction jobs concurrently across repositories and languages.
+Use `make analyze CAPABILITY=<id> ANALYZE_JOBS=4` to raise the limit, or `ANALYZE_JOBS=1`
+for serial extraction. The same setting applies to `analyze-all`, `analyze-worker`, and
+the worker started by `make dev`; restart an existing worker to change its limit.
+Package downloads and publication remain sequential. Each extractor writes isolated staging
+output, merged only after every job succeeds. Logs include phase and extraction-task durations;
+increase concurrency conservatively because concurrent Roslyn processes can use substantial memory.
+Compare the private `.sandbox-cache/analysis-receipt.json`
 application/repository SHAs and hashes with the owner to verify shared inputs;
 unavailable repositories remain failures or not assessed, never successful analysis.
 
@@ -167,6 +175,20 @@ output and not committed. `make frontend` serves it with hot reload and proxies 
 
 #### Capabilities
 
+Shared definitions live in `capabilities.json`. Optional, git-ignored `capabilities.local.json`
+uses the same `{ "capabilities": [...] }` structure and is combined with shared definitions
+by the Explorer, CLI export, and analysis scripts. A local entry with the same `id` replaces
+the entire shared capability, including its repository list; other entries are appended.
+Start a new local file with `{ "capabilities": [] }`. Invalid local configuration fails loading
+rather than being silently skipped.
+
+When the local file exists, newly added UI capabilities are saved there. Existing shared
+definitions stay in the shared file, and local definitions are never copied into it.
+Deleting a capability removes that ID from both files, including any overridden shared entry.
+Restart the Explorer after editing configuration files manually. For a custom `CAPABILITIES`
+path, the matching sibling is `<name>.local.json`; add it to your own ignore rules.
+Analysis receipts hash shared and local configuration separately without including their contents.
+
 Each line is `[id=]location [ref]`:
 
 ```
@@ -196,9 +218,9 @@ never prints the token. The order is:
 
 1. `GITHUB_TOKEN` or `GH_TOKEN`.
 2. `gh auth token`, if you are logged in with the GitHub CLI.
-3. With `GITHUB_AUTH=git`, also your git credential helper (macOS keychain or Git Credential Manager).
+3. Your git credential helper (macOS keychain or Git Credential Manager), with the default `GITHUB_AUTH=git`.
 
-`GITHUB_AUTH=none` turns this off.
+`GITHUB_AUTH=auto` skips the git credential helper. `GITHUB_AUTH=none` turns authentication off.
 
 The token is given to git through environment config, as an HTTP header for `https://github.com/` only.
 It never appears in a clone URL, a repository config, a command line or on disk. If GitHub refuses the
@@ -246,6 +268,13 @@ the host after artifact validation:
 | 1 export | network, GitHub token, local repositories mounted read-only | Checks the capability again, so each ref is locked to its current commit (`LOCKED=1` keeps the last check). Then it writes each locked tree to `.sandbox-cache/analyze/<id>/src/`. Only regular files are written: symlinks and files over 8 MB are skipped. A blob-less clone fetches the blobs it needs in one batch. |
 | 2 packages | network, no GitHub token, no local mounts | Resolves one exact version set per project (declared versions, ranges at their lower bound, floating ones to the newest stable, then nuspec dependencies) and writes it as `.sandbox-cache/analyze/<id>/locks/<repo>.json`. It downloads those packages into `.sandbox-cache/analyze-packages`, unpacked as data only: nuspec plus `ref/`/`lib/` assemblies. There is no restore and no MSBuild evaluation. Feeds come from the repository's `nuget.config` (https only; nuget.org unless `<clear />`). Credentials for private feeds are `%VAR%` references in that file, resolved from the variables named in `NUGET_PASS_ENV=VAR1,VAR2`; only this step receives them, they go only to their own feed's host, and they are never printed or stored. `PACKAGES=0` skips this step (no packages are used). |
 | 3 extract | `--offline` | Runs `ce-cs extract` (with only the locked package versions), `ce-ts extract` and `ce-ts extract-sql` over each tree. The output for each revision is swapped into `.sandbox-cache/artifacts/<repo>/<commit>/` only once every extractor has finished. |
+
+For npm dependencies, configure the registry and scope in Explorer Settings. Analysis also reads
+your host npm user configuration (`~/.npmrc`, or `npm_config_userconfig`) for `_authToken` entries
+matching those configured registries. Host tokens override saved credentials for that run only;
+`${NPM_TOKEN}` references require the variable to be set in the terminal running analysis.
+Only the package-download sandbox receives the resolved credential, and npm lifecycle scripts
+remain disabled. Credentials are not copied into exported repositories or saved settings.
 
 The analysed code is parsed and bound, never restored, built or executed. `make explore` loads
 `fixtures/expected` and `.sandbox-cache/artifacts`. For the same repository, commit and unit, the

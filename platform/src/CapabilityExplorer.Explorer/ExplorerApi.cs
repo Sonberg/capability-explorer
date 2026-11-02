@@ -186,6 +186,11 @@ public static class ExplorerApi
         api.MapPut("/settings/model", (Intelligence intelligence, ModelSettingsRequest request) =>
             intelligence.Save(request) is { } problem ? Results.BadRequest(new { error = problem }) : Results.Ok(ModelStatus(intelligence)));
 
+        api.MapGet("/settings/package-feeds", (PackageFeedSettingsStore settings) => settings.Status());
+
+        api.MapPut("/settings/package-feeds", (PackageFeedSettingsStore settings, PackageFeedSettingsRequest request) =>
+            settings.Save(request) is { } problem ? Results.BadRequest(new { error = problem }) : Results.Ok(settings.Status()));
+
         // Round-trips one short text through the embedding model (the chat model is exercised by explanations).
         api.MapPost("/settings/model/test", async (Intelligence intelligence, CancellationToken ct) =>
         {

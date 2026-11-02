@@ -18,7 +18,7 @@ export function calls(ctx: Ctx) {
 }
 
 function call(ctx: Ctx, node: ts.CallExpression) {
-  const from = ctx.owner(node);
+  const from = ctx.owner(node, true);
   if (!from) return;
   let signature: ts.Signature | undefined;
   try {

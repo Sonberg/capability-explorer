@@ -22,11 +22,43 @@ public sealed class ResolutionFidelityTests : IDisposable
         Assert.Contains("net5.0", result.Assemblies[0]);
     }
 
+    [Theory]
+    [InlineData("public class { }")]
+    [InlineData("public class App { public void () { } }")]
+    [InlineData("public class App { public int { get; set; } }")]
+    public void Missing_declaration_names_preserve_diagnostics_without_unnamed_nodes(string code)
+    {
+        Project("", code);
+        var output = Extract();
+        Assert.Contains("COMPILER_", output);
+        Assert.Contains("\"status\":\"partial\"", output);
+        foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            using var record = JsonDocument.Parse(line);
+            if (record.RootElement.GetProperty("kind").GetString() == "node")
+            {
+                Assert.NotEmpty(record.RootElement.GetProperty("name").GetString()!);
+            }
+        }
+    }
+
     [Fact]
     public void Conflicting_versions_in_a_lock_fail_instead_of_silently_taking_the_first()
     {
         var packages = new PackageLock();
         Assert.Throws<InvalidDataException>(() => packages.Set("App.csproj", [new("Same", "1.0.0"), new("same", "2.0.0")]));
+    }
+
+    [Fact]
+    public void Extension_blocks_emit_named_members_without_unnamed_type_nodes()
+    {
+        Project("", "public static class Extensions { extension(string value) { public bool IsLong() => value.Length > 3; public int Count => value.Length; } }");
+        var output = Extract();
+        Assert.DoesNotContain("COMPILER_", output);
+        Assert.Contains("\"status\":\"full\"", output);
+        Assert.Contains("\"name\":\"IsLong\"", output);
+        Assert.Contains("\"name\":\"Count\"", output);
+        Assert.DoesNotContain("\"name\":\"\"", output);
     }
 
     [Fact]

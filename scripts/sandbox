@@ -12,6 +12,7 @@
 #   --offline   no network at all (--network none). Use for steps that must not fetch anything.
 #   --port N    publish container port N on the host's 127.0.0.1:N only (for the explorer UI).
 #   --docker    mount the Docker socket so Testcontainers can start Postgres.
+#   --package-settings   allow the local Explorer UI to read/write package feed settings.
 #               This grants the container control of the host Docker daemon. Only test targets use it;
 #               analysis/extraction steps must never get it.
 #
@@ -28,19 +29,23 @@
 #   SANDBOX_SOURCES        comma-separated absolute host paths (local repositories for capabilities) to mount
 #                          read-only at the same path inside the container.
 #   SANDBOX_LABEL          optional docker label (key=value) on the container, so a caller can find and stop it
+#   SANDBOX_EXTRA_LABEL    additional label for cleanup of a nested group of containers
 #   SANDBOX_PASS_ENV       comma-separated host variables to forward, e.g. CE_FOUNDRY_API_KEY.
 #                          Nothing is forwarded unless named here; ignored with --offline.
+#   SANDBOX_ENGINE        docker or podman (default: docker, then podman if Docker is unavailable)
 #   SANDBOX_DOTNET_IMAGE / SANDBOX_NODE_IMAGE   override images
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 offline=0
 docker_sock=0
+package_settings=0
 port=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --offline) offline=1; shift ;;
     --docker) docker_sock=1; shift ;;
+      --package-settings) package_settings=1; shift ;;
     --port) port="$2"; shift 2 ;;
     -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     *) break ;;
@@ -48,6 +53,23 @@ while [[ $# -gt 0 ]]; do
 done
 [[ $# -ge 2 ]] || { echo "usage: scripts/sandbox [--offline] [--docker] [--port N] <dotnet|node> <command...>" >&2; exit 2; }
 profile="$1"; shift
+
+engine="${SANDBOX_ENGINE:-}"
+if [[ -z "$engine" ]]; then
+  if command -v docker >/dev/null 2>&1; then
+    engine=docker
+  elif command -v podman >/dev/null 2>&1; then
+    engine=podman
+  else
+    echo "scripts/sandbox: Docker or Podman is required (or set SANDBOX_ENGINE)" >&2
+    exit 127
+  fi
+fi
+case "$engine" in
+  docker|podman) ;;
+  *) echo "SANDBOX_ENGINE must be docker or podman: $engine" >&2; exit 2 ;;
+esac
+command -v "$engine" >/dev/null 2>&1 || { echo "scripts/sandbox: container engine not found: $engine" >&2; exit 127; }
 
 source "$root/config/runtime/images.env"
 case "$profile" in
@@ -57,7 +79,7 @@ case "$profile" in
 esac
 
 cache="$root/.sandbox-cache"
-mkdir -p "$cache/nuget" "$cache/nuget-http" "$cache/npm"
+mkdir -p "$cache/nuget" "$cache/nuget-http" "$cache/npm" "$cache/package-feeds"
 
 args=(
   run --rm
@@ -86,6 +108,9 @@ args=(
   # Repository is mounted from the host; owner may differ from the container user.
   -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*'
 )
+if [[ $package_settings -eq 0 ]]; then
+  args+=(--tmpfs /work/.sandbox-cache/package-feeds:rw,noexec,nosuid,size=1m)
+fi
 [[ -t 0 && -t 1 ]] && args+=(-it)
 
 if [[ $offline -eq 1 ]]; then
@@ -141,6 +166,7 @@ fi
 
 # A label lets a caller find and stop its containers (scripts/analyze-worker: Stop in the explorer).
 [[ -n "${SANDBOX_LABEL:-}" ]] && args+=(--label "$SANDBOX_LABEL")
+[[ -n "${SANDBOX_EXTRA_LABEL:-}" ]] && args+=(--label "$SANDBOX_EXTRA_LABEL")
 
 # Entry: build a combined CA bundle without root (system roots + extra CA), then exec the command.
 entry='set -e
@@ -152,4 +178,4 @@ if [ -f /etc/sandbox/extra-ca.crt ]; then
 fi
 exec "$@"'
 
-exec docker "${args[@]}" "$image" sh -c "$entry" sandbox "$@"
+exec "$engine" "${args[@]}" "$image" sh -c "$entry" sandbox "$@"

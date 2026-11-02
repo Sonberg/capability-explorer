@@ -3,6 +3,8 @@
 # Behind a TLS-intercepting proxy: export SANDBOX_EXTRA_CA_FILE=/path/to/ca.pem
 
 SANDBOX := scripts/sandbox
+SANDBOX_ENGINE ?= $(shell if command -v docker >/dev/null 2>&1; then echo docker; elif command -v podman >/dev/null 2>&1; then echo podman; else echo docker; fi)
+export SANDBOX_ENGINE
 DOTNET  := $(SANDBOX) dotnet
 NODE    := $(SANDBOX) node
 OFFLINE := $(SANDBOX) --offline
@@ -10,13 +12,14 @@ include config/runtime/images.env
 
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
         restore ui build test-ts test-contracts test-evaluation test-extractors test-explorer test-store evaluate evaluate-golden \
-        extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze analyze-worker explore ollama postgres dev dev-data dev-down clean local-check pr-check install-git-hooks actions-audit test-local-ci test-mapping-replay security-check
+		extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze analyze-worker explore ollama postgres dev dev-data dev-down clean local-check pr-check install-git-hooks actions-audit test-local-ci test-mapping-replay test-package-feeds security-check
 
 help:
 	@echo "make local-check     run the full GitHub CI workflow locally through nektos/gh-act before pushing"
 	@echo "make install-git-hooks  install this repository pre-push gate (preserves existing hooks)"
 	@echo "make actions-audit   audit workflow dependencies with Wayne Ashley Berry gh-act (separate tool)"
-	@echo "make dev             local environment: PostgreSQL (pgvector) + Ollama, import + embed the artifacts, then explore"
+	@echo "make dev             local environment: PostgreSQL (pgvector) + optional Ollama, import artifacts, then explore"
+	@echo "     DEV_OLLAMA=0 skips Ollama; an Ollama startup or pull failure is non-fatal"
 	@echo "     PG_PORT=5433 OLLAMA_CHAT=none (skip the chat model) and every explore option; make dev-down stops the containers"
 	@echo "make dev-data        only the import + embed step of make dev (e.g. while the explorer runs)"
 	@echo "make analyze-worker  runs the explorer's Analyze code requests on the host (make dev starts one; CE_DATABASE='...' to store)"
@@ -28,7 +31,7 @@ help:
 	@echo "make fixtures-compile  check every fixture revision compiles (or fails) as intended"
 	@echo "make explore [ARTIFACTS=dir] [EVALUATION=report.json] [CAPABILITIES=file] [SOURCES=/abs/repo,...] [PORT=5080]"
 	@echo "     browse the model at http://127.0.0.1:5080"
-	@echo "     private GitHub repos: GITHUB_TOKEN, or 'gh auth login'; GITHUB_AUTH=git also tries the git credential helper"
+	@echo "     private GitHub repos: GITHUB_TOKEN, 'gh auth login', or the git credential helper (GITHUB_AUTH=git by default)"
 	@echo "     optional LLM: make ollama (local, no key), the Settings page (gear icon), or INTERPRETATION=foundry FOUNDRY_ENDPOINT=... FOUNDRY_DEPLOYMENT=..."
 	@echo "     Cmd/Ctrl+K: command menu; with CE_DATABASE and an embedding model also similar functionality (vector search)"
 	@echo "make ollama [OLLAMA_EMBED=nomic-embed-text] [OLLAMA_CHAT=qwen2.5:7b|none]  start a local model server, pull the models, save them as the settings"
@@ -36,7 +39,7 @@ help:
 	@echo "make evaluate ACTUAL=out/ [REPO=id,id]  score extractor output against fixtures/expected (report: out/evaluation.json)"
 	@echo "make analyze CAPABILITY=id  check out, extract and store artifacts for one capability (picked up live by explore)"
 	@echo "     GITHUB_AUTH=auto|git|none  LOCKED=1 (analyse the last check)  PACKAGES=0 (skip nuget.org downloads)"
-	@echo "     private NuGet feeds: nuget.config in the repo, credentials via %VAR% + NUGET_PASS_ENV=VAR,VAR (only the packages step sees them)"
+	@echo "     private NuGet/npm feeds: configure in Explorer Settings; NuGet %VAR% credentials via NUGET_PASS_ENV also work"
 	@echo "     CE_DATABASE='Host=...;Database=...;...' also imports into PostgreSQL (off otherwise); BINDINGS=bindings.json binds @unbound hints"
 	@echo "     with CE_DATABASE and a model (make ollama, the Settings page, or CE_MODEL_ENDPOINT + CE_EMBEDDING_MODEL) it also embeds for similarity search"
 	@echo "     PostgreSQL needs pgvector: make postgres starts one and prints its CE_DATABASE"
@@ -61,6 +64,9 @@ test-local-ci:
 
 test-mapping-replay:
 	$(OFFLINE) node node --test tests/mapping-replay.test.mjs
+
+test-package-feeds:
+	$(OFFLINE) node node --test tests/package-feeds.test.mjs
 
 security-check:
 	scripts/security-check
@@ -90,7 +96,7 @@ test-security-regressions: build
 
 ci: security-check fixtures-compile test
 
-test: test-postmerge-analysis test-local-ci test-mapping-replay test-security-gates test-corpus-replay test-binding-preview golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
+test: test-postmerge-analysis test-local-ci test-mapping-replay test-package-feeds test-security-gates test-corpus-replay test-binding-preview golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
 
 .PHONY: test-binding-preview test-binding-preview-browser
 test-binding-preview: build
@@ -200,7 +206,9 @@ analyze: build
 # Analysed artifacts come after the golden set: for the same repository, commit and unit, the later one wins.
 ARTIFACTS ?= fixtures/expected,.sandbox-cache/artifacts
 CAPABILITIES ?= capabilities.json
-GITHUB_AUTH ?= auto
+GITHUB_AUTH ?= git
+ANALYZE_JOBS ?= 2
+export ANALYZE_JOBS
 PORT ?= 5080
 EXPLORER_SOURCE ?= files
 # Human-maintained service map that binds @unbound hints (see schema/README.md). Used by explore and by the optional import in analyze.
@@ -216,7 +224,7 @@ explore: fixtures build
 	GITHUB_TOKEN="$$(scripts/github-token $(GITHUB_AUTH))" CE_HOST_HOME="$$HOME" \
 	SANDBOX_PASS_ENV="$${SANDBOX_PASS_ENV:+$$SANDBOX_PASS_ENV,}GITHUB_TOKEN,CE_HOST_HOME,CE_DATABASE,CE_FOUNDRY_API_KEY" \
 	SANDBOX_SOURCES="$$(s="$(SOURCES)"; c="$$(scripts/capability-sources $(CAPABILITIES))"; echo "$${s}$${s:+$${c:+,}}$${c}")" \
-	$(SANDBOX) --port $(PORT) dotnet dotnet platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll \
+	$(SANDBOX) --package-settings --port $(PORT) dotnet dotnet platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll \
 	  --source $(EXPLORER_SOURCE) --artifacts $(ARTIFACTS) --repos fixtures/.repos $(if $(EVALUATION),--evaluation $(EVALUATION)) \
 	  --capabilities $(CAPABILITIES) --workspace .sandbox-cache/sources $(if $(BINDINGS),--bindings $(BINDINGS)) \
 	  $(if $(INTERPRETATION),--interpretation:provider $(INTERPRETATION) --interpretation:cacheDirectory .sandbox-cache/interpretations) \
@@ -236,11 +244,12 @@ test-store: build
 OLLAMA_EMBED ?= nomic-embed-text
 OLLAMA_CHAT ?= qwen2.5:7b
 ollama:
-	@curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1 || docker start ce-ollama >/dev/null 2>&1 || \
-	  docker run -d --name ce-ollama -p 127.0.0.1:11434:11434 -v ce-ollama:/root/.ollama $(OLLAMA_IMAGE) >/dev/null
+	@curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1 || $(SANDBOX_ENGINE) start ce-ollama >/dev/null 2>&1 || \
+	  $(SANDBOX_ENGINE) run -d --name ce-ollama -p 127.0.0.1:11434:11434 -v ce-ollama:/root/.ollama $(OLLAMA_IMAGE) >/dev/null
+	@if [ -n "$${SANDBOX_EXTRA_CA_FILE:-}" ] && [ -n "$$($(SANDBOX_ENGINE) ps -aq --filter name=ce-ollama)" ]; then bash scripts/ollama-ca $(SANDBOX_ENGINE) ce-ollama "$$SANDBOX_EXTRA_CA_FILE"; fi
 	@for i in $$(seq 30); do curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1 && break; sleep 1; done
-	curl -fsS http://127.0.0.1:11434/api/pull -d '{"model":"$(OLLAMA_EMBED)","stream":false}' >/dev/null
-	[ "$(OLLAMA_CHAT)" = none ] || curl -fsS http://127.0.0.1:11434/api/pull -d '{"model":"$(OLLAMA_CHAT)","stream":false}' >/dev/null
+	curl -fsS http://127.0.0.1:11434/api/pull -d '{"model":"$(OLLAMA_EMBED)","stream":false}' >/dev/null || { echo "Ollama model pull failed; inspect $(SANDBOX_ENGINE) logs ce-ollama for TLS or network-policy details" >&2; exit 1; }
+	[ "$(OLLAMA_CHAT)" = none ] || curl -fsS http://127.0.0.1:11434/api/pull -d '{"model":"$(OLLAMA_CHAT)","stream":false}' >/dev/null || { echo "Ollama model pull failed; inspect $(SANDBOX_ENGINE) logs ce-ollama for TLS or network-policy details" >&2; exit 1; }
 	@if [ -f .sandbox-cache/model.json ]; then echo "kept existing .sandbox-cache/model.json (change it on the Settings page)"; else \
 	  chat='"$(OLLAMA_CHAT)"'; [ "$(OLLAMA_CHAT)" = none ] && chat=null; \
 	  mkdir -p .sandbox-cache && (umask 077 && printf '{\n  "endpoint": "http://host.docker.internal:11434/v1",\n  "chatModel": %s,\n  "embeddingModel": "%s"\n}\n' \
@@ -254,11 +263,11 @@ PG_PORT ?= 5433
 DEV_DATABASE = Host=host.docker.internal;Port=$(PG_PORT);Database=ce;Username=ce;Password=ce
 comma := ,
 postgres:
-	@docker start ce-postgres >/dev/null 2>&1 || docker run -d --name ce-postgres -p 127.0.0.1:$(PG_PORT):5432 \
+	@$(SANDBOX_ENGINE) start ce-postgres >/dev/null 2>&1 || $(SANDBOX_ENGINE) run -d --name ce-postgres -p 127.0.0.1:$(PG_PORT):5432 \
 	  -e POSTGRES_USER=ce -e POSTGRES_PASSWORD=ce -e POSTGRES_DB=ce -v ce-postgres:/var/lib/postgresql/data $(PG_IMAGE) >/dev/null
 	@# Over TCP: during first-time init the server only listens on its socket, so a socket check is ready too early.
-	@for i in $$(seq 60); do docker exec ce-postgres pg_isready -h 127.0.0.1 -U ce -d ce >/dev/null 2>&1 && break; sleep 1; done
-	@docker exec ce-postgres pg_isready -h 127.0.0.1 -U ce -d ce >/dev/null || { echo "PostgreSQL did not start: docker logs ce-postgres"; exit 1; }
+	@for i in $$(seq 60); do $(SANDBOX_ENGINE) exec ce-postgres pg_isready -h 127.0.0.1 -U ce -d ce >/dev/null 2>&1 && break; sleep 1; done
+	@$(SANDBOX_ENGINE) exec ce-postgres pg_isready -h 127.0.0.1 -U ce -d ce >/dev/null || { echo "PostgreSQL did not start: $(SANDBOX_ENGINE) logs ce-postgres"; exit 1; }
 	@echo "PostgreSQL ready: CE_DATABASE='$(DEV_DATABASE)'"
 
 # Everything for local development. Imports what explore shows ($(ARTIFACTS)) and embeds it (unchanged artifacts and
@@ -273,8 +282,10 @@ dev: dev-data
 analyze-worker: build
 	GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) scripts/analyze-worker $(CAPABILITIES)
 
-DEV_REANALYZE ?= 1
-dev-data: build postgres ollama
+DEV_REANALYZE ?= 0
+DEV_OLLAMA ?= 1
+dev-data: build postgres
+	@if [ "$(DEV_OLLAMA)" = 1 ]; then $(MAKE) --no-print-directory ollama || echo "-- Ollama unavailable; continuing without model services"; else echo "-- Ollama skipped (DEV_OLLAMA=0)"; fi
 	@if [ "$(DEV_REANALYZE)" = 1 ]; then CE_STORE_SANDBOX=1 GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) INCLUDE_TESTS=$(INCLUDE_TESTS) scripts/analyze-all $(CAPABILITIES); fi
 	@mkdir -p .sandbox-cache && find $(subst $(comma), ,$(ARTIFACTS)) -name '*.jsonl' 2>/dev/null | sort > .sandbox-cache/dev-artifacts.txt
 	@echo "== import $$(wc -l < .sandbox-cache/dev-artifacts.txt | tr -d ' ') artifact(s) and embed"
@@ -285,7 +296,7 @@ dev-data: build postgres ollama
 	  dotnet $$ce embed || echo "-- embeddings not updated (see above); similarity search uses what is stored"'
 
 dev-down:
-	-docker stop ce-postgres ce-ollama
+	-$(SANDBOX_ENGINE) stop ce-postgres ce-ollama
 
 clean:
 	rm -rf fixtures/.repos fixtures/.work extractors/ts/node_modules $(UI)/node_modules platform/src/CapabilityExplorer.Explorer/wwwroot

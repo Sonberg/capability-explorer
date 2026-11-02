@@ -1,0 +1,9 @@
+{
+  "dotnet.defaultSolution": "platform/CapabilityExplorer.slnx",
+  "files.exclude": {
+    "**/.sandbox-cache": true
+  },
+  "files.watcherExclude": {
+    "**/.sandbox-cache/**": true
+  }
+}
