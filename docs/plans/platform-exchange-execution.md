@@ -75,3 +75,35 @@ Brain grounding: `sparc/plugins/sparc/skills/sparc-review/SKILL.md` distinguishe
 evidence presence from verified outcome. This package uses existing tools,
 not a newly installed SPARC runtime. Subscription cost/savings remain unknown;
 no external paid inference is used.
+
+### Refinement
+
+Scoped gate: 97/100, three review iterations. Independent review found terminal
+LF acceptance in .NET regex anchors and a focused Make recipe that could exit
+successfully without running tests. Portable strict-end assertions, 14 regression
+cases and platform-directory recipes fix both issues.
+
+| Criterion | Executed evidence |
+|---|---|
+| C1 | Controlled examples, closed discriminators/required fields and negative profile values |
+| C2 | Literal paths, bounds, revision/hash/version controls and partial coverage cases |
+| C3 | Wire-family refusal and explicit shape-success-without-digest/authority proof |
+| C4 | Published/nonpublished/error-state conditional cases |
+| C5 | Seven-boundary catalogue and 24 positive/negative Node plan cases |
+| C6 | Normal complete local act CI on candidate `74ce903449e9cef367293c1f4f3eae4fed9794af`, current main `1e1122b`; no new package/lock changes |
+
+Actual focused .NET execution: 94 passed, zero failed/skipped. Independent reviewer
+reproduced 94 .NET and 24 Node passes. Full Contracts.Tests: 202 passed. Store
+tests: 131 passed. Existing extraction/golden, UI, LikeC4 and other suites passed
+in the complete act job; receipt is private `.sandbox-cache/local-ci/last-success.txt`.
+The direct macOS Make run stopped at the pre-existing `/var/run/docker.sock`
+assumption; the real Linux act job executed that missing store group successfully.
+
+Deduction: three points for an intentionally small synthetic shape matrix without
+external consumer qualification; no numerical code-coverage claim. Not tested:
+central runtime, authentication, actual artifact hashes/JCS, publication ordering,
+multi-tenant reads or deployed API compatibility. These remain future semantics,
+not capabilities established by this gate.
+
+Brain review pass retained exact evidence/scope separation from
+`sparc/plugins/sparc/skills/sparc-review/SKILL.md`; no additional runtime adopted.
