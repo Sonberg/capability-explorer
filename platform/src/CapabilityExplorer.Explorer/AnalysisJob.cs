@@ -20,7 +20,7 @@ public sealed record AnalysisJob(string State, DateTimeOffset? Since, string? Lo
         var reason = store.ReadBlockReason();
         if (run is null) return new(reason is null ? "idle" : "unknown", null, null,
             Blocked: reason is not null, BlockReason: reason);
-        var state = run.State == "cancelled" ? "stopped" : run.State;
+        var state = run.State switch { "cancelled" => "stopped", "cancelling" => "stopping", _ => run.State };
         if (run.CancellationRequested && state is "queued" or "running") state = "stopping";
         return new(state, run.AcceptedAt, store.ReadLog(run.RunId), run.RunId, run.AttemptId,
             run.Detail ?? run.State, outcome ?? run.State,
@@ -35,7 +35,7 @@ public sealed record AnalysisJob(string State, DateTimeOffset? Since, string? Lo
         catch (ArgumentException) { return Results.BadRequest(new { error = "Invalid analysis identifier or configuration." }); }
         catch (KeyNotFoundException) { return Results.NotFound(new { error = "No analysis run for this capability." }); }
         catch (InvalidOperationException) { return Results.Conflict(new { error = "Analysis is blocked pending host worker reconciliation." }); }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or PlatformNotSupportedException)
         {
             return Results.Json(new { error = "Analysis journal is unavailable or requires reconciliation." }, statusCode: 503);
         }
