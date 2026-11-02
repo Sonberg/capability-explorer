@@ -1,0 +1,15 @@
+{
+  "schema": "ce.platform.v1",
+  "kind": "intake-receipt",
+  "attemptId": "attempt:alpha-1",
+  "enrollmentId": "enr:alpha-api",
+  "bundleContentSha256": "6666666666666666666666666666666666666666666666666666666666666666",
+  "status": "published",
+  "recordedAt": "2026-11-02T08:04:00Z",
+  "errors": [],
+  "publication": {
+    "snapshotId": "snapshot:alpha-1",
+    "generation": 1,
+    "inputRevisionVectorHash": "8888888888888888888888888888888888888888888888888888888888888888"
+  }
+}

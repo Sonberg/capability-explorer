@@ -1,0 +1,23 @@
+{
+  "schema": "ce.platform.v1",
+  "kind": "enrollment",
+  "enrollmentId": "enr:alpha-api",
+  "enrollmentVersion": 1,
+  "registryRevisionHash": "1111111111111111111111111111111111111111111111111111111111111111",
+  "state": "active",
+  "repository": {
+    "repositoryId": "api-cs",
+    "provider": "github",
+    "authority": "github.com",
+    "providerRepositoryId": "12345",
+    "locator": "https://github.com/example/api-cs"
+  },
+  "membership": {
+    "tenantId": "tenant:example",
+    "domainId": "domain:sales",
+    "areaId": "area:pricing",
+    "clusterId": "cluster:alpha",
+    "ownerRoleId": "role:alpha-maintainer"
+  },
+  "producerRoleIds": ["role:alpha-collector"]
+}

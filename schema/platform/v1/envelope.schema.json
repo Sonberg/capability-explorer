@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://capability-explorer/schema/platform/v1/envelope.schema.json",
+  "title": "Draft platform exchange envelope profiles",
+  "$comment": "Owner-review draft. Shape conformance does not authenticate enrollment, verify artifact bytes or publish data. Closed profiles need explicit compatibility negotiation before external use. Enable format assertions.",
+  "oneOf": [
+    { "$ref": "#/$defs/enrollment" },
+    { "$ref": "#/$defs/evidenceBundle" },
+    { "$ref": "#/$defs/intakeReceipt" }
+  ],
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$" },
+    "repositoryId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "commitSha": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "generation": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "timestamp": { "type": "string", "format": "date-time", "maxLength": 64 },
+    "relativePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*[/]$)[^\\\\:\\u0000-\\u001f\\u007f]{1,1024}$",
+      "description": "Literal relative path, not an encoded URI. Resolution/symlink checks belong to the future receiver; never URL-decode this field."
+    },
+    "extractor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$" },
+        "version": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001f\\u007f]+$" }
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repositoryId", "provider", "authority", "providerRepositoryId", "locator"],
+      "properties": {
+        "repositoryId": { "$ref": "#/$defs/repositoryId" },
+        "provider": { "const": "github" },
+        "authority": { "type": "string", "format": "hostname", "pattern": "^[a-z0-9][a-z0-9.-]{0,252}$" },
+        "providerRepositoryId": { "type": "string", "pattern": "^[1-9][0-9]{0,19}$" },
+        "locator": { "type": "string", "format": "uri", "maxLength": 2048, "pattern": "^https://[^/@?#\\s]+/[^?#\\s]+$" }
+      }
+    },
+    "membership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tenantId", "domainId", "areaId", "clusterId", "ownerRoleId"],
+      "properties": {
+        "tenantId": { "$ref": "#/$defs/id" },
+        "domainId": { "$ref": "#/$defs/id" },
+        "areaId": { "$ref": "#/$defs/id" },
+        "clusterId": { "$ref": "#/$defs/id" },
+        "ownerRoleId": { "$ref": "#/$defs/id" }
+      }
+    },
+    "enrollment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "kind", "enrollmentId", "enrollmentVersion", "registryRevisionHash", "state", "repository", "membership", "producerRoleIds"],
+      "properties": {
+        "schema": { "const": "ce.platform.v1" },
+        "kind": { "const": "enrollment" },
+        "enrollmentId": { "$ref": "#/$defs/id" },
+        "enrollmentVersion": { "$ref": "#/$defs/generation" },
+        "registryRevisionHash": { "$ref": "#/$defs/sha256" },
+        "state": { "enum": ["active", "suspended", "unenrolled"] },
+        "repository": { "$ref": "#/$defs/repository" },
+        "membership": { "$ref": "#/$defs/membership" },
+        "producerRoleIds": { "type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } }
+      }
+    },
+    "artifactDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactSchema", "path", "sha256", "byteLength", "unitPath", "extractor", "configHash", "inputHash"],
+      "properties": {
+        "artifactSchema": { "const": "ce.v1" },
+        "path": { "$ref": "#/$defs/relativePath" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "byteLength": { "type": "integer", "minimum": 1, "maximum": 16777216 },
+        "unitPath": { "$ref": "#/$defs/relativePath" },
+        "extractor": { "$ref": "#/$defs/extractor" },
+        "configHash": { "$ref": "#/$defs/sha256" },
+        "inputHash": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "omittedUnitPaths"],
+      "properties": {
+        "status": { "enum": ["full", "partial"] },
+        "omittedUnitPaths": { "type": "array", "maxItems": 256, "uniqueItems": true, "items": { "$ref": "#/$defs/relativePath" } }
+      },
+      "if": { "properties": { "status": { "const": "full" } }, "required": ["status"] },
+      "then": { "properties": { "omittedUnitPaths": { "maxItems": 0 } } },
+      "description": "Producer-declared coverage. Partial may reflect an artifact diagnostic without an omitted unit. Absence is never an implicit deletion."
+    },
+    "bundleContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enrollmentId", "enrollmentVersion", "registryRevisionHash", "repositoryId", "commitSha", "artifacts", "coverage"],
+      "properties": {
+        "enrollmentId": { "$ref": "#/$defs/id" },
+        "enrollmentVersion": { "$ref": "#/$defs/generation" },
+        "registryRevisionHash": { "$ref": "#/$defs/sha256" },
+        "repositoryId": { "$ref": "#/$defs/repositoryId" },
+        "commitSha": { "$ref": "#/$defs/commitSha" },
+        "artifacts": { "type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true, "items": { "$ref": "#/$defs/artifactDescriptor" } },
+        "coverage": { "$ref": "#/$defs/coverage" }
+      }
+    },
+    "publicationAttempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attemptId", "observedAt"],
+      "properties": {
+        "attemptId": { "$ref": "#/$defs/id" },
+        "observedAt": { "$ref": "#/$defs/timestamp" }
+      },
+      "description": "Attempt metadata is outside content identity; a new timestamp/attempt is not a different analysis."
+    },
+    "evidenceBundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "kind", "content", "contentSha256", "publicationAttempt"],
+      "properties": {
+        "schema": { "const": "ce.platform.v1" },
+        "kind": { "const": "evidence-bundle" },
+        "content": { "$ref": "#/$defs/bundleContent" },
+        "contentSha256": { "$ref": "#/$defs/sha256" },
+        "publicationAttempt": { "$ref": "#/$defs/publicationAttempt" }
+      },
+      "description": "SHA-256 of canonical content only. This schema checks digest syntax, not digest correctness or the referenced artifacts."
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["snapshotId", "generation", "inputRevisionVectorHash"],
+      "properties": {
+        "snapshotId": { "$ref": "#/$defs/id" },
+        "generation": { "$ref": "#/$defs/generation" },
+        "inputRevisionVectorHash": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "$ref": "#/$defs/id" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[^\\u0000-\\u001f\\u007f]+$" },
+        "artifactPath": { "$ref": "#/$defs/relativePath" }
+      },
+      "description": "Sanitized diagnostics only; a schema cannot prove secret removal. Never include source snippets or credentials."
+    },
+    "intakeReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "kind", "attemptId", "enrollmentId", "bundleContentSha256", "status", "recordedAt", "errors"],
+      "properties": {
+        "schema": { "const": "ce.platform.v1" },
+        "kind": { "const": "intake-receipt" },
+        "attemptId": { "$ref": "#/$defs/id" },
+        "enrollmentId": { "$ref": "#/$defs/id" },
+        "bundleContentSha256": { "$ref": "#/$defs/sha256" },
+        "status": { "enum": ["received", "validated", "rejected", "quarantined", "published"] },
+        "recordedAt": { "$ref": "#/$defs/timestamp" },
+        "errors": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/error" } },
+        "publication": { "$ref": "#/$defs/publication" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "published" } }, "required": ["status"] },
+          "then": { "required": ["publication"], "properties": { "errors": { "maxItems": 0 } } },
+          "else": { "not": { "required": ["publication"] } }
+        },
+        {
+          "if": { "properties": { "status": { "enum": ["rejected", "quarantined"] } }, "required": ["status"] },
+          "then": { "properties": { "errors": { "minItems": 1 } } },
+          "else": { "properties": { "errors": { "maxItems": 0 } } }
+        }
+      ],
+      "description": "A received/validated receipt is not publication. These shapes do not prove durable storage, authorization, state-transition legality or generation freshness."
+    }
+  }
+}
