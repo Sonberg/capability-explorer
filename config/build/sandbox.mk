@@ -255,6 +255,8 @@ ollama:
 # ponytail: on Linux, host.docker.internal is the bridge gateway, which a 127.0.0.1-only port does not answer; set SANDBOX_NETWORK=host there.
 PG_PORT ?= 5433
 DEV_DATABASE = Host=host.docker.internal;Port=$(PG_PORT);Database=ce;Username=ce;Password=ce
+# Analysis ownership/publication now runs on the host, while Explorer/import clients stay containerized.
+DEV_WORKER_DATABASE ?= Host=127.0.0.1;Port=$(PG_PORT);Database=ce;Username=ce;Password=ce
 comma := ,
 postgres:
 	@docker start ce-postgres >/dev/null 2>&1 || docker run -d --name ce-postgres -p 127.0.0.1:$(PG_PORT):5432 \
@@ -269,7 +271,7 @@ postgres:
 # make analyze CAPABILITY=<id> CE_DATABASE='...' (printed above) while it runs; the explorer reloads by itself.
 # The explorer's Analyze code button queues a request that the analyze worker, started next to it, runs on the host.
 dev: dev-data
-	@CE_STORE_SANDBOX=1 CE_DATABASE='$(DEV_DATABASE)' GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) scripts/analyze-worker $(CAPABILITIES) </dev/null & \
+	@CE_STORE_SANDBOX=1 CE_DATABASE='$(DEV_WORKER_DATABASE)' GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) scripts/analyze-worker $(CAPABILITIES) </dev/null & \
 	  trap "kill $$! 2>/dev/null" EXIT; \
 	  $(MAKE) --no-print-directory explore CE_DATABASE='$(DEV_DATABASE)'
 

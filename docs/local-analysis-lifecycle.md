@@ -20,6 +20,13 @@ not provide that runtime. Native development builds also require the existing
 host SDK/toolchain. The scripts check for `dotnet` and the built CLI; they do not
 install a runtime or download dependencies automatically.
 
+Worker database and model endpoints must be reachable from the host. Do not
+reuse a container-only `host.docker.internal` address for a native client. The
+sandbox `make dev` launcher uses `DEV_WORKER_DATABASE` (default loopback) for
+its native worker and `DEV_DATABASE` for container clients. Override both when
+using a different database. Saved model settings must also suit the worker's
+host context; optional embedding failure remains separate from core success.
+
 Use the existing commands from the project root:
 
 ```bash
