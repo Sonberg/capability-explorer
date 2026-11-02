@@ -179,7 +179,7 @@ internal static class AnalysisPackagePreparation
                     var direct = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(entry)!, info.LinkTarget));
                     if (Path.IsPathRooted(info.LinkTarget) || !Within(root, direct)) throw new IOException("dependency link escapes the exported source");
                     var target = info.ResolveLinkTarget(returnFinalTarget: true) ?? throw new IOException("unresolved dependency link");
-                    if (!Within(root, target.FullName)) throw new IOException("dependency link target escapes the exported source");
+                    if (!target.Exists || !Within(root, target.FullName)) throw new IOException("dependency link target is absent or escapes the exported source");
                     AnalysisPreparation.RejectLinks(target.FullName);
                     identities.Add("link:" + Relative(root, entry) + ":" + Relative(root, target.FullName));
                     continue;
