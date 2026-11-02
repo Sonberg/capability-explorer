@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "scope": "foundation",
+  "issueComplete": false,
+  "baseline": "1e1122b62587eda7f3e2817c1619ba29ce292923",
+  "files": [
+    {
+      "path": "tests/fixtures/research/inventory/service.ts",
+      "sha256": "d3bffe2d97a03a5584e37262ee13638613fab016a31f0059711e0a8c2e213609"
+    },
+    {
+      "path": "tests/fixtures/research/inventory/Worker.cs",
+      "sha256": "8e3d7c1c5b5dd399621e199b3d8df1f151ec3dda4270525b651a8291d0a7b2a0"
+    },
+    {
+      "path": "tests/fixtures/research/inventory/report.sql",
+      "sha256": "a7c8cd6feb0440dfe8225e9965673c2182391aad89845ac8e54a8aad9d380d3f"
+    }
+  ],
+  "oracle": {
+    "path": "tests/fixtures/research/oracle.json",
+    "sha256": "0adf07532a3aef8afde90bdfae2a9cdf1d45323dcd0988fb308829603f7190c7"
+  }
+}

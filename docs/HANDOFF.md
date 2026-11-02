@@ -1,5 +1,16 @@
 # Handoff: remaining work
 
+## Issue #31: tool-free research foundation
+
+The [execution record](plans/issue31-foundation-execution.md) and
+[foundation guide](research/code-insights/README.md) describe bounded evidence
+validation, sealed synthetic source anchors and independent per-tool councils.
+Proposed [MADR-0019](adr/0019-independent-tool-evaluation.md) requires one accepted
+tool/mode per introduction PR. No candidate dependency or adapter is introduced
+by the foundation. Its passing checks do not complete the broader research study.
+All PRs target main and owner merges remain required; dependent introduction PRs
+wait for the foundation merge. Private-corpus and image-audit gaps remain #23/#24.
+
 ## Issue #28: PostgreSQL foundation in review
 
 Main reconciliation PR #27 merged at `d9421fa046c870df484927c97b786afcbb7d48bb`.

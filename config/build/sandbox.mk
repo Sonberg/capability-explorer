@@ -343,3 +343,10 @@ analyze-all: build
 .PHONY: test-postmerge-analysis
 test-postmerge-analysis:
 	$(OFFLINE) node node --test tests/postmerge-analysis.test.mjs
+
+# Tool-free research evidence gates: no candidate install, image or model call.
+.PHONY: test-research-foundation
+ci: test-research-foundation
+test-research-foundation:
+	$(OFFLINE) node node --test tests/research-foundation.test.mjs
+	$(OFFLINE) node node scripts/research/check-code-insights.mjs foundation
