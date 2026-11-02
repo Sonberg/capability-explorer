@@ -1,11 +1,8 @@
 using System.Security.Cryptography;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using CapabilityExplorer.Capabilities;
 using CapabilityExplorer.Capabilities.Analysis;
-
-[assembly: InternalsVisibleTo("CapabilityExplorer.Cli.Tests")]
 
 namespace CapabilityExplorer.Cli;
 
@@ -37,6 +34,16 @@ internal static class AnalysisWorkerCommand
             {
                 if (command == "analysis-worker")
                 {
+                    var includeTests = Environment.GetEnvironmentVariable("INCLUDE_TESTS");
+                    bool? includeTestsOverride = includeTests is null or "" ? null : EnvironmentFlag("INCLUDE_TESTS",false);
+                    var hostDefaults = new AnalysisSettings(Packages:EnvironmentFlag("PACKAGES",true),
+                        Locked:EnvironmentFlag("LOCKED",false), RuntimeIdentity:null,
+                        GitHubAuth:Environment.GetEnvironmentVariable("GITHUB_AUTH") is { Length: > 0 } auth ? auth : "auto",
+                        NugetPassEnv:Environment.GetEnvironmentVariable("NUGET_PASS_ENV") ?? "",
+                        NugetAllowedOrigins:Environment.GetEnvironmentVariable("CE_NUGET_ALLOWED_ORIGINS"));
+                    AnalysisPreparation.ValidateSettings(hostDefaults);
+                    store.PublishWorkerDefaults(owner,hostDefaults,includeTestsOverride);
+
                     while (!stop.IsCancellationRequested)
                     {
                         var next = store.ClaimNext(owner);
@@ -73,6 +80,11 @@ internal static class AnalysisWorkerCommand
                 return 0;
             }
             finally { Console.CancelKeyPress -= interrupt; }
+            bool EnvironmentFlag(string env, bool fallback)
+            {
+                return Environment.GetEnvironmentVariable(env) switch
+                { null or "" => fallback, "1" or "true" => true, "0" or "false" => false, _ => throw new ArgumentException(env + " must be 0 or 1") };
+            }
             bool Flag(string key, string env, bool fallback)
             {
                 var value = options.GetValueOrDefault(key) ?? Environment.GetEnvironmentVariable(env);

@@ -25,6 +25,10 @@ internal static class AnalysisPreparation
             ReservedEnvironmentPrefixes.Any(prefix => n.StartsWith(prefix,StringComparison.OrdinalIgnoreCase))))
             throw new ArgumentException("NuGet environment names must identify credentials, never runtime or policy settings");
         if (settings.NugetAllowedOrigins?.Length > 16384) throw new ArgumentException("NuGet origin configuration too large");
+        foreach (var origin in (settings.NugetAllowedOrigins ?? "").Split(',',StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            if (!Uri.TryCreate(origin,UriKind.Absolute,out var uri) || uri.Scheme != Uri.UriSchemeHttps ||
+                uri.UserInfo.Length != 0 || uri.AbsolutePath != "/" || uri.Query.Length != 0 || uri.Fragment.Length != 0)
+                throw new ArgumentException("NuGet policy requires HTTPS origins without credentials, paths, query or fragment");
         if (Environment.GetEnvironmentVariable("SANDBOX_DOTNET_IMAGE") is not null || Environment.GetEnvironmentVariable("SANDBOX_NODE_IMAGE") is not null)
             throw new ArgumentException("analysis requires the pinned runtime images; image overrides need separate qualification");
     }
