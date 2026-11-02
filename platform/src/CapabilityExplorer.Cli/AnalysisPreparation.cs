@@ -18,6 +18,7 @@ internal static class AnalysisPreparation
 
     internal static void ValidateSettings(AnalysisSettings settings)
     {
+        if (settings.ExtractionJobs is < 1 or > 9999) throw new ArgumentOutOfRangeException(nameof(settings), "extraction jobs must be between 1 and 9999");
         if (settings.GitHubAuth is not ("auto" or "git" or "none")) throw new ArgumentException("github-auth must be auto, git or none");
         var names = settings.NugetPassEnv.Split(',', StringSplitOptions.RemoveEmptyEntries);
         if (names.Length > 50 || names.Any(n => !Regex.IsMatch(n, "^[A-Z_][A-Z0-9_]{0,99}\\z") ||
@@ -35,7 +36,7 @@ internal static class AnalysisPreparation
 
     internal static string RuntimeIdentity(string root)
     {
-        var files = new[] { "config/runtime/images.env", "scripts/sandbox", "scripts/github-token", "scripts/lib/container-engine.sh", Cli, CSharp, TypeScript, "extractors/ts/package-lock.json" };
+        var files = new[] { "config/runtime/images.env", "scripts/sandbox", "scripts/github-token", "scripts/lib/container-engine.sh", "scripts/fetch-npm-packages.mjs", Cli, CSharp, TypeScript, "extractors/ts/package-lock.json" };
         var inputs = files.Select(p => { RejectLinks(Path.Combine(root,p)); return p + ":" + AnalysisWorkerCommand.HashFile(Path.Combine(root, p)); });
         // Transitive managed binaries affect parser semantics as well as the entry assembly.
         var parserInputs = CheckedFiles(Path.Combine(root,"extractors/ts/src")).Order(StringComparer.Ordinal)
@@ -85,9 +86,14 @@ internal static class AnalysisPreparation
         foreach (var line in await File.ReadAllLinesAsync(manifestPath))
         {
             var fields = line.Split('\t');
-            if (fields.Length != 3 || !Regex.IsMatch(fields[0], "^[a-z0-9][a-z0-9._-]{0,99}\\z") || !Regex.IsMatch(fields[1],"^[a-f0-9]{40}\\z") || fields[2] != "src/" + fields[0]) throw new FormatException("invalid export manifest");
+            if (fields.Length != 3 || !Regex.IsMatch(fields[0], "^[a-z0-9][a-z0-9._-]{0,99}\\z") || !Regex.IsMatch(fields[1],"^[a-f0-9]{40}\\z")) throw new FormatException("invalid export manifest");
             if (repositories.Any(r => r.Id == fields[0]) || !definition.Repositories.Any(r => r.Id == fields[0])) throw new FormatException("manifest repository mismatch");
-            var source = Path.Combine(work, "src", fields[0]);
+            var expectedSuffix = "/" + fields[0];
+            var segments = fields[2].Split('/');
+            if (fields[2] != "src/" + fields[0] &&
+                !(segments.Length == 3 && segments[0] == "src" && Regex.IsMatch(segments[1], "^[a-f0-9]{32}\\z") && fields[2].EndsWith(expectedSuffix, StringComparison.Ordinal)))
+                throw new FormatException("invalid export source path");
+            var source = Path.GetFullPath(Path.Combine(work, fields[2]));
             var staging = Path.Combine(work, "out", fields[0], fields[1]);
             RejectLinks(source); RejectLinks(staging);
             Directory.CreateDirectory(staging);
@@ -99,29 +105,9 @@ internal static class AnalysisPreparation
         var locks = Path.Combine(work,"locks");
         RejectLinks(locks); RejectLinks(packageDir);
         Directory.CreateDirectory(locks); Directory.CreateDirectory(packageDir);
-        var packageEnv = new Dictionary<string,string> { ["SANDBOX_PASS_ENV"] = "CE_NUGET_ALLOWED_ORIGINS" + (run.Settings.NugetPassEnv.Length > 0 ? "," + run.Settings.NugetPassEnv : ""), ["CE_NUGET_ALLOWED_ORIGINS"] = run.Settings.NugetAllowedOrigins ?? "" };
-        foreach (var name in run.Settings.NugetPassEnv.Split(',',StringSplitOptions.RemoveEmptyEntries))
-            if (Environment.GetEnvironmentVariable(name) is {} secret) packageEnv[name] = secret;
-        foreach (var repo in repositories)
-        {
-            var lockFile = Path.Combine(locks,repo.Id + ".json");
-            if (run.Settings.Packages)
-            {
-                var args = new List<string> { "dotnet", "dotnet", CSharp, "fetch-packages", "--source", InContainer(repo.Source), "--packages", InContainer(packageDir), "--lock", InContainer(lockFile) };
-                if (run.Settings.IncludeTests) args.Add("--include-tests");
-                await process.Run("scripts/sandbox",args,packageEnv);
-            }
-            var cs = new List<string> { "--offline", "dotnet", "dotnet", CSharp, "extract", "--source", InContainer(repo.Source), "--repository",repo.Id,"--commit",repo.Sha,"--out",InContainer(repo.Staging) };
-            if (run.Settings.Packages) cs.AddRange(new[] { "--packages",InContainer(packageDir),"--lock",InContainer(lockFile) });
-            if (run.Settings.IncludeTests) cs.Add("--include-tests");
-            await process.Run("scripts/sandbox",cs);
-            foreach (var verb in new[] { "extract", "extract-sql" })
-            {
-                var ts = new List<string> { "--offline", "node", "node", TypeScript,verb,"--source",InContainer(repo.Source),"--repository",repo.Id,"--commit",repo.Sha,"--out",InContainer(repo.Staging) };
-                if (verb == "extract" && run.Settings.IncludeTests) ts.Add("--include-tests");
-                await process.Run("scripts/sandbox",ts);
-            }
-        }
+        var sources = repositories.ToDictionary(repo => repo.Id, repo => AnalysisPackagePreparation.SourceIdentity(repo.Source), StringComparer.Ordinal);
+        var packageInputs = await AnalysisPackagePreparation.Run(root, run, process, repositories, work, locks, packageDir);
+        await AnalysisParallelExtraction.Run(root, store, run, process, repositories, work, locks, packageDir);
         process.CheckCancellation();
         if (runtime != RuntimeIdentity(root)) throw new InvalidOperationException("runtime changed during preparation");
         var inputs = new Dictionary<string,string> { ["runtime"] = runtime, ["manifest.tsv"] = AnalysisWorkerCommand.HashFile(manifestPath) };
@@ -129,8 +115,10 @@ internal static class AnalysisPreparation
         foreach (var repo in repositories)
         {
             inputs["revision:" + repo.Id] = repo.Sha;
-            inputs["source:" + repo.Id] = AnalysisWorkerCommand.HashText(string.Join('\n', CheckedFiles(repo.Source).Order(StringComparer.Ordinal)
-                .Select(file => Path.GetRelativePath(repo.Source,file) + ":" + AnalysisWorkerCommand.HashFile(file))));
+            if (sources[repo.Id] != AnalysisPackagePreparation.SourceIdentity(repo.Source)) throw new InvalidOperationException("exported source changed during preparation");
+            inputs["source:" + repo.Id] = sources[repo.Id];
+            inputs["export-path:" + repo.Id] = Path.GetRelativePath(work, repo.Source).Replace('\\', '/');
+            inputs["npm-dependencies:" + repo.Id] = AnalysisPackagePreparation.DependencyIdentity(repo.Source);
             foreach (var file in CheckedFiles(repo.Staging))
             {
                 if (!file.EndsWith(".jsonl",StringComparison.Ordinal)) throw new FormatException("unexpected staging file");
@@ -138,6 +126,7 @@ internal static class AnalysisPreparation
                 inputs["artifact:" + repo.Id + ":" + Path.GetRelativePath(repo.Staging,file)] = artifacts[file];
             }
         }
+        foreach (var input in packageInputs) inputs.Add(input.Key, input.Value);
         foreach (var file in CheckedFiles(locks)) inputs["lock:" + Path.GetFileName(file)] = AnalysisWorkerCommand.HashFile(file);
         if (run.Settings.Packages) inputs["package-cache"] = AnalysisWorkerCommand.HashText(string.Join('\n',CheckedFiles(packageDir).Order(StringComparer.Ordinal)
             .Select(file => Path.GetRelativePath(packageDir,file) + ":" + AnalysisWorkerCommand.HashFile(file))));
