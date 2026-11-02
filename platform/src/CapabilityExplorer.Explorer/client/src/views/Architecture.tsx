@@ -209,6 +209,7 @@ function NodePanel({ node: n, onDrill, graph }: { node: ArchNode; onDrill: () =>
       <div className="text-xs text-zinc-500">
         {incoming} incoming · {outgoing} outgoing connection{outgoing === 1 ? "" : "s"}
       </div>
+      {n.members && <MemberList members={n.members} />}
       <div className="flex flex-wrap gap-2 pt-1">
         {n.drill && <Button onClick={onDrill}>Open {{ system: "capability", repository: "components", requests: "routes" }[n.drill.level] ?? "code"} →</Button>}
         {n.symbolKey && n.category !== "datastore" && n.category !== "channel" && (
@@ -217,6 +218,35 @@ function NodePanel({ node: n, onDrill, graph }: { node: ArchNode; onDrill: () =>
           </a>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Folded members grouped under the service that touches them; a member used by two services appears under both. */
+function MemberList({ members }: { members: NonNullable<ArchNode["members"]> }) {
+  const byService = new Map<string, { m: (typeof members)[number]; label: string }[]>();
+  for (const m of members) {
+    for (const c of m.connections.length ? m.connections : [{ service: "(no connection)", label: "" }]) {
+      byService.set(c.service, [...(byService.get(c.service) ?? []), { m, label: c.label }]);
+    }
+  }
+  return (
+    <div className="max-h-[calc(100vh-20rem)] overflow-auto rounded-md border border-zinc-200 text-xs dark:border-zinc-800">
+      {[...byService].sort(([a], [b]) => a.localeCompare(b)).map(([service, rows]) => (
+        <div key={service}>
+          <div className="sticky top-0 bg-zinc-100 px-2 py-1 font-semibold dark:bg-zinc-800">{service} <span className="font-normal text-zinc-500">({rows.length})</span></div>
+          {rows.map(({ m, label }, i) => (
+            <details key={i} className="border-b border-zinc-200 px-2 py-1 dark:border-zinc-800">
+              <summary className="cursor-pointer truncate font-mono">{m.label} {label && <span className="text-zinc-500">· {label}</span>}</summary>
+              <div className="space-y-1 py-1 pl-3 text-zinc-500">
+                {m.detail && <div>{m.detail}</div>}
+                {m.status && <Pill>{m.status}</Pill>}
+                {m.symbolKey && <Key value={m.symbolKey} />}
+              </div>
+            </details>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }

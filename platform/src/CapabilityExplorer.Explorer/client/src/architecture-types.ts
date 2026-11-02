@@ -1,6 +1,14 @@
 import type { Evidence, SymbolRef } from "./api";
 
 
+export interface ArchMember {
+  label: string;
+  detail?: string;
+  status: string;
+  symbolKey?: string;
+  connections: { service: string; label: string }[];
+}
+
 export interface ArchNode {
   id: string;
   category: string;
@@ -11,6 +19,7 @@ export interface ArchNode {
   repositoryId?: string;
   drill?: { level: string; focus: string };
   badges: string[];
+  members?: ArchMember[];
 }
 
 export interface ArchFact {

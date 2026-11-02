@@ -14,7 +14,14 @@ public sealed record ArchNode(
     string? SymbolKey,
     string? RepositoryId,
     Drill? Drill,
-    IReadOnlyList<string> Badges);
+    IReadOnlyList<string> Badges,
+    IReadOnlyList<ArchMember>? Members = null);
+
+/// <summary>One node folded into a summary node: where it lives and who touches it, with the connecting edges.</summary>
+public sealed record ArchMember(string Label, string? Detail, string Status, string? SymbolKey, IReadOnlyList<ArchLink> Connections);
+
+/// <summary>A service that touches a folded member, and how (edge label such as "reads ×63").</summary>
+public sealed record ArchLink(string Service, string Label);
 
 /// <summary>One underlying fact behind an aggregated canvas edge.</summary>
 public sealed record ArchFact(string Relation, SymbolRef From, SymbolRef? To, string Resolution, string? UnresolvedReason, string Derivation, string? Rule, IReadOnlyList<EvidenceDto> Evidence);
@@ -145,7 +152,11 @@ public static class Architecture
             var members = g.Nodes.Where(n => n.Category == c).ToList();
             var unbound = members.Count(n => n.Badges.Contains("unbound") || n.Badges.Contains("unmatched"));
             nodes.Add(new ArchNode($"fold:{c}", c, $"{titles[c]} ({members.Count})", string.Join(", ", members.Take(3).Select(n => n.Label)) + (members.Count > 3 ? ", …" : ""),
-                null, null, null, null, unbound > 0 ? [$"{unbound} unbound"] : []));
+                null, null, null, null, unbound > 0 ? [$"{unbound} unbound"] : [],
+                members.Select(n => new ArchMember(n.Label, n.Sublabel, n.Badges.Count > 0 ? n.Badges[0] : "", n.SymbolKey,
+                g.Edges.Where(e => e.Kind != "sameName" && (e.To == n.Id || e.From == n.Id))
+                    .Select(e => new ArchLink(g.Nodes.First(x => x.Id == (e.To == n.Id ? e.From : e.To)).Label, e.Label)).OrderBy(l => l.Service, StringComparer.Ordinal).ToList()))
+                .OrderBy(m => m.Label, StringComparer.OrdinalIgnoreCase).ThenBy(m => m.Detail, StringComparer.OrdinalIgnoreCase).ToList()));
         }
 
         var order = new[] { "proven", "static", "unbound", "bound", "candidate", "unresolved", "broken" };

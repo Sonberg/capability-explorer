@@ -8,7 +8,7 @@ function Symbol({kind}:{kind:string}) {
   return <svg viewBox="0 0 44 26" aria-hidden="true"><rect x="3" y="3" width="36" height="20" rx="2" className={`legend-symbol ${kind}`} style={color?{fill:color,stroke:color}:undefined}/>{(kind==='reference'||kind==='sql-model')&&<><rect x="0" y="7" width="8" height="5" className={`legend-symbol ${kind}`} style={color?{fill:color,stroke:color}:undefined}/><rect x="0" y="15" width="8" height="5" className={`legend-symbol ${kind}`} style={color?{fill:color,stroke:color}:undefined}/></>}</svg>;
 }
 export function DiagramLegend() {
-  const [open,setOpen]=useState(true);
+  const [open,setOpen]=useState(false);
   return <div className="diagram-legend">
     <button aria-expanded={open} aria-controls="diagram-legend-content" onClick={()=>setOpen(!open)} aria-label={open?'Minimize ledger':'Expand ledger'}>Ledger {open?'−':'+'}</button>
     {open&&<section id="diagram-legend-content" aria-label="Diagram legend">
