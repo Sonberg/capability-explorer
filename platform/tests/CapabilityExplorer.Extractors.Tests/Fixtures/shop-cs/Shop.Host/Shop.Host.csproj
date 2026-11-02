@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../Shop.Stubs/Shop.Stubs.csproj" /><ProjectReference Include="../Shop.Data/Shop.Data.csproj" /><ProjectReference Include="../Shop.Archive/Shop.Archive.csproj" /><ProjectReference Include="../Shop.Application/Shop.Application.csproj" /><ProjectReference Include="../Shop.Infrastructure/Shop.Infrastructure.csproj" /></ItemGroup>
+</Project>

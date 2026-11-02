@@ -10,6 +10,11 @@
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Fixtures/ holds example repositories the extractor reads as data; they are not part of this assembly. -->
+    <Compile Remove="Fixtures/**" />
+    <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../../src/CapabilityExplorer.Extractors.CSharp/CapabilityExplorer.Extractors.CSharp.csproj" />
   </ItemGroup>
 </Project>

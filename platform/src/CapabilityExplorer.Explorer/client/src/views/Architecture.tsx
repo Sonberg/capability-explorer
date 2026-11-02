@@ -226,8 +226,13 @@ function NodePanel({ node: n, onDrill, graph }: { node: ArchNode; onDrill: () =>
 function MemberList({ members }: { members: NonNullable<ArchNode["members"]> }) {
   const byService = new Map<string, { m: (typeof members)[number]; label: string }[]>();
   for (const m of members) {
+    // One row per member and service: a store that is both read and written lists both, it is not two stores.
+    const labels = new Map<string, string[]>();
     for (const c of m.connections.length ? m.connections : [{ service: "(no connection)", label: "" }]) {
-      byService.set(c.service, [...(byService.get(c.service) ?? []), { m, label: c.label }]);
+      labels.set(c.service, [...(labels.get(c.service) ?? []), c.label].filter(Boolean));
+    }
+    for (const [service, parts] of labels) {
+      byService.set(service, [...(byService.get(service) ?? []), { m, label: parts.join(", ") }]);
     }
   }
   return (

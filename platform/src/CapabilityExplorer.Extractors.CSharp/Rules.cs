@@ -23,10 +23,10 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
 {
     public static readonly Tool Routes = new("aspnetcore.routes", "1");
     public static readonly Tool Di = new("dotnet.di", "1");
-    public static readonly Tool EfRule = new("efcore", "1");
-    public static readonly Tool Dapper = new("dapper.sql", "1");
-    public static readonly Tool ServiceBus = new("azure.servicebus", "1");
-    public static readonly Tool Http = new("dotnet.httpclient", "1");
+    public static readonly Tool EfRule = new("efcore", "2");
+    public static readonly Tool Dapper = new("dapper.sql", "2");
+    public static readonly Tool ServiceBus = new("azure.servicebus", "2");
+    public static readonly Tool Http = new("dotnet.httpclient", "2");
     public static readonly IReadOnlyList<Tool> Tools = [Routes, Di, EfRule, Dapper, ServiceBus, Http];
 
     private static readonly string[] HttpVerbs = ["Get", "Post", "Put", "Delete", "Patch"];
@@ -39,7 +39,30 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
 
     private string Assembly => unit.Project.AssemblyName;
 
-    private string Unbound(string kind, string value) => $"@unbound:{Repo}/{Assembly}:{kind}={value}";
+    /// <summary>
+    /// The unit names where the resource is declared or configured, so every project that touches it shares one key.
+    /// Without such a site the touching project stands in, which keeps unrelated stores in different projects apart.
+    /// </summary>
+    private string Unbound(string kind, string value, string? anchor = null) => $"@unbound:{Repo}/{anchor ?? Assembly}:{kind}={value}";
+
+    private CSharpExtractor.SourceFile Source(SyntaxTree tree, SemanticModel model) => new(relative(tree.FilePath), tree.GetText().ToString(), tree, model);
+
+    /// <summary>A connection name plus the place it is configured. Evidence is only recorded when the key actually uses it.</summary>
+    private sealed record Conn(string Name, CSharpExtractor.SourceFile? File, SyntaxNode? Node, string Assembly)
+    {
+        public string? Site(ArtifactBuilder b) => File is null ? null : File.Evidence(b, Node!);
+    }
+
+    private List<(string Name, CSharpExtractor.SourceFile File, SyntaxNode Node, string Assembly, bool Ef)>? _connectionCalls;
+
+    /// <summary>Every <c>GetConnectionString("x")</c> in the repository, and whether it feeds an EF context registration.</summary>
+    private List<(string Name, CSharpExtractor.SourceFile File, SyntaxNode Node, string Assembly, bool Ef)> ConnectionCalls() => _connectionCalls ??= context.Trees()
+        .SelectMany(t => t.Tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>().Where(i => MethodName(i) == "GetConnectionString").Select(i =>
+            (Name: ConstString(t.Model, i.ArgumentList.Arguments.FirstOrDefault()?.Expression)?.Value, File: Source(t.Tree, t.Model), Node: (SyntaxNode)i, t.Unit.Project.AssemblyName,
+                Ef: i.Ancestors().OfType<InvocationExpressionSyntax>().Any(a => MethodName(a) is "AddDbContext" or "AddDbContextPool" or "AddDbContextFactory"))))
+        .Where(c => c.Name is not null)
+        .Select(c => (c.Name!, c.File, c.Node, c.AssemblyName, c.Ef))
+        .ToList();
 
     private IEnumerable<CSharpExtractor.SourceFile> Files() => unit.Compilation.SyntaxTrees.Where(t => t.FilePath != "<implicit-usings>")
         .Select(t => new CSharpExtractor.SourceFile(relative(t.FilePath), t.GetText().ToString(), t, unit.Compilation.GetSemanticModel(t)));
@@ -431,11 +454,14 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
 
     // ---------------------------------------------------------------- Entity Framework Core
 
-    private sealed record EfModel(Dictionary<string, (string Table, List<(CSharpExtractor.SourceFile, SyntaxNode)> Sites, string Mapping)> Entities, Dictionary<string, string> DbSets, string Connection, string? ConnectionSite, string? Schema);
+    private sealed record EfModel(Dictionary<string, (string Table, List<(CSharpExtractor.SourceFile, SyntaxNode)> Sites, string Mapping)> Entities, Dictionary<string, string> DbSets, Dictionary<string, Conn> Connections, Conn Fallback, string? Schema);
 
     private EfModel? _ef;
 
-    /// <summary>Entity → table across the repository: ToTable &gt; [Table] &gt; DbSet name, with the provider's default schema.</summary>
+    /// <summary>
+    /// Entity → table across the repository: ToTable/ToContainer &gt; [Table] &gt; DbSet name, with the provider's default schema.
+    /// Each entity also gets the connection of the DbContext that maps it, anchored where that connection is configured.
+    /// </summary>
     private EfModel LoadEf()
     {
         if (_ef is not null)
@@ -446,8 +472,9 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
         var entities = new Dictionary<string, (string, List<(CSharpExtractor.SourceFile, SyntaxNode)>, string)>(StringComparer.Ordinal);
         var dbSets = new Dictionary<string, string>(StringComparer.Ordinal);
         string? schema = null;
-        var connection = "unknown";
-        string? connectionSite = null;
+        Conn? untyped = null;
+        var registrations = new Dictionary<string, List<Conn>>(StringComparer.Ordinal);
+        var entityContext = new Dictionary<string, (string Key, string Assembly)>(StringComparer.Ordinal);
         var all = context.Trees().Select(t => new CSharpExtractor.SourceFile(relative(t.Tree.FilePath), t.Tree.GetText().ToString(), t.Tree, t.Model)).ToList();
 
         foreach (var f in all)
@@ -466,8 +493,16 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                         if (inv.DescendantNodes().OfType<InvocationExpressionSyntax>().FirstOrDefault(i => MethodName(i) == "GetConnectionString") is { } gcs
                             && ConstString(f.Model, gcs.ArgumentList.Arguments.FirstOrDefault()?.Expression) is { } name)
                         {
-                            connection = name.Value;
-                            connectionSite = f.Evidence(b, gcs);
+                            var conn = new Conn(name.Value, f, gcs, f.Model.Compilation.AssemblyName ?? Assembly);
+                            if (TypeArguments(inv).LastOrDefault() is { } contextType && f.Model.GetTypeInfo(contextType).Type is { } contextSymbol)
+                            {
+                                registrations.TryAdd(keys.Of(contextSymbol), []);
+                                registrations[keys.Of(contextSymbol)].Add(conn);
+                            }
+                            else
+                            {
+                                untyped = conn;
+                            }
                         }
 
                         break;
@@ -484,6 +519,7 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                     var key = keys.Of(entity);
                     dbSets[keys.Of(dbSet)] = key;
                     entities.TryAdd(key, (dbSet.Name, [(f, prop)], "convention"));
+                    entityContext.TryAdd(key, (keys.Of(dbSet.ContainingType), dbSet.ContainingAssembly.Name));
                 }
             }
 
@@ -498,21 +534,26 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                 }
             }
 
-            foreach (var inv in f.Tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>().Where(i => MethodName(i) == "ToTable"))
+            foreach (var inv in f.Tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>().Where(i => MethodName(i) is "ToTable" or "ToContainer"))
             {
+                var container = MethodName(inv) == "ToContainer";
                 var args = inv.ArgumentList.Arguments;
                 if (args.Count == 0 || ConstString(f.Model, args[0].Expression) is not { } table)
                 {
                     continue;
                 }
 
-                var s = args.Count > 1 ? ConstString(f.Model, args[1].Expression)?.Value : null;
+                var s = !container && args.Count > 1 ? ConstString(f.Model, args[1].Expression)?.Value : null;
                 var entity = inv.Ancestors().OfType<InvocationExpressionSyntax>().FirstOrDefault(a => MethodName(a) == "Entity" && TypeArguments(a).Any()) is { } entityCall
                     ? f.Model.GetTypeInfo(TypeArguments(entityCall).First()).Type
                     : (f.Model.GetTypeInfo(Receiver(inv)!).Type as INamedTypeSymbol)?.TypeArguments.FirstOrDefault();
                 if (entity is not null)
                 {
-                    entities[keys.Of(entity)] = (s is null ? table.Value : $"{s}.{table.Value}", [(f, inv)], "fluent");
+                    entities[keys.Of(entity)] = (s is null ? table.Value : $"{s}.{table.Value}", [(f, inv)], container ? "container" : "fluent");
+                    if (inv.Ancestors().OfType<ClassDeclarationSyntax>().FirstOrDefault() is { } host && f.Model.GetDeclaredSymbol(host) is { } hostType && IsDbContext(hostType))
+                    {
+                        entityContext.TryAdd(keys.Of(entity), (keys.Of(hostType), hostType.ContainingAssembly.Name));
+                    }
                 }
             }
         }
@@ -521,13 +562,44 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
         foreach (var k in entities.Keys.ToList())
         {
             var (table, sites, mapping) = entities[k];
-            entities[k] = (!table.Contains('.', StringComparison.Ordinal) && schema is not null ? $"{schema}.{table}" : table, sites, mapping);
+            entities[k] = (!table.Contains('.', StringComparison.Ordinal) && schema is not null && mapping != "container" ? $"{schema}.{table}" : table, sites, mapping);
         }
 
-        return _ef = new EfModel(entities, dbSets, connection, connectionSite, schema);
+        // A context's connection is the one its registration names; disagreeing registrations prove nothing, so the context's own project anchors "unknown".
+        Conn Resolve(string contextKey, string contextAssembly) =>
+            registrations.GetValueOrDefault(contextKey) is { } named
+                ? named.Select(c => c.Name).Distinct().Count() == 1 ? named.OrderBy(c => c.Assembly, StringComparer.Ordinal).First() : new Conn("unknown", null, null, contextAssembly)
+                : untyped ?? new Conn("unknown", null, null, contextAssembly);
+        var contexts = entityContext.Values.Distinct().ToList();
+        var connections = new Dictionary<string, Conn>(StringComparer.Ordinal);
+        foreach (var k in entities.Keys)
+        {
+            // Entities configured away from a context (IEntityTypeConfiguration, [Table]) belong to the only context there is.
+            if (entityContext.TryGetValue(k, out var owner) || contexts.Count == 1 && (owner = contexts[0]) != default)
+            {
+                connections[k] = Resolve(owner.Key, owner.Assembly);
+            }
+        }
+
+        return _ef = new EfModel(entities, dbSets, connections, untyped ?? new Conn("unknown", null, null, Assembly), schema);
     }
 
-    private string TableKey(string connection, string table) => $"sql|{Unbound("conn", connection)}|{table}";
+    private static bool IsDbContext(INamedTypeSymbol type)
+    {
+        for (var t = type; t is not null; t = t.BaseType)
+        {
+            if (t.Name == "DbContext")
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private string TableKey(Conn connection, string table) => $"sql|{Unbound("conn", connection.Name, connection.Assembly)}|{table}";
+
+    private static Conn ConnFor(EfModel ef, string entity) => ef.Connections.GetValueOrDefault(entity) ?? ef.Fallback;
 
     private void EntityFramework(List<CSharpExtractor.SourceFile> files)
     {
@@ -541,13 +613,14 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
             }
 
             var evidence = sites.Select(s => s.Item1.Evidence(b, s.Item2)).ToList();
-            if (ef.ConnectionSite is not null)
+            var conn = ConnFor(ef, entity);
+            if (conn.Site(b) is { } connectionSite)
             {
-                evidence.Add(ef.ConnectionSite);
+                evidence.Add(connectionSite);
             }
 
-            b.Edge(entity, "MAPS_TO", TableKey(ef.Connection, table), evidence, "rule", "unresolved", "configuration", EfRule,
-                new JsonObject { ["mapping"] = mapping, ["connectionName"] = ef.Connection, ["table"] = table });
+            b.Edge(entity, "MAPS_TO", TableKey(conn, table), evidence, "rule", "unresolved", "configuration", EfRule,
+                new JsonObject { ["mapping"] = mapping, ["connectionName"] = conn.Name, ["table"] = table });
         }
 
         // Generic repositories: methods on T that read or write db.Set<T>().
@@ -572,14 +645,14 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                     && ef.DbSets.TryGetValue(keys.Of(prop), out var entity) && ef.Entities.TryGetValue(entity, out var mapped) && OwnerKey(f, access) is { } owner)
                 {
                     var writes = access.Parent is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Add" or "AddRange" or "Remove" or "Update" or "AddAsync" };
-                    b.Edge(owner, writes ? "WRITES" : "READS", TableKey(ef.Connection, mapped.Table), [f.Evidence(b, access)], "rule", "unresolved", "configuration", EfRule,
-                        new JsonObject { ["via"] = keys.Of(prop.ContainingType), ["connectionName"] = ef.Connection });
+                    b.Edge(owner, writes ? "WRITES" : "READS", TableKey(ConnFor(ef, entity), mapped.Table), [f.Evidence(b, access)], "rule", "unresolved", "configuration", EfRule,
+                        new JsonObject { ["via"] = keys.Of(prop.ContainingType), ["connectionName"] = ConnFor(ef, entity).Name });
                 }
                 else if (node is InvocationExpressionSyntax inv && f.Model.GetSymbolInfo(inv).Symbol is IMethodSymbol target
                     && generic.TryGetValue(keys.Of(target.OriginalDefinition), out var relation)
                     && target.ContainingType is { TypeArguments: [var typeArg] } && ef.Entities.TryGetValue(keys.Of(typeArg), out var entityTable) && OwnerKey(f, inv) is { } caller)
                 {
-                    b.Edge(caller, relation, TableKey(ef.Connection, entityTable.Table), [f.Evidence(b, inv)], "rule", "unresolved", "configuration", EfRule,
+                    b.Edge(caller, relation, TableKey(ConnFor(ef, keys.Of(typeArg)), entityTable.Table), [f.Evidence(b, inv)], "rule", "unresolved", "configuration", EfRule,
                         new JsonObject { ["via"] = keys.Of(target.OriginalDefinition), ["typeArgument"] = keys.Of(typeArg) });
                 }
             }
@@ -600,13 +673,14 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
 
     private void DapperSql(List<CSharpExtractor.SourceFile> files)
     {
-        var connections = files.SelectMany(f => f.Tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>()
-                .Where(i => MethodName(i) == "GetConnectionString")
-                .Select(i => (Name: ConstString(f.Model, i.ArgumentList.Arguments.FirstOrDefault()?.Expression)?.Value, Site: f.Evidence(b, i))))
-            .Where(c => c.Name is not null)
-            .ToList();
-        var names = connections.Select(c => c.Name!).Distinct().ToList();
-        var connection = names.Count == 1 ? names[0] : "unknown";
+        // The database a query hits is named where its connection string is read, which is rarely the project that queries it.
+        var configured = ConnectionCalls().Where(c => !c.Ef).ToList();
+        var conn = new Conn("unknown", null, null, Assembly);
+        if (configured.Select(c => c.Name).Distinct().Count() == 1)
+        {
+            var first = configured.OrderBy(c => c.Assembly, StringComparer.Ordinal).First();
+            conn = new Conn(first.Name, first.File, first.Node, first.Assembly);
+        }
 
         foreach (var f in files)
         {
@@ -619,15 +693,15 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                 }
 
                 var evidence = sql.Sources.Select(s => f.Evidence(b, s)).Append(f.Evidence(b, inv)).ToList();
-                if (connections.FirstOrDefault(c => c.Name == connection).Site is { } site)
+                if (conn.Site(b) is { } site)
                 {
                     evidence.Add(site);
                 }
 
                 foreach (var (relation, table) in TablesIn(sql.Value))
                 {
-                    b.Edge(owner, relation, TableKey(connection, table), evidence, "rule", "unresolved", "configuration", Dapper,
-                        new JsonObject { ["connectionName"] = connection, ["sqlAnalysis"] = sql.Value.Contains("{}", StringComparison.Ordinal) ? "partial" : "full" });
+                    b.Edge(owner, relation, TableKey(conn, table), evidence, "rule", "unresolved", "configuration", Dapper,
+                        new JsonObject { ["connectionName"] = conn.Name, ["sqlAnalysis"] = sql.Value.Contains("{}", StringComparison.Ordinal) ? "partial" : "full" });
                 }
             }
         }
@@ -635,32 +709,44 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
 
     // ---------------------------------------------------------------- Azure Service Bus
 
+    private sealed record NamespaceCreation(string Id, string Ns, CSharpExtractor.SourceFile File, SyntaxNode Site, string Assembly);
+
     private void ServiceBusChannels(List<CSharpExtractor.SourceFile> files)
     {
-        string? ns = null;
-        string? nsSite = null;
-        foreach (var f in files)
+        // The client is usually created in the host and injected into the projects that send, so look for it repo-wide.
+        var creations = new List<NamespaceCreation>();
+        foreach (var (tree, model, creatingUnit) in context.Trees())
         {
-            foreach (var creation in f.Tree.GetRoot().DescendantNodes().OfType<BaseObjectCreationExpressionSyntax>())
+            var creatingAssembly = creatingUnit.Project.AssemblyName;
+            foreach (var creation in tree.GetRoot().DescendantNodes().OfType<BaseObjectCreationExpressionSyntax>())
             {
-                if (f.Model.GetTypeInfo(creation).Type?.Name != "ServiceBusClient" && (creation as ObjectCreationExpressionSyntax)?.Type.ToString() != "ServiceBusClient")
+                if (model.GetTypeInfo(creation).Type?.Name != "ServiceBusClient" && (creation as ObjectCreationExpressionSyntax)?.Type.ToString() != "ServiceBusClient")
                 {
                     continue;
                 }
 
                 var arg = creation.ArgumentList?.Arguments.FirstOrDefault()?.Expression;
-                ns = arg switch
+                while (arg is PostfixUnaryExpressionSyntax { RawKind: (int)SyntaxKind.SuppressNullableWarningExpression } or ParenthesizedExpressionSyntax)
                 {
-                    ElementAccessExpressionSyntax ea when ConstString(f.Model, ea.ArgumentList.Arguments.FirstOrDefault()?.Expression) is { } k => Unbound("config", k.Value),
-                    InvocationExpressionSyntax i when MethodName(i) == "GetConnectionString" && ConstString(f.Model, i.ArgumentList.Arguments.FirstOrDefault()?.Expression) is { } c => Unbound("conn", c.Value),
-                    _ when ConstString(f.Model, arg) is { Value: var v } && ServiceBusNamespace.Parse(v) is { } host => host,
-                    _ => Unbound("config", "unknown"),
+                    arg = arg is PostfixUnaryExpressionSyntax postfix ? postfix.Operand : ((ParenthesizedExpressionSyntax)arg).Expression;
+                }
+
+                var (id, name) = arg switch
+                {
+                    ElementAccessExpressionSyntax ea when ConstString(model, ea.ArgumentList.Arguments.FirstOrDefault()?.Expression) is { } k => ($"config={k.Value}", Unbound("config", k.Value, creatingAssembly)),
+                    InvocationExpressionSyntax i when MethodName(i) == "GetConnectionString" && ConstString(model, i.ArgumentList.Arguments.FirstOrDefault()?.Expression) is { } c => ($"conn={c.Value}", Unbound("conn", c.Value, creatingAssembly)),
+                    _ when ConstString(model, arg) is { Value: var v } && ServiceBusNamespace.Parse(v) is { } host => (host, host),
+                    _ => ("config=unknown", Unbound("config", "unknown", creatingAssembly)),
                 };
-                nsSite = f.Evidence(b, arg ?? (SyntaxNode)creation);
+                creations.Add(new(id, name, Source(tree, model), arg ?? (SyntaxNode)creation, creatingAssembly));
             }
         }
 
-        ns ??= Unbound("config", "unknown");
+        // One namespace in the repository names it for every project. With several, only this project's own client can be attributed.
+        var chosen = creations.Select(c => c.Id).Distinct().Count() == 1
+            ? creations.OrderBy(c => c.Assembly, StringComparer.Ordinal).First()
+            : creations.LastOrDefault(c => c.Assembly == Assembly);
+        var ns = chosen is null or { Id: "config=unknown" } ? Unbound("config", "unknown") : chosen.Ns;
         var bound = !ns.StartsWith("@unbound:", StringComparison.Ordinal);
         foreach (var f in files)
         {
@@ -682,9 +768,9 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                 var entityType = name == "CreateSender" ? "entity" : args.Count >= 2 && ConstString(f.Model, args[1].Expression) is not null ? "topic" : "queue";
                 var key = $"chan|servicebus|{ns}|{entityType}/{entityName.Value}";
                 var evidence = entityName.Sources.Select(s => f.Evidence(b, s)).Append(f.Evidence(b, inv)).ToList();
-                if (nsSite is not null)
+                if (chosen is not null)
                 {
-                    evidence.Add(nsSite);
+                    evidence.Add(chosen.File.Evidence(b, chosen.Site));
                 }
 
                 b.Node(key, "Channel", entityName.Value, evidence, props: new JsonObject { ["provider"] = "azure-servicebus", ["entityType"] = entityType == "entity" ? "queue-or-topic" : entityType });
@@ -704,8 +790,8 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
     private void HttpClients(List<CSharpExtractor.SourceFile> files)
     {
         // Typed clients: AddHttpClient<T>(c => c.BaseAddress = new Uri(<expr>)).
-        var bases = new Dictionary<string, (string Hint, List<(CSharpExtractor.SourceFile File, SyntaxNode Node)> Sources, bool Ambiguous)>(StringComparer.Ordinal);
-        foreach (var (tree, model, _) in context.Trees())
+        var bases = new Dictionary<string, (string Hint, List<(CSharpExtractor.SourceFile File, SyntaxNode Node)> Sources, bool Ambiguous, string Anchor)>(StringComparer.Ordinal);
+        foreach (var (tree, model, registering) in context.Trees())
         {
             foreach (var inv in tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>().Where(i => MethodName(i) == "AddHttpClient" && TypeArguments(i).Any()))
             {
@@ -729,7 +815,8 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                 var proof = new List<(CSharpExtractor.SourceFile File, SyntaxNode Node)> { (source, inv) };
                 var ambiguous = assignments.Length != 1;
                 if (bases.TryGetValue(key, out var previous)) { proof.AddRange(previous.Sources); ambiguous = true; }
-                bases[key] = (hint, proof, ambiguous);
+                // A configured base is named where it is registered; a bare client type is named by the project that owns the type.
+                bases[key] = (hint, proof, ambiguous, hint.StartsWith("client=", StringComparison.Ordinal) ? clientType.ContainingAssembly.Name : registering.Project.AssemblyName);
             }
         }
 
@@ -773,7 +860,7 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                 var props = new JsonObject { ["method"] = verb, ["normalizedRoute"] = target.Route };
                 if (target.Scheme is not null) props["scheme"] = target.Scheme;
                 if (target.QueryNames.Length > 0) props["query"] = new JsonArray(target.QueryNames.Select(q => (JsonNode)JsonValue.Create(q)!).ToArray());
-                b.Edge(owner, "REQUESTS", $"http|{Unbound(target.Kind, target.Hint)}|{verb} {target.Route}", proof, "rule", "unresolved", "configuration", Http, props);
+                b.Edge(owner, "REQUESTS", $"http|{Unbound(target.Kind, target.Hint, hasBase && !absolute ? configured.Anchor : null)}|{verb} {target.Route}", proof, "rule", "unresolved", "configuration", Http, props);
             }
         }
     }
