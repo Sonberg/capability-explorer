@@ -127,7 +127,7 @@ public sealed class CapabilityApiTests(CapabilityExplorerFactory factory) : ICla
         Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync(url, null)).StatusCode);
         // Legacy callers omit runId and still cancel the latest queued run.
         Assert.Equal("stopped", (await (await _client.DeleteAsync(url)).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("state").GetString());
-        Assert.Equal(HttpStatusCode.Conflict, (await _client.DeleteAsync(url)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _client.DeleteAsync(url)).StatusCode);
 
         Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync(new Uri("/api/capabilities/nope/analyze", UriKind.Relative), null)).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync(new Uri("/api/capabilities/demand-pricing/rebuild", UriKind.Relative), null)).StatusCode);

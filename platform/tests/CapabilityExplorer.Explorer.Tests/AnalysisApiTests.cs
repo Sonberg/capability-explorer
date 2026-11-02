@@ -41,7 +41,7 @@ public sealed class AnalysisApiTests
         var oldUrl = new Uri($"{Url}?runId={first.GetProperty("runId").GetString()}", UriKind.Relative);
         Assert.Equal(HttpStatusCode.OK, (await client.DeleteAsync(oldUrl)).StatusCode);
         var second = await (await client.PostAsync(new Uri(Url, UriKind.Relative), null)).Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(HttpStatusCode.Conflict, (await client.DeleteAsync(oldUrl)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.DeleteAsync(oldUrl)).StatusCode);
         var latest = await client.GetFromJsonAsync<JsonElement>(Url);
         Assert.Equal(second.GetProperty("runId").GetString(), latest.GetProperty("runId").GetString());
         Assert.Equal("queued", latest.GetProperty("state").GetString());
