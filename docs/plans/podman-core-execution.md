@@ -121,3 +121,22 @@ Podman, nested act/.NET Testcontainers, complete dev/analysis/full audit or othe
 language parity. Those remain unsupported/unverified, not silent Docker fallback.
 Brain review retained the exact-evidence/claim separation in
 `sparc/plugins/sparc/skills/sparc-review/SKILL.md`; no new runtime adopted.
+
+### Completion
+
+Scoped gate: 96/100, one iteration. MADR-0021, runtime guide, support matrix,
+changelog and source-bound diagnostic report match the partial implementation.
+No new CI/service/model image or dependency is introduced. Deployment checklist:
+no service deployed, no global socket alias/helper installed, no existing machine
+or database reset; only the owned validation machine was stopped afterward.
+
+Final documentation commits undergo the ordinary complete pre-push act/security
+gate again, followed by exact-HEAD/current-main PR verification. Keep owner merge
+authority and auto-merge disabled. Private evidence is backed up and inactive
+recoverable worktrees are removed under MADR-0014 after PR publication.
+
+Deduction: four points for remaining owner/profile qualification beyond this
+review package. What was not tested remains the Refinement list. Completion of
+this first slice does not complete #34 or imply broad Podman support. No external
+paid inference calls were initiated; OpenRouter is unconfigured and subscription
+cost/savings unknown. Subsequent nested/runtime profiles await owner review/merge.
