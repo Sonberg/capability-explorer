@@ -82,3 +82,42 @@ Runtime capability is separate from evidence truth. Brain source grounding:
 independent verification, not a claim that a SPARC runtime is installed.
 Mechanical work uses existing scripts; native subscription workers review it.
 No external paid calls initiated; subscription cost and savings are unknown.
+
+### Refinement
+
+Scoped gate: 96/100, four iterations including integration validation. Independent
+review found mutable named-connection selection, Make wildcard/multiword engine
+acceptance, a changed default Make goal and incomplete metadata-child cleanup.
+The final implementation freezes machine URL/key arguments, uses literal engine
+enums/default-help and captures metadata through the direct exec helper. Tests
+verify the actual hanging CLI PID is gone, not just a failed return code.
+
+| Criterion | Executed evidence |
+|---|---|
+| R1 | Invalid/empty/injected selection, missing CLI/backend, no fallback and frozen endpoint cases |
+| R2 | Hardening/argv/environment fixtures and actual Docker/Podman online/offline probes |
+| R3 | Pinned all-severity/dev scanner cases, actual zero-finding project scan and failing vulnerable synthetic control |
+| R4 | Socket and legacy Make/script/exported-operation refusals before Docker use |
+| R5 | Sanitized version/rootless/context output, bounded failures and hanging CLI cleanup |
+| R6 | Full ordinary local act CI at `659968783a659e8d0dad32aad5f4629c6b72dff7` against main `1e1122b` |
+
+Independent core tests: 62 passed, zero failed/skipped. Broader focused Node
+regression before the two final child-cleanup cases: 96 passed. Existing local
+CI harness: 50 checks passed. Full Docker act CI, store tests (131), original
+extractor/golden thresholds and LikeC4 checks passed. Actual TypeScript fixture
+parity: three ce.v1 artifacts had identical bytes across engines. Source-bound
+probe/scanner evidence and limitations are in
+[the diagnostic report](../evidence/podman-core-20261102.md).
+
+Direct macOS Make testing reached its existing `/var/run/docker.sock` assumption;
+store tests passed through the pinned Linux runner and the full ordinary act job.
+Concurrent act invocations initially reused a runner name; they were serialized
+and the runtime gate rerun successfully. Run act gates serially per Docker daemon;
+isolated source builds and read-only reviews can still run in parallel.
+
+Deduction: four points for limited host/runtime coverage, with no numerical code
+coverage or performance claim. Not tested: live Linux, SELinux, rootful/remote
+Podman, nested act/.NET Testcontainers, complete dev/analysis/full audit or other
+language parity. Those remain unsupported/unverified, not silent Docker fallback.
+Brain review retained the exact-evidence/claim separation in
+`sparc/plugins/sparc/skills/sparc-review/SKILL.md`; no new runtime adopted.
