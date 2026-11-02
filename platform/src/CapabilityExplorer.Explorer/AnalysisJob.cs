@@ -1,62 +1,50 @@
+using CapabilityExplorer.Capabilities.Analysis;
+
 namespace CapabilityExplorer.Explorer;
 
-/// <summary>
-/// File handshake with scripts/analyze-worker on the host: the explorer writes &lt;id&gt;.request, the worker renames it to
-/// &lt;id&gt;.running, writes the output of scripts/analyze to &lt;id&gt;.log and its exit code to &lt;id&gt;.exit.
-/// Stopping a running analysis writes &lt;id&gt;.cancel; the worker kills the run and writes "stopped" as the exit code.
-/// </summary>
-public sealed record AnalysisJob(string State, DateTime? Since, string? Log)
+/// <summary>Public compatibility projection of the host-local run journal. No engine access belongs here.</summary>
+public sealed record AnalysisJob(string State, DateTimeOffset? Since, string? Log,
+    string? RunId = null, string? AttemptId = null, string? Stage = null,
+    string? Outcome = null, bool Blocked = false, string? BlockReason = null)
 {
-    private const int LogLines = 30;
-
-    public static void Queue(string directory, string id)
+    public static AnalysisJob Read(FileRunStore store, string capabilityId, string? runId = null)
     {
-        Directory.CreateDirectory(directory);
-        File.Delete(Path.Combine(directory, $"{id}.exit"));
-        File.Delete(Path.Combine(directory, $"{id}.cancel"));
-        File.WriteAllText(Path.Combine(directory, $"{id}.request"), "");
+        var reason = store.ReadBlockReason();
+        AnalysisRun? run;
+        try { run = runId is null ? store.ReadLatest(capabilityId) : store.ReadRun(runId); }
+        catch (Exception e) when (runId is null && reason is not null &&
+            e is IOException or KeyNotFoundException or System.Text.Json.JsonException or ArgumentException)
+        {
+            return new("unknown", null, null, Blocked: true, BlockReason: reason);
+        }
+        if (run is not null && run.CapabilityId != capabilityId)
+            throw new KeyNotFoundException("No analysis run for this capability.");
+        return Project(store, run);
     }
 
-    /// <summary>A queued request is withdrawn here; a running one is stopped by the worker. False when nothing runs.</summary>
-    public static bool Stop(string directory, string id)
+    public static AnalysisJob Project(FileRunStore store, AnalysisRun? run, string? outcome = null)
     {
-        var request = Path.Combine(directory, $"{id}.request");
-        if (File.Exists(request))
-        {
-            File.Delete(request);
-            File.WriteAllText(Path.Combine(directory, $"{id}.exit"), "stopped\n");
-            return true;
-        }
-
-        if (File.Exists(Path.Combine(directory, $"{id}.running")))
-        {
-            File.WriteAllText(Path.Combine(directory, $"{id}.cancel"), "");
-            return true;
-        }
-
-        return false;
+        var reason = store.ReadBlockReason();
+        if (run is null) return new(reason is null ? "idle" : "unknown", null, null,
+            Blocked: reason is not null, BlockReason: reason);
+        var state = run.State switch { "cancelled" => "stopped", "cancelling" => "stopping", _ => run.State };
+        if (run.CancellationRequested && state is "queued" or "running") state = "stopping";
+        return new(state, run.AcceptedAt, store.ReadLog(run.RunId), run.RunId, run.AttemptId,
+            run.Detail ?? run.State, outcome ?? run.State,
+            reason is not null || state is "interrupted" or "unknown" or "partial" or "publishing", reason);
     }
 
-    public static AnalysisJob Read(string directory, string id)
+    /// <summary>Reject unsafe or unavailable journal operations without exposing host paths or exception details.</summary>
+    public static IResult Respond(Func<IResult> action)
     {
-        string F(string extension) => Path.Combine(directory, $"{id}.{extension}");
-        string? Log() => File.Exists(F("log")) ? string.Join('\n', File.ReadLines(F("log")).TakeLast(LogLines)) : null;
-        if (File.Exists(F("request")))
+        try { return action(); }
+        catch (FormatException) { return Results.BadRequest(new { error = "Invalid analysis identifier." }); }
+        catch (ArgumentException) { return Results.BadRequest(new { error = "Invalid analysis identifier or configuration." }); }
+        catch (KeyNotFoundException) { return Results.NotFound(new { error = "No analysis run for this capability." }); }
+        catch (InvalidOperationException) { return Results.Conflict(new { error = "Analysis is blocked pending host worker reconciliation." }); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or PlatformNotSupportedException)
         {
-            return new("queued", File.GetLastWriteTimeUtc(F("request")), null);
+            return Results.Json(new { error = "Analysis journal is unavailable or requires reconciliation." }, statusCode: 503);
         }
-
-        if (File.Exists(F("running")))
-        {
-            return new(File.Exists(F("cancel")) ? "stopping" : "running", File.GetLastWriteTimeUtc(F("running")), Log());
-        }
-
-        if (File.Exists(F("exit")))
-        {
-            var code = File.ReadAllText(F("exit")).Trim();
-            return new(code == "0" ? "done" : code == "stopped" ? "stopped" : "failed", File.GetLastWriteTimeUtc(F("exit")), Log());
-        }
-
-        return new("idle", null, null);
     }
 }

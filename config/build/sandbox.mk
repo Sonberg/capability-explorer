@@ -199,7 +199,7 @@ test-explorer: fixtures build
 # Analyse a capability's repositories: export (network + token) -> packages (nuget.org) -> extract (offline).
 analyze: build
 	@test -n "$(CAPABILITY)" || { echo "usage: make analyze CAPABILITY=<id>  (see $(CAPABILITIES))"; exit 2; }
-	CE_STORE_SANDBOX=1 GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) INCLUDE_TESTS=$(INCLUDE_TESTS) scripts/analyze $(CAPABILITY) $(CAPABILITIES)
+	GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) INCLUDE_TESTS=$(INCLUDE_TESTS) scripts/analyze $(CAPABILITY) $(CAPABILITIES)
 
 # Read-only UI over artifacts. The container publishes the port on 127.0.0.1 only.
 # Analysed artifacts come after the golden set: for the same repository, commit and unit, the later one wins.
@@ -234,7 +234,9 @@ explore: fixtures build
 
 # Needs the Docker socket so Testcontainers can start PostgreSQL (see scripts/sandbox --docker).
 test-store: build
-	$(SANDBOX) --docker dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Store.Tests'
+	# The SDK image has a Docker socket for Testcontainers, but no host Docker CLI.
+	# Only the new HostDocker qualification probe is native-only; existing tests remain gated.
+	$(SANDBOX) --docker dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Store.Tests --filter "Profile!=HostDocker"'
 
 # Local models for explanations and similarity search: no key, nothing leaves the machine. Listens on the host's
 # 127.0.0.1:11434 only; the sandbox reaches it as host.docker.internal. The native Ollama app on the same port works too
@@ -260,6 +262,8 @@ ollama:
 # ponytail: on Linux, host.docker.internal is the bridge gateway, which a 127.0.0.1-only port does not answer; set SANDBOX_NETWORK=host there.
 PG_PORT ?= 5433
 DEV_DATABASE = Host=host.docker.internal;Port=$(PG_PORT);Database=ce;Username=ce;Password=ce
+# Analysis ownership/publication now runs on the host, while Explorer/import clients stay containerized.
+DEV_WORKER_DATABASE ?= Host=127.0.0.1;Port=$(PG_PORT);Database=ce;Username=ce;Password=ce
 comma := ,
 postgres:
 	@$(CE_CONTAINER_ENGINE) start ce-postgres >/dev/null 2>&1 || $(CE_CONTAINER_ENGINE) run -d --name ce-postgres -p 127.0.0.1:$(PG_PORT):5432 \
@@ -274,7 +278,7 @@ postgres:
 # make analyze CAPABILITY=<id> CE_DATABASE='...' (printed above) while it runs; the explorer reloads by itself.
 # The explorer's Analyze code button queues a request that the analyze worker, started next to it, runs on the host.
 dev: dev-data
-	@CE_STORE_SANDBOX=1 CE_DATABASE='$(DEV_DATABASE)' GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) scripts/analyze-worker $(CAPABILITIES) </dev/null & \
+	@CE_DATABASE='$(DEV_WORKER_DATABASE)' GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) scripts/analyze-worker $(CAPABILITIES) </dev/null & \
 	  trap "kill $$! 2>/dev/null" EXIT; \
 	  $(MAKE) --no-print-directory explore CE_DATABASE='$(DEV_DATABASE)'
 
@@ -285,7 +289,7 @@ DEV_REANALYZE ?= 0
 DEV_OLLAMA ?= 1
 dev-data: build postgres
 	@if [ "$(DEV_OLLAMA)" = 1 ]; then $(MAKE) --no-print-directory ollama || echo "-- Ollama unavailable; continuing without model services"; else echo "-- Ollama skipped (DEV_OLLAMA=0)"; fi
-	@if [ "$(DEV_REANALYZE)" = 1 ]; then CE_STORE_SANDBOX=1 GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) INCLUDE_TESTS=$(INCLUDE_TESTS) scripts/analyze-all $(CAPABILITIES); fi
+	@if [ "$(DEV_REANALYZE)" = 1 ]; then GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) INCLUDE_TESTS=$(INCLUDE_TESTS) scripts/analyze-all $(CAPABILITIES); fi
 	@mkdir -p .sandbox-cache && find $(subst $(comma), ,$(ARTIFACTS)) -name '*.jsonl' 2>/dev/null | sort > .sandbox-cache/dev-artifacts.txt
 	@echo "== import $$(wc -l < .sandbox-cache/dev-artifacts.txt | tr -d ' ') artifact(s) and embed"
 	@CE_DATABASE='$(DEV_DATABASE)' SANDBOX_PASS_ENV=CE_DATABASE SANDBOX_SOURCES="" $(DOTNET) bash -c '\
@@ -347,7 +351,7 @@ live-architecture-benchmark:
 
 .PHONY: analyze-all
 analyze-all: build
-	CE_STORE_SANDBOX=1 GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) INCLUDE_TESTS=$(INCLUDE_TESTS) scripts/analyze-all $(CAPABILITIES)
+	GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) INCLUDE_TESTS=$(INCLUDE_TESTS) scripts/analyze-all $(CAPABILITIES)
 
 .PHONY: test-postmerge-analysis
 test-postmerge-analysis:

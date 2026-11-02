@@ -1,5 +1,25 @@
 # Handoff: remaining work
 
+## Issue #37: local analysis lifecycle
+
+The host CLI owns the run journal and execution/publication handles; extraction
+containers produce attempt-scoped artifacts. Explorer admits and cancels through
+the shared journal. See [MADR-0022](adr/0022-local-analysis-lifecycle.md) and the
+[lifecycle guide](local-analysis-lifecycle.md) for recovery and qualification.
+Host .NET 10 is required even with sandbox builds. macOS host workers cannot
+share a coordination domain with a Linux-VM Explorer; that combination refuses
+journal access rather than assuming cross-kernel locks. File mode remains valid.
+Unknown runs and legacy markers require evidence-preserving reconciliation;
+do not delete markers or infer termination from a missing PID. No Kafka,
+automatic retries or distributed worker authority is introduced.
+Live-child cancellation and nonzero sandbox exit currently remain `unknown`
+after cleanup, blocking subsequent work pending offline reconciliation. This
+package does not provide a live Stop-and-retry UX.
+Issue #37 stays open: A9's literal Explorer credential prohibition is broader
+than this slice. Existing private-source checks still use an Explorer GitHub
+token, and the package-feed Settings workflow also handles credentials. The new admission profile adds no credential values or engine socket;
+moving the existing check boundary requires owner-reviewed follow-up work.
+
 ## Issue #33: draft platform exchange contracts
 
 The [platform schema guide](../schema/platform/README.md),

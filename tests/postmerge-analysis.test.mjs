@@ -168,171 +168,6 @@ test('development startup imports saved artifacts unless re-analysis is explicit
  });
 });
 
-test('analysis cleanup removes only manifest-owned sources and retains stale export trees',()=>fixture(root=>{
- mkdirSync(join(root,'scripts'),{recursive:true});
- copyFileSync(join(repository,'scripts/analyze'),join(root,'scripts/analyze'));
- write(root,'scripts/github-token','#!/bin/sh\nexit 0\n');
- write(root,'scripts/capability-sources','#!/bin/sh\nexit 0\n');
- write(root,'scripts/sandbox','#!/bin/sh\n[ "$1" != --offline ] || shift\nshift\nexec "$@"\n');
- write(root,'bin/dotnet',`#!/bin/sh
-case "$2" in
- export)
-  mkdir -p .sandbox-cache/analyze/one/src/current/repo
-  printf 'repo\\t${revision}\\tsrc/current/repo\\n' > .sandbox-cache/analyze/one/manifest.tsv
-  printf '0\\n' > .sandbox-cache/analyze/one/include-tests;;
- extract)
-  while [ "$1" != --out ]; do shift; done
-  shift
-  mkdir -p "$1"
-  printf '%s\\n' '${artifact('repo',revision).trim()}' > "$1/result.jsonl";;
- *) exit 1;;
-esac
-`);
- write(root,'bin/docker','#!/bin/sh\nexit 0\n');
- write(root,'.sandbox-cache/analyze/one/src/stale/obj/sentinel','STALE_EXPORT');
- for(const path of ['scripts/analyze','scripts/github-token','scripts/capability-sources','scripts/sandbox','bin/dotnet','bin/docker'])chmodSync(join(root,path),0o700);
- const env={...process.env,PATH:join(root,'bin')+':'+process.env.PATH,CE_CONTAINER_ENGINE:'docker',PACKAGES:'0',CE_DATABASE:'',SANDBOX_PASS_ENV:''};
- const result=spawnSync('bash',['scripts/analyze','one','capabilities.json'],{cwd:root,encoding:'utf8',timeout:20000,env});
- assert.equal(result.status,0,result.stderr);
- assert.equal(readFileSync(join(root,'.sandbox-cache/analyze/one/src/stale/obj/sentinel'),'utf8'),'STALE_EXPORT');
- assert.equal(existsSync(join(root,'.sandbox-cache/analyze/one/src/current')),false);
- assert.equal(existsSync(join(root,`.sandbox-cache/artifacts/repo/${revision}/result.jsonl`)),true);
-}));
-
-function extractionFixture(root){
- write(root,'scripts/analyze',readFileSync(join(repository,'scripts/analyze'),'utf8'));
- write(root,'scripts/github-token','#!/bin/sh\nexit 0\n');
- write(root,'scripts/capability-sources','#!/bin/sh\nexit 0\n');
- write(root,'scripts/sandbox','#!/bin/sh\n[ "$1" != --offline ] || shift\nshift\nexec "$@"\n');
- write(root,'extractors/ts/src/cli.ts','"extract" "extract-sql"\n');
- write(root,'bin/dotnet',`#!/bin/sh\nexec '${process.execPath}' tool.mjs "$@"\n`);
- write(root,'bin/node',`#!/bin/sh\nexec '${process.execPath}' tool.mjs "$@"\n`);
- write(root,'bin/docker',`#!/bin/sh\nexec '${process.execPath}' engine.mjs "$@"\n`);
- write(root,'engine.mjs',`import {readFileSync,appendFileSync} from 'node:fs';
-const args=process.argv.slice(2);
-appendFileSync('engine.log',JSON.stringify(args)+'\\n');
-if(args[0]==='ps'){
- const events=readFileSync('events','utf8').trim().split('\\n').map(JSON.parse);
- for(const event of events.filter(event=>event.kind==='start'))console.log(String(event.pid));
-}else if(args[0]==='kill')for(const pid of args.slice(1)){try{process.kill(Number(pid),'SIGTERM');}catch{}}
-`);
- write(root,'tool.mjs',`import {appendFileSync,mkdirSync,writeFileSync,readFileSync} from 'node:fs';
-const args=process.argv.slice(2),work='.sandbox-cache/analyze/one';
-if(args[1]==='export'){
- mkdirSync(work+'/src/current/repo space',{recursive:true});
- writeFileSync(work+'/manifest.tsv','repo\\t${revision}\\tsrc/current/repo space\\nother\\t${revision}\\tsrc/current/repo space\\n');
- writeFileSync(work+'/include-tests','1');
- process.exit(0);
-}
-if(args[1]==='fetch-packages'){
- const lock=args[args.indexOf('--lock')+1];writeFileSync(lock,'{}');process.exit(0);
-}
-if(!args.includes('--out')){appendFileSync('store-calls',args[1]+'\\n');process.exit(0);}
-const language=args[0].endsWith('ce-cs.dll')?'cs':args[1]==='extract-sql'?'sql':'ts';
-const out=args[args.indexOf('--out')+1],repo=args[args.indexOf('--repository')+1];
-function event(kind){appendFileSync('events',JSON.stringify({kind,language,repo,pid:process.pid,args,label:process.env.SANDBOX_LABEL,extraLabel:process.env.SANDBOX_EXTRA_LABEL})+'\\n');}
-event('start');
-process.on('SIGTERM',()=>{event('stopped');process.exit(143);});
-function finish(){
- if(process.env.FAIL_EXTRACTOR===language){event('failed');process.exit(7);}
- mkdirSync(out,{recursive:true});
- writeFileSync(out+'/'+language+'.jsonl',language);
- writeFileSync(out+'/collision.jsonl',language);
- event('finish');
-}
-if(process.env.OVERLAP_BARRIER){
- const timer=setInterval(()=>{
-  const started=readFileSync('events','utf8').trim().split('\\n').map(JSON.parse).filter(event=>event.kind==='start').length;
-  if(started>=Number(process.env.OVERLAP_BARRIER)){clearInterval(timer);finish();}
- },10);
-}else if(process.env.FAIL_EXTRACTOR&&language==='cs')setTimeout(finish,30000);
-else setTimeout(finish,process.env.CANCEL_EXTRACTION?30000:language==='cs'?180:80);
-`);
- for(const path of ['scripts/analyze','scripts/github-token','scripts/capability-sources','scripts/sandbox','bin/dotnet','bin/node','bin/docker'])chmodSync(join(root,path),0o700);
- write(root,'events','');
- return {...process.env,PATH:join(root,'bin')+':'+process.env.PATH,PACKAGES:'0',CE_DATABASE:'',SANDBOX_PASS_ENV:'',CE_CONTAINER_ENGINE:'docker',SANDBOX_LABEL:'ce-analyze=one'};
-}
-function extractionEvents(root){return readFileSync(join(root,'events'),'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);}
-
-test('parallel analysis bounds total jobs and merges isolated extractor outputs deterministically',()=>{
- for(const jobs of [1,2,20])fixture(root=>{
-    const env={...extractionFixture(root),ANALYZE_JOBS:String(jobs),OVERLAP_BARRIER:String(Math.min(jobs,6))};
-  const result=spawnSync('/bin/bash',['scripts/analyze','one'],{cwd:root,env,encoding:'utf8',timeout:20000});
-  assert.equal(result.status,0,result.stderr);
-  const events=extractionEvents(root);let active=0,maximum=0;
-  for(const event of events){active+=event.kind==='start'?1:-1;maximum=Math.max(maximum,active);assert.ok(active>=0);}
-  assert.equal(active,0);assert.ok(maximum<=jobs);assert.equal(maximum,Math.min(jobs,6));
-  for(const repo of ['repo','other']){
-   const output=join(root,'.sandbox-cache/artifacts',repo,revision);
-   for(const language of ['cs','ts','sql'])assert.equal(readFileSync(join(output,language+'.jsonl'),'utf8'),language);
-   assert.equal(readFileSync(join(output,'collision.jsonl'),'utf8'),'sql');
-  }
-  for(const event of events.filter(event=>event.kind==='start')){
-   assert.equal(event.label,'ce-analyze=one');assert.match(event.extraLabel,/^ce-extraction=one-/);
-   assert.ok(event.args.includes('.sandbox-cache/analyze/one/src/current/repo space'));
-   assert.equal(event.args.includes('--include-tests'),event.language!=='sql');
-  }
-  assert.match(result.stdout,/timing: export/);assert.match(result.stdout,/timing: extraction/);
- });
-});
-
-test('parallel analysis rejects invalid job limits before exporting or cleaning outputs',()=>{
- for(const jobs of ['0','-1','1.5','abc','10000'])fixture(root=>{
-  const env={...extractionFixture(root),ANALYZE_JOBS:jobs};
-  const result=spawnSync('/bin/bash',['scripts/analyze','one'],{cwd:root,env,encoding:'utf8',timeout:20000});
-  assert.equal(result.status,2);assert.match(result.stderr,/ANALYZE_JOBS/);
-  assert.equal(extractionEvents(root).length,0);
-  assert.equal(readFileSync(join(root,'.sandbox-cache/analyze/one/manifest.tsv'),'utf8'),`repo\t${revision}\t/PRIVATE_EXPORTED_PATH\n`);
- });
-});
-
-test('parallel analysis failure stops sibling jobs and preserves previous artifacts and sources',()=>fixture(root=>{
- const env={...extractionFixture(root),ANALYZE_JOBS:'6',FAIL_EXTRACTOR:'ts',CE_DATABASE:'synthetic'};
- write(root,`.sandbox-cache/artifacts/repo/${revision}/sentinel.jsonl`,'PREVIOUS');
- const result=spawnSync('/bin/bash',['scripts/analyze','one'],{cwd:root,env,encoding:'utf8',timeout:20000});
- assert.equal(result.status,7,result.stderr);
- assert.equal(readFileSync(join(root,`.sandbox-cache/artifacts/repo/${revision}/sentinel.jsonl`),'utf8'),'PREVIOUS');
- assert.ok(existsSync(join(root,'.sandbox-cache/analyze/one/src/current/repo space')));
- const events=extractionEvents(root),started=events.filter(event=>event.kind==='start');
- assert.equal(result.error,undefined);
- for(const event of started)assert.ok(events.some(done=>done.pid===event.pid&&done.kind!=='start'));
- assert.ok(events.some(event=>event.language==='cs'&&event.kind==='stopped'));
- assert.equal(existsSync(join(root,'store-calls')),false);
- assert.match(readFileSync(join(root,'engine.log'),'utf8'),/label=ce-extraction=one-/);
-}));
-
-test('parallel analysis cancellation stops children without publishing',()=>fixture(root=>{
- const env={...extractionFixture(root),ANALYZE_JOBS:'2',CANCEL_EXTRACTION:'1'};
- write(root,'cancel.mjs',`import {spawn} from 'node:child_process';
-import {readFileSync} from 'node:fs';
-const child=spawn('/bin/bash',['scripts/analyze','one'],{stdio:'inherit'});
-const timer=setInterval(()=>{
- if(readFileSync('events','utf8').trim().split('\\n').filter(Boolean).length>=2){clearInterval(timer);child.kill('SIGTERM');}
-},10);
-child.on('exit',code=>{clearInterval(timer);process.exit(code);});
-`);
- const result=spawnSync(process.execPath,['cancel.mjs'],{cwd:root,env,encoding:'utf8',timeout:20000});
- assert.equal(result.error,undefined);
- assert.equal(result.status,143,result.stderr);
- const events=extractionEvents(root);
- assert.equal(events.filter(event=>event.kind==='start').length,2);
- assert.equal(events.filter(event=>event.kind==='stopped').length,2);
- assert.ok(existsSync(join(root,'.sandbox-cache/analyze/one/src/current/repo space')));
-}));
-
-test('parallel analysis preserves package lock arguments when optional extractors are absent',()=>fixture(root=>{
- const env={...extractionFixture(root),ANALYZE_JOBS:'2',PACKAGES:'1'};
- rmSync(join(root,'extractors/ts/src/cli.ts'));
- const result=spawnSync('/bin/bash',['scripts/analyze','one'],{cwd:root,env,encoding:'utf8',timeout:20000});
- assert.equal(result.status,0,result.stderr);
- const started=extractionEvents(root).filter(event=>event.kind==='start');assert.equal(started.length,2);
- for(const event of started){
-  assert.equal(event.language,'cs');
-  assert.equal(event.args[event.args.indexOf('--packages')+1],'.sandbox-cache/analyze-packages');
-  assert.equal(event.args[event.args.indexOf('--lock')+1],'.sandbox-cache/analyze/one/locks/'+event.repo+'.json');
- }
-}));
-
 test('both make profiles export default and overridden analysis job limits to recipes',()=>{
  const env={...process.env,CE_CONTAINER_ENGINE:'docker'};delete env.ANALYZE_JOBS;
  const probeDir=mkdtempSync(join(tmpdir(),'ce-make-probe-'));
@@ -348,22 +183,34 @@ test('both make profiles export default and overridden analysis job limits to re
  }finally{rmSync(probeDir,{recursive:true,force:true});}
 });
 
-test('analysis orchestration invalidates stale receipts before invalid input or a failed capability run',()=>{
- for(const invalidInput of [true,false])fixture(root=>{
-  mkdirSync(join(root,'scripts'),{recursive:true});
-  for(const name of ['analyze-all','analysis-capability-ids.mjs','analysis-receipt.mjs','capability-definitions.mjs'])copyFileSync(join(repository,'scripts',name),join(root,'scripts',name));
+
+test('analysis wrappers pass literal arguments to the host coordinator without touching receipts',()=>{
+ for(const [script,command,args,expected] of [
+  ['analyze-all','analysis-all',['config with spaces.json'],['--capabilities','config with spaces.json']],
+  ['analyze-worker','analysis-worker',[],['--capabilities','capabilities.json']],
+  ['analyze','analysis-run',['one','config with spaces.json'],['--capability','one','--capabilities','config with spaces.json']]
+ ])fixture(root=>{
   mkdirSync(join(root,'scripts/lib'),{recursive:true});
+  copyFileSync(join(repository,'scripts',script),join(root,'scripts',script));
   copyFileSync(join(repository,'scripts/lib/container-engine.sh'),join(root,'scripts/lib/container-engine.sh'));
-  write(root,'scripts/sandbox','#!/bin/sh\nshift\nshift\nexec "$@"\n');
-  write(root,'scripts/analyze','#!/bin/sh\nprintf "%s\\n" "$1" >> .sandbox-cache/attempted\nexit 1\n');
-  write(root,'bin/git',`#!/bin/sh\ncase "$1" in rev-parse) printf '%s\\n' '${application}';; status) exit 0;; *) exit 1;; esac\n`);
-  write(root,'bin/docker','#!/bin/sh\nexit 0\n');
-  for(const path of ['scripts/analyze-all','scripts/sandbox','scripts/analyze','bin/git','bin/docker'])chmodSync(join(root,path),0o700);
-  write(root,receiptPath,'{"stale-success":true}\n');
-  if(invalidInput)write(root,'capabilities.json','{"capabilities":[{"id":"../escape"}]}');
-  const result=spawnSync('bash',['scripts/analyze-all','capabilities.json'],{cwd:root,encoding:'utf8',timeout:20000,env:{PATH:join(root,'bin')+':'+process.env.PATH,CE_CONTAINER_ENGINE:'docker'}});
-  assert.equal(result.error,undefined);assert.notEqual(result.status,0);assert.equal(existsSync(join(root,receiptPath)),false);
-  if(invalidInput)assert.equal(existsSync(join(root,'.sandbox-cache/attempted')),false);
-  else assert.equal(readFileSync(join(root,'.sandbox-cache/attempted'),'utf8'),'one\n');
+  write(root,'platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll','fixture');
+  write(root,'bin/dotnet','#!/usr/bin/env node\nrequire("fs").writeFileSync("args.json",JSON.stringify(process.argv.slice(2)));process.exit(23);\n');
+  chmodSync(join(root,'bin/dotnet'),0o700);
+  write(root,receiptPath,'preserve until ownership');
+  const result=spawnSync('bash',['scripts/'+script,...args],{cwd:root,encoding:'utf8',timeout:20000,env:{PATH:join(root,'bin')+':'+process.env.PATH,CE_CONTAINER_ENGINE:'docker'}});
+  assert.equal(result.status,23,result.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(join(root,'args.json'),'utf8')).slice(1),[command,...expected]);
+  assert.equal(readFileSync(join(root,receiptPath),'utf8'),'preserve until ownership');
  });
 });
+
+test('analysis wrappers reject unqualified engines before invoking the host or changing receipts',()=>fixture(root=>{
+ mkdirSync(join(root,'scripts/lib'),{recursive:true});
+ copyFileSync(join(repository,'scripts/analyze-all'),join(root,'scripts/analyze-all'));
+ copyFileSync(join(repository,'scripts/lib/container-engine.sh'),join(root,'scripts/lib/container-engine.sh'));
+ write(root,receiptPath,'preserved');
+ const result=spawnSync('bash',['scripts/analyze-all'],{cwd:root,encoding:'utf8',timeout:20000,env:{PATH:process.env.PATH,CE_CONTAINER_ENGINE:'podman'}});
+ assert.equal(result.status,2);
+ assert.match(result.stderr,/not qualified/);
+ assert.equal(readFileSync(join(root,receiptPath),'utf8'),'preserved');
+}));

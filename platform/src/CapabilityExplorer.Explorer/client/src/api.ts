@@ -280,9 +280,15 @@ export interface RepositoryStatus {
 
 /** An "Analyze code" run, executed on the host by scripts/analyze-worker. */
 export interface AnalysisJob {
-  state: "idle" | "queued" | "running" | "stopping" | "done" | "failed" | "stopped";
+  state: "idle" | "queued" | "running" | "stopping" | "done" | "failed" | "stopped" | "interrupted" | "unknown" | "partial" | "publishing";
   since?: string;
   log?: string;
+  runId?: string;
+  attemptId?: string;
+  stage?: string;
+  outcome?: string;
+  blocked: boolean;
+  blockReason?: string;
 }
 
 export interface RebuildResult {

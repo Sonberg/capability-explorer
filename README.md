@@ -53,7 +53,11 @@ policy, limits, pinned tools and hook installation behavior. Hosted CI remains r
 
 Trusted native development remains the default outside CI. Use `EXECUTION=sandbox`
 for fully containerized development/validation; CI selects that profile and uses
-only Docker on the runner. Repository analysis is sandboxed in either profile.
+only Docker on the runner. Repository extraction is sandboxed in either profile.
+Starting analysis also requires a trusted host .NET 10 runtime: the host owns
+the run journal, exclusive execution and publication while containers produce
+staged artifacts. See the [local lifecycle guide](docs/local-analysis-lifecycle.md)
+for supported host/API combinations and recovery limits.
 Run `make dev` (or `make EXECUTION=sandbox dev`) to import saved analysis artifacts
 and start the explorer without re-analyzing repositories. Run `make analyze-all`
 separately to refresh the data, or opt in at startup with `DEV_REANALYZE=1`.
