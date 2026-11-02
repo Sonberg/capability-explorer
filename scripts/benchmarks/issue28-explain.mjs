@@ -5,6 +5,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {hash,root,safeOutput} from './issue28-generate.mjs';
+import {requireDockerRuntime} from '../lib/docker-only.mjs';
 
 export function capturedQueries(text) {
   const lines=text.split('\n'),queries=[];
@@ -25,6 +26,7 @@ export function capturedQueries(text) {
   return queries;
 }
 export function explain({log,container,database,out}) {
+  requireDockerRuntime('database EXPLAIN benchmark');
   if(!/^ce-issue28-[a-zA-Z0-9_.-]+$/.test(container)||!/^ce(?:_[a-zA-Z0-9_]+)?$/.test(database))throw Error('Use an isolated ce-issue28 container/database');
   const input=fs.readFileSync(log,'utf8');if(input.length>4*1024*1024)throw Error('Capture log exceeds 4MiB');
   const label=execFileSync('docker',['inspect','--format','{{index .Config.Labels "ce.workstream"}}',container],{encoding:'utf8'}).trim();

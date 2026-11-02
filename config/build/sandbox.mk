@@ -3,12 +3,11 @@
 # Behind a TLS-intercepting proxy: export SANDBOX_EXTRA_CA_FILE=/path/to/ca.pem
 
 SANDBOX := scripts/sandbox
-SANDBOX_ENGINE ?= $(shell if command -v docker >/dev/null 2>&1; then echo docker; elif command -v podman >/dev/null 2>&1; then echo podman; else echo docker; fi)
-export SANDBOX_ENGINE
 DOTNET  := $(SANDBOX) dotnet
 NODE    := $(SANDBOX) node
 OFFLINE := $(SANDBOX) --offline
 include config/runtime/images.env
+include config/build/container-engine.mk
 
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
         restore ui build test-ts test-contracts test-evaluation test-extractors test-explorer test-store evaluate evaluate-golden \
@@ -94,7 +93,7 @@ test-corpus-replay:
 test-security-regressions: build
 	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Capabilities.Tests && dotnet test --no-build tests/CapabilityExplorer.Interpretation.Tests && dotnet test --no-build tests/CapabilityExplorer.Extractors.Tests && dotnet test --no-build tests/CapabilityExplorer.Explorer.Tests'
 
-ci: security-check fixtures-compile test
+ci: test-container-engine-core security-check fixtures-compile test
 
 test: test-postmerge-analysis test-local-ci test-mapping-replay test-package-feeds test-security-gates test-corpus-replay test-binding-preview golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
 
@@ -244,12 +243,12 @@ test-store: build
 OLLAMA_EMBED ?= nomic-embed-text
 OLLAMA_CHAT ?= qwen2.5:7b
 ollama:
-	@curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1 || $(SANDBOX_ENGINE) start ce-ollama >/dev/null 2>&1 || \
-	  $(SANDBOX_ENGINE) run -d --name ce-ollama -p 127.0.0.1:11434:11434 -v ce-ollama:/root/.ollama $(OLLAMA_IMAGE) >/dev/null
-	@if [ -n "$${SANDBOX_EXTRA_CA_FILE:-}" ] && [ -n "$$($(SANDBOX_ENGINE) ps -aq --filter name=ce-ollama)" ]; then bash scripts/ollama-ca $(SANDBOX_ENGINE) ce-ollama "$$SANDBOX_EXTRA_CA_FILE"; fi
+	@curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1 || 20 20 12 61 701 702 100CE_CONTAINER_ENGINE) start ce-ollama >/dev/null 2>&1 || \
+	  20 20 12 61 701 702 100CE_CONTAINER_ENGINE) run -d --name ce-ollama -p 127.0.0.1:11434:11434 -v ce-ollama:/root/.ollama $(OLLAMA_IMAGE) >/dev/null
+	@if [ -n "$${SANDBOX_EXTRA_CA_FILE:-}" ] && [ -n "$$(20 20 12 61 701 702 100CE_CONTAINER_ENGINE) ps -aq --filter name=ce-ollama)" ]; then bash scripts/ollama-ca 20 20 12 61 701 702 100CE_CONTAINER_ENGINE) ce-ollama "$$SANDBOX_EXTRA_CA_FILE"; fi
 	@for i in $$(seq 30); do curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1 && break; sleep 1; done
-	curl -fsS http://127.0.0.1:11434/api/pull -d '{"model":"$(OLLAMA_EMBED)","stream":false}' >/dev/null || { echo "Ollama model pull failed; inspect $(SANDBOX_ENGINE) logs ce-ollama for TLS or network-policy details" >&2; exit 1; }
-	[ "$(OLLAMA_CHAT)" = none ] || curl -fsS http://127.0.0.1:11434/api/pull -d '{"model":"$(OLLAMA_CHAT)","stream":false}' >/dev/null || { echo "Ollama model pull failed; inspect $(SANDBOX_ENGINE) logs ce-ollama for TLS or network-policy details" >&2; exit 1; }
+	curl -fsS http://127.0.0.1:11434/api/pull -d '{"model":"$(OLLAMA_EMBED)","stream":false}' >/dev/null || { echo "Ollama model pull failed; inspect 20 20 12 61 701 702 100CE_CONTAINER_ENGINE) logs ce-ollama for TLS or network-policy details" >&2; exit 1; }
+	[ "$(OLLAMA_CHAT)" = none ] || curl -fsS http://127.0.0.1:11434/api/pull -d '{"model":"$(OLLAMA_CHAT)","stream":false}' >/dev/null || { echo "Ollama model pull failed; inspect 20 20 12 61 701 702 100CE_CONTAINER_ENGINE) logs ce-ollama for TLS or network-policy details" >&2; exit 1; }
 	@if [ -f .sandbox-cache/model.json ]; then echo "kept existing .sandbox-cache/model.json (change it on the Settings page)"; else \
 	  chat='"$(OLLAMA_CHAT)"'; [ "$(OLLAMA_CHAT)" = none ] && chat=null; \
 	  mkdir -p .sandbox-cache && (umask 077 && printf '{\n  "endpoint": "http://host.docker.internal:11434/v1",\n  "chatModel": %s,\n  "embeddingModel": "%s"\n}\n' \
@@ -263,11 +262,11 @@ PG_PORT ?= 5433
 DEV_DATABASE = Host=host.docker.internal;Port=$(PG_PORT);Database=ce;Username=ce;Password=ce
 comma := ,
 postgres:
-	@$(SANDBOX_ENGINE) start ce-postgres >/dev/null 2>&1 || $(SANDBOX_ENGINE) run -d --name ce-postgres -p 127.0.0.1:$(PG_PORT):5432 \
+	@20 20 12 61 701 702 100CE_CONTAINER_ENGINE) start ce-postgres >/dev/null 2>&1 || 20 20 12 61 701 702 100CE_CONTAINER_ENGINE) run -d --name ce-postgres -p 127.0.0.1:$(PG_PORT):5432 \
 	  -e POSTGRES_USER=ce -e POSTGRES_PASSWORD=ce -e POSTGRES_DB=ce -v ce-postgres:/var/lib/postgresql/data $(PG_IMAGE) >/dev/null
 	@# Over TCP: during first-time init the server only listens on its socket, so a socket check is ready too early.
-	@for i in $$(seq 60); do $(SANDBOX_ENGINE) exec ce-postgres pg_isready -h 127.0.0.1 -U ce -d ce >/dev/null 2>&1 && break; sleep 1; done
-	@$(SANDBOX_ENGINE) exec ce-postgres pg_isready -h 127.0.0.1 -U ce -d ce >/dev/null || { echo "PostgreSQL did not start: $(SANDBOX_ENGINE) logs ce-postgres"; exit 1; }
+	@for i in $$(seq 60); do 20 20 12 61 701 702 100CE_CONTAINER_ENGINE) exec ce-postgres pg_isready -h 127.0.0.1 -U ce -d ce >/dev/null 2>&1 && break; sleep 1; done
+	@20 20 12 61 701 702 100CE_CONTAINER_ENGINE) exec ce-postgres pg_isready -h 127.0.0.1 -U ce -d ce >/dev/null || { echo "PostgreSQL did not start: 20 20 12 61 701 702 100CE_CONTAINER_ENGINE) logs ce-postgres"; exit 1; }
 	@echo "PostgreSQL ready: CE_DATABASE='$(DEV_DATABASE)'"
 
 # Everything for local development. Imports what explore shows ($(ARTIFACTS)) and embeds it (unchanged artifacts and
@@ -296,7 +295,7 @@ dev-data: build postgres
 	  dotnet $$ce embed || echo "-- embeddings not updated (see above); similarity search uses what is stored"'
 
 dev-down:
-	-$(SANDBOX_ENGINE) stop ce-postgres ce-ollama
+	-20 20 12 61 701 702 100CE_CONTAINER_ENGINE) stop ce-postgres ce-ollama
 
 clean:
 	rm -rf fixtures/.repos fixtures/.work extractors/ts/node_modules $(UI)/node_modules platform/src/CapabilityExplorer.Explorer/wwwroot
@@ -353,3 +352,10 @@ analyze-all: build
 .PHONY: test-postmerge-analysis
 test-postmerge-analysis:
 	$(OFFLINE) node node --test tests/postmerge-analysis.test.mjs
+
+# Tool-free research evidence gates: no candidate install, image or model call.
+.PHONY: test-research-foundation
+ci: test-research-foundation
+test-research-foundation:
+	$(OFFLINE) node node --test tests/research-foundation.test.mjs
+	$(OFFLINE) node node scripts/research/check-code-insights.mjs foundation

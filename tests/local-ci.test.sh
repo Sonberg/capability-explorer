@@ -58,6 +58,8 @@ new_repo() {
   repo="$scratch/repo-$count"
   mkdir -p "$repo/scripts" "$repo/config/git-hooks" "$repo/.github/workflows"
   cp "$source_root/scripts/local-check" "$source_root/scripts/install-git-hooks" "$source_root/scripts/check-main-alignment" "$source_root/scripts/check-target-alignment" "$source_root/scripts/pr-check" "$repo/scripts/"
+  mkdir -p "$repo/scripts/lib"
+  cp "$source_root/scripts/lib/container-engine.sh" "$repo/scripts/lib/"
   printf '#!/bin/sh\nexit "${ACT_TEST_AUDIT_FAIL:-0}"\n' > "$repo/scripts/actions-audit"
   chmod +x "$repo/scripts/actions-audit"
   cp "$source_root/config/git-hooks/pre-push" "$repo/config/git-hooks/"

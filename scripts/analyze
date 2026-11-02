@@ -24,6 +24,8 @@
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
+source "$root/scripts/lib/container-engine.sh"
+ce_require_docker 'complete analysis pipeline'
 cap="${1:-}"; capabilities="${2:-capabilities.json}"
 [[ "$cap" =~ ^[a-z0-9][a-z0-9._-]{0,99}$ ]] || { echo "usage: make analyze CAPABILITY=<id>   (ids are in $capabilities)" >&2; exit 2; }
 jobs="${ANALYZE_JOBS:-2}"
@@ -90,8 +92,7 @@ if [[ -f "$ts" ]] && grep -q '"extract-sql"' "$ts"; then extractors+=(sql); fi
 active=0
 pids=()
 run_label="ce-extraction=$cap-$$"
-engine="${SANDBOX_ENGINE:-docker}"
-if [[ -z "${SANDBOX_ENGINE:-}" ]] && ! command -v docker >/dev/null 2>&1; then engine=podman; fi
+engine="$CE_ENGINE"
 stop_extraction() {
   local child containers
   for child in ${pids[@]+"${pids[@]}"}; do kill -TERM "$child" 2>/dev/null || true; done

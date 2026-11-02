@@ -1,0 +1,26 @@
+{
+  "schema": "ce.platform.v1",
+  "kind": "evidence-bundle",
+  "content": {
+    "enrollmentId": "enr:alpha-api",
+    "enrollmentVersion": 1,
+    "registryRevisionHash": "1111111111111111111111111111111111111111111111111111111111111111",
+    "repositoryId": "api-cs",
+    "commitSha": "2222222222222222222222222222222222222222",
+    "artifacts": [
+      {
+        "artifactSchema": "ce.v1",
+        "path": "artifacts/Sales.Api.jsonl",
+        "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "byteLength": 128,
+        "unitPath": "src/Sales.Api/Sales.Api.csproj",
+        "extractor": { "name": "ce-cs", "version": "0.1.0" },
+        "configHash": "4444444444444444444444444444444444444444444444444444444444444444",
+        "inputHash": "5555555555555555555555555555555555555555555555555555555555555555"
+      }
+    ],
+    "coverage": { "status": "full", "omittedUnitPaths": [] }
+  },
+  "contentSha256": "6666666666666666666666666666666666666666666666666666666666666666",
+  "publicationAttempt": { "attemptId": "attempt:alpha-1", "observedAt": "2026-11-02T08:00:00Z" }
+}

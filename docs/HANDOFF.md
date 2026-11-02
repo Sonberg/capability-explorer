@@ -1,5 +1,30 @@
 # Handoff: remaining work
 
+## Issue #33: draft platform exchange contracts
+
+The [platform schema guide](../schema/platform/README.md),
+[seven-boundary catalogue](../config/platform/exchange-contracts.json) and
+[proposed MADR-0020](adr/0020-platform-exchange-contracts.md) define a contract-first
+review slice. Enrollment, evidence-bundle and intake-receipt shapes are tested
+with existing JsonSchema.Net; a cheap Node plan checker preserves draft scope.
+No central server, authorization, byte/digest verifier, publication state machine,
+product API or production deployment is delivered. RFC 8785 content hashing is a
+proposed later choice, not implemented. ce.v1 and protected goldens are unchanged.
+Podman portability remains separate issue #34; no runtime support follows from
+these shape checks. Later provider/consumer slices wait for owner decisions and
+target fresh main with normal local gates. This does not complete issue #33.
+
+## Issue #31: tool-free research foundation
+
+The [execution record](plans/issue31-foundation-execution.md) and
+[foundation guide](research/code-insights/README.md) describe bounded evidence
+validation, sealed synthetic source anchors and independent per-tool councils.
+Proposed [MADR-0019](adr/0019-independent-tool-evaluation.md) requires one accepted
+tool/mode per introduction PR. No candidate dependency or adapter is introduced
+by the foundation. Its passing checks do not complete the broader research study.
+All PRs target main and owner merges remain required; dependent introduction PRs
+wait for the foundation merge. Private-corpus and image-audit gaps remain #23/#24.
+
 ## Issue #28: PostgreSQL foundation in review
 
 Main reconciliation PR #27 merged at `d9421fa046c870df484927c97b786afcbb7d48bb`.
@@ -284,3 +309,14 @@ diamond/repeat-byte, missing-project and unrelated-project controls pass; the
 C# golden gate remains unchanged. See [execution evidence](plans/transitive-project-references.md).
 This does not fix framework selection, package version conflicts, older framework
 fallback, conditional MSBuild references, or other issue #6 mapping gaps.
+
+## Issue #34: first Podman core slice
+
+The separate `feat/podman-core` PR introduces explicit engine selection, sanitized
+doctor output, rootless direct sandbox execution and the pinned lockfile scanner.
+See [MADR-0021](adr/0021-explicit-container-engine-core.md),
+[guide](podman-core.md) and [acceptance plan](plans/podman-core-execution.md).
+Docker remains the full local/hosted gate. Explicit Podman requests for nested
+act/Testcontainers, Make pipelines, dev, analysis and full audit fail early.
+Those are follow-on slices after owner review, not completed support. Preserve
+the independent issue #33 contract draft and PR #32 research foundation.

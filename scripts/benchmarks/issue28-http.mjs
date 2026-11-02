@@ -6,6 +6,7 @@ import {execFileSync} from 'node:child_process';
 import os from 'node:os';
 import {performance} from 'node:perf_hooks';
 import {hash,root,safeOutput,sourceIdentity} from './issue28-generate.mjs';
+import {requireDockerRuntime} from '../lib/docker-only.mjs';
 
 export function percentile(values,p) {
   if(!values.length) throw Error('No latency samples');
@@ -25,6 +26,7 @@ export function validateResponse(body,bytes,{kind,key,snapshot}) {
   return body.items.length;
 }
 export async function benchmark(o) {
+  requireDockerRuntime('database HTTP/resource benchmark');
   const base=localUrl(o.baseUrl);
   if(fs.statSync(o.manifest).size>1024*1024)throw Error('Manifest exceeds one MiB');
   const manifest=JSON.parse(fs.readFileSync(o.manifest,'utf8'));

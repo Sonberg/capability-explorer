@@ -32,11 +32,12 @@
 #   SANDBOX_EXTRA_LABEL    additional label for cleanup of a nested group of containers
 #   SANDBOX_PASS_ENV       comma-separated host variables to forward, e.g. CE_FOUNDRY_API_KEY.
 #                          Nothing is forwarded unless named here; ignored with --offline.
-#   SANDBOX_ENGINE        docker or podman (default: docker, then podman if Docker is unavailable)
 #   SANDBOX_DOTNET_IMAGE / SANDBOX_NODE_IMAGE   override images
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
+source "$root/scripts/lib/container-engine.sh"
+ce_engine_choice
 offline=0
 docker_sock=0
 package_settings=0
@@ -54,22 +55,10 @@ done
 [[ $# -ge 2 ]] || { echo "usage: scripts/sandbox [--offline] [--docker] [--port N] <dotnet|node> <command...>" >&2; exit 2; }
 profile="$1"; shift
 
-engine="${SANDBOX_ENGINE:-}"
-if [[ -z "$engine" ]]; then
-  if command -v docker >/dev/null 2>&1; then
-    engine=docker
-  elif command -v podman >/dev/null 2>&1; then
-    engine=podman
-  else
-    echo "scripts/sandbox: Docker or Podman is required (or set SANDBOX_ENGINE)" >&2
-    exit 127
-  fi
+if [[ "$CE_ENGINE" == podman && $docker_sock -eq 1 ]]; then
+  ce_runtime_fail 'Podman socket/Testcontainers mode is not qualified in the core profile'; exit 2
 fi
-case "$engine" in
-  docker|podman) ;;
-  *) echo "SANDBOX_ENGINE must be docker or podman: $engine" >&2; exit 2 ;;
-esac
-command -v "$engine" >/dev/null 2>&1 || { echo "scripts/sandbox: container engine not found: $engine" >&2; exit 127; }
+ce_engine_init
 
 source "$root/config/runtime/images.env"
 case "$profile" in
@@ -77,6 +66,7 @@ case "$profile" in
   node)   image="${SANDBOX_NODE_IMAGE:-$NODE_IMAGE}" ;;
   *) echo "unknown profile: $profile" >&2; exit 2 ;;
 esac
+image="$(ce_image_ref "$image")"
 
 cache="$root/.sandbox-cache"
 mkdir -p "$cache/nuget" "$cache/nuget-http" "$cache/npm" "$cache/package-feeds"
@@ -108,6 +98,7 @@ args=(
   # Repository is mounted from the host; owner may differ from the container user.
   -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*'
 )
+[[ "$CE_ENGINE" != podman ]] || args+=(--userns keep-id)
 if [[ $package_settings -eq 0 ]]; then
   args+=(--tmpfs /work/.sandbox-cache/package-feeds:rw,noexec,nosuid,size=1m)
 fi
@@ -115,9 +106,11 @@ fi
 
 if [[ $offline -eq 1 ]]; then
   args+=(--network none)
-else
+elif [[ "$CE_ENGINE" == docker ]]; then
   # Services on the host (PostgreSQL, Ollama) are host.docker.internal, also on Linux where Docker does not add it.
   args+=(--network "${SANDBOX_NETWORK:-bridge}" --add-host host.docker.internal:host-gateway)
+elif [[ -n "${SANDBOX_NETWORK:-}" ]]; then
+  ce_runtime_fail 'custom Podman networks are not qualified in the core profile'; exit 2
 fi
 
 if [[ -n "$port" ]]; then
@@ -178,4 +171,4 @@ if [ -f /etc/sandbox/extra-ca.crt ]; then
 fi
 exec "$@"'
 
-exec "$engine" "${args[@]}" "$image" sh -c "$entry" sandbox "$@"
+ce_engine_exec "${args[@]}" "$image" sh -c "$entry" sandbox "$@"

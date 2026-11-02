@@ -1,0 +1,10 @@
+{
+  "schema": "ce.platform.v1",
+  "kind": "intake-receipt",
+  "attemptId": "attempt:alpha-1",
+  "enrollmentId": "enr:alpha-api",
+  "bundleContentSha256": "6666666666666666666666666666666666666666666666666666666666666666",
+  "status": "quarantined",
+  "recordedAt": "2026-11-02T08:06:00Z",
+  "errors": [{ "code": "review-required", "message": "Input requires scoped review" }]
+}

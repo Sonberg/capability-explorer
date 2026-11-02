@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "issue": 33,
+  "scope": "draft-envelope-shapes",
+  "baseline": "1e1122b62587eda7f3e2817c1619ba29ce292923",
+  "wireFamily": "ce.platform.v1",
+  "payloadFamily": "ce.v1",
+  "schema": "schema/platform/v1/envelope.schema.json",
+  "profileStatus": "owner-review-draft",
+  "formatAssertionsRequired": true,
+  "implemented": { "centralIntake": false, "authentication": false, "artifactByteVerification": false, "publicationStateMachine": false, "productApis": false, "viewpointAuthorization": false },
+  "canonicalization": {
+    "status": "proposed-not-implemented",
+    "scheme": "RFC8785-JCS",
+    "encoding": "UTF-8",
+    "hash": "SHA-256",
+    "subject": "evidence-bundle.content",
+    "excluded": ["publicationAttempt", "contentSha256"],
+    "reference": "https://www.rfc-editor.org/rfc/rfc8785"
+  },
+  "boundaries": [
+    { "id": "enrollment", "from": "registry", "to": "collector-and-intake", "status": "draft-shape", "profileKind": "enrollment", "purpose": "Versioned repository identity, declared membership and owner/producer role inputs; not self-authorizing enrollment." },
+    { "id": "evidence-bundle", "from": "collector", "to": "central-intake", "status": "draft-shape", "profileKind": "evidence-bundle", "purpose": "Repository/revision manifest referencing unchanged ce.v1 artifacts, explicit coverage and separate attempt metadata." },
+    { "id": "intake-receipt", "from": "central-intake", "to": "publisher", "status": "draft-shape", "profileKind": "intake-receipt", "purpose": "Received/validated/rejected/quarantined/published shapes; no proof of actual durability, authorization or state transitions." },
+    { "id": "alignment", "from": "central-evidence", "to": "product-preparation", "status": "design-only", "purpose": "Derived links retain source/input vectors, registry/binding/rule identities, uncertainty and original observations." },
+    { "id": "product-api", "from": "prepared-products", "to": "integration-layer", "status": "design-only", "purpose": "Logical versioned product contracts with immutable selections, bounded queries and evidence links; no service-per-product mandate." },
+    { "id": "viewpoint-projection", "from": "integration-layer", "to": "stakeholders", "status": "design-only", "purpose": "Solution/enterprise/business/information projections preserve source authorization, aggregation limits and product revision consistency." },
+    { "id": "team-feedback", "from": "central-findings", "to": "delivery-team", "status": "design-only", "purpose": "Scoped derived findings stay separate from original facts; delivery does not grant issue/PR/source-write or merge authority." }
+  ],
+  "terminology": {
+    "existingCapabilityRole": "repository-selection",
+    "notEquivalentTo": ["repository-cluster", "business-capability"],
+    "draftTerms": ["Repository enrollment", "Repository cluster", "Business capability", "Evidence bundle", "Repository representation", "Aligned finding", "Data product revision", "Viewpoint projection"]
+  },
+  "acceptance": [
+    { "id": "C1", "instrument": "dotnet-shape-tests", "positive": "Controlled_examples_conform_to_their_draft_profiles", "negative": "Wire_family_and_profile_cannot_be_silently_changed" },
+    { "id": "C2", "instrument": "dotnet-shape-tests", "positive": "Partial_artifact_coverage_can_have_no_entirely_omitted_unit", "negative": "Invalid_profile_values_fail" },
+    { "id": "C3", "instrument": "dotnet-shape-tests", "positive": "Attempt_metadata_is_outside_the_content_identity_boundary", "negative": "Shape_success_does_not_verify_digest_bytes_or_enrollment_authorization" },
+    { "id": "C4", "instrument": "dotnet-shape-tests", "positive": "Controlled_examples_conform_to_their_draft_profiles", "negative": "Publication_metadata_is_required_only_for_published_receipts" },
+    { "id": "C5", "instrument": "node-plan-tests", "positive": "catalogue_preserves_draft_scope", "negative": "catalogue_rejects_missing_boundary_or_runtime_claim" },
+    { "id": "C6", "instrument": "ordinary-local-ci", "positive": "exact-source-local-act-and-security", "negative": "stale-source-base-or-engine-receipt" }
+  ],
+  "futureSemanticChecks": ["enrollment-authorization", "artifact-byte-and-digest-verification", "cross-document-source-identity", "duplicate-and-conflicting-analysis", "atomic-last-good-publication", "late-replay-and-delta-ordering", "current-and-derived-source-access", "as-of-product-selection"]
+}

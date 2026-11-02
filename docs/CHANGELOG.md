@@ -11,6 +11,16 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Draft platform enrollment, evidence-bundle and intake-receipt shape profiles,
+  controlled conformance fixtures, a seven-boundary plan catalogue and cheap
+  validation checks. Proposed MADR-0020 preserves ce.v1 and distinguishes platform
+  contracts from analyzed application contracts; no central service is delivered.
+
+- Tool-free research evidence foundation with sealed synthetic source anchors,
+  independent council packet validation and failure-path tests. Proposed
+  MADR-0019 separates per-tool evaluation from single-tool introduction PRs;
+  no candidate dependency is adopted and issue #31 remains incomplete.
+
 - Opt-in PostgreSQL Explorer foundation: streamed validated imports, immutable CAS-published analysis snapshots, explicit default revisions, bounded SQL projections and paged core browsing. File mode remains the default; remaining database views and full issue #28 cutover are not complete.
 - Proposed MADR-0017/0018, deterministic opt-in workload tooling and an executable RuVector compatibility/recovery experiment. The tested RuVector image failed adoption prerequisites; no extension is adopted.
 
@@ -36,6 +46,7 @@ history or imply that existing private package versions are product releases.
 
 ### Changed
 
+- Add explicit Docker/Podman selection for direct sandbox and lockfile scans, with rootless-machine diagnosis and fail-closed guards on unqualified Podman paths. Full Podman act/Testcontainers/dev/audit support remains future work (MADR-0021).
 - PRs now merge only into main (MADR-0016); main-only local/hosted gates replace the historical stage-only policy. Existing PR #27 reconciles both histories without merging the separate catalog feature.
 - Preserve trusted native development alongside the sandbox CI profile; `make dev` now re-analyzes configured repositories in sandboxes before importing artifacts, with a private revision/hash receipt.
 

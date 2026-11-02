@@ -16,6 +16,8 @@ function write(root,path,text){mkdirSync(dirname(join(root,path)),{recursive:tru
 function fixture(run){
  const root=mkdtempSync(join(tmpdir(),'ce-postmerge-analysis-'));
  try{
+  mkdirSync(join(root,'scripts/lib'),{recursive:true});
+  copyFileSync(join(repository,'scripts/lib/container-engine.sh'),join(root,'scripts/lib/container-engine.sh'));
   write(root,'capabilities.json',JSON.stringify({capabilities:[{id:'one',repositories:[{id:'repo',location:'https://private.invalid/PRIVATE_LOCATION',ref:'main'}]}]}));
   write(root,'config/runtime/images.env','NODE_IMAGE=node@sha256:synthetic\n');
   write(root,'bindings.json','{"PRIVATE_BINDING":"synthetic"}\n');
@@ -146,6 +148,9 @@ test('make defaults to git authentication while preserving explicit overrides',(
 
 test('development startup imports saved artifacts unless re-analysis is explicitly enabled',()=>{
  for(const profile of ['native','sandbox'])fixture(root=>{
+  mkdirSync(join(root,'config/build'),{recursive:true});
+  mkdirSync(join(root,'platform'));
+  copyFileSync(join(repository,'config/build/container-engine.mk'),join(root,'config/build/container-engine.mk'));
   write(root,'scripts/analyze-all','#!/bin/sh\necho analyzed >> .sandbox-cache/startup-analysis\n');
   write(root,'scripts/sandbox','#!/bin/sh\nshift\nexec "$@"\n');
   write(root,'bin/dotnet','#!/bin/sh\nprintf "%s\\n" "$2" >> .sandbox-cache/startup-import\n');
@@ -244,7 +249,7 @@ else setTimeout(finish,process.env.CANCEL_EXTRACTION?30000:language==='cs'?180:8
 `);
  for(const path of ['scripts/analyze','scripts/github-token','scripts/capability-sources','scripts/sandbox','bin/dotnet','bin/node','bin/docker'])chmodSync(join(root,path),0o700);
  write(root,'events','');
- return {...process.env,PATH:join(root,'bin')+':'+process.env.PATH,PACKAGES:'0',CE_DATABASE:'',SANDBOX_PASS_ENV:'',SANDBOX_ENGINE:'docker',SANDBOX_LABEL:'ce-analyze=one'};
+ return {...process.env,PATH:join(root,'bin')+':'+process.env.PATH,PACKAGES:'0',CE_DATABASE:'',SANDBOX_PASS_ENV:'',CE_CONTAINER_ENGINE:'docker',SANDBOX_LABEL:'ce-analyze=one'};
 }
 function extractionEvents(root){return readFileSync(join(root,'events'),'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);}
 
@@ -330,9 +335,9 @@ test('parallel analysis preserves package lock arguments when optional extractor
 test('both make profiles export default and overridden analysis job limits to recipes',()=>{
  const env={...process.env};delete env.ANALYZE_JOBS;
  for(const profile of ['native','sandbox'])for(const jobs of [undefined,1,4]){
-  const args=['-s','-f',join(repository,'config/build',profile+'.mk'),'--eval',"print-analysis-jobs:\n\t@printf '%s\\n' \"$$ANALYZE_JOBS\"",'print-analysis-jobs'];
+  const args=['-s','-f',join(repository,'config/build',profile+'.mk'),'-f','/dev/stdin','print-analysis-jobs'];
   if(jobs!==undefined)args.push('ANALYZE_JOBS='+jobs);
-  const result=spawnSync('make',args,{cwd:repository,env,encoding:'utf8',timeout:20000});
+  const result=spawnSync('make',args,{cwd:repository,env,encoding:'utf8',input:'print-analysis-jobs:\n\t@printf \'%s\\n\' "$$ANALYZE_JOBS"\n',timeout:20000});
   assert.equal(result.status,0,result.stderr);assert.equal(result.stdout,String(jobs??2)+'\n');
  }
 });
@@ -341,6 +346,8 @@ test('analysis orchestration invalidates stale receipts before invalid input or 
  for(const invalidInput of [true,false])fixture(root=>{
   mkdirSync(join(root,'scripts'),{recursive:true});
   for(const name of ['analyze-all','analysis-capability-ids.mjs','analysis-receipt.mjs','capability-definitions.mjs'])copyFileSync(join(repository,'scripts',name),join(root,'scripts',name));
+  mkdirSync(join(root,'scripts/lib'),{recursive:true});
+  copyFileSync(join(repository,'scripts/lib/container-engine.sh'),join(root,'scripts/lib/container-engine.sh'));
   write(root,'scripts/sandbox','#!/bin/sh\nshift\nshift\nexec "$@"\n');
   write(root,'scripts/analyze','#!/bin/sh\nprintf "%s\\n" "$1" >> .sandbox-cache/attempted\nexit 1\n');
   write(root,'bin/git',`#!/bin/sh\ncase "$1" in rev-parse) printf '%s\\n' '${application}';; status) exit 0;; *) exit 1;; esac\n`);
