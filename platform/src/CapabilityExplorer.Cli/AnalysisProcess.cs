@@ -3,8 +3,9 @@ using CapabilityExplorer.Capabilities.Analysis;
 
 namespace CapabilityExplorer.Cli;
 
-internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisRun run, CancellationToken stop)
+internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisRun run, CancellationToken stop, IAnalysisContainerRuntime? containerRuntime = null)
 {
+    private readonly IAnalysisContainerRuntime _runtime = containerRuntime ?? new AnalysisDockerRuntime();
     public bool TerminationConfirmed { get; private set; } = true;
     public void CheckCancellation()
     {
@@ -16,6 +17,8 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
     public async Task<string> Run(string executable, IEnumerable<string> arguments, IReadOnlyDictionary<string,string>? environment = null, bool capture = false)
     {
         CheckCancellation();
+        var sandbox = executable == "scripts/sandbox";
+        if (sandbox) await _runtime.EnsureFrozen();
         var start = new ProcessStartInfo(executable) { WorkingDirectory = root, UseShellExecute = false,
             RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
@@ -28,19 +31,23 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
         start.Environment["SANDBOX_SOURCES"] = "";
         start.Environment["SANDBOX_LABEL"] = "ce-analyze=" + AnalysisWorkerCommand.HashText(root)[..16] + "-" + run.RunId + "-" + run.AttemptId;
         if (environment is not null) foreach (var pair in environment) start.Environment[pair.Key] = pair.Value;
+        if (sandbox) _runtime.ApplyEnvironment(start);
         var logPath = store.LogPath(run.RunId);
+        AnalysisPreparation.RejectLinks(logPath);
         if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("analysis host requires Linux or macOS");
         if (!File.Exists(logPath))
         {
             using var created = new FileStream(logPath,new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite });
         }
+        AnalysisPreparation.RejectLinks(logPath);
         using var log = new StreamWriter(new FileStream(logPath, FileMode.Append, FileAccess.Write, FileShare.Read));
         CheckCancellation();
         // ClaimNext durably persisted attempt intent before this method can be reached.
         using var child = Process.Start(start) ?? throw new InvalidOperationException("could not start preparation child");
         TerminationConfirmed = false;
-        var stdout = Pump(child.StandardOutput, capture ? null : log, capture);
-        var stderr = Pump(child.StandardError, capture ? null : log, false);
+        using var drain = new CancellationTokenSource();
+        var stdout = Pump(child.StandardOutput, capture ? null : log, capture, drain.Token);
+        var stderr = Pump(child.StandardError, capture ? null : log, false, drain.Token);
         try
         {
             child.StandardInput.Close();
@@ -51,10 +58,11 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
                 await Task.Delay(100);
             }
             await child.WaitForExitAsync();
-            var output = await stdout;
-            await stderr;
-            TerminationConfirmed = executable != "scripts/sandbox" || child.ExitCode == 0;
             if (child.ExitCode != 0) throw new InvalidOperationException("preparation child failed with exit " + child.ExitCode);
+            using var drainTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var output = await stdout.WaitAsync(drainTimeout.Token);
+            await stderr.WaitAsync(drainTimeout.Token);
+            TerminationConfirmed = true;
             CheckCancellation();
             return output;
         }
@@ -65,16 +73,18 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
             using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             try { await child.WaitForExitAsync(cleanup.Token); await Task.WhenAll(stdout,stderr).WaitAsync(cleanup.Token); }
             catch (Exception cleanupError) when (cleanupError is OperationCanceledException or IOException or InvalidOperationException or ObjectDisposedException) { }
+            if (sandbox) await _runtime.CleanupOwned(start.Environment["SANDBOX_LABEL"]!);
             throw;
         }
+        finally { drain.Cancel(); }
     }
 
-    private static async Task<string> Pump(StreamReader reader, StreamWriter? log, bool capture)
+    private static async Task<string> Pump(StreamReader reader, StreamWriter? log, bool capture, CancellationToken token)
     {
         var result = new System.Text.StringBuilder();
         var buffer = new char[4096];
         long count = 0;
-        while (await reader.ReadAsync(buffer) is var read && read != 0)
+        while (await reader.ReadAsync(buffer.AsMemory(),token) is var read && read != 0)
         {
             count += read;
             if (capture && count > 65536) throw new IOException("credential helper output exceeded limit");
