@@ -112,3 +112,54 @@ Credential-bearing host settings are not that catalogue. Explorer's old input
 shape is rejected with a migration explanation; only the host imports legacy
 secrets. The catalogue's feed ID is the non-secret credential/configuration
 reference. A catalogue is configured status, never host liveness.
+
+## Implementation verification
+
+The implementation at `c8fe85927a02971635d20aa1e3ecb56fe891555d` passed
+`make local-check` and `make pr-check` against fresh main
+`46104456754474fd792a38ebbd14cc964fe1e6e2` on 2026-11-02. The full local
+Actions job used the pinned runner and unchanged security/golden gates.
+The eventual review head must have its own exact-source receipt; this is not
+a reusable release permission.
+
+| Acceptance boundary | Executable evidence |
+|---|---|
+| Duplicate admission, history, shared owner and recovery block | `SourceCheckTests`: barrier admission, second-owner refusal and symmetric check/analysis uncertainty tests |
+| Attempt/config/ref/SHA fencing and cancellation ordering | `SourceCheckTests`: wrong attempt, terminal replay, changed frozen inputs and mismatched membership/revision cases |
+| Current versus frozen auth policy | `Accepted_inputs_are_frozen_and_configuration_auth_policy_and_integrity_are_bound`; Locked preparation explicitly supplies the run's accepted auth |
+| Async HTTP, stale locks, completion reload and persisted-but-not-queued errors | `SourceCheckApiTests` and `CapabilityApiTests`, including malformed-record 503 |
+| Host-only credentials and sanitized operational evidence | `HostAcquisitionTests`: controlled credential-required Git executable, local real Git, cancellation and journal secret-absence checks |
+| Feed migration, private backups, public catalogue and unsafe paths | `HostAcquisitionTests` and `PackageFeedSettingsTests`; invalid URL/credential, symlink and in-workspace override refusals |
+| Supported Explorer environments and offline mounts | `tests/explorer-environment.test.mjs`, `tests/container-engine-core.test.mjs`; actual native child plus Docker legacy-mask/read-only-catalogue probe |
+| Analysis acquisition cancellation and direct-entrypoint refusal | `AnalysisExecutionTests.Cancellation_during_host_git_interrupts_acquisition_and_preserves_unknown_execution`; `Direct_export_cli_refuses_before_creating_shared_cache` |
+| Existing behavior and extraction quality | Full local Actions job; protected C#/TS/SQL golden precision and coverage remain 100%, with no golden or threshold edits |
+
+Native validation passed 92 Capabilities, 182 Store and 269 Explorer tests before
+the final corruption regression; the final Linux job passed 92 Capabilities,
+181 Store, 270 Explorer and 37 Interpretation tests. The Store profile difference
+is the existing native-only `HostDocker` probe, which passed natively, not an
+unavailable test counted as successful. The standard native solution build
+reported zero managed warnings/errors; 78 affected Node tests passed.
+
+A separate running fixture exercised the supported native Explorer launcher and
+host worker: Check/Create returned 202 and reached done with the exact local Git
+SHA; Settings read the public catalogue and rejected PUT with 410. After both
+processes stopped, a real host analysis exported that local source, performed
+offline Docker C# extraction and guarded local publication with database and
+package acquisition explicitly disabled. No fixture secret appeared in its
+journals or captured logs.
+
+The full gate exposed an unrelated, already failing main-branch EF model-builder
+query-classification defect, independently reproduced on pristine main and hosted
+CI run `41531133368`. The operator separately authorized its two-file root-cause
+repair (`0ba53a9`, integrated as `4edbcfb`). Its new regression failed before the
+repair; 171 extractor tests and unchanged protected C# goldens passed afterward.
+The final integration also gives glossary HTTP fixtures their own journal rather
+than reading an interactive host's incompatible kernel-domain marker.
+
+Not tested: authentication against real private GitHub/package services, browser
+visual automation, power-loss durability, or distributed/cross-kernel operation.
+The credential-required fixture verifies the process boundary, not a remote
+provider's availability. Independent review identified frozen-auth matching and
+bounded-corruption-response defects; both have focused regressions. None of this
+authorizes automatic merge, deployment, recovery reset or publication.
