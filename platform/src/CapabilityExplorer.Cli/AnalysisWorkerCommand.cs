@@ -46,9 +46,9 @@ internal static class AnalysisWorkerCommand
                     return 0;
                 }
                 var configuration = Path.GetFullPath(options.GetValueOrDefault("capabilities") ?? "capabilities.json");
-                using var definitions = CapabilityStore.Open(configuration, Path.Combine(root, ".sandbox-cache/sources/snapshots.json"));
                 var bindings = options.GetValueOrDefault("bindings") ?? Environment.GetEnvironmentVariable("BINDINGS");
                 var receipt = command == "analysis-all" ? await AnalysisReceipt.Start(root,configuration,bindings) : null;
+                using var definitions = CapabilityStore.Open(configuration, Path.Combine(root, ".sandbox-cache/sources/snapshots.json"));
                 var completedRuns = new List<string>();
                 var ids = command == "analysis-all" ? definitions.Capabilities.Select(c => c.Id).ToArray()
                     : new[] { options.GetValueOrDefault("capability") ?? throw new ArgumentException("--capability is required") };
