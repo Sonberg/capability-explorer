@@ -117,5 +117,26 @@ public sealed class AnalysisCoordinationTests : IDisposable
         Assert.Throws<ArgumentNullException>(() => store.ReadLatest(null!));
         Assert.Throws<ArgumentException>(() => store.Admit("sales\n", _configuration, null, new()));
     }
+    [Fact]
+    public void Publication_permit_rejects_another_run_attempt_or_input_receipt()
+    {
+        var store = new FileRunStore(Root);
+        store.Admit("sales", _configuration, null, new());
+        using var owner = store.AcquireWorker();
+        var run = store.ClaimNext(owner)!;
+        var attempt = new AttemptIdentity(run.RunId, run.AttemptId!);
+        var manifest = store.BindResolved(owner, attempt, new(run.AcceptedInputsHash, new Dictionary<string, string> { ["sha"] = new('a', 40) }));
+        store.FinishExecution(owner, attempt, 0);
+        using (var permit = store.BeginPublication(owner, attempt, manifest))
+        {
+            permit.RequireIdentity(attempt, run.AcceptedInputsHash, manifest);
+            Assert.Throws<InvalidOperationException>(() => permit.RequireIdentity(new(new('0', 32), attempt.AttemptId), run.AcceptedInputsHash, manifest));
+            Assert.Throws<InvalidOperationException>(() => permit.RequireIdentity(new(attempt.RunId, new('0', 32)), run.AcceptedInputsHash, manifest));
+            Assert.Throws<InvalidOperationException>(() => permit.RequireIdentity(attempt, new('0', 64), manifest));
+            Assert.Throws<InvalidOperationException>(() => permit.RequireIdentity(attempt, run.AcceptedInputsHash, new('0', 64)));
+            Assert.Empty(store.ReadRun(run.RunId).Effects!);
+        }
+        Assert.Equal("unknown", store.ReadRun(run.RunId).State);
+    }
     public void Dispose() => Directory.Delete(_directory, true);
 }

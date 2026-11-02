@@ -22,6 +22,15 @@ public sealed class PublicationPermit : IDisposable
         if (AnalysisPaths.Hash(AnalysisPaths.ReadBounded(resolved)) != _run.ManifestHash)
             throw new InvalidDataException("resolved inputs changed during publication");
     }
+    /// <summary>Binds the caller's publication evidence to this permit before any external effect.</summary>
+    public void RequireIdentity(AttemptIdentity identity, string acceptedInputsHash, string manifestHash)
+    {
+        Validate();
+        ArgumentNullException.ThrowIfNull(identity);
+        if (identity.RunId != _run.RunId || identity.AttemptId != _run.AttemptId ||
+            acceptedInputsHash != _run.AcceptedInputsHash || manifestHash != _run.ManifestHash)
+            throw new InvalidOperationException("publication evidence belongs to another run, attempt or immutable input manifest");
+    }
     public void Intent(string surface, string destination)
     {
         Validate();
