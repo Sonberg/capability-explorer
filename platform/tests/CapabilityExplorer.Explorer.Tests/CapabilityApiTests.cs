@@ -10,7 +10,15 @@ namespace CapabilityExplorer.Tests;
 /// <summary>Explorer with its own capability file and workspace, pointing at the fixture repositories.</summary>
 public sealed class CapabilityExplorerFactory : WebApplicationFactory<Program>
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("ce-capabilities").FullName;
+    private readonly string _dir = PhysicalTemporaryDirectory();
+
+    private static string PhysicalTemporaryDirectory()
+    {
+        var directory = Directory.CreateTempSubdirectory("ce-capabilities").FullName;
+        // macOS reports /var/folders through a symlink; the journal intentionally rejects symlink ancestors.
+        return OperatingSystem.IsMacOS() && directory.StartsWith("/var/", StringComparison.Ordinal)
+            ? "/private" + directory : directory;
+    }
 
     public CapabilityExplorerFactory()
     {
