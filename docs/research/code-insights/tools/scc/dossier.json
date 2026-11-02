@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 1,
+  "proposal": {
+    "id": "scc",
+    "mode": "inventory-only",
+    "role": "inventory",
+    "gap": "Identify languages and physical source volumes outside implemented semantic extractors; file enumeration alone is already available",
+    "executionMethod": "deterministic heuristic",
+    "epistemicStatus": "derived",
+    "baseline": "1e1122b62587eda7f3e2817c1619ba29ce292923",
+    "sourceCommit": "c651b07a7d3aa6e97a476380eef0f478a53719a3",
+    "criteria": [
+      "Before any trial freeze a 24-32 file independent oracle; the foundation three-file corpus is not sufficient trial coverage",
+      "Exact manifest reconciliation and two predefined correct insights beyond path/hash and extension classification, with no unsupported architectural fact promotion",
+      "No source writes, target execution or extraction egress; unchanged canonical results in fresh processes and relocated mounts; stay inside the fixed resource envelope"
+    ],
+    "requiredCases": [
+      "manifest-and-language",
+      "line-conventions-and-unknowns",
+      "hostile-config-and-containment",
+      "repeatability-and-marginal-value"
+    ],
+    "budget": {
+      "paidCalls": 0,
+      "minutes": 20,
+      "downloadGiB": 2,
+      "outputGiB": 1,
+      "reserveGiB": 10
+    },
+    "inputStatus": "foundation references only; expanded trial oracle not yet delivered",
+    "corpus": {
+      "path": "config/research/foundation.json",
+      "sha256": "b861bae6ca3cc98bec243e231b8d3edfcefeb979160d599b7db7d9cea6efa230"
+    },
+    "oracle": {
+      "path": "tests/fixtures/research/oracle.json",
+      "sha256": "0adf07532a3aef8afde90bdfae2a9cdf1d45323dcd0988fb308829603f7190c7"
+    }
+  },
+  "authors": [
+    "/root"
+  ],
+  "references": [
+    {
+      "id": "R1",
+      "url": "https://api.github.com/repos/boyter/scc/releases/latest",
+      "claim": "Release metadata is not local artifact verification",
+      "kind": "primary-source",
+      "status": "inspected"
+    },
+    {
+      "id": "R2",
+      "url": "https://github.com/boyter/scc/blob/c651b07a7d3aa6e97a476380eef0f478a53719a3/processor/processor.go",
+      "claim": "Stable source version declaration",
+      "kind": "primary-source",
+      "status": "inspected"
+    },
+    {
+      "id": "R3",
+      "url": "https://github.com/boyter/scc/blob/c651b07a7d3aa6e97a476380eef0f478a53719a3/config.go",
+      "claim": "Configuration discovery and explicit override require controlled wrapper",
+      "kind": "primary-source",
+      "status": "inspected"
+    },
+    {
+      "id": "R4",
+      "url": "https://github.com/boyter/scc/blob/c651b07a7d3aa6e97a476380eef0f478a53719a3/go.mod",
+      "claim": "Go toolchain/dependency closure needs exact-source qualification",
+      "kind": "primary-source",
+      "status": "inspected"
+    },
+    {
+      "id": "R5",
+      "url": "https://github.com/boyter/scc/blob/c651b07a7d3aa6e97a476380eef0f478a53719a3/main.go",
+      "claim": "Entrypoint argument/configuration handling",
+      "kind": "primary-source",
+      "status": "inspected"
+    },
+    {
+      "id": "R6",
+      "url": "https://github.com/boyter/scc/blob/c651b07a7d3aa6e97a476380eef0f478a53719a3/Dockerfile",
+      "claim": "Mutable image and amd64 upstream build choices",
+      "kind": "primary-source",
+      "status": "inspected"
+    },
+    {
+      "id": "R7",
+      "url": "https://api.github.com/repos/boyter/scc/git/tags/f9ab68bf05ec0d82a6129738aa2fcc148313e472",
+      "claim": "Annotated stable tag source identity",
+      "kind": "primary-source",
+      "status": "inspected"
+    },
+    {
+      "id": "R8",
+      "url": "https://github.com/boyter/scc/blob/44b15f47bbe6a5888c8ecd47f027edd41aabefd4/processor/processor.go",
+      "claim": "Historical beta source must not supply stable runtime evidence",
+      "kind": "primary-source",
+      "status": "inspected"
+    }
+  ],
+  "reviews": [
+    {
+      "role": "sme",
+      "agent": "/root/issue28_queries",
+      "subjectHash": "00109e1b6a3e0d99c6774eccf8bd2a8c5cf1b45017097caaea5adead11342bb4",
+      "references": [
+        "R1",
+        "R3",
+        "R5",
+        "R7"
+      ],
+      "brief": {
+        "path": "docs/research/code-insights/tools/scc/sme.md",
+        "sha256": "4753cc41ba5ee05abe0da89239dab89a6fba217a8321d86a0a404b2b19566771"
+      }
+    },
+    {
+      "role": "adversary",
+      "agent": "/root/issue28_ruvector",
+      "subjectHash": "00109e1b6a3e0d99c6774eccf8bd2a8c5cf1b45017097caaea5adead11342bb4",
+      "references": [
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R8"
+      ],
+      "brief": {
+        "path": "docs/research/code-insights/tools/scc/adversary.md",
+        "sha256": "614e9b9980ed1636c98abaaddfadc122dfb9932118b495b6556c0a7e54d1f45c"
+      }
+    },
+    {
+      "role": "advisor",
+      "agent": "/root/issue28_store",
+      "subjectHash": "00109e1b6a3e0d99c6774eccf8bd2a8c5cf1b45017097caaea5adead11342bb4",
+      "references": [
+        "R3",
+        "R4",
+        "R5",
+        "R6"
+      ],
+      "brief": {
+        "path": "docs/research/code-insights/tools/scc/advisor.md",
+        "sha256": "91d02e9ef4e1691d4121ba56a6dce0c871072bb83d473c1b98bbc03b0b54e967"
+      }
+    },
+    {
+      "role": "judge",
+      "agent": "/root/scc_final_judge",
+      "subjectHash": "00109e1b6a3e0d99c6774eccf8bd2a8c5cf1b45017097caaea5adead11342bb4",
+      "references": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8"
+      ],
+      "brief": {
+        "path": "docs/research/code-insights/tools/scc/judge.md",
+        "sha256": "02cab227f89e6ab5e29c095b649cf989d6b9b3137be5ade9c5ee8b382641e999"
+      },
+      "packetHash": "d47cee9626dfb6b350cf4a10a6b17ec3a2b68af9d22552d1107a7335a7123f09"
+    }
+  ],
+  "blockers": [
+    {
+      "id": "B1",
+      "reason": "Owner foundation merge not yet observed",
+      "status": "open"
+    },
+    {
+      "id": "B2",
+      "reason": "Expanded independent24-32file oracle and held-out cases absent",
+      "status": "open"
+    },
+    {
+      "id": "B3",
+      "reason": "Actual executable and dependency security/license/source-to-artifact evidence unverified",
+      "status": "open"
+    },
+    {
+      "id": "B4",
+      "reason": "Wrapper/isolation/negative controls not implemented or trialed",
+      "status": "open"
+    },
+    {
+      "id": "B5",
+      "reason": "Preparation cost and native artifact qualification unmeasured within budget",
+      "status": "open"
+    }
+  ],
+  "deskDecision": "defer"
+}
