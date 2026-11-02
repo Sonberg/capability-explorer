@@ -10,6 +10,8 @@ internal static class AnalysisPublication
 {
     internal static async Task Publish(string root, AnalysisRun run, PreparedAnalysis prepared, PublicationPermit permit)
     {
+        permit.RequireIdentity(new AttemptIdentity(run.RunId,run.AttemptId!),run.AcceptedInputsHash,run.ManifestHash!);
+        prepared = AnalysisPublicationBinding.Validate(root,run,prepared);
         var files = new List<string>();
         var canonicalHashes = new HashSet<string>(StringComparer.Ordinal);
         // Validate every artifact before the first externally visible effect.

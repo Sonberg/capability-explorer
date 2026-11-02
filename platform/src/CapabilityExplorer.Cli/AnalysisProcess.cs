@@ -19,7 +19,8 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
         CheckCancellation();
         var sandbox = executable == "scripts/sandbox";
         if (sandbox) await _runtime.EnsureFrozen();
-        var start = new ProcessStartInfo(executable) { WorkingDirectory = root, UseShellExecute = false,
+        var resolvedExecutable = executable.Contains(Path.DirectorySeparatorChar) ? Path.GetFullPath(Path.Combine(root,executable)) : executable;
+        var start = new ProcessStartInfo(resolvedExecutable) { WorkingDirectory = root, UseShellExecute = false,
             RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         start.Environment.Clear();
