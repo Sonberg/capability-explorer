@@ -31,6 +31,24 @@ public sealed class SharedResourceTests : IDisposable
     }
 
     [Fact]
+    public void Ef_model_builders_and_their_generic_extensions_do_not_query_tables()
+    {
+        File.WriteAllText(Path.Combine(_root, "Shop.Stubs", "ModelConfigurationExtensions.cs"), """
+            namespace Microsoft.EntityFrameworkCore;
+            public static class ModelConfigurationExtensions
+            {
+                public static EntityTypeBuilder<T> ToStorage<T>(this EntityTypeBuilder<T> builder) where T : class => builder;
+            }
+            """);
+        var configuration = Path.Combine(_root, "Shop.Data", "ShopDb.cs");
+        File.WriteAllText(configuration, File.ReadAllText(configuration)
+            .Replace(".ToTable(\"Orders\")", ".ToStorage().ToTable(\"Orders\")", StringComparison.Ordinal));
+        Assert.DoesNotContain(_edges.Value, edge => edge.From.Contains(".OnModelCreating(", StringComparison.Ordinal)
+            && edge.Relation is "READS" or "WRITES");
+        Assert.Contains(_edges.Value, edge => edge.Relation == "MAPS_TO" && edge.From == "cs|shop|Shop.Data|T:Shop.Data.Order");
+    }
+
+    [Fact]
     public void Supabase_table_model_is_read_and_written_on_the_node_its_mapping_points_at()
     {
         var table = Targets("sql|", "reviews").Single();
