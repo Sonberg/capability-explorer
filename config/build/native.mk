@@ -1,5 +1,6 @@
 include config/runtime/images.env
 include config/build/container-engine.mk
+CE_ENGINE_COMMAND := scripts/container-engine
 # Trusted project development runs on the host for fast IDE, debugger and hot-reload loops.
 # Only capability analysis uses scripts/sandbox; analysed repositories are untrusted input.
 DOTNET := dotnet
@@ -16,6 +17,7 @@ help:
 	@echo "make install-git-hooks  install this repository pre-push gate (preserves existing hooks)"
 	@echo "make actions-audit   audit workflow dependencies with Wayne Ashley Berry gh-act (separate tool)"
 	@echo "make dev             local environment: PostgreSQL (pgvector) + optional Ollama, import artifacts, then explore"
+	@echo "     CE_CONTAINER_ENGINE=auto prefers Docker, then Podman; set docker or podman to pin"
 	@echo "     DEV_OLLAMA=0 skips Ollama; an Ollama startup or pull failure is non-fatal"
 	@echo "make frontend        run the Vite frontend dev server on the host (hot reload)"
 	@echo "make backend         run the Explorer API on the host at http://127.0.0.1:$(PORT)"
@@ -226,16 +228,16 @@ test-store: build
 # 127.0.0.1:11434 only. The native Ollama app on the same port works too
 # (and uses the GPU, which Docker on macOS cannot). OLLAMA_CHAT=none skips the chat model (a few GB).
 # Saves .sandbox-cache/model.json unless settings were already saved (from the Settings page or an earlier run).
-OLLAMA_IMAGE ?= ollama/ollama:0.40.5
+OLLAMA_IMAGE ?= docker.io/ollama/ollama:0.40.5
 OLLAMA_EMBED ?= nomic-embed-text
 OLLAMA_CHAT ?= qwen2.5:7b
 ollama:
-	@curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1 || 20 20 12 61 701 702 100CE_CONTAINER_ENGINE) start ce-ollama >/dev/null 2>&1 || \
-	  20 20 12 61 701 702 100CE_CONTAINER_ENGINE) run -d --name ce-ollama -p 127.0.0.1:11434:11434 -v ce-ollama:/root/.ollama $(OLLAMA_IMAGE) >/dev/null
-	@if [ -n "$${SANDBOX_EXTRA_CA_FILE:-}" ] && [ -n "$$(20 20 12 61 701 702 100CE_CONTAINER_ENGINE) ps -aq --filter name=ce-ollama)" ]; then bash scripts/ollama-ca 20 20 12 61 701 702 100CE_CONTAINER_ENGINE) ce-ollama "$$SANDBOX_EXTRA_CA_FILE"; fi
+	@curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1 || $(CE_ENGINE_COMMAND) start ce-ollama >/dev/null 2>&1 || \
+	  $(CE_ENGINE_COMMAND) run -d --name ce-ollama -p 127.0.0.1:11434:11434 -v ce-ollama:/root/.ollama $(OLLAMA_IMAGE) >/dev/null
+	@if [ -n "$${SANDBOX_EXTRA_CA_FILE:-}" ] && [ -n "$$($(CE_ENGINE_COMMAND) ps -aq --filter name=ce-ollama)" ]; then bash scripts/ollama-ca $(CE_ENGINE_COMMAND) ce-ollama "$$SANDBOX_EXTRA_CA_FILE"; fi
 	@for i in $$(seq 30); do curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1 && break; sleep 1; done
-	curl -fsS http://127.0.0.1:11434/api/pull -d '{"model":"$(OLLAMA_EMBED)","stream":false}' >/dev/null || { echo "Ollama model pull failed; inspect 20 20 12 61 701 702 100CE_CONTAINER_ENGINE) logs ce-ollama for TLS or network-policy details" >&2; exit 1; }
-	[ "$(OLLAMA_CHAT)" = none ] || curl -fsS http://127.0.0.1:11434/api/pull -d '{"model":"$(OLLAMA_CHAT)","stream":false}' >/dev/null || { echo "Ollama model pull failed; inspect 20 20 12 61 701 702 100CE_CONTAINER_ENGINE) logs ce-ollama for TLS or network-policy details" >&2; exit 1; }
+	curl -fsS http://127.0.0.1:11434/api/pull -d '{"model":"$(OLLAMA_EMBED)","stream":false}' >/dev/null || { echo "Ollama model pull failed; inspect $(CE_ENGINE_COMMAND) logs ce-ollama for TLS or network-policy details" >&2; exit 1; }
+	[ "$(OLLAMA_CHAT)" = none ] || curl -fsS http://127.0.0.1:11434/api/pull -d '{"model":"$(OLLAMA_CHAT)","stream":false}' >/dev/null || { echo "Ollama model pull failed; inspect $(CE_ENGINE_COMMAND) logs ce-ollama for TLS or network-policy details" >&2; exit 1; }
 	@if [ -f .sandbox-cache/model.json ]; then echo "kept existing .sandbox-cache/model.json (change it on the Settings page)"; else \
 	  chat='"$(OLLAMA_CHAT)"'; [ "$(OLLAMA_CHAT)" = none ] && chat=null; \
 	  mkdir -p .sandbox-cache && (umask 077 && printf '{\n  "endpoint": "http://127.0.0.1:11434/v1",\n  "chatModel": %s,\n  "embeddingModel": "%s"\n}\n' \
@@ -244,16 +246,16 @@ ollama:
 
 # Local PostgreSQL with pgvector, on the host's 127.0.0.1 only (dev credentials, never a shared database).
 # Data survives restarts in the ce-postgres volume (docker volume rm ce-postgres resets).
-PG_IMAGE ?= pgvector/pgvector:0.8.6-pg17
+PG_IMAGE ?= docker.io/pgvector/pgvector:0.8.6-pg17
 PG_PORT ?= 5433
 DEV_DATABASE = Host=127.0.0.1;Port=$(PG_PORT);Database=ce;Username=ce;Password=ce
 comma := ,
 postgres:
-	@20 20 12 61 701 702 100CE_CONTAINER_ENGINE) start ce-postgres >/dev/null 2>&1 || 20 20 12 61 701 702 100CE_CONTAINER_ENGINE) run -d --name ce-postgres -p 127.0.0.1:$(PG_PORT):5432 \
+	@$(CE_ENGINE_COMMAND) start ce-postgres >/dev/null 2>&1 || $(CE_ENGINE_COMMAND) run -d --name ce-postgres -p 127.0.0.1:$(PG_PORT):5432 \
 	  -e POSTGRES_USER=ce -e POSTGRES_PASSWORD=ce -e POSTGRES_DB=ce -v ce-postgres:/var/lib/postgresql/data $(PG_IMAGE) >/dev/null
 	@# Over TCP: during first-time init the server only listens on its socket, so a socket check is ready too early.
-	@for i in $$(seq 60); do 20 20 12 61 701 702 100CE_CONTAINER_ENGINE) exec ce-postgres pg_isready -h 127.0.0.1 -U ce -d ce >/dev/null 2>&1 && break; sleep 1; done
-	@20 20 12 61 701 702 100CE_CONTAINER_ENGINE) exec ce-postgres pg_isready -h 127.0.0.1 -U ce -d ce >/dev/null || { echo "PostgreSQL did not start: 20 20 12 61 701 702 100CE_CONTAINER_ENGINE) logs ce-postgres"; exit 1; }
+	@for i in $$(seq 60); do $(CE_ENGINE_COMMAND) exec ce-postgres pg_isready -h 127.0.0.1 -U ce -d ce >/dev/null 2>&1 && break; sleep 1; done
+	@$(CE_ENGINE_COMMAND) exec ce-postgres pg_isready -h 127.0.0.1 -U ce -d ce >/dev/null || { echo "PostgreSQL did not start: $(CE_ENGINE_COMMAND) logs ce-postgres"; exit 1; }
 	@echo "PostgreSQL ready: CE_DATABASE='$(DEV_DATABASE)'"
 
 # Everything for local development. Imports what explore shows ($(ARTIFACTS)) and embeds it (unchanged artifacts and
@@ -261,9 +263,14 @@ postgres:
 # make analyze CAPABILITY=<id> CE_DATABASE='...' (printed above) while it runs; the explorer reloads by itself.
 # The explorer's Analyze code button queues a request that the analyze worker, started next to it, runs on the host.
 dev: dev-data
+ifeq ($(CE_SELECTED_CONTAINER_ENGINE),podman)
+	@echo "-- Analyze worker skipped; analysis pipelines remain Docker-only"
+	@$(MAKE) --no-print-directory explore CE_DATABASE='$(DEV_DATABASE)'
+else
 	@CE_DATABASE='$(DEV_DATABASE)' GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) scripts/analyze-worker $(CAPABILITIES) </dev/null & \
 	  trap "kill $$! 2>/dev/null" EXIT; \
 	  $(MAKE) --no-print-directory explore CE_DATABASE='$(DEV_DATABASE)'
+endif
 
 analyze-worker: build
 	GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) scripts/analyze-worker $(CAPABILITIES)
@@ -282,7 +289,7 @@ dev-data: build postgres
 	  dotnet $$ce embed || echo "-- embeddings not updated (see above); similarity search uses what is stored"'
 
 dev-down:
-	-20 20 12 61 701 702 100CE_CONTAINER_ENGINE) stop ce-postgres ce-ollama
+	-$(CE_ENGINE_COMMAND) stop ce-postgres ce-ollama
 
 clean:
 	rm -rf fixtures/.repos fixtures/.work extractors/ts/node_modules $(UI)/node_modules platform/src/CapabilityExplorer.Explorer/wwwroot

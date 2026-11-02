@@ -1,24 +1,32 @@
 # Podman core profile
 
 This is the first slice of issue #34, not complete project Podman support.
-Docker remains the default. The existing full local CI/security gate still uses
-Docker and remains mandatory before pushing a PR against current main.
+Docker is preferred when available; automatic selection uses Podman when Docker
+is not installed. The existing full local CI/security gate still uses Docker and
+remains mandatory before pushing a PR against current main.
 
 ## Commands
 
 ```sh
 scripts/container-engine-doctor
+make dev DEV_OLLAMA=0
 CE_CONTAINER_ENGINE=podman CE_PODMAN_CONNECTION=my-rootless-machine scripts/container-engine-doctor
 CE_CONTAINER_ENGINE=podman CE_PODMAN_CONNECTION=my-rootless-machine scripts/sandbox --offline node node --version
 CE_CONTAINER_ENGINE=podman CE_PODMAN_CONNECTION=my-rootless-machine scripts/security-check
+CE_CONTAINER_ENGINE=podman CE_PODMAN_CONNECTION=my-rootless-machine make dev DEV_OLLAMA=0
 make test-container-engine-core
 ```
 
 Install Podman and create/start your own rootless machine using the official
 Podman instructions. The project does not install a privileged helper, change
-global connection defaults or create a Docker socket alias. On Linux omit
-`CE_PODMAN_CONNECTION`; native rootless mode is forced. Unknown or empty engine
-values fail. An unavailable Podman never executes Docker.
+global connection defaults or create a Docker socket alias. When unset,
+`CE_CONTAINER_ENGINE=auto` selects Docker if its CLI is installed, otherwise
+Podman; the selected engine is validated and never replaced after a failure.
+Set `CE_CONTAINER_ENGINE=docker|podman` to pin it. On Linux omit
+`CE_PODMAN_CONNECTION`; native rootless mode is forced. On macOS, automatic
+selection accepts exactly one running qualified Podman machine; set the
+connection explicitly if multiple machines are running. Unknown or empty
+engine values fail.
 
 macOS connection metadata must mark a machine and identify an SSH connection on
 127.0.0.1 to its user-scoped Podman socket. Arbitrary remote/rootful connections
@@ -36,7 +44,8 @@ outside this initial adapter scope.
 | Doctor and direct sandbox without socket | Existing default, live core probe | Live macOS arm64 rootless-machine probe |
 | Lockfile security scan | Existing mandatory gate | Same pinned Trivy arguments; live result recorded separately |
 | Linux native rootless core | Existing Docker CI | Refusal/argv tests only; live host unavailable |
-| Full Make build/test/dev/analysis | Existing profile | Explicit refusal pending later qualification |
+| Native local `dev` services and explorer | Existing profile | Podman supported through the validated machine context; build/test/analysis remain Docker-only |
+| `EXECUTION=sandbox` dev | Existing Docker gate | Explicit refusal; no socket alias |
 | Nested act and .NET Testcontainers | Existing Docker gate | Explicit refusal; no socket alias |
 | Full security collection and database benchmarks | Existing Docker paths | Explicit refusal |
 

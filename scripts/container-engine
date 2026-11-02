@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+source "$root/scripts/lib/container-engine.sh"
+[[ $# -gt 0 ]] || { echo 'usage: scripts/container-engine <engine arguments...>' >&2; exit 2; }
+ce_engine_init
+ce_engine_exec "$@"

@@ -12,25 +12,29 @@ security-audit equivalence. Existing Docker workflows must retain their gates.
 
 ## Decision
 
-Select exactly `docker` or `podman` through `CE_CONTAINER_ENGINE`; only an unset
-variable defaults to Docker. Never fall back or install a global Docker alias.
-Capture and validate the selected context before execution. Metadata probes are
-bounded and diagnostics omit connection credentials and raw paths.
+Select `docker` or `podman` through `CE_CONTAINER_ENGINE`; when unset or set to
+`auto`, prefer an installed Docker CLI, otherwise use Podman. Validate the
+selected engine and never fall back after selection or install a global Docker
+alias. Capture and validate the selected context before execution. Metadata
+probes are bounded and diagnostics omit connection credentials and raw paths.
 
-The first Podman profile covers direct `scripts/sandbox` execution without a
-socket and `scripts/security-check`. macOS requires an explicit named loopback
-rootless Podman machine connection. Linux forces native rootless mode. Runtime
-diagnosis reports observed facts and a context fingerprint, not certification.
+The initial Podman profile covers direct `scripts/sandbox` execution without a
+socket and `scripts/security-check`. Native local development services and the
+native `make dev` flow are now additionally qualified through the same validated
+engine context. macOS requires an explicit named loopback rootless Podman machine
+connection. Without `CE_PODMAN_CONNECTION`, macOS accepts exactly one running
+Podman machine. Linux forces native rootless mode. Runtime diagnosis reports
+observed facts and a context fingerprint, not certification.
 
 Preserve non-root users, dropped capabilities, no-new-privileges, read-only root
 and analyzed sources, bounded resources, offline networking and argv boundaries.
 The trusted project workspace/build cache remains writable. Podman uses keep-id
 for host-owned caches and fully qualified references to existing pinned images.
 
-Until separately qualified, explicit Podman requests for full Make pipelines,
-act, Testcontainers, analysis workers, dev services, full security collection and
-database experiments fail before legacy Docker execution. Ordinary CI and PR
-publication continue through the existing Docker gate; this is not a bypass.
+Explicit Podman requests for full Make build/test pipelines, sandbox execution,
+act, Testcontainers, analysis workers, full security collection and database
+experiments fail before legacy Docker execution. Ordinary CI and PR publication
+continue through the existing Docker gate; this is not a bypass.
 
 ## Alternatives
 

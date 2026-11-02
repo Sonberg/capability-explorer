@@ -33,7 +33,8 @@ if(engine==='docker'){
  else if(op==='version')console.log(process.env.MOCK_DOCKER_METADATA??'29.0.0|29.0.0|linux|arm64|Docker Engine');
  else if(op==='info')console.log(process.env.MOCK_DOCKER_ID??'fixture-daemon');
 } else if(engine==='podman'){
- if(op==='system'&&args[1]==='connection')console.log(process.env.MOCK_PODMAN_CONNECTION
+ if(op==='machine'&&args[1]==='list')console.log(process.env.MOCK_PODMAN_MACHINES??'ce-validation|true');
+ else if(op==='system'&&args[1]==='connection')console.log(process.env.MOCK_PODMAN_CONNECTION
    ??('ssh://core@127.0.0.1:34567/run/user/501/podman/podman.sock|true|'+process.env.TEST_PODMAN_IDENTITY));
  else if(op==='info')console.log(full.some(a=>a.includes('.Store.GraphRoot'))
    ?(process.env.MOCK_PODMAN_STORAGE??'/home/core/.local/share/containers/storage|fixture-machine')
@@ -100,6 +101,12 @@ test('doctor defaults to Docker and records a probe-only backend/context identit
   assert.ok(f.calls().every(c => c.engine === 'docker'));
 });
 
+test('auto selects Podman when Docker is not installed', t => {
+  const f = fixture(t, ['podman']), r = f.run('scripts/container-engine-doctor'); passed(r);
+  assert.equal(doctor(r).backend, 'podman');
+  assert.ok(f.calls().every(call => call.engine === 'podman'));
+});
+
 test('Linux Podman works without a Docker executable and overrides ambient remote selectors', t => {
   const f = fixture(t, ['podman']);
   const r = f.run('scripts/container-engine-doctor', [], { CE_CONTAINER_ENGINE: 'podman',
@@ -111,6 +118,17 @@ test('Linux Podman works without a Docker executable and overrides ambient remot
     assert.equal(c.engine, 'podman'); assert.ok(c.args.includes('--remote=false'));
     assert.ok(Object.values(c.selectors).every(value => value === null));
   }
+});
+
+test('container command wrapper pins Podman service operations to the validated context', t => {
+  const f = fixture(t), r = f.run('scripts/container-engine', ['ps', '-aq', '--filter', 'name=ce-postgres'], {
+    CE_CONTAINER_ENGINE: 'podman', CONTAINER_HOST: 'ssh://not-selected', CONTAINER_CONNECTION: 'not-selected',
+    DOCKER_HOST: 'tcp://not-selected:2375', DOCKER_CONTEXT: 'not-selected' }); passed(r);
+  const calls = f.calls();
+  assert.equal(operation(calls.at(-1))[0], 'ps');
+  assert.ok(calls.every(call => call.engine === 'podman'));
+  assert.ok(calls.filter(call => operation(call)[0] !== 'system').every(call => call.args.includes('--remote=false')));
+  assert.ok(calls.every(call => Object.values(call.selectors).every(value => value === null)));
 });
 
 test('macOS freezes endpoint and identity after discovering the explicitly selected machine', t => {
@@ -127,6 +145,22 @@ test('macOS freezes endpoint and identity after discovering the explicitly selec
   }
   for (const c of calls) assert.ok(Object.values(c.selectors).every(value => value === null));
   assert.doesNotMatch(r.stdout, /SYNTHETIC-KEY-MATERIAL|synthetic machine identity/);
+});
+
+test('macOS auto-detects its sole running Podman machine', t => {
+  const f = fixture(t), r = f.run('scripts/container-engine-doctor', [], { CE_CONTAINER_ENGINE: 'podman', MOCK_HOST_OS: 'Darwin' });
+  passed(r); assert.equal(doctor(r).connection, 'ce-validation');
+  const calls = f.calls();
+  assert.equal(calls.filter(call => operation(call)[0] === 'machine').length, 1);
+  assert.ok(calls.filter(call => operation(call)[0] !== 'machine' && operation(call)[0] !== 'system')
+    .every(call => call.args.slice(0, 4).includes('--url') && call.args.includes('--identity')));
+});
+
+test('macOS requires an explicit connection when multiple Podman machines are running', t => {
+  const f = fixture(t), r = f.run('scripts/container-engine-doctor', [], {
+    CE_CONTAINER_ENGINE: 'podman', MOCK_HOST_OS: 'Darwin', MOCK_PODMAN_MACHINES: 'first|true\nsecond|true' });
+  refused(r, /multiple Podman machines are running/);
+  assert.equal(f.calls().filter(call => operation(call)[0] === 'system').length, 0);
 });
 
 for (const kind of ['missing', 'relative', 'directory', 'symlink', 'control', 'extra-field'])
@@ -147,8 +181,8 @@ for (const [name, env, message, beforeCli] of [
   ['empty explicit engine', { CE_CONTAINER_ENGINE: '' }, /must be docker or podman/, true],
   ['engine shell fragment', { CE_CONTAINER_ENGINE: 'podman; touch /tmp/never-execute' }, /must be docker or podman/, true],
   ['Linux remote request', { CE_CONTAINER_ENGINE: 'podman', CE_PODMAN_CONNECTION: 'remote' }, /native rootless/, true],
-  ['missing mac machine', { CE_CONTAINER_ENGINE: 'podman', MOCK_HOST_OS: 'Darwin' }, /explicit CE_PODMAN_CONNECTION/, true],
-  ['unsafe mac connection name', { CE_CONTAINER_ENGINE: 'podman', MOCK_HOST_OS: 'Darwin', CE_PODMAN_CONNECTION: 'bad";exit' }, /explicit CE_PODMAN_CONNECTION/, true],
+  ['missing mac machine', { CE_CONTAINER_ENGINE: 'podman', MOCK_HOST_OS: 'Darwin', MOCK_PODMAN_MACHINES: '' }, /no Podman machine is running/, false],
+  ['unsafe mac connection name', { CE_CONTAINER_ENGINE: 'podman', MOCK_HOST_OS: 'Darwin', CE_PODMAN_CONNECTION: 'bad";exit' }, /invalid CE_PODMAN_CONNECTION/, true],
   ['external mac SSH host', { CE_CONTAINER_ENGINE: 'podman', MOCK_HOST_OS: 'Darwin', CE_PODMAN_CONNECTION: 'ce', MOCK_PODMAN_CONNECTION: 'ssh://core@external:34567/run/user/501/podman/podman.sock|true' }, /loopback rootless/, false],
   ['rootful mac socket', { CE_CONTAINER_ENGINE: 'podman', MOCK_HOST_OS: 'Darwin', CE_PODMAN_CONNECTION: 'ce', MOCK_PODMAN_CONNECTION: 'ssh://core@127.0.0.1:34567/run/podman/podman.sock|true' }, /loopback rootless/, false],
   ['nonmachine mac connection', { CE_CONTAINER_ENGINE: 'podman', MOCK_HOST_OS: 'Darwin', CE_PODMAN_CONNECTION: 'ce', MOCK_PODMAN_CONNECTION: 'ssh://core@127.0.0.1:34567/run/user/501/podman/podman.sock|false' }, /loopback rootless/, false],
@@ -162,6 +196,7 @@ for (const [name, env, message, beforeCli] of [
 ]) test(`doctor rejects ${name}`, t => {
   const f = fixture(t), r = f.run('scripts/container-engine-doctor', [], env); refused(r, message);
   if (beforeCli) assert.equal(f.calls().length, 0);
+  if (name === 'missing mac machine') assert.deepEqual(f.calls().map(call => operation(call)[0]), ['machine']);
 });
 
 test('missing Podman never invokes the available Docker CLI', t => {
@@ -316,10 +351,35 @@ for (const goal of ['postgres', 'ollama', 'dev-down', 'ci']) test(`Make ${goal} 
   refused(r, /not qualified|unsupported|not supported/i); assert.equal(f.calls().length, 0);
 });
 
+test('Make permits native dev service goals with Podman but keeps sandbox dev refused', t => {
+  const f = fixture(t), env = { ...f.env, CE_CONTAINER_ENGINE: 'podman' };
+  writeFileSync(join(f.root, 'podman-goals.mk'), [
+    'include config/build/container-engine.mk',
+    '.PHONY: dev dev-data explore postgres ollama dev-down',
+    'dev dev-data explore postgres ollama dev-down:',
+    '\t@true',
+    ''
+  ].join('\n'));
+  for (const goal of ['postgres', 'ollama', 'dev-down', 'dev', 'explore']) {
+    const r = spawnSync(make, ['-f', 'podman-goals.mk', '-n', 'EXECUTION=native', goal], {
+      cwd: f.root, env, encoding: 'utf8', timeout: 10000 });
+    passed(r);
+  }
+  const sandbox = spawnSync(make, ['EXECUTION=sandbox', 'dev'], { cwd: f.root, env, encoding: 'utf8', timeout: 10000 });
+  refused(sandbox, /not qualified|unsupported|not supported/i);
+  assert.equal(f.calls().length, 0);
+});
+
 for (const engine of ['%', 'docker podman', '']) test(`Make rejects invalid literal engine ${JSON.stringify(engine)}`, t => {
   const f = fixture(t), r = spawnSync(make, ['-n', 'help'], {
     cwd: f.root, env: { ...f.env, CE_CONTAINER_ENGINE: engine }, encoding: 'utf8', timeout: 5000 });
-  refused(r, /must be docker or podman/); assert.equal(f.calls().length, 0);
+  refused(r, /must be auto, docker or podman/); assert.equal(f.calls().length, 0);
+});
+
+test('Make auto-selection fails clearly when neither engine is installed', t => {
+  const f = fixture(t, []), r = spawnSync(make, ['postgres'], {
+    cwd: f.root, env: f.env, encoding: 'utf8', timeout: 5000 });
+  refused(r, /found neither Docker nor Podman/); assert.equal(f.calls().length, 0);
 });
 
 test('bare Make dry-run selects help without doctor or engine commands', t => {
