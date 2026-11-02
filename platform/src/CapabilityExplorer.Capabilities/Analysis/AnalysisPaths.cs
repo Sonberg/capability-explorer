@@ -9,10 +9,10 @@ internal static partial class AnalysisPaths
 {
     internal const int MaxBytes = 1024 * 1024;
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
-    [GeneratedRegex("^[a-f0-9]{32}$", RegexOptions.CultureInvariant)] private static partial Regex IdPattern();
-    [GeneratedRegex("^[a-z0-9][a-z0-9._-]{0,99}$", RegexOptions.CultureInvariant)] private static partial Regex CapabilityPattern();
-    internal static void Id(string id) { if (!IdPattern().IsMatch(id)) throw new ArgumentException("invalid lifecycle identifier"); }
-    internal static void Capability(string id) { if (!CapabilityPattern().IsMatch(id)) throw new ArgumentException("invalid capability identifier"); }
+    [GeneratedRegex(@"^[a-f0-9]{32}\z", RegexOptions.CultureInvariant)] private static partial Regex IdPattern();
+    [GeneratedRegex(@"^[a-z0-9][a-z0-9._-]{0,99}\z", RegexOptions.CultureInvariant)] private static partial Regex CapabilityPattern();
+    internal static void Id(string id) { ArgumentNullException.ThrowIfNull(id); if (id.Length != 32 || !IdPattern().IsMatch(id)) throw new ArgumentException("invalid lifecycle identifier"); }
+    internal static void Capability(string id) { ArgumentNullException.ThrowIfNull(id); if (id.Length is < 1 or > 100 || !CapabilityPattern().IsMatch(id)) throw new ArgumentException("invalid capability identifier"); }
     internal static string Hash(byte[] value) => Convert.ToHexStringLower(SHA256.HashData(value));
     internal static string Hash(string value) => Hash(Encoding.UTF8.GetBytes(value));
     internal static void NoLinks(string path)

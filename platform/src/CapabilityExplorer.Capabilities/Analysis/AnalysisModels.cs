@@ -8,7 +8,8 @@ public sealed record PublicationEffect(string Surface, string Destination, strin
 public sealed record AnalysisRun(string RunId, string CapabilityId, string State, DateTimeOffset AcceptedAt,
     string AcceptedInputsHash, string ConfigurationPath, string? BindingsPath, AnalysisSettings Settings,
     string? AttemptId = null, string? ManifestHash = null, bool CancellationRequested = false,
-    string? Detail = null, IReadOnlyList<PublicationEffect>? Effects = null);
+    string? Detail = null, IReadOnlyList<PublicationEffect>? Effects = null, bool ExecutionCompleted = false,
+    string? EnrichmentOutcome = null, string? EnrichmentDetail = null);
 public sealed record AdmissionResult(bool Accepted, AnalysisRun Run);
 public sealed record CancelResult(string Outcome, AnalysisRun Run);
 public sealed record RecoveryReport(bool Blocked, IReadOnlyList<AnalysisRun> Runs);

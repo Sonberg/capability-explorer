@@ -19,8 +19,13 @@ public sealed class AnalysisRunTests : IDisposable
     }
     private AnalysisRun Admit(string id = "sales") => _store.Admit(id, _configuration, null, new()).Run;
     private static AttemptIdentity Identity(AnalysisRun run) => new(run.RunId, run.AttemptId!);
-    private string Resolve(WorkerOwnership owner, AnalysisRun run) => _store.BindResolved(owner, Identity(run),
-        new(run.AcceptedInputsHash, new Dictionary<string, string> { ["repository.sales"] = new('a', 40), ["runtime"] = "test-runtime" }));
+    private string Resolve(WorkerOwnership owner, AnalysisRun run)
+    {
+        var hash = _store.BindResolved(owner, Identity(run), new(run.AcceptedInputsHash,
+            new Dictionary<string, string> { ["repository.sales"] = new('a', 40), ["runtime"] = "test-runtime" }));
+        _store.FinishExecution(owner, Identity(run), 0);
+        return hash;
+    }
 
     [Fact]
     public async Task Concurrent_admission_accepts_once_and_preserves_prior_history()

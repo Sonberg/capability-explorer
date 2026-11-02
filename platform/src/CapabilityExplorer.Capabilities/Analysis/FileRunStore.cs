@@ -16,11 +16,13 @@ public sealed class FileRunStore
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("analysis lifecycle requires Linux or macOS");
         _root = Path.GetFullPath(root);
         AnalysisPaths.DirectoryPrivate(_root);
+        CoordinationDomain.Initialize(_root);
         _runs = Path.Combine(_root, "runs");
         AnalysisPaths.DirectoryPrivate(_runs);
     }
     public string RunDirectory(string runId)
     {
+        CoordinationDomain.Validate(_root);
         AnalysisPaths.Id(runId);
         var path = Path.Combine(_runs, runId);
         AnalysisPaths.NoLinks(path);
@@ -38,13 +40,23 @@ public sealed class FileRunStore
         AnalysisPaths.NoLinks(path);
         return path;
     }
-    private FileStream Gate() => AnalysisPaths.Lock(Path.Combine(_root, "metadata.lock"), true);
+    private FileStream Gate()
+    {
+        CoordinationDomain.Validate(_root);
+        return AnalysisPaths.Lock(Path.Combine(_root, "metadata.lock"), true);
+    }
     internal void Owner(WorkerOwnership owner)
     {
+        CoordinationDomain.Validate(_root);
         if (owner.Disposed || !ReferenceEquals(owner.Store, this)) throw new InvalidOperationException("invalid worker ownership");
     }
-    public WorkerOwnership AcquireWorker() => new(this, AnalysisPaths.Lock(Path.Combine(_root, "worker.lock"), false));
-    internal void Save(AnalysisRun run) => AnalysisPaths.Save(SafePath(run.RunId, "run.json"), run);
+    public WorkerOwnership AcquireWorker()
+    {
+        CoordinationDomain.Validate(_root);
+        return new(this, AnalysisPaths.Lock(Path.Combine(_root, "worker.lock"), false));
+    }
+    internal void Save(AnalysisRun run) => AnalysisPaths.Save(SafePath(run.RunId, "run.json"),
+        run with { ConfigurationPath = "capabilities.json", BindingsPath = run.BindingsPath is null ? null : "bindings.json" });
     private AnalysisRun Load(string runId)
     {
         var record = SafePath(runId, "run.json");
@@ -55,18 +67,28 @@ public sealed class FileRunStore
         if (run.AttemptId is not null) AnalysisPaths.Id(run.AttemptId);
         if (run.State is not ("queued" or "running" or "cancelling" or "publishing" or "done" or "failed" or "cancelled" or "unknown" or "interrupted" or "partial"))
             throw new InvalidDataException("unknown lifecycle state");
-        if (run.ConfigurationPath != SafePath(runId, "capabilities.json") ||
-            (run.BindingsPath is not null && run.BindingsPath != SafePath(runId, "bindings.json")))
+        if (run.ConfigurationPath != "capabilities.json" ||
+            (run.BindingsPath is not null && run.BindingsPath != "bindings.json"))
             throw new InvalidDataException("untrusted frozen input path");
         if (run.AcceptedInputsHash?.Length != 64 || run.Settings is null) throw new InvalidDataException("invalid accepted inputs");
-        return run;
+        return run with { ConfigurationPath = SafePath(runId, "capabilities.json"), BindingsPath = run.BindingsPath is null ? null : SafePath(runId, "bindings.json") };
     }
-    private List<AnalysisRun> All() => Directory.EnumerateDirectories(_runs).Select(path => Load(Path.GetFileName(path))).ToList();
+    private List<AnalysisRun> All()
+    {
+        CoordinationDomain.Validate(_root);
+        return Directory.EnumerateDirectories(_runs).Select(path => Load(Path.GetFileName(path))).ToList();
+    }
     public string? ReadBlockReason()
     {
+        CoordinationDomain.Validate(_root);
         if (Legacy()) return "legacy lifecycle evidence requires reconciliation";
-        return All().Any(run => run.State is "unknown" or "interrupted" or "partial")
-            ? "unreconciled execution or publication blocks analysis" : null;
+        try
+        {
+            return All().Any(run => run.State is "unknown" or "interrupted" or "partial")
+                ? "unreconciled execution or publication blocks analysis" : null;
+        }
+        catch (Exception error) when (error is IOException or KeyNotFoundException or JsonException or ArgumentException)
+        { return "incomplete or malformed lifecycle evidence requires reconciliation"; }
     }
     public string? ReadLog(string runId, int maxBytes = 65536, int maxLines = 30)
     {
@@ -128,7 +150,11 @@ public sealed class FileRunStore
         Save(run);
         return new("accepted", run);
     }
-    private bool Legacy() => Directory.EnumerateFiles(_root).Any(path => Path.GetExtension(path) is ".request" or ".running" or ".cancel");
+    private bool Legacy()
+    {
+        CoordinationDomain.Validate(_root);
+        return Directory.EnumerateFiles(_root).Any(path => Path.GetExtension(path) is ".request" or ".running" or ".cancel");
+    }
     public RecoveryReport Recover(WorkerOwnership owner)
     {
         Owner(owner);
@@ -199,7 +225,24 @@ public sealed class FileRunStore
         var run = Attempt(attempt);
         if (run.State is not ("running" or "cancelling")) throw new InvalidOperationException("execution cannot finish in this state");
         var state = !terminationConfirmed ? "unknown" : run.CancellationRequested ? "cancelled" : exitCode != 0 ? "failed" : "running";
-        run = run with { State = state, Detail = state == "running" ? "execution completed; publication pending" : $"execution exit {exitCode}; termination confirmed: {terminationConfirmed}" };
+        run = run with { State = state, ExecutionCompleted = terminationConfirmed && exitCode == 0 && !run.CancellationRequested, Detail = state == "running" ? "execution completed; publication pending" : $"execution exit {exitCode}; termination confirmed: {terminationConfirmed}" };
+        Save(run);
+        return run;
+    }
+    public AnalysisRun RecordEnrichment(WorkerOwnership owner, AttemptIdentity attempt, string outcome, string? detail = null)
+    {
+        Owner(owner);
+        AnalysisPaths.Id(attempt.AttemptId);
+        if (outcome is not ("done" or "failed" or "not-configured")) throw new ArgumentException("invalid enrichment outcome", nameof(outcome));
+        if (detail?.Length > 4096) throw new ArgumentException("enrichment detail exceeds bounds", nameof(detail));
+        using var gate = Gate();
+        var run = Load(attempt.RunId);
+        if (run.State != "done" || run.AttemptId != attempt.AttemptId || run.EnrichmentOutcome is not null)
+            throw new InvalidOperationException("enrichment requires the current completed attempt and cannot overwrite an outcome");
+        VerifyAccepted(run);
+        if (run.ManifestHash is null || AnalysisPaths.Hash(AnalysisPaths.ReadBounded(SafePath(run.RunId, "resolved.json"))) != run.ManifestHash)
+            throw new InvalidDataException("enrichment input identity mismatch");
+        run = run with { EnrichmentOutcome = outcome, EnrichmentDetail = detail };
         Save(run);
         return run;
     }
@@ -211,7 +254,7 @@ public sealed class FileRunStore
         {
             var run = Attempt(attempt);
             VerifyAccepted(run);
-            if (run.State != "running" || run.CancellationRequested || run.ManifestHash is null || manifestHash != run.ManifestHash ||
+            if (run.State != "running" || !run.ExecutionCompleted || run.CancellationRequested || run.ManifestHash is null || manifestHash != run.ManifestHash ||
                 AnalysisPaths.Hash(AnalysisPaths.ReadBounded(SafePath(run.RunId, "resolved.json"))) != manifestHash)
                 throw new InvalidOperationException("publication rejected: cancellation or immutable-input mismatch");
             run = run with { State = "publishing", Effects = [] };
