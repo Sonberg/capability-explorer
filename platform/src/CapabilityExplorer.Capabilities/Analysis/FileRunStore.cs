@@ -117,7 +117,7 @@ public sealed partial class FileRunStore
         var existing = records.Where(run => run.CapabilityId == capId && !Terminal(run)).OrderByDescending(run => run.AcceptedAt).FirstOrDefault();
         if (existing is not null) return new(false, existing);
         if (records.Count >= _maxRunRecords) throw new InvalidOperationException("lifecycle retention limit reached; archive verified terminal history before admission");
-        var configuration = AnalysisPaths.ReadBounded(Path.GetFullPath(configurationPath));
+        var configuration = CaptureConfiguration(configurationPath);
         using (var parsed = JsonDocument.Parse(configuration))
         {
             if (!parsed.RootElement.TryGetProperty("capabilities", out var capabilities) ||
@@ -190,7 +190,7 @@ public sealed partial class FileRunStore
         using var document = JsonDocument.Parse(acceptedBytes);
         var accepted = document.RootElement;
         if ((run.BindingsPath is null) != (accepted.GetProperty("bindings").ValueKind == JsonValueKind.Null) ||
-            AnalysisPaths.Hash(AnalysisPaths.ReadBounded(run.ConfigurationPath)) != accepted.GetProperty("configuration").GetString() ||
+            AnalysisPaths.Hash(CaptureConfiguration(run.ConfigurationPath)) != accepted.GetProperty("configuration").GetString() ||
             (run.BindingsPath is not null && AnalysisPaths.Hash(AnalysisPaths.ReadBounded(run.BindingsPath)) != accepted.GetProperty("bindings").GetString()) ||
             AnalysisPaths.Hash(JsonSerializer.Serialize(accepted, AnalysisPaths.Json)) != run.AcceptedInputsHash ||
             JsonSerializer.Serialize(run.Settings, AnalysisPaths.Json) != JsonSerializer.Serialize(accepted.GetProperty("settings"), AnalysisPaths.Json))
