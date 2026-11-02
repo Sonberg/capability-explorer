@@ -11,6 +11,11 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Draft platform enrollment, evidence-bundle and intake-receipt shape profiles,
+  controlled conformance fixtures, a seven-boundary plan catalogue and cheap
+  validation checks. Proposed MADR-0020 preserves ce.v1 and distinguishes platform
+  contracts from analyzed application contracts; no central service is delivered.
+
 - Tool-free research evidence foundation with sealed synthetic source anchors,
   independent council packet validation and failure-path tests. Proposed
   MADR-0019 separates per-tool evaluation from single-tool introduction PRs;

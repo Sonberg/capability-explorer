@@ -120,3 +120,22 @@ For example, say “an unresolved REQUESTS edge with a configuration hint was bo
 by a human service map in this revision selection,” not “we proved the deployed
 services call each other.” Say “the SQL unit has full graph coverage but this
 calculation is unsupported,” not “the analyzer understands all SQL.”
+
+## Proposed platform exchange terms
+
+These terms belong to the draft platform boundary in
+[MADR-0020](adr/0020-platform-exchange-contracts.md), not the analyzed Glossary tab.
+They do not claim that a central platform or its public APIs already exist.
+**Capability retains its existing repository-selection meaning above.** Do not
+silently use it for either of the two different concepts below.
+
+| Draft term | Proposed meaning and boundary |
+|---|---|
+| Repository enrollment | Versioned registry input mapping a repository identity to one declared membership and producer-role scope. A valid-shaped record does not authenticate or authorize its producer. |
+| Repository cluster | An explicitly registered collaboration/system grouping with versioned membership. It is not inferred from a repository name and is not automatically an existing Capability selection. |
+| Business capability | An explicitly qualified business ability or function. It is not the existing technical Capability repository set, and code names alone do not establish its business meaning. |
+| Evidence bundle | A draft transport-neutral manifest for one enrolled repository/revision, referencing unchanged ce.v1 artifacts and separating content identity from publication-attempt metadata. |
+| Repository representation | The identifiable observations/artifact references and coverage retained for one repository at a selected revision. Cluster aggregates preserve those member identities rather than replacing them. |
+| Aligned finding | A separately traceable cross-repository derivation or candidate association with exact input/rule/binding identities and uncertainty. It never rewrites original observations. |
+| Data product revision | An immutable prepared result identified with its input selection and recipe version. It is neither a product API schema version nor a single global Git revision. |
+| Viewpoint projection | A bounded, authorized selection/aggregation of prepared product revisions for an audience. A viewpoint/persona selector does not grant access or create new evidence truth. |

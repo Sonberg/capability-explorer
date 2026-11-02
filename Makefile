@@ -8,3 +8,4 @@ else
 $(error EXECUTION must be native or sandbox)
 endif
 include config/build/issue28.mk
+include config/build/platform.mk

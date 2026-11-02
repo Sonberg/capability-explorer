@@ -1,0 +1,10 @@
+{
+  "schema": "ce.platform.v1",
+  "kind": "intake-receipt",
+  "attemptId": "attempt:alpha-1",
+  "enrollmentId": "enr:alpha-api",
+  "bundleContentSha256": "6666666666666666666666666666666666666666666666666666666666666666",
+  "status": "rejected",
+  "recordedAt": "2026-11-02T08:05:00Z",
+  "errors": [{ "code": "digest-mismatch", "message": "Artifact digest mismatch", "artifactPath": "artifacts/Sales.Api.jsonl" }]
+}
