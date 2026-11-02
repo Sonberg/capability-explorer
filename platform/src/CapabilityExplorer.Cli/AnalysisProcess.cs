@@ -12,6 +12,7 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
     private readonly CancellationTokenSource _abort = new();
     private int _unconfirmedSpawns;
     public bool TerminationConfirmed => Volatile.Read(ref _unconfirmedSpawns) == 0;
+    internal void MarkUncertainAcquisition() => Interlocked.Increment(ref _unconfirmedSpawns);
     public void Abort() => _abort.Cancel();
     public void Dispose() { _abort.Dispose(); _runtimeGate.Dispose(); }
     public async Task CleanupAfterAbort() => await _runtime.CleanupOwned(Label);

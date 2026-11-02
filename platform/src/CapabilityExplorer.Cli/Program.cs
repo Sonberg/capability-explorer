@@ -20,13 +20,14 @@ const string Usage = """
       ce analysis-worker [--capabilities <file>]
       ce analysis-run --capability <id> [--capabilities <file>]
       ce analysis-all [--capabilities <file>]
+      ce package-feeds --import <legacy-settings> --catalog <public-catalog> [--host-file <outside-workspace>]
       ce validate <artifact.jsonl...>
       ce verify-evidence --repo <git dir> <artifact.jsonl...>
       ce migrate [--connection <connection string>]
       ce import [--connection <connection string>] [--bindings <bindings.json>] <artifact.jsonl...>  (--bindings also saves the bound edges)
       ce publish [--scope <capability-id|*>] [--view <repo:full-sha,...>] [--bindings <bindings.json>] [--expected-generation <n>] <artifact.jsonl...>
       ce embed [--connection <connection string>] [--settings <model.json>]  (model from CE_MODEL_ENDPOINT + CE_EMBEDDING_MODEL, else the saved settings: make ollama / explorer Settings)
-      ce export --capability <id> --out <dir> [--capabilities <file>] [--workspace <dir>] [--locked 1]  (1 = use the last check instead of re-checking)
+      ce export (disabled: use the exclusive host analysis worker)
       ce evaluate --expected <dir> --actual <dir> [--config <evaluation.json>] [--repos <dir>] [--repository <id[,id]>] [--language <csharp,typescript,...>] [--json <report.json>] [--max-findings <n>]
     """;
 
@@ -60,6 +61,8 @@ NpgsqlDataSource OpenDatabase()
 
 switch (command)
 {
+    case "package-feeds":
+        return HostPackageFeeds.Command(Path.GetFullPath(Environment.CurrentDirectory), options);
     case "analysis-worker":
     case "analysis-run":
     case "analysis-all":
@@ -142,53 +145,8 @@ switch (command)
 
     case "export":
     {
-        // Locks the capability's revisions (unless --locked) and writes each locked tree to <out>/src/<run>/<repo>,
-        // plus <out>/manifest.tsv (repo, commit, path) for the offline extractor runs that follow.
-        if (!options.TryGetValue("capability", out var capabilityId) || !options.TryGetValue("out", out var exportDir))
-        {
-            Console.Error.WriteLine(Usage);
-            return 2;
-        }
-
-        var workspace = options.GetValueOrDefault("workspace") ?? ".sandbox-cache/sources";
-        using var store = CapabilityStore.Open(options.GetValueOrDefault("capabilities") ?? "capabilities.json", Path.Combine(workspace, "snapshots.json"));
-        if (store.Find(capabilityId) is not { } capability)
-        {
-            Console.Error.WriteLine($"no capability '{capabilityId}'. Known: {string.Join(", ", store.Capabilities.Select(c => c.Id))}");
-            return 2;
-        }
-
-        var sync = new SourceSync(workspace, auth: GitHubAuth.FromEnvironment());
-        var snapshot = options.GetValueOrDefault("locked") is "1" or "true" && store.Snapshot(capability.Id) is { } existing ? existing : await sync.CheckAsync(capability);
-        await store.SaveSnapshotAsync(snapshot);
-        var src = Path.Combine(exportDir, "src", Guid.NewGuid().ToString("N"));
-        var manifest = new List<string>();
-        foreach (var locked in snapshot.Repositories)
-        {
-            if (locked.CommitSha is null)
-            {
-                Console.WriteLine($"{locked.Id,-24} skipped: {locked.Error}");
-                continue;
-            }
-
-            var source = capability.Repositories.Single(r => r.Id == locked.Id);
-            var dest = Path.Combine(src, locked.Id);
-            try
-            {
-                var result = await sync.ExportAsync(source, locked.CommitSha, dest);
-                manifest.Add($"{locked.Id}\t{locked.CommitSha}\t{Path.GetRelativePath(exportDir, dest).Replace('\\', '/')}");
-                Console.WriteLine($"{locked.Id,-24} {locked.CommitSha[..12]} {result.Files} files{(result.Skipped > 0 ? $" ({result.Skipped} skipped: links/large)" : "")}  {locked.Subject}");
-            }
-            catch (Exception e) when (e is InvalidOperationException or IOException)
-            {
-                Console.WriteLine($"{locked.Id,-24} {locked.CommitSha[..12]} export failed: {e.Message}");
-            }
-        }
-
-        Directory.CreateDirectory(exportDir);
-        await File.WriteAllTextAsync(Path.Combine(exportDir, "manifest.tsv"), string.Concat(manifest.Select(m => m + "\n")));
-        await File.WriteAllTextAsync(Path.Combine(exportDir, "include-tests"), capability.IncludeTests ? "1\n" : "0\n");
-        return manifest.Count > 0 ? 0 : 1;
+        Console.Error.WriteLine("export: direct acquisition is disabled; use the exclusive host analysis worker");
+        return 2;
     }
 
     case "evaluate":

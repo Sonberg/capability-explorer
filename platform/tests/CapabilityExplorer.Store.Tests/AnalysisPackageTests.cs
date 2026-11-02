@@ -15,9 +15,12 @@ public sealed class AnalysisPackageTests
         if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Unix qualification required");
         var root = Path.Combine(Path.GetTempPath().Replace("/var/","/private/var/",StringComparison.Ordinal),"ce-package-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
+        var host = root + "-host";
+        Directory.CreateDirectory(host, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var priorPath = Environment.GetEnvironmentVariable("PATH");
         var priorFeeds = Environment.GetEnvironmentVariable("CE_PACKAGE_FEEDS_FILE");
         var priorNpm = Environment.GetEnvironmentVariable("npm_config_userconfig");
+        var priorGithub = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
         const string secret = "synthetic-fixture-secret-never-log";
         try
         {
@@ -28,13 +31,16 @@ public sealed class AnalysisPackageTests
                 if (executable) File.SetUnixFileMode(path,UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             }
             Write("capabilities.json","""{"capabilities":[{"id":"sales"}]}""");
-            Write("feeds.json",JsonSerializer.Serialize(new { feeds=new[] { new { id="private",kind="npm",name="Private",url="https://packages.example.invalid/",scope="@fixture",secret } } }));
+            var hostFeeds = Path.Combine(host,"feeds.json");
+            File.WriteAllText(hostFeeds,JsonSerializer.Serialize(new { feeds=new[] { new { id="private",kind="npm",name="Private",url="https://packages.example.invalid/",scope="@fixture",secret } } }));
+            File.SetUnixFileMode(hostFeeds,UnixFileMode.UserRead | UnixFileMode.UserWrite);
             Write("npmrc","");
             Write("bin/node","#!/bin/sh\nprintf '%s' \"$CE_PACKAGE_FEEDS\"\n",true);
             Write("scripts/sandbox","""
                 #!/bin/sh
                 if [ "$1" = --offline ]; then
                   printf '%s' "${CE_PACKAGE_FEEDS-ABSENT}" > offline-environment
+                  printf '%s' "${GITHUB_TOKEN-ABSENT}" > offline-github
                   exit 0
                 fi
                 printf '%s' "$CE_PACKAGE_FEEDS" > package-environment
@@ -46,8 +52,9 @@ public sealed class AnalysisPackageTests
                 esac
                 """ + "\n",true);
             Environment.SetEnvironmentVariable("PATH",Path.Combine(root,"bin") + Path.PathSeparator + priorPath);
-            Environment.SetEnvironmentVariable("CE_PACKAGE_FEEDS_FILE",Path.Combine(root,"feeds.json"));
+            Environment.SetEnvironmentVariable("CE_PACKAGE_FEEDS_FILE",hostFeeds);
             Environment.SetEnvironmentVariable("npm_config_userconfig",Path.Combine(root,"npmrc"));
+            Environment.SetEnvironmentVariable("GITHUB_TOKEN",secret);
             var store = new FileRunStore(Path.Combine(root,".sandbox-cache/requests"));
             store.Admit("sales",Path.Combine(root,"capabilities.json"),null,new());
             using var owner = store.AcquireWorker();
@@ -63,6 +70,7 @@ public sealed class AnalysisPackageTests
             Assert.DoesNotContain(secret,JsonSerializer.Serialize(inputs),StringComparison.Ordinal);
             await process.Run("scripts/sandbox",["--offline","node"]);
             Assert.Equal("ABSENT",File.ReadAllText(Path.Combine(root,"offline-environment")));
+            Assert.Equal("ABSENT",File.ReadAllText(Path.Combine(root,"offline-github")));
             Assert.DoesNotContain(secret,store.ReadLog(run.RunId) ?? "",StringComparison.Ordinal);
             Assert.DoesNotContain(secret,File.ReadAllText(Path.Combine(store.RunDirectory(run.RunId),"accepted.json")),StringComparison.Ordinal);
         }
@@ -71,7 +79,9 @@ public sealed class AnalysisPackageTests
             Environment.SetEnvironmentVariable("PATH",priorPath);
             Environment.SetEnvironmentVariable("CE_PACKAGE_FEEDS_FILE",priorFeeds);
             Environment.SetEnvironmentVariable("npm_config_userconfig",priorNpm);
+            Environment.SetEnvironmentVariable("GITHUB_TOKEN",priorGithub);
             Directory.Delete(root,true);
+            Directory.Delete(host,true);
         }
     }
     private sealed class Runtime : IAnalysisContainerRuntime

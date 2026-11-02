@@ -84,10 +84,10 @@ public sealed partial class FileRunStore
         if (Legacy()) return "legacy lifecycle evidence requires reconciliation";
         try
         {
-            return All().Any(run => run.State is "unknown" or "interrupted" or "partial")
+            return ChecksBlock() || All().Any(run => run.State is "unknown" or "interrupted" or "partial")
                 ? "unreconciled execution or publication blocks analysis" : null;
         }
-        catch (Exception error) when (error is IOException or KeyNotFoundException or JsonException or ArgumentException)
+        catch (Exception error) when (error is IOException or InvalidDataException or KeyNotFoundException or JsonException or ArgumentException)
         { return "incomplete or malformed lifecycle evidence requires reconciliation"; }
     }
     public string? ReadLog(string runId, int maxBytes = 65536, int maxLines = 30)
@@ -166,14 +166,14 @@ public sealed partial class FileRunStore
             runs[index] = runs[index] with { State = "unknown", Detail = "prior execution/publication requires positive reconciliation; no automatic retry" };
             Save(runs[index]);
         }
-        return new(Legacy() || runs.Any(run => !Terminal(run) && run.State != "queued"), runs);
+        return new(RecoverChecks() || Legacy() || runs.Any(run => !Terminal(run) && run.State != "queued"), runs);
     }
     public AnalysisRun? ClaimNext(WorkerOwnership owner, string? runId = null)
     {
         Owner(owner);
         using var gate = Gate();
         var all = All();
-        if (Legacy() || all.Any(run => !Terminal(run) && run.State != "queued"))
+        if (Legacy() || ChecksBlock() || all.Any(run => !Terminal(run) && run.State != "queued"))
             throw new InvalidOperationException("unreconciled execution or legacy evidence blocks execution");
         if (runId is not null) AnalysisPaths.Id(runId);
         var next = all.Where(run => run.State == "queued" && (runId is null || run.RunId == runId)).OrderBy(run => run.AcceptedAt).ThenBy(run => run.RunId, StringComparer.Ordinal).FirstOrDefault();
