@@ -260,6 +260,7 @@ public sealed class AnalysisExecutionTests(PostgresFixture database)
     }
 
     [Fact]
+    [Trait("Profile", "HostDocker")]
     public async Task Actual_Docker_cleanup_stops_only_the_exact_attempt_label()
     {
         var runtime = new AnalysisDockerRuntime();

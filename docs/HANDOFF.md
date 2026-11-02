@@ -15,6 +15,10 @@ automatic retries or distributed worker authority is introduced.
 Live-child cancellation and nonzero sandbox exit currently remain `unknown`
 after cleanup, blocking subsequent work pending offline reconciliation. This
 package does not provide a live Stop-and-retry UX.
+Issue #37 stays open: A9's literal Explorer credential prohibition is broader
+than this slice. Existing private-source checks still use an Explorer GitHub
+token. The new admission profile adds no credential values or engine socket;
+moving the existing check boundary requires owner-reviewed follow-up work.
 
 ## Issue #33: draft platform exchange contracts
 

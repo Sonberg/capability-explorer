@@ -5,6 +5,13 @@ Analysis uses one trusted host worker and a local run journal under
 host CLI runs credential-scoped export, package fetching, offline extraction
 and guarded publication. PostgreSQL remains optional artifact storage.
 
+This slice does not complete the literal Explorer credential prohibition in
+issue #37 A9. The existing private-source Check workflow still uses an Explorer
+GitHub token. Analysis admission introduces no credential values or engine
+socket into Explorer, and offline extraction receives neither. Moving existing
+private-source checks behind a credential-free boundary requires separate owner
+review; do not close #37 or describe all A1–A11 as complete on this package alone.
+
 ## Host requirements and entrypoints
 
 Install the **.NET 10 runtime on the host**, including when building with Docker.
@@ -180,3 +187,19 @@ are not globally atomic. This package provides no distributed lock, multiple
 active workers, automatic rollback/retry, remote authentication or central
 last-good policy. See [MADR-0022](adr/0022-local-analysis-lifecycle.md) for the
 scope and store-level validation evidence.
+
+## Host-specific qualification
+
+The native store test suite includes the real Docker CLI cleanup probe. The
+pinned SDK image deliberately contains no Docker CLI, so sandbox CI excludes
+only tests tagged `Profile=HostDocker`; its socket-backed Testcontainers tests
+still run. This is a profile boundary, not an unavailable scan treated as green.
+Qualify the host adapter separately on a trusted host with .NET 10 and Docker:
+
+```bash
+dotnet test platform/tests/CapabilityExplorer.Store.Tests --filter 'Profile=HostDocker'
+```
+
+The probe starts two short-lived containers using the existing pinned PostgreSQL
+image, verifies exact-label cleanup leaves the sibling running, then removes
+only its own containers. It does not establish late-descendant quiescence.

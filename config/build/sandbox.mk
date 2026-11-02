@@ -228,7 +228,9 @@ explore: fixtures build
 
 # Needs the Docker socket so Testcontainers can start PostgreSQL (see scripts/sandbox --docker).
 test-store: build
-	$(SANDBOX) --docker dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Store.Tests'
+	# The SDK image has a Docker socket for Testcontainers, but no host Docker CLI.
+	# Only the new HostDocker qualification probe is native-only; existing tests remain gated.
+	$(SANDBOX) --docker dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Store.Tests --filter "Profile!=HostDocker"'
 
 # Local models for explanations and similarity search: no key, nothing leaves the machine. Listens on the host's
 # 127.0.0.1:11434 only; the sandbox reaches it as host.docker.internal. The native Ollama app on the same port works too

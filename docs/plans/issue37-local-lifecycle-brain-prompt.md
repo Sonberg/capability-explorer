@@ -136,3 +136,11 @@ live-child cancellation/nonzero sandbox exit requires manual reconciliation,
 and mixed macOS-worker/Linux-VM-Explorer operation is deliberately unqualified.
 These limits are explicit in MADR-0022 and the operating guide. This gate is not
 a claim that full CI passed. R/C gates remain pending integrated final validation.
+
+R: 94/100 for the complete original issue; not passed. The
+[validation trace](issue37-lifecycle-validation.md) records the executable
+boundaries, real crash/commit/replay probes and the SDK/host test split.
+Independent review identified an existing Explorer GitHub-token path for private
+source checks that violates A9's literal broader prohibition. This handoff does
+not remove that functionality or weaken A9. Publish the bounded, tested work for
+owner review while keeping #37 open; full issue Completion is not claimed.
