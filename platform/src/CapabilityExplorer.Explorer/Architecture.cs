@@ -1,3 +1,4 @@
+using System.Text.Json;
 using CapabilityExplorer.Contracts;
 
 namespace CapabilityExplorer.Explorer;
@@ -21,10 +22,10 @@ public sealed record ArchNode(
 public sealed record ArchMember(string Label, string? Detail, string Status, string? SymbolKey, IReadOnlyList<ArchLink> Connections);
 
 /// <summary>A service that touches a folded member, and how (edge label such as "reads ×63").</summary>
-public sealed record ArchLink(string Service, string Label);
+public sealed record ArchLink(string Service, string Label, IReadOnlyList<string> Paths, IReadOnlyList<string> Bound);
 
 /// <summary>One underlying fact behind an aggregated canvas edge.</summary>
-public sealed record ArchFact(string Relation, SymbolRef From, SymbolRef? To, string Resolution, string? UnresolvedReason, string Derivation, string? Rule, IReadOnlyList<EvidenceDto> Evidence);
+public sealed record ArchFact(string Relation, SymbolRef From, SymbolRef? To, string Resolution, string? UnresolvedReason, string Derivation, string? Rule, IReadOnlyList<EvidenceDto> Evidence, string? Via = null);
 
 /// <summary>
 /// An aggregated edge. Certainty: "proven" (every fact resolved), "static" (static target only), "unbound" (target
@@ -155,7 +156,7 @@ public static class Architecture
                 null, null, null, null, unbound > 0 ? [$"{unbound} unbound"] : [],
                 members.Select(n => new ArchMember(n.Label, n.Sublabel, n.Badges.Count > 0 ? n.Badges[0] : "", n.SymbolKey,
                 g.Edges.Where(e => e.Kind != "sameName" && (e.To == n.Id || e.From == n.Id))
-                    .Select(e => new ArchLink(g.Nodes.First(x => x.Id == (e.To == n.Id ? e.From : e.To)).Label, e.Label)).OrderBy(l => l.Service, StringComparer.Ordinal).ToList()))
+                    .Select(e => new ArchLink(g.Nodes.First(x => x.Id == (e.To == n.Id ? e.From : e.To)).Label, e.Label, CalledPaths(e), BoundVia(e))).OrderBy(l => l.Service, StringComparer.Ordinal).ToList()))
                 .OrderBy(m => m.Label, StringComparer.OrdinalIgnoreCase).ThenBy(m => m.Detail, StringComparer.OrdinalIgnoreCase).ToList()));
         }
 
@@ -210,7 +211,7 @@ public static class Architecture
                 {
                     b.Node(ResourceNode(view, res));
                     var consume = r.Relation is "CONSUMES" or "READS";
-                    b.Edge(consume ? $"res:{res}" : from, consume ? from : $"res:{res}", KindOf(r.Relation), r.Relation.ToLowerInvariant().Replace('_', ' '), null, e);
+                    b.Edge(consume ? $"res:{res}" : from, consume ? from : $"res:{res}", KindOf(r.Relation), EdgeLabel(r.Relation), null, e);
                 }
                 else if (r.Relation == "DECLARES" && r.To is not null && view.Node(r.From)?.Record.NodeKind == "Project" && view.Node(r.To)?.Record.NodeKind is "Table" or "View")
                 {
@@ -328,11 +329,11 @@ public static class Architecture
             {
                 b.Node(ResourceNode(view, res));
                 var consume = r.Relation is "CONSUMES" or "READS";
-                b.Edge(consume ? $"res:{res}" : from.Id, consume ? from.Id : $"res:{res}", KindOf(r.Relation), r.Relation.ToLowerInvariant().Replace('_', ' '), null, e);
+                b.Edge(consume ? $"res:{res}" : from.Id, consume ? from.Id : $"res:{res}", KindOf(r.Relation), EdgeLabel(r.Relation), null, e);
             }
             else if (r.To is not null && CodeRelations.Contains(r.Relation) && ComponentOf(view, r.To) is { } to && to.Id != from.Id && to.Node.RepositoryId == repo)
             {
-                b.Edge(from.Id, to.Id, KindOf(r.Relation), r.Relation.ToLowerInvariant(), null, e);
+                b.Edge(from.Id, to.Id, KindOf(r.Relation), EdgeLabel(r.Relation), null, e);
             }
         }
 
@@ -452,7 +453,7 @@ public static class Architecture
             {
                 var id = $"dynamic:{r.From}:{r.UnresolvedReason}";
                 b.Node(new ArchNode(id, "unmatched", $"⟨{r.UnresolvedReason}⟩", r.Props?.TryGetProperty("expression", out var x) == true ? x.GetString() : "target not statically known", "Unresolved", null, null, null, ["unresolved"]));
-                b.Edge(fromId, id, KindOf(r.Relation), r.Relation.ToLowerInvariant(), "unresolved", e);
+                b.Edge(fromId, id, KindOf(r.Relation), EdgeLabel(r.Relation), "unresolved", e);
                 continue;
             }
 
@@ -476,7 +477,7 @@ public static class Architecture
 
             // Draw in the direction data or requests flow: resources feed readers, endpoints feed handlers.
             var reverse = r.Relation is "CONSUMES" or "READS" or "HANDLES";
-            b.Edge(reverse ? toId : fromId, reverse ? fromId : toId, KindOf(r.Relation), r.Relation.ToLowerInvariant().Replace('_', ' '), null, e);
+            b.Edge(reverse ? toId : fromId, reverse ? fromId : toId, KindOf(r.Relation), EdgeLabel(r.Relation), null, e);
         }
 
         return b.Graph("component", focus, title,
@@ -654,6 +655,9 @@ public static class Architecture
         return n.Name;
     }
 
+    // Whether a store is read or written isn't what the map is for; any data access is just "uses".
+    private static string EdgeLabel(string relation) => KindOf(relation) == "data" ? "uses" : relation.ToLowerInvariant().Replace('_', ' ');
+
     private static string KindOf(string relation) => relation switch
     {
         "READS" or "WRITES" or "MAPS_TO" => "data",
@@ -665,6 +669,25 @@ public static class Architecture
         "DEPENDS_ON" => "depends",
         _ => "call",
     };
+
+    /// <summary>Every distinct endpoint called over an http edge, e.g. "GET /v1/orders"; empty for other kinds and for dynamic requests.</summary>
+    private static List<string> CalledPaths(ArchEdge e) =>
+        e.Kind != "http" ? [] : e.Facts.Where(f => f.To is not null).Select(f => Route(f.To!.Key)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+
+    /// <summary>How the facts behind a link reach the resource: access mechanism, then client or context, then connection, e.g. "efcore · ShopDb · conn Shop".</summary>
+    private static List<string> BoundVia(ArchEdge e) => e.Facts.Select(f => f.Via).OfType<string>().Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+
+    private static string? ViaOf(EdgeRecord r)
+    {
+        if (r.Rule is null || r.Props is not { ValueKind: JsonValueKind.Object } props)
+        {
+            return r.Rule?.Name;
+        }
+
+        string? Text(string name) => props.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        var via = Text("client") ?? (Text("via") is { } key ? key[(key.LastIndexOf('|') + 1)..] is { Length: > 2 } tail ? tail[2..] : key : null);
+        return string.Join(" · ", new[] { r.Rule.Name, via, Text("connectionName") is { } conn ? $"conn {conn}" : null }.OfType<string>());
+    }
 
     private static string Route(string key) => key[(key.LastIndexOf('|') + 1)..];
 
@@ -789,7 +812,7 @@ public static class Architecture
                 var label = labels.Count == 1 ? labels.First() : $"{facts.Count} {kind}";
                 return new ArchEdge(kv.Key, from, to, kind, facts.Count > 1 && labels.Count == 1 ? $"{label} ×{facts.Count}" : label, Math.Max(1, facts.Count), derived,
                     facts.Take(MaxFactsPerEdge).Select(f => new ArchFact(f.Record.Relation, Map.Ref(view, f.Record.From), f.Record.To is null ? null : Map.Ref(view, f.Record.To),
-                        f.Record.Resolution, f.Record.UnresolvedReason, f.Record.Derivation, f.Record.Rule is null ? null : $"{f.Record.Rule.Name} {f.Record.Rule.Version}", Map.Evidence(f.Artifact, f.Record.Evidence))).ToList());
+                        f.Record.Resolution, f.Record.UnresolvedReason, f.Record.Derivation, f.Record.Rule is null ? null : $"{f.Record.Rule.Name} {f.Record.Rule.Version}", Map.Evidence(f.Artifact, f.Record.Evidence), ViaOf(f.Record))).ToList());
             }).OrderBy(e => e.Id, StringComparer.Ordinal).ToList();
             return new ArchitectureGraph(level, focus, title, crumbs, _nodes.Values.OrderBy(n => n.Id, StringComparer.Ordinal).ToList(), edges, notes);
         }

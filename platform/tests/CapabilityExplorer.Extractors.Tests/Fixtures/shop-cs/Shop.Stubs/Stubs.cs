@@ -21,6 +21,17 @@ namespace Azure.Messaging.ServiceBus
     }
 }
 
+namespace Supabase
+{
+    public class Client { public Table<T> From<T>() where T : class => new(); }
+    public class Table<T> where T : class
+    {
+        public Table<T> Filter(string column, string op, object value) => this;
+        public System.Threading.Tasks.Task<T?> Single() => System.Threading.Tasks.Task.FromResult<T?>(null);
+        public System.Threading.Tasks.Task<T?> Insert(T item) => System.Threading.Tasks.Task.FromResult<T?>(null);
+    }
+}
+
 namespace Dapper
 {
     public static class SqlMapper

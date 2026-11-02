@@ -4,6 +4,9 @@ namespace Shop.Data;
 
 public class AuditLog { public int Id { get; set; } }
 
+[System.ComponentModel.DataAnnotations.Schema.Table("reviews")]
+public class Review { public int Id { get; set; } }
+
 public class Order { public int Id { get; set; } }
 
 public class ShopDb : DbContext

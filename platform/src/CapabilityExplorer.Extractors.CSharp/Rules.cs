@@ -24,10 +24,11 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
     public static readonly Tool Routes = new("aspnetcore.routes", "1");
     public static readonly Tool Di = new("dotnet.di", "1");
     public static readonly Tool EfRule = new("efcore", "2");
+    public static readonly Tool EntityClient = new("entity.client", "1");
     public static readonly Tool Dapper = new("dapper.sql", "2");
     public static readonly Tool ServiceBus = new("azure.servicebus", "2");
     public static readonly Tool Http = new("dotnet.httpclient", "2");
-    public static readonly IReadOnlyList<Tool> Tools = [Routes, Di, EfRule, Dapper, ServiceBus, Http];
+    public static readonly IReadOnlyList<Tool> Tools = [Routes, Di, EfRule, EntityClient, Dapper, ServiceBus, Http];
 
     private static readonly string[] HttpVerbs = ["Get", "Post", "Put", "Delete", "Patch"];
     private static readonly HashSet<string> DapperMethods = ["Query", "QueryAsync", "QueryFirst", "QueryFirstAsync", "QueryFirstOrDefault", "QueryFirstOrDefaultAsync", "QuerySingle", "QuerySingleAsync",
@@ -599,7 +600,21 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
 
     private string TableKey(Conn connection, string table) => $"sql|{Unbound("conn", connection.Name, connection.Assembly)}|{table}";
 
-    private static Conn ConnFor(EfModel ef, string entity) => ef.Connections.GetValueOrDefault(entity) ?? ef.Fallback;
+    // Outermost first, e.g. ["Supabase", "Postgrest"]: lets an access be traced to the package that provides the client.
+    private static List<string> NamespaceChain(ITypeSymbol type)
+    {
+        var chain = new List<string>();
+        for (var ns = type.ContainingNamespace; ns is { IsGlobalNamespace: false }; ns = ns.ContainingNamespace)
+        {
+            chain.Insert(0, ns.Name);
+        }
+
+        return chain;
+    }
+
+    // No context owns the entity: anchor "unknown" on the project that declares it, so every caller lands on the same node.
+    private static Conn ConnFor(EfModel ef, string entity) =>
+        ef.Connections.GetValueOrDefault(entity) ?? (ef.Fallback.Name == "unknown" && ef.Fallback.File is null && entity.Split('|') is [_, _, var assembly, ..] ? ef.Fallback with { Assembly = assembly } : ef.Fallback);
 
     private void EntityFramework(List<CSharpExtractor.SourceFile> files)
     {
@@ -654,6 +669,15 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                 {
                     b.Edge(caller, relation, TableKey(ConnFor(ef, keys.Of(typeArg)), entityTable.Table), [f.Evidence(b, inv)], "rule", "unresolved", "configuration", EfRule,
                         new JsonObject { ["via"] = keys.Of(target.OriginalDefinition), ["typeArgument"] = keys.Of(typeArg) });
+                }
+                // Any other generic call on a mapped entity (Supabase From<T>(), Marten Query<T>(), ...), written when the fluent chain ends in a mutation.
+                else if (node is InvocationExpressionSyntax call && f.Model.GetSymbolInfo(call).Symbol is IMethodSymbol { TypeArguments: [var model], ContainingType: var clientType } clientMethod
+                    && ef.Entities.TryGetValue(keys.Of(model), out var modelTable) && CSharpExtractor.Owner(f.Model, call.SpanStart) is IMethodSymbol && OwnerKey(f, call) is { } caller2)
+                {
+                    var chain = call.Ancestors().TakeWhile(a => a is MemberAccessExpressionSyntax or InvocationExpressionSyntax or AwaitExpressionSyntax).OfType<InvocationExpressionSyntax>().Select(MethodName);
+                    var mutates = chain.Any(n => n is "Insert" or "Update" or "Upsert" or "Delete" or "Add" or "Remove");
+                    b.Edge(caller2, mutates ? "WRITES" : "READS", TableKey(ConnFor(ef, keys.Of(model)), modelTable.Table), [f.Evidence(b, call)], "rule", "unresolved", "configuration", EntityClient,
+                        new JsonObject { ["client"] = clientType.ToDisplayString(), ["clientNamespaces"] = new JsonArray(NamespaceChain(clientType).Select(n => (JsonNode)n).ToArray()), ["via"] = keys.Of(clientMethod.OriginalDefinition), ["typeArgument"] = keys.Of(model) });
                 }
             }
         }

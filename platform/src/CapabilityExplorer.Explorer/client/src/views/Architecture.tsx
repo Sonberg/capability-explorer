@@ -225,15 +225,16 @@ function NodePanel({ node: n, onDrill, graph }: { node: ArchNode; onDrill: () =>
 
 /** Folded members grouped under the service that touches them; a member used by two services appears under both. */
 function MemberList({ members }: { members: NonNullable<ArchNode["members"]> }) {
-  const byService = new Map<string, { m: (typeof members)[number]; label: string }[]>();
+  const byService = new Map<string, { m: (typeof members)[number]; label: string; paths: string[]; bound: string[] }[]>();
   for (const m of members) {
     // One row per member and service: a store that is both read and written lists both, it is not two stores.
-    const labels = new Map<string, string[]>();
-    for (const c of m.connections.length ? m.connections : [{ service: "(no connection)", label: "" }]) {
-      labels.set(c.service, [...(labels.get(c.service) ?? []), c.label].filter(Boolean));
+    const labels = new Map<string, { parts: string[]; paths: string[]; bound: string[] }>();
+    for (const c of m.connections.length ? m.connections : [{ service: "(no connection)", label: "", paths: [], bound: [] }]) {
+      const prev = labels.get(c.service) ?? { parts: [], paths: [], bound: [] };
+      labels.set(c.service, { parts: [...prev.parts, c.label].filter(Boolean), paths: [...new Set([...prev.paths, ...c.paths])].sort(), bound: [...new Set([...prev.bound, ...c.bound])].sort() });
     }
-    for (const [service, parts] of labels) {
-      byService.set(service, [...(byService.get(service) ?? []), { m, label: parts.join(", ") }]);
+    for (const [service, { parts, paths, bound }] of labels) {
+      byService.set(service, [...(byService.get(service) ?? []), { m, label: parts.join(", "), paths, bound }]);
     }
   }
   return (
@@ -241,11 +242,13 @@ function MemberList({ members }: { members: NonNullable<ArchNode["members"]> }) 
       {[...byService].sort(([a], [b]) => a.localeCompare(b)).map(([service, rows]) => (
         <div key={service}>
           <div className="sticky top-0 bg-zinc-100 px-2 py-1 font-semibold dark:bg-zinc-800">{service} <span className="font-normal text-zinc-500">({rows.length})</span></div>
-          {rows.map(({ m, label }, i) => (
+          {rows.map(({ m, label, paths, bound }, i) => (
             <details key={i} className="border-b border-zinc-200 px-2 py-1 dark:border-zinc-800">
               <summary className="cursor-pointer truncate font-mono">{m.label} {label && <span className="text-zinc-500">· {label}</span>}</summary>
               <div className="space-y-1 py-1 pl-3 text-zinc-500">
                 {m.detail && <div>{m.detail}</div>}
+                {bound.length > 0 && <ul>{bound.map((v) => <li key={v} className="break-all">bound via {v}</li>)}</ul>}
+                {paths.length > 0 && <ul className="font-mono text-zinc-700 dark:text-zinc-300">{paths.map((p) => <li key={p} className="break-all">{p}</li>)}</ul>}
                 {m.status && <Pill>{m.status}</Pill>}
                 {m.symbolKey && <Key value={m.symbolKey} />}
               </div>

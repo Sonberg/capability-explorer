@@ -11,6 +11,7 @@ namespace CapabilityExplorer.Extractors.Tests;
 public sealed class SharedResourceTests : IDisposable
 {
     private readonly string _root = Directory.CreateTempSubdirectory("ce-shop-").FullName;
+    private string[] _lines = [];
     private readonly Lazy<(string From, string Relation, string To)[]> _edges;
 
     public SharedResourceTests()
@@ -27,6 +28,17 @@ public sealed class SharedResourceTests : IDisposable
         const string key = "sql|@unbound:shop/Shop.Host:conn=Shop|audit-logs";
         Assert.Equal(["READS"], Relations("cs|shop|Shop.Application|M:Shop.Application.GetAuditLogsQuery.Run", key));
         Assert.Equal(["WRITES"], Relations("cs|shop|Shop.Infrastructure|M:Shop.Infrastructure.AuditLogsRepository.Append(Shop.Data.AuditLog)", key));
+    }
+
+    [Fact]
+    public void Supabase_table_model_is_read_and_written_on_the_node_its_mapping_points_at()
+    {
+        var table = Targets("sql|", "reviews").Single();
+        Assert.Equal(["READS"], Relations("cs|shop|Shop.Infrastructure|M:Shop.Infrastructure.ReviewsRepository.Get", table));
+        Assert.Equal(["WRITES"], Relations("cs|shop|Shop.Infrastructure|M:Shop.Infrastructure.ReviewsRepository.Add(Shop.Data.Review)", table));
+        Assert.Equal(["MAPS_TO"], Relations("cs|shop|Shop.Data|T:Shop.Data.Review", table));
+        Assert.Empty(Relations("cs|shop|Shop.Infrastructure|P:Shop.Infrastructure.ReviewsRepository.Pending", table));
+        Assert.Contains(_lines, l => l.Contains("\"client\":\"Supabase.Client\"", StringComparison.Ordinal) && l.Contains("\"clientNamespaces\":[\"Supabase\"]", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -65,7 +77,8 @@ public sealed class SharedResourceTests : IDisposable
     {
         var packs = Path.GetFullPath(Path.Combine(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", "..", "packs"));
         var results = new CSharpExtractor(new ExtractorOptions(_root, "shop", new string('a', 40), null, packs)).Extract();
-        return results.SelectMany(r => r.Jsonl.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        _lines = results.SelectMany(r => r.Jsonl.Split('\n', StringSplitOptions.RemoveEmptyEntries)).ToArray();
+        return _lines
             .Select(l => { using var d = JsonDocument.Parse(l); return d.RootElement.Clone(); })
             .Where(r => r.GetProperty("kind").GetString() == "edge" && r.TryGetProperty("to", out _))
             .Select(r => (r.GetProperty("from").GetString()!, r.GetProperty("relation").GetString()!, r.GetProperty("to").GetString()!))

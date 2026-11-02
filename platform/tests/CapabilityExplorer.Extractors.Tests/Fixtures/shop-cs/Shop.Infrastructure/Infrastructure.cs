@@ -12,6 +12,16 @@ public class AuditLogsRepository(ShopDb db)
     public void Append(AuditLog entry) => db.AuditLogs.Add(entry);
 }
 
+public class ReviewsRepository(Supabase.Client client)
+{
+    public Task<Review?> Get() => client.From<Review>().Filter("id", "eq", 1).Single();
+
+    // The contract lets only methods read or write data, so an access inside a property has no edge.
+    public object Pending => client.From<Review>();
+
+    public Task<Review?> Add(Review review) => client.From<Review>().Insert(review);
+}
+
 public static class BusFactory
 {
     public static ServiceBusClient Create(IConfig config) => new(config["ServiceBus:Connection"]!);

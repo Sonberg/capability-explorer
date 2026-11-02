@@ -6,7 +6,7 @@ export interface ArchMember {
   detail?: string;
   status: string;
   symbolKey?: string;
-  connections: { service: string; label: string }[];
+  connections: { service: string; label: string; paths: string[]; bound: string[] }[];
 }
 
 export interface ArchNode {
