@@ -114,4 +114,30 @@ public sealed class AnalysisApiTests
         Assert.True(store.ReadRun(runId).Settings.IncludeTests);
     }
 
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task Admission_freezes_nonsecret_worker_defaults_and_include_tests_precedence(bool? includeTestsOverride, bool expectedIncludeTests)
+    {
+        using var factory = new CapabilityExplorerFactory();
+        var configuration = Path.Combine(Path.GetDirectoryName(factory.RequestsDirectory)!, "capabilities.json");
+        var original = await File.ReadAllTextAsync(configuration);
+        await File.WriteAllTextAsync(configuration, original.Replace("\"name\": \"Demand pricing\"", "\"name\": \"Demand pricing\", \"includeTests\": true", StringComparison.Ordinal));
+        using var client = factory.CreateClient();
+        var store = new CapabilityExplorer.Capabilities.Analysis.FileRunStore(factory.RequestsDirectory);
+        using var owner = store.AcquireWorker();
+        var defaults = new CapabilityExplorer.Capabilities.Analysis.AnalysisSettings(Packages: false, Locked: true,
+            GitHubAuth: "none", NugetPassEnv: "PRIVATE_FEED_TOKEN", NugetAllowedOrigins: "https://packages.example.invalid");
+        store.PublishWorkerDefaults(owner, defaults, includeTestsOverride);
+        var response = await client.PostAsync(new Uri(Url, UriKind.Relative), null);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var accepted = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var runId = accepted.GetProperty("runId").GetString()!;
+        var frozen = store.ReadRun(runId);
+        Assert.Equal(defaults with { IncludeTests = expectedIncludeTests }, frozen.Settings);
+        store.PublishWorkerDefaults(owner, new CapabilityExplorer.Capabilities.Analysis.AnalysisSettings(), !expectedIncludeTests);
+        Assert.Equal(frozen, store.ReadRun(runId));
+    }
+
 }
