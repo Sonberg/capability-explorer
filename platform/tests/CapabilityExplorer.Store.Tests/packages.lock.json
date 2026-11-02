@@ -735,6 +735,12 @@
           "JsonSchema.Net": "[9.6.0, )"
         }
       },
+      "capabilityexplorer.evaluation": {
+        "type": "Project",
+        "dependencies": {
+          "CapabilityExplorer.Contracts": "[1.0.0, )"
+        }
+      },
       "capabilityexplorer.interpretation": {
         "type": "Project",
         "dependencies": {
@@ -748,6 +754,17 @@
           "CapabilityExplorer.Binding": "[1.0.0, )",
           "CapabilityExplorer.Contracts": "[1.0.0, )",
           "Npgsql": "[10.0.3, )"
+        }
+      },
+      "ce": {
+        "type": "Project",
+        "dependencies": {
+          "CapabilityExplorer.Binding": "[1.0.0, )",
+          "CapabilityExplorer.Capabilities": "[1.0.0, )",
+          "CapabilityExplorer.Contracts": "[1.0.0, )",
+          "CapabilityExplorer.Evaluation": "[1.0.0, )",
+          "CapabilityExplorer.Interpretation": "[1.0.0, )",
+          "CapabilityExplorer.Store": "[1.0.0, )"
         }
       },
       "ce-explorer": {

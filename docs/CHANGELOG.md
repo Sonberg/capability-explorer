@@ -11,6 +11,11 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Host-local analysis run and attempt journals, atomic admission, exclusive
+  execution, guarded publication and conservative crash recovery. Analysis now
+  requires a host .NET 10 runtime; incompatible host/container lock domains fail
+  closed. File mode remains supported and Kafka is not required (MADR-0022).
+
 - Draft platform enrollment, evidence-bundle and intake-receipt shape profiles,
   controlled conformance fixtures, a seven-boundary plan catalogue and cheap
   validation checks. Proposed MADR-0020 preserves ce.v1 and distinguishes platform

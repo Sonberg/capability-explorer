@@ -100,21 +100,33 @@ test('symlink artifact files, inventory roots and receipt destinations are refus
  });
 });
 
-test('analysis orchestration invalidates stale receipts before invalid input or a failed capability run',()=>{
- for(const invalidInput of [true,false])fixture(root=>{
-  mkdirSync(join(root,'scripts'),{recursive:true});
-  for(const name of ['analyze-all','analysis-capability-ids.mjs','analysis-receipt.mjs'])copyFileSync(join(repository,'scripts',name),join(root,'scripts',name));
+test('analysis wrappers pass literal arguments to the host coordinator without touching receipts',()=>{
+ for(const [script,command,args,expected] of [
+  ['analyze-all','analysis-all',['config with spaces.json'],['--capabilities','config with spaces.json']],
+  ['analyze-worker','analysis-worker',[],['--capabilities','capabilities.json']],
+  ['analyze','analysis-run',['one','config with spaces.json'],['--capability','one','--capabilities','config with spaces.json']]
+ ])fixture(root=>{
   mkdirSync(join(root,'scripts/lib'),{recursive:true});
+  copyFileSync(join(repository,'scripts',script),join(root,'scripts',script));
   copyFileSync(join(repository,'scripts/lib/container-engine.sh'),join(root,'scripts/lib/container-engine.sh'));
-  write(root,'scripts/sandbox','#!/bin/sh\nshift\nshift\nexec "$@"\n');
-  write(root,'scripts/analyze','#!/bin/sh\nprintf "%s\\n" "$1" >> .sandbox-cache/attempted\nexit 1\n');
-  write(root,'bin/git',`#!/bin/sh\ncase "$1" in rev-parse) printf '%s\\n' '${application}';; status) exit 0;; *) exit 1;; esac\n`);
-  for(const path of ['scripts/analyze-all','scripts/sandbox','scripts/analyze','bin/git'])chmodSync(join(root,path),0o700);
-  write(root,receiptPath,'{"stale-success":true}\n');
-  if(invalidInput)write(root,'capabilities.json','{"capabilities":[{"id":"../escape"}]}');
-  const result=spawnSync('bash',['scripts/analyze-all','capabilities.json'],{cwd:root,encoding:'utf8',timeout:20000,env:{PATH:join(root,'bin')+':'+process.env.PATH}});
-  assert.equal(result.error,undefined);assert.notEqual(result.status,0);assert.equal(existsSync(join(root,receiptPath)),false);
-  if(invalidInput)assert.equal(existsSync(join(root,'.sandbox-cache/attempted')),false);
-  else assert.equal(readFileSync(join(root,'.sandbox-cache/attempted'),'utf8'),'one\n');
+  write(root,'platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll','fixture');
+  write(root,'bin/dotnet','#!/usr/bin/env node\nrequire("fs").writeFileSync("args.json",JSON.stringify(process.argv.slice(2)));process.exit(23);\n');
+  chmodSync(join(root,'bin/dotnet'),0o700);
+  write(root,receiptPath,'preserve until ownership');
+  const result=spawnSync('bash',['scripts/'+script,...args],{cwd:root,encoding:'utf8',timeout:20000,env:{PATH:join(root,'bin')+':'+process.env.PATH}});
+  assert.equal(result.status,23,result.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(join(root,'args.json'),'utf8')).slice(1),[command,...expected]);
+  assert.equal(readFileSync(join(root,receiptPath),'utf8'),'preserve until ownership');
  });
 });
+
+test('analysis wrappers reject unqualified engines before invoking the host or changing receipts',()=>fixture(root=>{
+ mkdirSync(join(root,'scripts/lib'),{recursive:true});
+ copyFileSync(join(repository,'scripts/analyze-all'),join(root,'scripts/analyze-all'));
+ copyFileSync(join(repository,'scripts/lib/container-engine.sh'),join(root,'scripts/lib/container-engine.sh'));
+ write(root,receiptPath,'preserved');
+ const result=spawnSync('bash',['scripts/analyze-all'],{cwd:root,encoding:'utf8',timeout:20000,env:{PATH:process.env.PATH,CE_CONTAINER_ENGINE:'podman'}});
+ assert.equal(result.status,2);
+ assert.match(result.stderr,/not qualified/);
+ assert.equal(readFileSync(join(root,receiptPath),'utf8'),'preserved');
+}));

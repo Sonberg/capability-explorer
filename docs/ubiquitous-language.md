@@ -10,6 +10,20 @@ Governance: [MADR-0002: establish and govern a shared ubiquitous language](adr/0
 
 ## Authority and usage
 
+For the local lifecycle ([MADR-0022](adr/0022-local-analysis-lifecycle.md)):
+
+- **Analysis run** is accepted intent with frozen configuration, settings and a
+  unique run ID. It is operational metadata, separate from ce.v1 facts.
+- **Attempt** is one execution of a run, with its own ID and resolved input
+  manifest. This implementation does not automatically retry attempts.
+- **Worker ownership** is an exclusive OS-backed handle in one validated local
+  coordination domain. A PID or heartbeat does not grant publication authority.
+- **Publication permit** serializes cancellation against canonical effects and
+  records intent and confirmation for each affected surface.
+- **Unknown** means execution or publication cannot be positively reconciled.
+  It blocks conflicting work; it does not mean failed, stopped or safe to retry.
+
+
 The executable [ce.v1 schema](../schema/v1/record.schema.json),
 [relation catalogue](../schema/v1/relations.json) and validators define wire
 behavior. The [contract guide](../schema/README.md) explains its semantics.

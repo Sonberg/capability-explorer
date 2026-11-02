@@ -71,6 +71,15 @@ Changing the original configuration after admission does not change the frozen
 request; changing its frozen copy prevents publication. Frozen-input paths are relative
 on disk and resolved beneath the current journal root.
 
+Before claiming work, `analysis-worker` publishes its validated non-secret
+defaults: package/locked flags, GitHub auth mode, private-feed credential variable
+names, authorized feed origins and an optional `INCLUDE_TESTS` override. Explorer
+copies this profile into each new admission; it receives no credential values or
+engine socket. Without a profile, standard defaults and the capability's
+`includeTests` apply. A retained profile means last configured defaults, not a
+live worker or permission to execute. Changing it cannot alter queued runs.
+Restart the worker to publish changed defaults before admitting new work.
+
 `queued` means accepted but unclaimed. `running` means claimed preparation;
 `stopping` in Explorer means cancellation intent, not confirmed termination.
 `stopped` projects a confirmed cancelled run. `publishing` means the publication
@@ -89,6 +98,14 @@ they are not silently skipped or converted to success.
 Stopping queued work withdraws it atomically. Stopping executing work persists
 cancellation intent separately from termination. A killed Docker client or
 controller does not prove that its descendants or containers ended.
+
+Currently, Stop during a live child and an ordinary nonzero sandbox exit both
+leave the run `unknown`, even when exact-label container cleanup reports no
+running container. A late Docker request or escaped descendant is still
+uncertain. This blocks all subsequent analysis until offline reconciliation;
+there is no automatic reset or stop-and-retry command. Confirmed cancellation
+is available for queued work or cancellation detected before any child starts.
+Stop after confirmed core publication remains too late.
 
 Cancellation accepted before `BeginPublication` prevents later publication.
 That method verifies confirmed successful extraction, cancellation intent and

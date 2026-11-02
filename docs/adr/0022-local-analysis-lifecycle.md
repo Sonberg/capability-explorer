@@ -58,6 +58,12 @@ started execution/publication without sufficient confirmation -> unknown
 
 Successful extraction alone does not mean done. Publication requires confirmed
 successful execution, matching immutable inputs and no cancellation intent.
+
+The current host adapter treats cancellation of a live child and nonzero sandbox
+exit as unknown even after exact-label cleanup. It cannot prove that no late
+Docker request or escaped descendant exists. This intentionally blocks new work
+until offline reconciliation; ordinary live Stop does not provide a retry-ready
+terminal state. Queued and pre-spawn cancellation can be confirmed.
 `BeginPublication` durably records publishing under the metadata lock and holds
 that lock through publication effects and completion. Cancellation accepted
 before this boundary prevents publication. Once publishing is observed,
@@ -90,6 +96,12 @@ PID existence alone cannot establish live ownership.
 Analysis now requires a trusted host .NET 10 runtime even when builds use Docker.
 Explorer remains unable to start engines or access their socket. Existing
 credential/export/package/offline-extraction separation remains in place.
+
+The owning host publishes a bounded private defaults profile before claiming
+work. Explorer freezes those non-secret settings into admission, preserving
+package/auth/private-feed policy without receiving credential values. A missing
+profile uses standard defaults; a stale profile is only last configured policy,
+never liveness or execution authority. Already admitted settings remain immutable.
 Podman full analysis remains unqualified and is explicitly refused.
 
 The default retention ceiling is 1,000 run records. Admission refuses at the

@@ -17,6 +17,9 @@ using CapabilityExplorer.Cli;
 // The connection string defaults to the CE_DATABASE environment variable.
 const string Usage = """
     usage:
+      ce analysis-worker [--capabilities <file>]
+      ce analysis-run --capability <id> [--capabilities <file>]
+      ce analysis-all [--capabilities <file>]
       ce validate <artifact.jsonl...>
       ce verify-evidence --repo <git dir> <artifact.jsonl...>
       ce migrate [--connection <connection string>]
@@ -57,6 +60,11 @@ NpgsqlDataSource OpenDatabase()
 
 switch (command)
 {
+    case "analysis-worker":
+    case "analysis-run":
+    case "analysis-all":
+        return await AnalysisWorkerCommand.RunAsync(command, options);
+
     case "validate":
     {
         var failed = 0;

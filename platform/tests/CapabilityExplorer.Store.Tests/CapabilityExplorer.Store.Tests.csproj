@@ -14,6 +14,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/CapabilityExplorer.Contracts/CapabilityExplorer.Contracts.csproj" />
+    <ProjectReference Include="../../src/CapabilityExplorer.Cli/CapabilityExplorer.Cli.csproj" Aliases="analysiscli" />
     <ProjectReference Include="../../src/CapabilityExplorer.Store/CapabilityExplorer.Store.csproj" />
     <ProjectReference Include="../../src/CapabilityExplorer.Explorer/CapabilityExplorer.Explorer.csproj" />
     <Compile Include="../Shared/Fixtures.cs" Link="Shared/Fixtures.cs" />

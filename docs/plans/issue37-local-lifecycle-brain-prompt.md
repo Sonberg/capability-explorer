@@ -126,3 +126,13 @@ P: 97/100 (trace35, error/recovery30, boundedness20, instrumentation12/15).
 Deduction3: interprocess and abrupt-death behavior require actual runtime tests.
 Independent architect and adversary agreed that preparation must not publish and
 that the owning .NET process retains the permit throughout actual publication.
+
+A: 97/100 (boundaries35, failure isolation30, simplicity20, qualification12/15).
+Independent non-author council judge found no remaining architecture blockers at
+2cedd680081d480262611e0aed8b6618145b8dfa plus inspected integration changes.
+Actual cross-process ownership and surviving-child recovery passed on native
+macOS and pinned Linux; incompatible kernel domains refuse access. Deduction3:
+live-child cancellation/nonzero sandbox exit requires manual reconciliation,
+and mixed macOS-worker/Linux-VM-Explorer operation is deliberately unqualified.
+These limits are explicit in MADR-0022 and the operating guide. This gate is not
+a claim that full CI passed. R/C gates remain pending integrated final validation.
