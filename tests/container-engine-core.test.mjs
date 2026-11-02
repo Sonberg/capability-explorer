@@ -20,6 +20,10 @@ fs.appendFileSync(process.env.TEST_ENGINE_LOG,JSON.stringify({engine,args:full,s
 while(['--host','--connection','--url','--identity'].includes(args[0]))args.splice(0,2);
 if(args[0]==='--remote=false')args.shift();
 const op=args[0];
+if(process.env.MOCK_HANGING_METADATA===engine&&op==='info'){
+ fs.writeFileSync(process.env.TEST_ENGINE_LOG+'.pid',String(process.pid));
+ fs.writeSync(1,Buffer.alloc(70000,81));setInterval(()=>{},1000);
+}
 if(process.env.MOCK_REPOINT_MACHINE==='1'&&op==='system'&&args[1]==='connection')
  fs.writeFileSync(process.env.TEST_ENGINE_LOG+'.repointed','changed named connection after discovery');
 else if(process.env.MOCK_REPOINT_MACHINE==='1'&&full.includes('--connection'))process.exit(42);
@@ -175,6 +179,20 @@ test('oversized metadata is rejected without publishing its raw bytes', t => {
   const f = fixture(t), r = f.run('scripts/container-engine-doctor', [], { MOCK_DOCKER_METADATA: 'SENTINEL'.repeat(3000) });
   refused(r, /metadata (output too large|probe exceeded time\/output limit)/);
   assert.doesNotMatch(resultError(r), /SENTINELSENTINEL/);
+});
+
+for (const engine of ['docker', 'podman']) test(`${engine} bounded metadata capture terminates its actual hanging CLI child`, t => {
+  const f = fixture(t);
+  let pid;
+  try {
+    const r = f.run('scripts/container-engine-doctor', [], { CE_CONTAINER_ENGINE: engine, MOCK_HANGING_METADATA: engine });
+    refused(r, /metadata probe exceeded time\/output limit/);
+    pid = Number(readFileSync(f.log + '.pid', 'utf8'));
+    assert.ok(Number.isInteger(pid) && pid > 1);
+    assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+  } finally {
+    if (pid) { try { process.kill(pid, 'SIGKILL'); } catch (e) { if (e.code !== 'ESRCH') throw e; } }
+  }
 });
 
 test('fingerprints change with Docker daemon and macOS connection endpoint identity', t => {

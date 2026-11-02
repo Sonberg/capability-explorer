@@ -34,6 +34,8 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
+source "$root/scripts/lib/container-engine.sh"
+ce_engine_choice
 offline=0
 docker_sock=0
 port=""
@@ -49,12 +51,18 @@ done
 [[ $# -ge 2 ]] || { echo "usage: scripts/sandbox [--offline] [--docker] [--port N] <dotnet|node> <command...>" >&2; exit 2; }
 profile="$1"; shift
 
+if [[ "$CE_ENGINE" == podman && $docker_sock -eq 1 ]]; then
+  ce_runtime_fail 'Podman socket/Testcontainers mode is not qualified in the core profile'; exit 2
+fi
+ce_engine_init
+
 source "$root/config/runtime/images.env"
 case "$profile" in
   dotnet) image="${SANDBOX_DOTNET_IMAGE:-$DOTNET_IMAGE}" ;;
   node)   image="${SANDBOX_NODE_IMAGE:-$NODE_IMAGE}" ;;
   *) echo "unknown profile: $profile" >&2; exit 2 ;;
 esac
+image="$(ce_image_ref "$image")"
 
 cache="$root/.sandbox-cache"
 mkdir -p "$cache/nuget" "$cache/nuget-http" "$cache/npm"
@@ -86,13 +94,16 @@ args=(
   # Repository is mounted from the host; owner may differ from the container user.
   -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*'
 )
+[[ "$CE_ENGINE" != podman ]] || args+=(--userns keep-id)
 [[ -t 0 && -t 1 ]] && args+=(-it)
 
 if [[ $offline -eq 1 ]]; then
   args+=(--network none)
-else
+elif [[ "$CE_ENGINE" == docker ]]; then
   # Services on the host (PostgreSQL, Ollama) are host.docker.internal, also on Linux where Docker does not add it.
   args+=(--network "${SANDBOX_NETWORK:-bridge}" --add-host host.docker.internal:host-gateway)
+elif [[ -n "${SANDBOX_NETWORK:-}" ]]; then
+  ce_runtime_fail 'custom Podman networks are not qualified in the core profile'; exit 2
 fi
 
 if [[ -n "$port" ]]; then
@@ -152,4 +163,4 @@ if [ -f /etc/sandbox/extra-ca.crt ]; then
 fi
 exec "$@"'
 
-exec docker "${args[@]}" "$image" sh -c "$entry" sandbox "$@"
+ce_engine_exec "${args[@]}" "$image" sh -c "$entry" sandbox "$@"

@@ -7,6 +7,7 @@ DOTNET  := $(SANDBOX) dotnet
 NODE    := $(SANDBOX) node
 OFFLINE := $(SANDBOX) --offline
 include config/runtime/images.env
+include config/build/container-engine.mk
 
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
         restore ui build test-ts test-contracts test-evaluation test-extractors test-explorer test-store evaluate evaluate-golden \
@@ -88,7 +89,7 @@ test-corpus-replay:
 test-security-regressions: build
 	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Capabilities.Tests && dotnet test --no-build tests/CapabilityExplorer.Interpretation.Tests && dotnet test --no-build tests/CapabilityExplorer.Extractors.Tests && dotnet test --no-build tests/CapabilityExplorer.Explorer.Tests'
 
-ci: security-check fixtures-compile test
+ci: test-container-engine-core security-check fixtures-compile test
 
 test: test-postmerge-analysis test-local-ci test-mapping-replay test-security-gates test-corpus-replay test-binding-preview golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
 

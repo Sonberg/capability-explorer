@@ -10,6 +10,8 @@
 set -uo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
+source "$root/scripts/lib/container-engine.sh"
+ce_require_docker 'analysis worker and cancellation'
 capabilities="${1:-capabilities.json}"
 requests=".sandbox-cache/requests"
 mkdir -p "$requests"

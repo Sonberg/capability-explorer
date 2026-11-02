@@ -1,4 +1,5 @@
 include config/runtime/images.env
+include config/build/container-engine.mk
 # Trusted project development runs on the host for fast IDE, debugger and hot-reload loops.
 # Only capability analysis uses scripts/sandbox; analysed repositories are untrusted input.
 DOTNET := dotnet

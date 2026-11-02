@@ -284,3 +284,14 @@ diamond/repeat-byte, missing-project and unrelated-project controls pass; the
 C# golden gate remains unchanged. See [execution evidence](plans/transitive-project-references.md).
 This does not fix framework selection, package version conflicts, older framework
 fallback, conditional MSBuild references, or other issue #6 mapping gaps.
+
+## Issue #34: first Podman core slice
+
+The separate `feat/podman-core` PR introduces explicit engine selection, sanitized
+doctor output, rootless direct sandbox execution and the pinned lockfile scanner.
+See [MADR-0021](adr/0021-explicit-container-engine-core.md),
+[guide](podman-core.md) and [acceptance plan](plans/podman-core-execution.md).
+Docker remains the full local/hosted gate. Explicit Podman requests for nested
+act/Testcontainers, Make pipelines, dev, analysis and full audit fail early.
+Those are follow-on slices after owner review, not completed support. Preserve
+the independent issue #33 contract draft and PR #32 research foundation.
