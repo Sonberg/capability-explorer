@@ -11,6 +11,11 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Draft platform enrollment, evidence-bundle and intake-receipt shape profiles,
+  controlled conformance fixtures, a seven-boundary plan catalogue and cheap
+  validation checks. Proposed MADR-0020 preserves ce.v1 and distinguishes platform
+  contracts from analyzed application contracts; no central service is delivered.
+
 - Opt-in PostgreSQL Explorer foundation: streamed validated imports, immutable CAS-published analysis snapshots, explicit default revisions, bounded SQL projections and paged core browsing. File mode remains the default; remaining database views and full issue #28 cutover are not complete.
 - Proposed MADR-0017/0018, deterministic opt-in workload tooling and an executable RuVector compatibility/recovery experiment. The tested RuVector image failed adoption prerequisites; no extension is adopted.
 

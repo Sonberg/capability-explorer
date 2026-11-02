@@ -1,5 +1,19 @@
 # Handoff: remaining work
 
+## Issue #33: draft platform exchange contracts
+
+The [platform schema guide](../schema/platform/README.md),
+[seven-boundary catalogue](../config/platform/exchange-contracts.json) and
+[proposed MADR-0020](adr/0020-platform-exchange-contracts.md) define a contract-first
+review slice. Enrollment, evidence-bundle and intake-receipt shapes are tested
+with existing JsonSchema.Net; a cheap Node plan checker preserves draft scope.
+No central server, authorization, byte/digest verifier, publication state machine,
+product API or production deployment is delivered. RFC 8785 content hashing is a
+proposed later choice, not implemented. ce.v1 and protected goldens are unchanged.
+Podman portability remains separate issue #34; no runtime support follows from
+these shape checks. Later provider/consumer slices wait for owner decisions and
+target fresh main with normal local gates. This does not complete issue #33.
+
 ## Issue #28: PostgreSQL foundation in review
 
 Main reconciliation PR #27 merged at `d9421fa046c870df484927c97b786afcbb7d48bb`.
