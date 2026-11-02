@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace CapabilityExplorer.Capabilities.Analysis;
 
 /// <summary>Trusted single-host lifecycle journal. Local filesystems only; unknown execution blocks reuse.</summary>
-public sealed class FileRunStore
+public sealed partial class FileRunStore
 {
     private readonly string _root;
     private readonly string _runs;
