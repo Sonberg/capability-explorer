@@ -104,8 +104,6 @@ public sealed class GlossaryCapabilityApiTests(CapabilityExplorerFactory factory
     public async Task Capability_filters_repositories_and_prefers_locked_revision_but_allows_in_scope_override()
     {
         var client = factory.CreateClient();
-        var check = await client.PostAsync(new Uri("/api/capabilities/demand-pricing/check", UriKind.Relative), null);
-        Assert.Equal(HttpStatusCode.OK, check.StatusCode);
         var candidates = (await client.GetFromJsonAsync<List<GlossaryCandidate>>("/api/glossary?cap=demand-pricing", GlossaryApiTests.JsonOptions))!;
         Assert.NotEmpty(candidates);
         var occurrences = candidates.SelectMany(c => c.Occurrences).ToList();

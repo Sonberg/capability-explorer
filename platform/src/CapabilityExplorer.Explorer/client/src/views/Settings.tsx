@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { request, type ModelSettings, type PackageFeed, type PackageFeedSettings } from "../api";
+import { request, type ModelSettings, type PackageFeedSettings } from "../api";
 import { Button, Card, ErrorBox, H1, H2, inputClass, Loading, Mono, Muted, Note, Pill } from "../components/ui";
 import { useApi, useSelection } from "../state";
 
@@ -132,100 +132,34 @@ export function Settings() {
   );
 }
 
-type FeedDraft = PackageFeed & { secret: string; clearCredential: boolean };
-
 function PackageFeeds() {
   const current = useApi<PackageFeedSettings>("/api/settings/package-feeds");
-  const [feeds, setFeeds] = useState<FeedDraft[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
-
-  useEffect(() => {
-    if (current.data) setFeeds(current.data.feeds.map(feed => ({ ...feed, secret: "", clearCredential: false })));
-  }, [current.data]);
-
   if (current.error) return <ErrorBox message={current.error} />;
   if (!current.data) return <Loading what="Loading package feeds" />;
-
-  const update = (index: number, patch: Partial<FeedDraft>) => setFeeds(old => old.map((feed, i) => i === index ? { ...feed, ...patch } : feed));
-  const add = (kind: PackageFeed["kind"]) => setFeeds(old => [...old, {
-    id: crypto.randomUUID().replaceAll("-", ""), kind, name: "", url: "", scope: "", username: "", hasCredential: false, secret: "", clearCredential: false,
-  }]);
-  const save = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setStatus(null);
-    try {
-      await request<PackageFeedSettings>("/api/settings/package-feeds", {
-        method: "PUT",
-        body: JSON.stringify({ feeds: feeds.map(({ id, kind, name, url, scope, username, secret, clearCredential }) => ({ id, kind, name, url, scope, username, secret, clearCredential })) }),
-      });
-      setStatus({ tone: "ok", text: "Saved. The next analysis run will use these feeds." });
-      current.reload();
-    } catch (err) {
-      setStatus({ tone: "bad", text: (err as Error).message });
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <Card>
       <H2>Package feeds</H2>
       <Muted>
-        NuGet sources are used for package metadata and reference assemblies. npm registries are used for lockfile-backed projects; install lifecycle scripts are disabled. Credentials are stored in <Mono className="text-xs">{current.data.settingsPath}</Mono>, never sent back to the browser, and only passed to package fetching.
+        Read-only host configuration from <Mono className="text-xs">{current.data.settingsPath}</Mono>.
+        This public catalogue contains no credentials and does not indicate that a worker is running.
+        Explorer cannot accept or save package-feed passwords or tokens.
       </Muted>
-      {current.data.problem && <Note>Saved feeds could not be loaded: {current.data.problem}</Note>}
-      <form onSubmit={save} className="mt-3 space-y-3">
-        {feeds.length === 0 && <p className="text-[13px] text-zinc-500">No additional feeds configured.</p>}
-        {feeds.map((feed, index) => (
-          <div key={feed.id} className="grid gap-2 border-t border-zinc-200 pt-3 dark:border-zinc-800 sm:grid-cols-2">
-            <label className="block">
-              <span className="text-[13px] font-semibold">Type</span>
-              <select value={feed.kind} onChange={e => update(index, { kind: e.target.value as PackageFeed["kind"], scope: "" })} className={`${inputClass} mt-1`}>
-                <option value="nuget">NuGet</option>
-                <option value="npm">npm</option>
-              </select>
-            </label>
-            <label className="block">
-              <span className="text-[13px] font-semibold">Name</span>
-              <input value={feed.name} onChange={e => update(index, { name: e.target.value })} className={`${inputClass} mt-1`} autoComplete="off" />
-            </label>
-            <label className="block sm:col-span-2">
-              <span className="text-[13px] font-semibold">{feed.kind === "nuget" ? "NuGet v3 service index" : "npm registry URL"}</span>
-              <input value={feed.url} onChange={e => update(index, { url: e.target.value })} placeholder={feed.kind === "nuget" ? "https://packages.example.com/v3/index.json" : "https://packages.example.com/npm/"} className={`${inputClass} mt-1`} autoComplete="off" spellCheck={false} />
-            </label>
-            {feed.kind === "npm" ? (
-              <label className="block sm:col-span-2">
-                <span className="text-[13px] font-semibold">Scopes</span>
-                <input value={feed.scope ?? ""} onChange={e => update(index, { scope: e.target.value })} placeholder="@company, @internal (blank sets the default registry)" className={`${inputClass} mt-1`} autoComplete="off" spellCheck={false} />
-              </label>
-            ) : (
-              <label className="block">
-                <span className="text-[13px] font-semibold">Username</span>
-                <input value={feed.username ?? ""} onChange={e => update(index, { username: e.target.value })} className={`${inputClass} mt-1`} autoComplete="off" />
-              </label>
-            )}
-            <label className="block">
-              <span className="text-[13px] font-semibold">{feed.kind === "nuget" ? "Password or token" : "Token or password"}</span>
-              <input type="password" value={feed.secret} onChange={e => update(index, { secret: e.target.value, clearCredential: false })} placeholder={feed.hasCredential ? "Saved; leave empty to keep" : "Optional for public feeds"} className={`${inputClass} mt-1`} autoComplete="new-password" />
-            </label>
-            <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-2">
-              {feed.hasCredential && <label className="flex items-center gap-2 text-[13px]">
-                <input type="checkbox" checked={feed.clearCredential} onChange={e => update(index, { clearCredential: e.target.checked, secret: "" })} />
-                Clear saved credential
-              </label>}
-              <Button variant="danger" onClick={() => setFeeds(old => old.filter((_, i) => i !== index))}>Remove feed</Button>
-            </div>
-          </div>
-        ))}
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => add("nuget")}>Add NuGet source</Button>
-          <Button variant="secondary" onClick={() => add("npm")}>Add npm registry</Button>
-          <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save feeds"}</Button>
-          {status && <span role="status" className={`self-center text-[13px] ${status.tone === "ok" ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}>{status.text}</span>}
+      <Note>
+        Configure or migrate on the host: <Mono>ce package-feeds --import &lt;old-settings.json&gt; --catalog .sandbox-cache/package-feed-catalog/catalog.json</Mono>.
+        Legacy secret files are not read by Explorer. Model and database settings are separate.
+      </Note>
+      {current.data.problem && <ErrorBox message={current.data.problem} />}
+      {!current.data.problem && current.data.feeds.length === 0 && <Muted>No additional feeds configured.</Muted>}
+      {current.data.feeds.map(feed => (
+        <div key={feed.id} className="mt-3 border-t border-zinc-200 pt-2 dark:border-zinc-800">
+          <strong>{feed.name}</strong> · {feed.kind} · <Mono>{feed.id}</Mono>
+          <p className="break-all text-xs">{feed.url}</p>
+          {feed.scope && <Muted>Scopes: {feed.scope}</Muted>}
+          {feed.username && <Muted>Username: {feed.username}</Muted>}
+          <Pill tone={feed.hasCredential ? "ok" : "neutral"}>{feed.hasCredential ? "Host credential configured" : "No host credential configured"}</Pill>
         </div>
-      </form>
+      ))}
+      <Button variant="secondary" onClick={current.reload}>Refresh catalogue</Button>
     </Card>
   );
 }

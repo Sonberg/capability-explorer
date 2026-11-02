@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { ApiError, request, shortSha, type AnalysisJob, type CapabilityStatus, type RebuildResult } from "../api";
+import { ApiError, request, shortSha, type AnalysisJob, type CapabilityCreated, type CapabilityStatus, type RebuildResult } from "../api";
 import { Button, Card, ErrorBox, H1, H2, inputClass, Loading, Mono, Muted, Note, Pill, Table } from "../components/ui";
 import { useApi, useSelection } from "../state";
 
@@ -35,6 +35,11 @@ export function Capabilities() {
     return job;
   }), []);
   const ids = list.data?.map((c) => c.id).join("\n") ?? "";
+  useEffect(() => {
+    if (!ids) return;
+    const timer = window.setInterval(reloadList, 2000);
+    return () => window.clearInterval(timer);
+  }, [ids, reloadList]);
   useEffect(() => {
     for (const id of ids.split("\n").filter(Boolean)) void follow(id).catch((e: Error) => setAnalysisError(e.message));
   }, [ids, follow]);
@@ -85,6 +90,22 @@ export function Capabilities() {
     }
   };
 
+  const check = async (c: CapabilityStatus, cancel = false) => {
+    setBusy(c.id);
+    setActionError(undefined);
+    try {
+      const url = cancel && c.check
+        ? `/api/source-checks/${encodeURIComponent(c.check.requestId)}/cancel`
+        : `/api/capabilities/${encodeURIComponent(c.id)}/check`;
+      await request(url, { method: "POST" });
+      refresh();
+    } catch (e) {
+      setActionError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const remove = async (c: CapabilityStatus) => {
     if (!window.confirm(`Remove capability “${c.name}”? Cloned sources stay in the workspace.`)) return;
     setActionError(undefined);
@@ -102,16 +123,14 @@ export function Capabilities() {
       <div>
         <H1>Capabilities</H1>
         <Muted>
-          A capability is a named set of repositories that are checked together. Checking acquires each source read-only (GitHub repositories as bare, blob-less clones; local repositories in place) and
+          A capability is a named set of repositories that are checked together. Checks are queued for the trusted host worker, which acquires each source read-only and
           locks it to one exact commit. Pick a capability in the bar above to scope every view to it.
         </Muted>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <Pill tone={meta.githubAuth.configured ? "ok" : "neutral"}>{meta.githubAuth.configured ? "GitHub credentials available" : "no GitHub credentials"}</Pill>
+        <Pill tone="neutral">Host-managed acquisition</Pill>
         <span className="text-zinc-500">
-          {meta.githubAuth.configured
-            ? `Private repositories are cloned with the token from ${meta.githubAuth.source}, sent only to github.com.`
-            : "Public repositories only. For private ones, start the explorer with GITHUB_TOKEN set or after `gh auth login` on your machine."}
+          Configure GitHub credentials on the host worker, not in Explorer. Queued work does not imply a worker is running.
         </span>
       </div>
       {actionError && <ErrorBox message={actionError} />}
@@ -131,6 +150,12 @@ export function Capabilities() {
               <Button variant="secondary" onClick={() => setCapability(c.id)} disabled={capability === c.id}>
                 {capability === c.id ? "Selected" : "Select"}
               </Button>
+              <Button variant="secondary" onClick={() => check(c)} disabled={busy !== null || ["queued", "working", "cancelling", "unknown"].includes(c.check?.state ?? "")}>
+                Check sources
+              </Button>
+              {c.check && ["queued", "working"].includes(c.check.state) && (
+                <Button variant="danger" onClick={() => check(c, true)} disabled={busy !== null}>Cancel check</Button>
+              )}
               {isActive(jobs[c.id]) ? (
                 <Button variant="danger" onClick={() => stop(c.id)} disabled={!jobs[c.id]?.runId || jobs[c.id]?.state === "stopping" || jobs[c.id]?.state === "publishing"}>
                   {jobs[c.id]?.state === "queued" ? "Queued · Stop" : jobs[c.id]?.state === "stopping" ? "Stopping…" : "Analyzing · Stop"}
@@ -150,6 +175,14 @@ export function Capabilities() {
           </div>
           {c.description && <Muted className="mt-1">{c.description}</Muted>}
           <p className="my-2 text-xs text-zinc-500">{c.checkedAt ? `Last checked ${new Date(c.checkedAt).toLocaleString()}` : "Not checked yet."}</p>
+          {c.check && <Note>
+            Source check: <strong>{c.check.state}</strong> · <Mono>{c.check.requestId}</Mono>
+            {c.checkStale && <span className="block">Stale configuration: this request belongs to an older definition. Its revisions are not current.</span>}
+            {c.check.state === "queued" && <span className="block">Waiting for the host worker. Start <Mono>make analyze-worker</Mono> on the host.</span>}
+            {c.check.state === "failed" && <span className="block">Check failed; inspect the host worker before retrying.</span>}
+            {c.check.state === "unknown" && <span className="block">Execution is unknown. Host reconciliation is required; no success is assumed.</span>}
+            {c.check.state === "cancelling" && <span className="block">Cancellation requested; execution termination is not yet confirmed.</span>}
+          </Note>}
           <AnalysisProgress job={jobs[c.id]} />
           {rebuilt?.id === c.id && (
             <Note>
@@ -254,14 +287,23 @@ function NewCapability({ onCreated }: { onCreated: (id: string) => void }) {
     setError(undefined);
     setLineErrors([]);
     try {
-      const created = await request<CapabilityStatus>("/api/capabilities", { method: "POST", body: JSON.stringify({ name, description, repositories }) });
+      const created = await request<CapabilityCreated>("/api/capabilities", { method: "POST", body: JSON.stringify({ name, description, repositories }) });
       setName("");
       setDescription("");
       setRepositories("");
-      onCreated(created.id);
+      onCreated(created.capability.id);
     } catch (err) {
       setError((err as Error).message);
-      if (err instanceof ApiError) setLineErrors(((err.body as { lines?: LineError[] } | undefined)?.lines ?? []) as LineError[]);
+      if (err instanceof ApiError) {
+        const body = err.body as { lines?: LineError[]; created?: boolean; capability?: { id: string } } | undefined;
+        setLineErrors(body?.lines ?? []);
+        if (body?.created && body.capability) {
+          setName("");
+          setDescription("");
+          setRepositories("");
+          onCreated(body.capability.id);
+        }
+      }
     } finally {
       setBusy(false);
     }
@@ -291,7 +333,7 @@ function NewCapability({ onCreated }: { onCreated: (id: string) => void }) {
           />
           <span className="text-xs text-zinc-500">
             <Mono>[id=]location [ref]</Mono> — location is <Mono>https://github.com/owner/repo</Mono> (optionally <Mono>/tree/branch</Mono>) or a local git repository. Ref defaults to HEAD. Local paths
-            outside this checkout must be mounted: <Mono>make explore SOURCES=/abs/path,…</Mono>. Private GitHub repositories need credentials available to git in the sandbox.
+            outside this checkout must be available to the host worker. Private GitHub repositories need credentials configured on that host; Explorer does not acquire sources.
           </span>
         </label>
         {error && <Note>{error}</Note>}
@@ -306,7 +348,7 @@ function NewCapability({ onCreated }: { onCreated: (id: string) => void }) {
         )}
         <div>
           <Button type="submit" disabled={busy}>
-            {busy ? "Creating and checking…" : "Create and check"}
+            {busy ? "Creating and queuing…" : "Create and queue check"}
           </Button>
         </div>
       </form>

@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using CapabilityExplorer.Capabilities;
+using CapabilityExplorer.Capabilities.Analysis;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
@@ -10,15 +12,7 @@ namespace CapabilityExplorer.Tests;
 /// <summary>Explorer with its own capability file and workspace, pointing at the fixture repositories.</summary>
 public sealed class CapabilityExplorerFactory : WebApplicationFactory<Program>
 {
-    private readonly string _dir = PhysicalTemporaryDirectory();
-
-    private static string PhysicalTemporaryDirectory()
-    {
-        var directory = Directory.CreateTempSubdirectory("ce-capabilities").FullName;
-        // macOS reports /var/folders through a symlink; the journal intentionally rejects symlink ancestors.
-        return OperatingSystem.IsMacOS() && directory.StartsWith("/var/", StringComparison.Ordinal)
-            ? "/private" + directory : directory;
-    }
+    private readonly string _dir = Directory.CreateDirectory(Path.Combine(AppContext.BaseDirectory, "test-state", Guid.NewGuid().ToString("N"))).FullName;
 
     public CapabilityExplorerFactory()
     {
@@ -28,6 +22,23 @@ public sealed class CapabilityExplorerFactory : WebApplicationFactory<Program>
               { "id": "forecast-cs", "location": "{{Repo("forecast-cs")}}", "kind": "local", "ref": "v1-base" },
               { "id": "pricing-node", "location": "{{Repo("pricing-node")}}", "kind": "local", "ref": "HEAD" } ] } ] }
             """);
+        CompleteFixtureCheck();
+    }
+
+    public string ConfigurationPath => Path.Combine(_dir, "capabilities.json");
+
+    public void CompleteFixtureCheck()
+    {
+        var journal = new FileRunStore(RequestsDirectory);
+        journal.AdmitCheck("demand-pricing", ConfigurationPath);
+        using var owner = journal.AcquireWorker();
+        var check = journal.ClaimCheck(owner)!;
+        var snapshot = new CapabilitySnapshot("demand-pricing", DateTimeOffset.UtcNow,
+        [
+            new LockedRepository("forecast-cs", "v1-base", Fixtures.Lock["forecast-cs"]["v1-base"], null, null, null),
+            new LockedRepository("pricing-node", "HEAD", Fixtures.Lock["pricing-node"]["v2-move"], null, null, null),
+        ]);
+        journal.CompleteCheck(owner, new AttemptIdentity(check.RequestId, check.AttemptId!), snapshot);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -40,23 +51,22 @@ public sealed class CapabilityExplorerFactory : WebApplicationFactory<Program>
     }
 
     public string RequestsDirectory => Path.Combine(_dir, "requests");
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing && Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true);
+    }
 }
 
 public sealed class CapabilityApiTests(CapabilityExplorerFactory factory) : IClassFixture<CapabilityExplorerFactory>
 {
     private readonly HttpClient _client = factory.CreateClient();
 
-    private async Task<JsonElement> Check(string id)
-    {
-        var response = await _client.PostAsync(new Uri($"/api/capabilities/{id}/check", UriKind.Relative), null);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        return await response.Content.ReadFromJsonAsync<JsonElement>();
-    }
-
     [Fact]
     public async Task Checking_locks_every_repository_and_reports_whether_it_was_analysed()
     {
-        var status = await Check("demand-pricing");
+        var status = await _client.GetFromJsonAsync<JsonElement>("/api/capabilities/demand-pricing");
         var repos = status.GetProperty("repositories").EnumerateArray().ToDictionary(r => r.GetProperty("id").GetString()!);
         Assert.Equal(Fixtures.Lock["forecast-cs"]["v1-base"], repos["forecast-cs"].GetProperty("lockedSha").GetString());
         Assert.Equal(Fixtures.Lock["pricing-node"]["v2-move"], repos["pricing-node"].GetProperty("lockedSha").GetString());
@@ -66,7 +76,6 @@ public sealed class CapabilityApiTests(CapabilityExplorerFactory factory) : ICla
     [Fact]
     public async Task A_capability_scopes_every_view_to_its_repositories_at_their_locked_revisions()
     {
-        await Check("demand-pricing");
         var view = await _client.GetFromJsonAsync<Dictionary<string, string>>("/api/view?cap=demand-pricing");
         Assert.Equal(["forecast-cs", "pricing-node"], view!.Keys.Order());
         Assert.Equal(Fixtures.Lock["forecast-cs"]["v1-base"], view["forecast-cs"]); // locked ref, not the latest
@@ -87,10 +96,15 @@ public sealed class CapabilityApiTests(CapabilityExplorerFactory factory) : ICla
     {
         var lines = $"{Fixtures.RepoDirectory("api-cs")} v2-rename\n# comment\n{Fixtures.RepoDirectory("web-ts")}";
         var created = await _client.PostAsJsonAsync("/api/capabilities", new { name = "Weekly sales", description = "test", repositories = lines });
-        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        var body = await created.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(HttpStatusCode.Accepted, created.StatusCode);
+        var response = await created.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(response.GetProperty("created").GetBoolean());
+        Assert.True(response.GetProperty("queued").GetBoolean());
+        Assert.Equal("queued", response.GetProperty("check").GetProperty("state").GetString());
+        var body = response.GetProperty("capability");
         Assert.Equal("weekly-sales", body.GetProperty("id").GetString());
-        Assert.Equal(Fixtures.Lock["api-cs"]["v2-rename"], body.GetProperty("repositories")[0].GetProperty("lockedSha").GetString());
+        Assert.False(body.GetProperty("repositories")[0].TryGetProperty("lockedSha", out _));
+        Assert.Equal(response.GetProperty("check").GetProperty("statusUrl").GetString(), created.Headers.Location?.OriginalString);
 
         var meta = await _client.GetFromJsonAsync<JsonElement>("/api/meta");
         Assert.Contains(meta.GetProperty("capabilities").EnumerateArray(), c => c.GetProperty("id").GetString() == "weekly-sales");
@@ -103,7 +117,7 @@ public sealed class CapabilityApiTests(CapabilityExplorerFactory factory) : ICla
     public async Task The_landscape_shows_every_capability_and_links_those_that_share_a_repository()
     {
         var created = await _client.PostAsJsonAsync("/api/capabilities", new { name = "Forecast ops", repositories = Fixtures.RepoDirectory("forecast-cs") });
-        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, created.StatusCode);
         try
         {
             var g = await _client.GetFromJsonAsync<JsonElement>("/api/architecture?level=landscape&cap=demand-pricing");

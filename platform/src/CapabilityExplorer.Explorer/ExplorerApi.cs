@@ -34,13 +34,11 @@ public sealed record ExplorerOptions(
     /// <summary>Builds the index, resolving repository sources through capabilities first, then the repos directory.</summary>
     public (ExplorerIndex Index, CapabilityService Capabilities) Build()
     {
-        var store = CapabilityStore.Open(CapabilitiesFile, Path.Combine(Workspace, "snapshots.json"));
-        var auth = GitHubAuth.FromEnvironment();
-        var sync = new SourceSync(Workspace, auth: auth);
+        var store = CapabilityStore.Open(CapabilitiesFile, Path.Combine(Workspace, "snapshots.json"), loadSnapshots: false);
         var git = new GitSource(id =>
-            store.FindRepository(id) is { } source ? sync.GitDirectory(source)
+            store.FindRepository(id) is { } source ? SourcePathResolver.GitDirectory(source, Workspace)
             : RepositoriesDirectory is not null && GitSource.IsSafeSegment(id) ? Path.Combine(RepositoriesDirectory, id)
-            : null, auth);
+            : null);
         BindingFile? bindings = null;
         string? problem = null;
         if (BindingsFile is not null)
@@ -56,7 +54,7 @@ public sealed record ExplorerOptions(
         }
 
         var index = ExplorerIndex.Load(ArtifactDirectories, git, bindings, problem);
-        return (index, new CapabilityService(store, sync, index));
+        return (index, new CapabilityService(store, this, index));
     }
 }
 
@@ -108,14 +106,14 @@ public static class ExplorerApi
         // Cheap poll target: the client reloads when the generation changes (artifacts or capabilities on disk changed).
         api.MapGet("/generation", (ExplorerState state) => new { generation = state.Current.Generation });
 
-        api.MapGet("/meta", (ExplorerState state, InterpretationLayer interpretation, Intelligence intelligence) =>
+        api.MapGet("/meta", (ExplorerState state, InterpretationLayer interpretation, Intelligence intelligence) => SourceCheckApi.Respond(() =>
         {
             var (index, capabilities, generation) = state.Current;
-            return new
+            return Results.Ok(new
             {
                 generation,
                 capabilities = capabilities.List().Select(c => new { c.Id, c.Name, repositories = c.Repositories.Select(r => r.Id) }),
-                githubAuth = new { configured = capabilities.Sync.Auth.Configured, source = capabilities.Sync.Auth.Source },
+                githubAuth = new { source = "host-only", hostManaged = true },
                 interpretation = new { enabled = interpretation.Enabled, chat = interpretation.Chat is not null, provider = interpretation.Options.Provider, model = interpretation.Explanations?.ModelId },
                 similarity = new { database = intelligence.Store is not null, embeddings = intelligence.Embeddings?.Id },
                 revisions = index.Revisions,
@@ -125,8 +123,8 @@ public static class ExplorerApi
                 hasSource = index.Git is not null,
                 hasEvaluation = evaluationReport is not null && File.Exists(evaluationReport),
                 nodeKinds = index.Artifacts.SelectMany(a => a.Artifact.Nodes.Select(n => n.NodeKind)).Distinct().Order(StringComparer.Ordinal),
-            };
-        });
+            });
+        }));
 
         // Every view can be scoped to a capability (cap=<id>): only its repositories, starting from its locked revisions.
         api.MapGet("/view", (ExplorerIndex index, CapabilityService caps, string? view, string? cap) => index.View(view, caps.Scope(cap)).Selection);
@@ -188,8 +186,10 @@ public static class ExplorerApi
 
         api.MapGet("/settings/package-feeds", (PackageFeedSettingsStore settings) => settings.Status());
 
-        api.MapPut("/settings/package-feeds", (PackageFeedSettingsStore settings, PackageFeedSettingsRequest request) =>
-            settings.Save(request) is { } problem ? Results.BadRequest(new { error = problem }) : Results.Ok(settings.Status()));
+        api.MapPut("/settings/package-feeds", () => Results.Json(new
+        {
+            error = "Package feed configuration and credentials moved to the host. Explorer is read-only. Use ce package-feeds --import <old-settings.json> --catalog .sandbox-cache/package-feed-catalog/catalog.json on the host.",
+        }, statusCode: StatusCodes.Status410Gone));
 
         // Round-trips one short text through the embedding model (the chat model is exercised by explanations).
         api.MapPost("/settings/model/test", async (Intelligence intelligence, CancellationToken ct) =>
@@ -353,10 +353,10 @@ public static class ExplorerApi
             });
         });
 
-        api.MapGet("/capabilities", (CapabilityService caps) => caps.List());
+        api.MapGet("/capabilities", (CapabilityService caps) => SourceCheckApi.Respond(() => Results.Ok(caps.List())));
 
         api.MapGet("/capabilities/{id}", (CapabilityService caps, string id) =>
-            caps.Get(id) is { } c ? Results.Ok(c) : Results.NotFound(new { error = $"no capability '{id}'" }));
+            SourceCheckApi.Respond(() => caps.Get(id) is { } c ? Results.Ok(c) : Results.NotFound(new { error = $"no capability '{id}'" })));
 
         // Define a capability from one repository per line: [id=]https://github.com/owner/repo [ref] | [id=]/local/path [ref]
         api.MapPost("/capabilities", async (CapabilityService caps, CreateCapabilityRequest request, CancellationToken ct) =>
@@ -375,7 +375,22 @@ public static class ExplorerApi
             try
             {
                 var created = await caps.Store.AddAsync(request.Name, request.Description, sources, ct);
-                return Results.Created($"/api/capabilities/{created.Id}", await caps.CheckAsync(created.Id, ct));
+                try
+                {
+                    var admission = caps.AdmitCheck(created.Id);
+                    var check = caps.CheckStatus(admission.Check, !admission.Accepted);
+                    return Results.Accepted(check.StatusUrl, new { created = true, queued = true, capability = caps.Get(created.Id), check });
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException
+                    or ArgumentException or FormatException or System.Text.Json.JsonException or PlatformNotSupportedException)
+                {
+                    return Results.Json(new
+                    {
+                        created = true, queued = false,
+                        capability = new { created.Id, created.Name, created.Description },
+                        error = "Capability was created, but its check could not be queued. Inspect the host worker and retry Check; do not recreate the capability.",
+                    }, statusCode: e is InvalidOperationException ? 409 : 503);
+                }
             }
             catch (CapabilityConflictException e)
             {
@@ -383,13 +398,8 @@ public static class ExplorerApi
             }
         });
 
-        // "Check together": acquire every source read-only and lock each to one exact commit.
-        api.MapPost("/capabilities/{id}/check", async (CapabilityService caps, string id, CancellationToken ct) =>
-            caps.Store.Find(id) is null ? Results.NotFound(new { error = $"no capability '{id}'" }) : Results.Ok(await caps.CheckAsync(id, ct)));
+        api.MapSourceChecks();
 
-        // "Rebuild intelligence": lock the revisions, import every loaded artifact into PostgreSQL (unchanged ones are
-        // skipped) and embed the symbols whose text changed.
-        // ponytail: imports all loaded artifacts, not only this capability's; scope it if that gets slow.
         api.MapPost("/capabilities/{id}/rebuild", async (ExplorerIndex index, CapabilityService caps, Intelligence intelligence, string id, CancellationToken ct) =>
         {
             if (caps.Store.Find(id) is null)
@@ -401,8 +411,6 @@ public static class ExplorerApi
             {
                 return SimilarityOff(intelligence);
             }
-
-            await caps.CheckAsync(id, ct);
             try
             {
                 await Migrator.MigrateAsync(db, ct);

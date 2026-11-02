@@ -2,6 +2,23 @@ namespace CapabilityExplorer.Explorer;
 
 internal static class SourcePathResolver
 {
+    public static string GitDirectory(CapabilityExplorer.Capabilities.RepositorySource source, string workspace)
+    {
+        CapabilityExplorer.Capabilities.SourceParser.Validate(source);
+        if (source.Kind == CapabilityExplorer.Capabilities.SourceKind.Local)
+        {
+            var path = source.Location;
+            if (path == "~" || path.StartsWith("~/", StringComparison.Ordinal))
+            {
+                var home = Environment.GetEnvironmentVariable("CE_HOST_HOME") is { Length: > 0 } host
+                    ? host : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                path = path == "~" ? home : Path.Combine(home, path[2..]);
+            }
+            return Path.GetFullPath(path);
+        }
+        return Path.Combine(Path.GetFullPath(workspace), "github", new Uri(source.Location).AbsolutePath.Trim('/') + ".git");
+    }
+
     public static string? ForCSharpComponent(ViewIndex view, string symbolKey)
     {
         var symbol = view.Node(symbolKey)?.Record;

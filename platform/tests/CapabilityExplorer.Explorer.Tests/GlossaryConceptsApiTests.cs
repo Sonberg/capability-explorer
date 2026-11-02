@@ -117,7 +117,6 @@ public sealed class GlossaryConceptsCapabilityApiTests(CapabilityExplorerFactory
     public async Task Capability_scope_limits_members_to_its_repositories_and_the_response_is_repeatable()
     {
         var client = factory.CreateClient();
-        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync(new Uri("/api/capabilities/demand-pricing/check", UriKind.Relative), null)).StatusCode);
         var scoped = (await client.GetFromJsonAsync<GlossaryConceptView>("/api/glossary/concepts?cap=demand-pricing", GlossaryApiTests.JsonOptions))!;
         var members = scoped.Concepts.SelectMany(c => c.Members.Concat(c.Variants)).ToList();
         Assert.NotEmpty(members);
