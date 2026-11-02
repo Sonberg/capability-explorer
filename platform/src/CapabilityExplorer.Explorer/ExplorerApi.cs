@@ -237,7 +237,9 @@ public static class ExplorerApi
         });
 
         api.MapGet("/integrations", (ExplorerIndex index, CapabilityService caps, ExplorerOptions options, string? view, string? cap) =>
-            Queries.Integrations(index.View(view, caps.Scope(cap)), options.Deprecations.WithRemovals(index)));
+        {
+            return Queries.Integrations(index.View(view, caps.Scope(cap)), options.Deprecations.WithRemovals(index));
+        });
 
         // Deprecation marks on whole integrations ("group|http|Klarna") or single elements; removal commits are derived on read.
         api.MapPut("/deprecations", (ExplorerOptions options, MarkRequest request) =>

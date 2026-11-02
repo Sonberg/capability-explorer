@@ -126,10 +126,10 @@ export function Integrations({ direction }: { direction: Direction }) {
       {!exposed && (
         <>
           <H2 className="mt-6">HTTP calls</H2>
-          <Muted className="mb-2 text-xs">Grouped by who each request talks to: the domain of its host, or the namespace of a typed client (…Infrastructure.Klarna → Klarna). “Via” is the exact host, client or configuration name.</Muted>
+          <Muted className="mb-2 text-xs">Grouped by destination, then by the source file where each request occurs.</Muted>
           <div className="space-y-2">
-            {[...http.reduce((m, l) => m.set(l.group, [...(m.get(l.group) ?? []), l]), new Map<string, Data["http"]>())].map(([base, links]) => (
-              <HttpGroup key={base} base={base} links={links} marks={marks} />
+            {[...http.reduce((m, l) => m.set(l.group, [...(m.get(l.group) ?? []), l]), new Map<string, Data["http"]>())].map(([group, links]) => (
+              <HttpGroup key={group} base={group} links={links} marks={marks} />
             ))}
           </div>
         </>
@@ -185,6 +185,10 @@ function MarkControl({ id, marks }: { id: string; marks: Marks }) {
 function HttpGroup({ base, links, marks }: { base: string; links: Data["http"]; marks: Marks }) {
   const matched = links.filter((l) => l.candidates.length > 0).length;
   const repos = [...new Set(links.map((l) => l.request.repositoryId))];
+  const sources = [...links.reduce((m, l) => {
+    const key = `${l.request.repositoryId}\0${l.sourcePath ?? ""}`;
+    return m.set(key, [...(m.get(key) ?? []), l]);
+  }, new Map<string, Data["http"]>())];
   return (
     <details open className="group rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
       <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-2.5">
@@ -199,19 +203,27 @@ function HttpGroup({ base, links, marks }: { base: string; links: Data["http"]; 
           <MarkControl id={`group|http|${base}`} marks={marks} />
         </span>
       </summary>
-      <div className="border-t border-zinc-200 dark:border-zinc-800 [&>div]:rounded-none [&>div]:border-0">
-        <Table
-          columns={["Client", "Via", "Request", "Match", "Candidate endpoint", "Why", "Status"]}
-          rows={links.map((l) => [
-            <SymbolLink symbol={l.request.from} />,
-            <Mono className="text-xs text-zinc-500">{l.base}</Mono>,
-            l.request.to ? <Mono className="text-xs">{l.request.to.name}</Mono> : <span className="text-zinc-500">dynamic</span>,
-            <Pill tone={matchTone[l.match]}>{l.match}</Pill>,
-            l.candidates.length ? l.candidates.map((c) => <div key={c.key}><SymbolLink symbol={c} /></div>) : <span className="text-zinc-400">—</span>,
-            <span className="text-xs text-zinc-500">{l.note}</span>,
-            l.request.to ? <MarkControl id={l.request.to.key} marks={marks} /> : null,
-          ])}
-        />
+      <div className="border-t border-zinc-200 dark:border-zinc-800">
+        {sources.map(([key, sourceLinks]) => {
+          const [repositoryId, sourcePath] = key.split("\0");
+          return (
+            <section key={key}>
+            {sourcePath && <h3 className="border-b border-zinc-100 px-4 py-2 font-mono text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">{repositoryId} · {sourcePath}</h3>}
+            <Table
+              columns={["Client", "Via", "Request", "Match", "Candidate endpoint", "Why", "Status"]}
+              rows={sourceLinks.map((l) => [
+                <SymbolLink symbol={l.request.from} />,
+                <Mono className="text-xs text-zinc-500">{l.base}</Mono>,
+                l.request.to ? <Mono className="text-xs">{l.request.to.name}</Mono> : <span className="text-zinc-500">dynamic</span>,
+                <Pill tone={matchTone[l.match]}>{l.match}</Pill>,
+                l.candidates.length ? l.candidates.map((c) => <div key={c.key}><SymbolLink symbol={c} /></div>) : <span className="text-zinc-400">—</span>,
+                <span className="text-xs text-zinc-500">{l.note}</span>,
+                l.request.to ? <MarkControl id={l.request.to.key} marks={marks} /> : null,
+              ])}
+            />
+            </section>
+          );
+        })}
       </div>
     </details>
   );

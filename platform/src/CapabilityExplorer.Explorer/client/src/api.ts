@@ -175,8 +175,8 @@ export interface PackageFeedSettings {
 
 export interface Integrations {
   services: { service: NodeDto; endpoints: { endpoint: NodeDto; handlers: SymbolRef[] }[] }[];
-  /** group: who it talks to (Fortnox, Klarna, …); base: the host, configuration name or client it goes through. */
-  http: { request: Edge; candidates: SymbolRef[]; match: "bound" | "binding" | "broken" | "route" | "none" | "dynamic"; note: string; base: string; group: string }[];
+  /** group: who it talks to; base: the host, configuration name or client; sourcePath: request occurrence source file. */
+  http: { request: Edge; candidates: SymbolRef[]; match: "bound" | "binding" | "broken" | "route" | "none" | "dynamic"; note: string; base: string; group: string; sourcePath: string | null }[];
   channels: ResourceGroup[];
   data: ResourceGroup[];
   marks: Mark[];

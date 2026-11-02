@@ -48,6 +48,8 @@ public sealed class ArchitectureApiTests(ExplorerFactory factory) : IClassFixtur
         var calls = Edges(g).Single(e => e.GetProperty("from").GetString() == "comp:cs|forecast-cs|Forecast.Api|T:Forecast.Api.Endpoints.ForecastEndpoints"
                                          && e.GetProperty("to").GetString() == "comp:cs|forecast-cs|Forecast.Api|T:Forecast.Api.Data.Repository`1");
         Assert.Equal(2, calls.GetProperty("count").GetInt32()); // ListAsync and AddAsync
+        var type = g.GetProperty("nodes").EnumerateArray().Single(n => n.GetProperty("id").GetString() == "comp:cs|forecast-cs|Forecast.Api|T:Forecast.Api.Endpoints.ForecastEndpoints");
+        Assert.Equal("src/Forecast.Api/Endpoints/ForecastEndpoints.cs", type.GetProperty("group").GetString());
         var iface = Edges(g).Single(e => e.GetProperty("to").GetString() == "comp:cs|forecast-cs|Forecast.Api|T:Forecast.Api.Forecasting.IForecastStrategy" && e.GetProperty("kind").GetString() == "call");
         Assert.Equal("static", iface.GetProperty("certainty").GetString()); // interface dispatch
         Assert.Contains(Edges(g), e => e.GetProperty("kind").GetString() == "http" && e.GetProperty("to").GetString() == "repo:api-cs");

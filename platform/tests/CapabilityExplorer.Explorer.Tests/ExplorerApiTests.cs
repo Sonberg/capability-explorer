@@ -99,6 +99,9 @@ public sealed class ExplorerApiTests(ExplorerFactory factory) : IClassFixture<Ex
         // With forecast-cs v1-base selected, the same call has a route candidate.
         Assert.Equal("route", Match(await Get($"/api/integrations?view={Q("forecast-cs:v1-base")}"), "getForecast"));
         Assert.Equal("route", Match(await Get("/api/integrations"), "fetchWeeklySales"));
+        var integrations = await Get("/api/integrations");
+        var weeklySales = integrations.GetProperty("http").EnumerateArray().Single(l => l.GetProperty("request").GetProperty("from").GetProperty("name").GetString() == "fetchWeeklySales");
+        Assert.Equal("src/api/salesClient.ts", weeklySales.GetProperty("sourcePath").GetString());
     }
 
     [Fact]

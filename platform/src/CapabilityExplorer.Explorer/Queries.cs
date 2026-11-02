@@ -32,7 +32,8 @@ public sealed record SymbolDetail(
 
 /// <param name="Base">What the request goes through: host, configuration name, client or service (see Architecture.BaseOf).</param>
 /// <param name="Group">Who it talks to, for grouping (see <see cref="Queries.Vendor"/>): "Fortnox", "Klarna", "Shopify", …</param>
-public sealed record HttpLink(EdgeDto Request, IReadOnlyList<SymbolRef> Candidates, string Match, string Note, string Base = "", string Group = "");
+/// <param name="SourcePath">Source file where the request occurrence was extracted.</param>
+public sealed record HttpLink(EdgeDto Request, IReadOnlyList<SymbolRef> Candidates, string Match, string Note, string Base = "", string Group = "", string? SourcePath = null);
 
 public sealed record EndpointDto(NodeDto Endpoint, IReadOnlyList<SymbolRef> Handlers);
 
@@ -224,10 +225,19 @@ public static class Queries
                 ? new HttpLink(dto, candidates, "route", "same method and normalised route; base URL is unbound, so the service is a candidate")
                 : new HttpLink(dto, [], "none", "no endpoint with this method and route in the selected revisions");
         })
-        .Select(l => l.Request.To is { } to
-            ? l with { Base = Architecture.BaseOf(to.Key), Group = Vendor(to.Key, l.Request.From.Key) }
-            : l with { Base = "dynamic", Group = "Dynamic" })
-        .OrderBy(l => l.Group, StringComparer.OrdinalIgnoreCase).ThenBy(l => l.Base, StringComparer.OrdinalIgnoreCase).ThenBy(l => l.Request.RepositoryId, StringComparer.Ordinal).ThenBy(l => l.Request.From.Name, StringComparer.Ordinal).ToList();
+        .Select(l =>
+        {
+            var to = l.Request.To?.Key;
+            return l with
+            {
+                Base = to is null ? "dynamic" : Architecture.BaseOf(to),
+                Group = to is null ? "Dynamic" : Vendor(to, l.Request.From.Key),
+                SourcePath = SourcePathResolver.ForRequest(view, l.Request.From.Key, l.Request.Evidence.Select(e => e.Path)),
+            };
+        })
+        .OrderBy(l => l.Group, StringComparer.OrdinalIgnoreCase).ThenBy(l => l.SourcePath, StringComparer.Ordinal).ThenBy(l => l.Base, StringComparer.OrdinalIgnoreCase)
+        .OrderBy(l => l.Group, StringComparer.OrdinalIgnoreCase).ThenBy(l => l.SourcePath, StringComparer.Ordinal).ThenBy(l => l.Base, StringComparer.OrdinalIgnoreCase)
+        .ThenBy(l => l.Request.RepositoryId, StringComparer.Ordinal).ThenBy(l => l.Request.From.Name, StringComparer.Ordinal).ToList();
 
         var channelKeys = view.Edges.Where(e => e.Record.To?.StartsWith("chan|", StringComparison.Ordinal) == true).Select(e => e.Record.To!)
             .Concat(view.Nodes.Keys.Where(k => k.StartsWith("chan|", StringComparison.Ordinal))).Distinct(StringComparer.Ordinal);
