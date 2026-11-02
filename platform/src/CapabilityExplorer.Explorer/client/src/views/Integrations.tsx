@@ -208,19 +208,19 @@ function HttpGroup({ base, links, marks }: { base: string; links: Data["http"]; 
           const [repositoryId, sourcePath] = key.split("\0");
           return (
             <section key={key}>
-            {sourcePath && <h3 className="border-b border-zinc-100 px-4 py-2 font-mono text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">{repositoryId} · {sourcePath}</h3>}
-            <Table
-              columns={["Client", "Via", "Request", "Match", "Candidate endpoint", "Why", "Status"]}
-              rows={sourceLinks.map((l) => [
-                <SymbolLink symbol={l.request.from} />,
-                <Mono className="text-xs text-zinc-500">{l.base}</Mono>,
-                l.request.to ? <Mono className="text-xs">{l.request.to.name}</Mono> : <span className="text-zinc-500">dynamic</span>,
-                <Pill tone={matchTone[l.match]}>{l.match}</Pill>,
-                l.candidates.length ? l.candidates.map((c) => <div key={c.key}><SymbolLink symbol={c} /></div>) : <span className="text-zinc-400">—</span>,
-                <span className="text-xs text-zinc-500">{l.note}</span>,
-                l.request.to ? <MarkControl id={l.request.to.key} marks={marks} /> : null,
-              ])}
-            />
+              {sourcePath && <h3 className="border-b border-zinc-100 px-4 py-2 font-mono text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">{repositoryId} · {sourcePath}</h3>}
+              <Table
+                columns={["Client", "Via", "Request", "Match", "Candidate endpoint", "Why", "Status"]}
+                rows={sourceLinks.map((l) => [
+                  <SymbolLink symbol={l.request.from} />,
+                  <Mono className="text-xs text-zinc-500">{l.base}</Mono>,
+                  l.request.to ? <Mono className="text-xs">{l.request.to.name}</Mono> : <span className="text-zinc-500">dynamic</span>,
+                  <Pill tone={matchTone[l.match]}>{l.match}</Pill>,
+                  l.candidates.length ? l.candidates.map((c) => <div key={c.key}><SymbolLink symbol={c} /></div>) : <span className="text-zinc-400">—</span>,
+                  <span className="text-xs text-zinc-500">{l.note}</span>,
+                  l.request.to ? <MarkControl id={l.request.to.key} marks={marks} /> : null,
+                ])}
+              />
             </section>
           );
         })}

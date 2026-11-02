@@ -236,7 +236,6 @@ public static class Queries
             };
         })
         .OrderBy(l => l.Group, StringComparer.OrdinalIgnoreCase).ThenBy(l => l.SourcePath, StringComparer.Ordinal).ThenBy(l => l.Base, StringComparer.OrdinalIgnoreCase)
-        .OrderBy(l => l.Group, StringComparer.OrdinalIgnoreCase).ThenBy(l => l.SourcePath, StringComparer.Ordinal).ThenBy(l => l.Base, StringComparer.OrdinalIgnoreCase)
         .ThenBy(l => l.Request.RepositoryId, StringComparer.Ordinal).ThenBy(l => l.Request.From.Name, StringComparer.Ordinal).ToList();
 
         var channelKeys = view.Edges.Where(e => e.Record.To?.StartsWith("chan|", StringComparison.Ordinal) == true).Select(e => e.Record.To!)
