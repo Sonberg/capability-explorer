@@ -172,6 +172,7 @@ internal sealed class GlossaryHttpFactory : WebApplicationFactory<ExplorerIndex>
         builder.UseSetting("repos", Path.Combine(Fixtures.RepositoryRoot, "fixtures", ".repos"));
         builder.UseSetting("capabilities", Path.Combine(_directory, "capabilities.json"));
         builder.UseSetting("workspace", Path.Combine(_directory, "workspace"));
+        builder.UseSetting("requests", Path.Combine(_directory, "requests"));
         builder.UseSetting("interpretation:provider", "none");
     }
 
