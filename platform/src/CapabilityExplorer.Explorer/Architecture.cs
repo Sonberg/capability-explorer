@@ -32,7 +32,7 @@ public sealed record ArchitectureGraph(string Level, string? Focus, string Title
 
 /// <summary>
 /// Builds the canvas at four levels of abstraction from the facts in a view:
-/// landscape (capabilities), system (the repositories of one capability and shared resources), repository (components grouped by unit) and component
+/// landscape (capabilities), system (the repositories of one capability and shared resources), repository (components grouped by source file where available) and component
 /// (members and their direct neighbours). Nothing is drawn that the artifacts do not state, except
 /// cross-repository route matches and same-name resources, which are labelled candidates.
 /// </summary>
@@ -325,7 +325,7 @@ public static class Architecture
 
         b.SameNameLinks();
         return b.Graph("repository", repo, repo, [.. top, new Crumb(repo, "repository", repo)],
-            ["Components are C# types, TypeScript modules and SQL objects, grouped by unit.", "Calls into external libraries are shown one level down."]);
+            ["C# types are grouped by declaration source file; TypeScript modules and SQL objects retain their unit grouping.", "Calls into external libraries are shown one level down."]);
     }
 
     private static ArchNode ExternalRepo(ViewIndex view, string repo) => RepoNode(view, repo) with { Category = "external", Group = "Other systems" };
@@ -581,7 +581,7 @@ public static class Architecture
         var declared = view.Node(key);
         var calcs = view.Calculations.Keys.Count(k => ComponentKeyFast(k) == key);
         return new ComponentInfo(key, new ArchNode($"comp:{key}", category, declared?.Record.Name ?? label!, declared?.Record.NodeKind ?? (category == "module" ? "module" : "type"),
-            unit, key, repo, new Drill("component", key), calcs > 0 ? [$"{calcs} calculation{(calcs == 1 ? "" : "s")}"] : []));
+            SourcePathResolver.ForCSharpComponent(view, key) ?? unit, key, repo, new Drill("component", key), calcs > 0 ? [$"{calcs} calculation{(calcs == 1 ? "" : "s")}"] : []));
     }
 
     /// <summary>Component key from a symbol key alone (used for counting).</summary>

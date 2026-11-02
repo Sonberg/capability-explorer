@@ -77,6 +77,62 @@ public sealed class CapabilityStoreTests
     }
 
     [Fact]
+    public async Task Local_definitions_override_shared_ids_and_stay_separate_when_saving()
+    {
+        var (defs, snaps) = Paths();
+        const string shared = """{"capabilities":[{"id":"shared","name":"Shared","repositories":[]},{"id":"override","name":"Original","repositories":[]}]}""";
+        await File.WriteAllTextAsync(defs, shared);
+        var local = Path.ChangeExtension(defs, ".local.json");
+        await File.WriteAllTextAsync(local, """{"capabilities":[{"id":"override","name":"Local override","includeTests":true,"repositories":[]},{"id":"private","name":"Private","repositories":[]}]}""");
+
+        using (var store = CapabilityStore.Open(defs, snaps))
+        {
+            Assert.Equal(3, store.Capabilities.Count);
+            Assert.Equal("Shared", store.Find("shared")!.Name);
+            Assert.Equal("Local override", store.Find("override")!.Name);
+            Assert.True(store.Find("override")!.IncludeTests);
+            await store.AddAsync("Another local", null, [Repo("local-repo", "/private/repo")]);
+            Assert.Equal(shared, await File.ReadAllTextAsync(defs));
+            Assert.True(await store.RemoveAsync("private"));
+            Assert.Equal(shared, await File.ReadAllTextAsync(defs));
+        }
+
+        using var reopened = CapabilityStore.Open(defs, snaps);
+        Assert.NotNull(reopened.Find("another-local"));
+        Assert.Null(reopened.Find("private"));
+        Assert.Equal("Local override", reopened.Find("override")!.Name);
+        Assert.DoesNotContain("/private/repo", await File.ReadAllTextAsync(defs), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Removing_shared_and_overridden_capabilities_preserves_other_local_definitions()
+    {
+        var (defs, snaps) = Paths();
+        await File.WriteAllTextAsync(defs, """{"capabilities":[{"id":"shared","name":"Shared","repositories":[]},{"id":"override","name":"Original","repositories":[]}]}""");
+        var local = Path.ChangeExtension(defs, ".local.json");
+        await File.WriteAllTextAsync(local, """{"capabilities":[{"id":"override","name":"Override","repositories":[]},{"id":"private","name":"Private","repositories":[]}]}""");
+        using (var store = CapabilityStore.Open(defs, snaps))
+        {
+            var before = await File.ReadAllTextAsync(local);
+            Assert.True(await store.RemoveAsync("shared"));
+            Assert.Equal(before, await File.ReadAllTextAsync(local));
+            Assert.True(await store.RemoveAsync("override"));
+        }
+
+        using var reopened = CapabilityStore.Open(defs, snaps);
+        Assert.Equal("private", Assert.Single(reopened.Capabilities).Id);
+        Assert.DoesNotContain("private", await File.ReadAllTextAsync(defs), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Invalid_local_json_is_not_silently_ignored()
+    {
+        var (defs, snaps) = Paths();
+        File.WriteAllText(Path.ChangeExtension(defs, ".local.json"), "not json");
+        Assert.Throws<System.Text.Json.JsonException>(() => CapabilityStore.Open(defs, snaps));
+    }
+
+    [Fact]
     public async Task Definitions_round_trip_and_snapshots_live_in_their_own_file()
     {
         var (defs, snaps) = Paths();

@@ -20,22 +20,36 @@ public sealed class CapabilityStore : IDisposable
     };
 
     private readonly string _definitionsPath;
+    private readonly string? _localDefinitionsPath;
     private readonly string _snapshotsPath;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private Definitions _sharedDefinitions;
+    private Definitions _localDefinitions;
     private Document _document;
 
-    private CapabilityStore(string definitionsPath, string snapshotsPath, Document document)
+    private CapabilityStore(string definitionsPath, string? localDefinitionsPath, string snapshotsPath, Definitions shared, Definitions local, Document document)
     {
         _definitionsPath = definitionsPath;
+        _localDefinitionsPath = localDefinitionsPath;
         _snapshotsPath = snapshotsPath;
+        _sharedDefinitions = shared;
+        _localDefinitions = local;
         _document = document;
     }
 
     public static CapabilityStore Open(string definitionsPath, string snapshotsPath, bool loadSnapshots = true)
     {
         var definitions = File.Exists(definitionsPath) ? JsonSerializer.Deserialize<Definitions>(File.ReadAllText(definitionsPath), Json) ?? new Definitions() : new Definitions();
+        var localPath = Path.ChangeExtension(definitionsPath, $".local{Path.GetExtension(definitionsPath)}");
+        var local = File.Exists(localPath) ? JsonSerializer.Deserialize<Definitions>(File.ReadAllText(localPath), Json) ?? new Definitions() : new Definitions();
+        var merged = definitions.Capabilities.ToDictionary(capability => capability.Id, StringComparer.Ordinal);
+        foreach (var capability in local.Capabilities.ToDictionary(capability => capability.Id, StringComparer.Ordinal).Values)
+        {
+            merged[capability.Id] = capability;
+        }
+
         var snapshots = loadSnapshots && File.Exists(snapshotsPath) ? JsonSerializer.Deserialize<Dictionary<string, CapabilitySnapshot>>(File.ReadAllText(snapshotsPath), Json) ?? [] : [];
-        return new CapabilityStore(definitionsPath, snapshotsPath, new Document { Capabilities = definitions.Capabilities, Snapshots = snapshots });
+        return new CapabilityStore(definitionsPath, File.Exists(localPath) ? localPath : null, snapshotsPath, definitions, local, new Document { Capabilities = merged.Values.ToList(), Snapshots = snapshots });
     }
 
     public IReadOnlyList<CapabilityDefinition> Capabilities => _document.Capabilities;
@@ -127,7 +141,37 @@ public sealed class CapabilityStore : IDisposable
     {
         if (!ReferenceEquals(document.Capabilities, _document.Capabilities))
         {
-            await WriteAtomicAsync(_definitionsPath, JsonSerializer.Serialize(new Definitions { Capabilities = document.Capabilities }, Json), cancellationToken);
+            if (_localDefinitionsPath is null)
+            {
+                await WriteAtomicAsync(_definitionsPath, JsonSerializer.Serialize(new Definitions { Capabilities = document.Capabilities }, Json), cancellationToken);
+            }
+            else
+            {
+                var selected = document.Capabilities.ToDictionary(capability => capability.Id, StringComparer.Ordinal);
+                var sharedIds = _sharedDefinitions.Capabilities.Select(capability => capability.Id).ToHashSet(StringComparer.Ordinal);
+                var localIds = _localDefinitions.Capabilities.Select(capability => capability.Id).ToHashSet(StringComparer.Ordinal);
+                var shared = new Definitions
+                {
+                    Capabilities = _sharedDefinitions.Capabilities.Where(capability => selected.ContainsKey(capability.Id))
+                        .Select(capability => localIds.Contains(capability.Id) ? capability : selected[capability.Id]).ToList(),
+                };
+                var local = new Definitions
+                {
+                    Capabilities = document.Capabilities.Where(capability => localIds.Contains(capability.Id) || !sharedIds.Contains(capability.Id)).ToList(),
+                };
+                if (!_sharedDefinitions.Capabilities.SequenceEqual(shared.Capabilities))
+                {
+                    await WriteAtomicAsync(_definitionsPath, JsonSerializer.Serialize(shared, Json), cancellationToken);
+                }
+
+                if (!_localDefinitions.Capabilities.SequenceEqual(local.Capabilities))
+                {
+                    await WriteAtomicAsync(_localDefinitionsPath, JsonSerializer.Serialize(local, Json), cancellationToken);
+                }
+
+                _sharedDefinitions = shared;
+                _localDefinitions = local;
+            }
         }
 
         if (!ReferenceEquals(document.Snapshots, _document.Snapshots))

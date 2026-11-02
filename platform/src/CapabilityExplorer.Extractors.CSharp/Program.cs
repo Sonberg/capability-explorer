@@ -24,8 +24,14 @@ if (args.FirstOrDefault() == "fetch-packages")
     }
 
     var models = ProjectModel.Discover(Path.GetFullPath(fetchSource), Has("include-tests"));
-    var policy = new PackageFeedPolicy(Environment.GetEnvironmentVariable("CE_NUGET_ALLOWED_ORIGINS"));
-    var feeds = NuGetConfig.Discover(Path.GetFullPath(fetchSource), models.Select(m => Path.GetDirectoryName(m.FullPath)!), Environment.GetEnvironmentVariable, policy);
+    var operatorFeeds = OperatorPackageFeedSettings.Load(Environment.GetEnvironmentVariable("CE_PACKAGE_FEEDS"));
+    var operatorNuGetFeeds = operatorFeeds.NuGetFeeds();
+    var allowedOrigins = string.Join(',', new[] { Environment.GetEnvironmentVariable("CE_NUGET_ALLOWED_ORIGINS") }
+        .Concat(operatorNuGetFeeds.Select(feed => new Uri(feed.Url).GetLeftPart(UriPartial.Authority))));
+    var policy = new PackageFeedPolicy(allowedOrigins);
+    var discovered = NuGetConfig.Discover(Path.GetFullPath(fetchSource), models.Select(m => Path.GetDirectoryName(m.FullPath)!), Environment.GetEnvironmentVariable, policy);
+    var operatorUrls = operatorNuGetFeeds.Select(feed => feed.Url).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    var feeds = operatorNuGetFeeds.Concat(discovered.Where(feed => !operatorUrls.Contains(feed.Url))).ToList();
     using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(2) };
     http.DefaultRequestHeaders.UserAgent.ParseAdd("capability-explorer/0.1");
     var fetched = await new PackageFetcher(Path.GetFullPath(into), http, feeds, policy).FetchAsync(models);

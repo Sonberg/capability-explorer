@@ -118,6 +118,31 @@ test("a plain JavaScript package without tsconfig is its own unit", () => {
   assert.ok(unit!.records.some((r) => r.relation === "CALLS" && r.from === "ts|shop|legacy|lib/index.js|(module)#namespace" && r.to === "ts|shop|legacy|lib/index.js|total#value"));
 });
 
+test("class initialization calls belong to an executable owner rather than a Type", () => {
+  const [unit] = run({
+    "package.json": JSON.stringify({ name: "initialization" }),
+    "tsconfig.json": tsconfig,
+    "src/app.ts": [
+      "export function create() { return 1; }",
+      "export class App {",
+      "  value = create();",
+      "  static cached = create();",
+      "  constructor() { create(); }",
+      "  static { create(); }",
+      "  run() { create(); }",
+      "  callback = () => create();",
+      "}",
+    ].join("\n"),
+  });
+  const nodes = new Map(unit!.records.filter(record => record.kind === "node").map(record => [record.symbolKey, record.nodeKind]));
+  const calls = unit!.records.filter(record => record.relation === "CALLS");
+  assert.equal(calls.length, 6);
+  for (const edge of calls) assert.notEqual(nodes.get(edge.from), "Type");
+  assert.equal(calls.filter(edge => edge.from?.endsWith("|(module)#namespace")).length, 4);
+  assert.ok(calls.some(edge => edge.from?.endsWith("|App.run#value")));
+  assert.ok(calls.some(edge => edge.from?.endsWith("|App.callback#value")));
+});
+
 test("routes and SQL helpers", () => {
   assert.equal(normaliseRoute("/api/Items/:id/"), "/api/items/{}");
   assert.equal(normaliseRoute("/a/{articleId}?x=1"), "/a/{}");

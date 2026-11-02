@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+engine="${1:?container engine is required}"
+container="${2:?container name is required}"
+ca_file="${3:?CA bundle path is required}"
+[[ -r "$ca_file" ]] || { echo "SANDBOX_EXTRA_CA_FILE is not readable: $ca_file" >&2; exit 2; }
+
+if command -v shasum >/dev/null 2>&1; then
+  ca_hash="$(shasum -a 256 "$ca_file" | awk '{print $1}')"
+else
+  ca_hash="$(sha256sum "$ca_file" | awk '{print $1}')"
+fi
+installed_hash="$("$engine" exec "$container" sh -c 'cat /etc/ssl/certs/.ce-extra-ca.sha256 2>/dev/null || true')"
+[[ "$ca_hash" == "$installed_hash" ]] && exit 0
+
+"$engine" cp "$ca_file" "$container:/tmp/ce-extra-ca.pem"
+"$engine" exec "$container" sh -c '
+  set -eu
+  bundle=/etc/ssl/certs/ca-certificates.crt
+  original=/etc/ssl/certs/ca-certificates.crt.ce-original
+  [ -f "$original" ] || cp "$bundle" "$original"
+  cat "$original" /tmp/ce-extra-ca.pem > /tmp/ce-ca-bundle.pem
+  cat /tmp/ce-ca-bundle.pem > "$bundle"
+  printf "%s\n" "$1" > /etc/ssl/certs/.ce-extra-ca.sha256
+' sh "$ca_hash"
+"$engine" restart "$container" >/dev/null
+echo "Installed extra CA bundle in $container and restarted it."

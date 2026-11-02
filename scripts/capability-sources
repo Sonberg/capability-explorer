@@ -2,19 +2,24 @@
 # Prints, comma-separated, the local repository directories named in a capabilities file that exist on this
 # machine, with ~ expanded. `make explore` mounts them read-only so the sandboxed explorer can read them.
 # Relative paths need no mount: they resolve inside this checkout, which is always mounted.
-set -uo pipefail
+set -euo pipefail
 file="${1:-capabilities.json}"
 [[ -f "$file" ]] || exit 0
-out=()
-# The file is written one property per line, so a line match is enough; GitHub URLs are skipped.
-while IFS= read -r location; do
-  case "$location" in
-    https://*|http://*) continue ;;
-    "~") path="$HOME" ;;
-    "~/"*) path="$HOME/${location#\~/}" ;;
-    /*) path="$location" ;;
-    *) continue ;;
-  esac
-  [[ -d "$path" ]] && out+=("$path")
-done < <(sed -n 's/^[[:space:]]*"location":[[:space:]]*"\(.*\)",\{0,1\}[[:space:]]*$/\1/p' "$file")
-(IFS=,; printf '%s' "${out[*]:-}")
+root="$(cd "$(dirname "$0")/.." && pwd)"
+node --input-type=module - "$file" "$HOME" "$root/scripts/capability-definitions.mjs" <<'JS'
+import {statSync} from 'node:fs';
+import {isAbsolute,join} from 'node:path';
+import {pathToFileURL} from 'node:url';
+try {
+ const {loadCapabilityDefinitions}=await import(pathToFileURL(process.argv[4]));
+ const definitions=loadCapabilityDefinitions(process.argv[2]);
+ const sources=new Set();
+ for(const capability of definitions.capabilities)for(const repository of capability.repositories??[]){
+  const location=repository.location;
+  if(typeof location!=='string')continue;
+  const path=location==='~'?process.argv[3]:location.startsWith('~/')?join(process.argv[3],location.slice(2)):location;
+  if(isAbsolute(path)&&statSync(path,{throwIfNoEntry:false})?.isDirectory())sources.add(path);
+ }
+ process.stdout.write([...sources].join(','));
+} catch {console.error('Capability sources configuration rejected');process.exitCode=1;}
+JS

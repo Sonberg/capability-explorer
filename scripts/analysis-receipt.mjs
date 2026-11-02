@@ -2,6 +2,7 @@
 import {readFileSync,writeFileSync,readdirSync,lstatSync,mkdirSync,existsSync,renameSync,unlinkSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {join,relative,resolve,parse} from 'node:path';
+import {loadCapabilityDefinitions,localDefinitionsPath} from './capability-definitions.mjs';
 const hash=x=>createHash('sha256').update(x).digest('hex');
 function safePath(path,allowMissing=false){
  const full=resolve(path);let current=parse(full).root;
@@ -19,10 +20,12 @@ safePath('.sandbox-cache',true);mkdirSync('.sandbox-cache',{recursive:true});
 const output=safePath('.sandbox-cache/analysis-receipt.json',true);
 if(process.argv[2]==='--clear'){if(existsSync(output))unlinkSync(output);process.exit(0);}
 const config=read(process.argv[2]);
+const localPath=safePath(localDefinitionsPath(process.argv[2]),true);
+const localConfig=existsSync(localPath)?read(localPath):null;
 const applicationCommit=process.argv[3],sourceState=process.argv[4],bindings=process.argv[5];
 if(!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(applicationCommit)||!['clean','dirty'].includes(sourceState))throw Error('Invalid application source identity');
 const selected=new Set();
-const definitions=JSON.parse(config);
+const definitions=loadCapabilityDefinitions(process.argv[2],path=>path===process.argv[2]?config:localConfig);
 if(!Array.isArray(definitions.capabilities))throw Error('Invalid capability list');
 for(const cap of definitions.capabilities){
  if(!/^[a-z0-9][a-z0-9._-]{0,99}$/.test(cap.id))throw Error('Invalid capability identity');
@@ -52,7 +55,7 @@ function walk(dir){
 }
 safePath('.sandbox-cache/artifacts');walk('.sandbox-cache/artifacts');
 for(const identity of selected)if(!files.some(file=>`${file.repositoryId}@${file.commitSha}`===identity))throw Error('Locked repository has no analysis artifacts');
-const receipt={format:'ce.analysis-replay.v1',applicationCommit,sourceState,capabilitiesHash:hash(config),runtimeImagesHash:hash(read('config/runtime/images.env')),bindingsHash:bindings?hash(read(bindings)):null,artifacts:files};
+const receipt={format:'ce.analysis-replay.v1',applicationCommit,sourceState,capabilitiesHash:hash(config),capabilitiesLocalHash:localConfig?hash(localConfig):null,runtimeImagesHash:hash(read('config/runtime/images.env')),bindingsHash:bindings?hash(read(bindings)):null,artifacts:files};
 mkdirSync('.sandbox-cache',{recursive:true});
 const temporary=output+'.'+process.pid+'.tmp';
 writeFileSync(temporary,JSON.stringify(receipt,null,2)+'\n',{mode:0o600,flag:'wx'});

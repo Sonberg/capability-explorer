@@ -1,6 +1,6 @@
-import {readFileSync} from 'node:fs';
+import {loadCapabilityDefinitions} from './capability-definitions.mjs';
 try {
-const data=JSON.parse(readFileSync(process.argv[2],'utf8'));
+const data=loadCapabilityDefinitions(process.argv[2]);
 if(!Array.isArray(data.capabilities)||data.capabilities.length>1000)throw Error('Invalid capability list');
 const ids=new Set();
 for(const cap of data.capabilities){

@@ -9,4 +9,4 @@ ce_require_docker 'complete analysis pipeline'
 command -v dotnet >/dev/null || { echo 'analysis requires the trusted host .NET 10 runtime; see docs/local-analysis-lifecycle.md' >&2; exit 2; }
 cli="$root/platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll"
 [[ -f "$cli" ]] || { echo 'Build the project before starting analysis (make build).' >&2; exit 2; }
-exec dotnet "$cli" analysis-run --capability "$1" --capabilities "${2:-capabilities.json}"
+CE_CONTAINER_ENGINE="$CE_ENGINE" exec dotnet "$cli" analysis-run --capability "$1" --capabilities "${2:-capabilities.json}"

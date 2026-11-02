@@ -99,6 +99,18 @@ public sealed class PackageSecurityTests : IDisposable
         Assert.Null(Assert.Single(feeds).Credentials);
     }
     [Fact]
+    public void Operator_configured_nuget_feed_keeps_credentials_out_of_feed_descriptions()
+    {
+        var settings = OperatorPackageFeedSettings.Load("""
+            {"feeds":[{"id":"private","kind":"nuget","name":"Private","url":"https://feed.test/v3/index.json","username":"build","secret":"synthetic-token"}]}
+            """);
+        var feed = Assert.Single(settings.NuGetFeeds());
+        Assert.Equal("https://feed.test/v3/index.json", feed.Url);
+        Assert.Equal("build", feed.Credentials!.Username);
+        Assert.Equal("synthetic-token", feed.Credentials.Password);
+        Assert.DoesNotContain("synthetic-token", feed.ToString(), StringComparison.Ordinal);
+    }
+    [Fact]
     public async Task Authorized_feed_cannot_redirect_to_unauthorized_origin()
     {
         var calls = 0;

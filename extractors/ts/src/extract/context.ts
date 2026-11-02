@@ -153,16 +153,19 @@ export class Ctx {
   }
 
   /** The named declaration the facts inside `node` belong to; anonymous code folds into its container. */
-  owner(node: ts.Node): string | undefined {
+  owner(node: ts.Node, executableOnly = false): string | undefined {
     for (let p: ts.Node | undefined = node.parent; p; p = p.parent) {
       if (ts.isSourceFile(p)) return this.fileKey(p);
       if (ts.isFunctionDeclaration(p) && p.name && isModuleLevel(p)) return this.keyOf(p);
       if ((ts.isMethodDeclaration(p) || ts.isGetAccessor(p) || ts.isSetAccessor(p)) && ts.isClassLike(p.parent) && nameOf(p)) return this.keyOf(p);
-      if (ts.isPropertyDeclaration(p) && ts.isClassLike(p.parent)) return isFunctionInit(p.initializer) ? this.keyOf(p) : this.classKey(p.parent);
-      if (ts.isConstructorDeclaration(p) && ts.isClassLike(p.parent)) return this.classKey(p.parent);
+      if (ts.isPropertyDeclaration(p) && ts.isClassLike(p.parent)) {
+        if (isFunctionInit(p.initializer)) return this.keyOf(p);
+        if (!executableOnly) return this.classKey(p.parent);
+      }
+      if (ts.isConstructorDeclaration(p) && ts.isClassLike(p.parent) && !executableOnly) return this.classKey(p.parent);
       // A module-level variable owns code only when it is a function; other initializers are top-level code.
       if (ts.isVariableDeclaration(p) && ts.isIdentifier(p.name) && isModuleLevel(p) && isFunctionInit(p.initializer)) return this.keyOf(p);
-      if (ts.isClassLike(p) && isModuleLevel(p)) return this.classKey(p);
+      if (ts.isClassLike(p) && isModuleLevel(p) && !executableOnly) return this.classKey(p);
     }
     return undefined;
   }

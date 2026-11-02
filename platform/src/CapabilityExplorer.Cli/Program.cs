@@ -142,7 +142,7 @@ switch (command)
 
     case "export":
     {
-        // Locks the capability's revisions (unless --locked) and writes each locked tree to <out>/src/<repo>,
+        // Locks the capability's revisions (unless --locked) and writes each locked tree to <out>/src/<run>/<repo>,
         // plus <out>/manifest.tsv (repo, commit, path) for the offline extractor runs that follow.
         if (!options.TryGetValue("capability", out var capabilityId) || !options.TryGetValue("out", out var exportDir))
         {
@@ -161,12 +161,7 @@ switch (command)
         var sync = new SourceSync(workspace, auth: GitHubAuth.FromEnvironment());
         var snapshot = options.GetValueOrDefault("locked") is "1" or "true" && store.Snapshot(capability.Id) is { } existing ? existing : await sync.CheckAsync(capability);
         await store.SaveSnapshotAsync(snapshot);
-        var src = Path.Combine(exportDir, "src");
-        if (Directory.Exists(src))
-        {
-            Directory.Delete(src, recursive: true);
-        }
-
+        var src = Path.Combine(exportDir, "src", Guid.NewGuid().ToString("N"));
         var manifest = new List<string>();
         foreach (var locked in snapshot.Repositories)
         {

@@ -4,7 +4,13 @@
 ce_runtime_fail() { echo "container-engine: $*" >&2; return 2; }
 
 ce_engine_choice() {
-  CE_ENGINE="${CE_CONTAINER_ENGINE-docker}"
+  local requested="${CE_CONTAINER_ENGINE-auto}"
+  if [[ "$requested" == auto ]]; then
+    if command -v docker >/dev/null 2>&1; then CE_ENGINE=docker
+    elif command -v podman >/dev/null 2>&1; then CE_ENGINE=podman
+    else ce_runtime_fail 'no Docker or Podman executable is available'; return 2
+    fi
+  else CE_ENGINE="$requested"; fi
   case "$CE_ENGINE" in docker|podman) ;; *) ce_runtime_fail 'CE_CONTAINER_ENGINE must be docker or podman'; return 2 ;; esac
 }
 
@@ -89,7 +95,16 @@ ce_engine_init() {
         ;;
       Darwin)
         CE_ENGINE_CONTEXT="${CE_PODMAN_CONNECTION:-}"
-        [[ "$CE_ENGINE_CONTEXT" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]] || { ce_runtime_fail 'macOS requires an explicit CE_PODMAN_CONNECTION machine name'; return 2; }
+        if [[ -z "$CE_ENGINE_CONTEXT" ]]; then
+          metadata="$(ce_capture ce_engine_exec machine list --format '{{.Name}}|{{.Running}}')" || return
+          while IFS='|' read -r machine_name running; do
+            [[ "$running" == true && "$machine_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]] || continue
+            [[ -z "$CE_ENGINE_CONTEXT" ]] || { ce_runtime_fail 'multiple Podman machines are running; set CE_PODMAN_CONNECTION'; return 2; }
+            CE_ENGINE_CONTEXT="$machine_name"
+          done <<< "$metadata"
+          [[ -n "$CE_ENGINE_CONTEXT" ]] || { ce_runtime_fail 'no Podman machine is running; start one or set CE_PODMAN_CONNECTION'; return 2; }
+        fi
+        [[ "$CE_ENGINE_CONTEXT" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]] || { ce_runtime_fail 'invalid CE_PODMAN_CONNECTION machine name'; return 2; }
         template="{{range .}}{{if eq .Name \"$CE_ENGINE_CONTEXT\"}}{{.URI}}|{{.IsMachine}}|{{.Identity}}{{end}}{{end}}"
         metadata="$(ce_capture ce_engine_exec system connection list --format "$template")" || return
         [[ "$metadata" != *[[:cntrl:]]* ]] || { ce_runtime_fail 'invalid machine connection metadata'; return 2; }

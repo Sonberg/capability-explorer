@@ -6,6 +6,7 @@ import {chmodSync,copyFileSync,existsSync,lstatSync,mkdirSync,mkdtempSync,readFi
 import {tmpdir} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {loadCapabilityDefinitions} from '../scripts/capability-definitions.mjs';
 
 const repository=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const application='a'.repeat(40),revision='b'.repeat(40),oldRevision='c'.repeat(40);
@@ -15,6 +16,8 @@ function write(root,path,text){mkdirSync(dirname(join(root,path)),{recursive:tru
 function fixture(run){
  const root=mkdtempSync(join(tmpdir(),'ce-postmerge-analysis-'));
  try{
+  mkdirSync(join(root,'scripts/lib'),{recursive:true});
+  copyFileSync(join(repository,'scripts/lib/container-engine.sh'),join(root,'scripts/lib/container-engine.sh'));
   write(root,'capabilities.json',JSON.stringify({capabilities:[{id:'one',repositories:[{id:'repo',location:'https://private.invalid/PRIVATE_LOCATION',ref:'main'}]}]}));
   write(root,'config/runtime/images.env','NODE_IMAGE=node@sha256:synthetic\n');
   write(root,'bindings.json','{"PRIVATE_BINDING":"synthetic"}\n');
@@ -41,6 +44,35 @@ test('unsafe, duplicate and missing capability IDs fail before any valid ID is e
   write(root,'capabilities.json',JSON.stringify({capabilities:[{id:'one'},{id:invalid}]}));
   failed(helper(root,'analysis-capability-ids.mjs',['capabilities.json']));
  }
+}));
+
+test('local capability definitions combine with shared definitions and override matching IDs',()=>fixture(root=>{
+ write(root,'capabilities.local.json',JSON.stringify({capabilities:[{id:'one',repositories:[]},{id:'local-only',repositories:[]}]}));
+ const result=helper(root,'analysis-capability-ids.mjs',['capabilities.json']);
+ assert.equal(result.status,0,result.stderr);assert.equal(result.stdout,'local-only\none\n');
+ assert.deepEqual(loadCapabilityDefinitions(join(root,'capabilities.json')).capabilities.find(capability=>capability.id==='one').repositories,[]);
+ write(root,'capabilities.local.json','{"capabilities":[{"id":"bad/id"}]}');
+ failed(helper(root,'analysis-capability-ids.mjs',['capabilities.json']));
+}));
+
+test('local capability receipt hashes include local-only repositories without exposing definitions',()=>fixture(root=>{
+ write(root,'capabilities.local.json',JSON.stringify({capabilities:[{id:'local-only',repositories:[{id:'local-repo',location:'PRIVATE_LOCAL_LOCATION'}]}]}));
+ write(root,'.sandbox-cache/analyze/local-only/manifest.tsv',`local-repo\t${revision}\t/private\n`);
+ write(root,'.sandbox-cache/artifacts/local-only/current.jsonl',artifact('local-repo',revision));
+ const result=receipt(root);assert.equal(result.status,0,result.stderr);
+ const text=readFileSync(join(root,receiptPath),'utf8'),saved=JSON.parse(text);
+ assert.equal(saved.capabilitiesLocalHash,hash(readFileSync(join(root,'capabilities.local.json'))));
+ assert.equal(saved.artifacts.length,2);assert.doesNotMatch(text,/PRIVATE_LOCAL_LOCATION/);
+ write(root,'capabilities.local.json','invalid');failed(receipt(root));
+}));
+
+test('source mounts use parsed merged definitions and exclude overridden shared locations',()=>fixture(root=>{
+ const shared=join(root,'shared'),local=join(root,'local space');
+ mkdirSync(shared);mkdirSync(local);
+ write(root,'capabilities.json',JSON.stringify({capabilities:[{id:'one',repositories:[{location:shared}]}]}));
+ write(root,'capabilities.local.json',JSON.stringify({capabilities:[{id:'one',repositories:[{location:local},{location:local},{location:'https://example.invalid/repo'}]}]}));
+ const result=spawnSync('/bin/bash',[join(repository,'scripts/capability-sources'),'capabilities.json'],{cwd:root,env:{PATH:process.env.PATH,HOME:root},encoding:'utf8',timeout:20000});
+ assert.equal(result.status,0,result.stderr);assert.equal(result.stdout,local);
 }));
 
 test('receipt binds raw current inputs and only the exact locked repository revisions',()=>fixture(root=>{
@@ -99,6 +131,58 @@ test('symlink artifact files, inventory roots and receipt destinations are refus
   failed(receipt(root));assert.equal(readFileSync(join(root,'outside/sentinel'),'utf8'),'EXTERNAL_SENTINEL');
  });
 });
+
+test('make defaults to git authentication while preserving explicit overrides',()=>{
+ const env={...process.env,CE_CONTAINER_ENGINE:'docker'};
+ delete env.GITHUB_AUTH;
+ for(const profile of ['native','sandbox']){
+  for(const mode of [undefined,'auto','none']){
+   const args=['-n','analyze-all','-o','build',`EXECUTION=${profile}`];
+   if(mode!==undefined)args.push(`GITHUB_AUTH=${mode}`);
+   const result=spawnSync('make',args,{cwd:repository,encoding:'utf8',timeout:20000,env});
+   assert.equal(result.status,0,result.stderr);
+   assert.match(result.stdout,new RegExp(`GITHUB_AUTH=${mode??'git'} .*scripts/analyze-all`));
+  }
+ }
+});
+
+test('development startup imports saved artifacts unless re-analysis is explicitly enabled',()=>{
+ for(const profile of ['native','sandbox'])fixture(root=>{
+  mkdirSync(join(root,'config/build'),{recursive:true});
+  mkdirSync(join(root,'platform'));
+  copyFileSync(join(repository,'config/build/container-engine.mk'),join(root,'config/build/container-engine.mk'));
+  write(root,'scripts/analyze-all','#!/bin/sh\necho analyzed >> .sandbox-cache/startup-analysis\n');
+  write(root,'scripts/sandbox','#!/bin/sh\nshift\nexec "$@"\n');
+  write(root,'bin/dotnet','#!/bin/sh\nprintf "%s\\n" "$2" >> .sandbox-cache/startup-import\n');
+  for(const path of ['scripts/analyze-all','scripts/sandbox','bin/dotnet'])chmodSync(join(root,path),0o700);
+  const args=['-s','-f',join(repository,'config/build',`${profile}.mk`),'dev-data','-o','build','-o','postgres','DEV_OLLAMA=0','ARTIFACTS=.sandbox-cache/artifacts'];
+  const env={...process.env,PATH:join(root,'bin')+':'+process.env.PATH,CE_CONTAINER_ENGINE:'docker'};
+  delete env.DEV_REANALYZE;
+  const startup=spawnSync('make',args,{cwd:root,encoding:'utf8',timeout:20000,env});
+  assert.equal(startup.status,0,startup.stderr);
+  assert.equal(existsSync(join(root,'.sandbox-cache/startup-analysis')),false);
+  assert.equal(readFileSync(join(root,'.sandbox-cache/startup-import'),'utf8'),'migrate\nimport\nembed\n');
+  const refresh=spawnSync('make',[...args,'DEV_REANALYZE=1'],{cwd:root,encoding:'utf8',timeout:20000,env});
+  assert.equal(refresh.status,0,refresh.stderr);
+  assert.equal(readFileSync(join(root,'.sandbox-cache/startup-analysis'),'utf8'),'analyzed\n');
+ });
+});
+
+test('both make profiles export default and overridden analysis job limits to recipes',()=>{
+ const env={...process.env,CE_CONTAINER_ENGINE:'docker'};delete env.ANALYZE_JOBS;
+ const probeDir=mkdtempSync(join(tmpdir(),'ce-make-probe-'));
+ const probe=join(probeDir,'probe.mk');
+ writeFileSync(probe,'print-analysis-jobs:\n\t@printf \'%s\\n\' "$$ANALYZE_JOBS"\n');
+ try{
+ for(const profile of ['native','sandbox'])for(const jobs of [undefined,1,4]){
+  const args=['-s','-f',join(repository,'config/build',profile+'.mk'),'-f',probe,'print-analysis-jobs'];
+  if(jobs!==undefined)args.push('ANALYZE_JOBS='+jobs);
+  const result=spawnSync('make',args,{cwd:repository,env,encoding:'utf8',timeout:20000});
+  assert.equal(result.status,0,result.stderr);assert.equal(result.stdout,String(jobs??2)+'\n');
+ }
+ }finally{rmSync(probeDir,{recursive:true,force:true});}
+});
+
 
 test('analysis wrappers pass literal arguments to the host coordinator without touching receipts',()=>{
  for(const [script,command,args,expected] of [

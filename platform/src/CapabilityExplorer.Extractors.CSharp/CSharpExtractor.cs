@@ -238,7 +238,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
     {
         foreach (var decl in file.Tree.GetRoot().DescendantNodes().OfType<BaseTypeDeclarationSyntax>())
         {
-            if (file.Model.GetDeclaredSymbol(decl) is not INamedTypeSymbol type)
+            if (file.Model.GetDeclaredSymbol(decl) is not INamedTypeSymbol type || type.Name.Length == 0)
             {
                 continue;
             }
@@ -270,7 +270,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
 
         foreach (var decl in file.Tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>())
         {
-            if (file.Model.GetDeclaredSymbol(decl) is not IMethodSymbol method)
+            if (file.Model.GetDeclaredSymbol(decl) is not IMethodSymbol method || method.Name.Length == 0)
             {
                 continue;
             }
@@ -295,7 +295,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
         // Quote" is a fact about how data moves, and the only place it is written down. Framework and package types (ILogger, CancellationToken) are not.
         foreach (var decl in file.Tree.GetRoot().DescendantNodes().OfType<ConstructorDeclarationSyntax>())
         {
-            if (file.Model.GetDeclaredSymbol(decl) is not IMethodSymbol ctor)
+            if (file.Model.GetDeclaredSymbol(decl) is not IMethodSymbol ctor || ctor.ContainingType.Name.Length == 0)
             {
                 continue;
             }
@@ -328,7 +328,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
                     ?? (parameter.ContainingSymbol as IMethodSymbol)?.ContainingType.GetMembers(parameter.Name).OfType<IPropertySymbol>().FirstOrDefault(),
                 _ => null,
             };
-            if (property is null)
+            if (property is null || property.Name.Length == 0)
             {
                 continue;
             }

@@ -26,7 +26,7 @@ function portableOptions(value: unknown, root: string): unknown {
   return value;
 }
 
-/** Module specifiers that did not resolve: packages that are not installed (nothing is ever installed). */
+/** Module specifiers that did not resolve: lockfile-backed installs run separately with lifecycle scripts disabled. */
 function missingModules(program: ts.Program, files: readonly ts.SourceFile[]): string[] {
   const checker = program.getTypeChecker();
   const missing = new Set<string>();

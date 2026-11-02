@@ -12,6 +12,7 @@
 #   --offline   no network at all (--network none). Use for steps that must not fetch anything.
 #   --port N    publish container port N on the host's 127.0.0.1:N only (for the explorer UI).
 #   --docker    mount the Docker socket so Testcontainers can start Postgres.
+#   --package-settings   allow the local Explorer UI to read/write package feed settings.
 #               This grants the container control of the host Docker daemon. Only test targets use it;
 #               analysis/extraction steps must never get it.
 #
@@ -28,6 +29,7 @@
 #   SANDBOX_SOURCES        comma-separated absolute host paths (local repositories for capabilities) to mount
 #                          read-only at the same path inside the container.
 #   SANDBOX_LABEL          optional docker label (key=value) on the container, so a caller can find and stop it
+#   SANDBOX_EXTRA_LABEL    additional label for cleanup of a nested group of containers
 #   SANDBOX_PASS_ENV       comma-separated host variables to forward, e.g. CE_FOUNDRY_API_KEY.
 #                          Nothing is forwarded unless named here; ignored with --offline.
 #   SANDBOX_DOTNET_IMAGE / SANDBOX_NODE_IMAGE   override images
@@ -38,11 +40,13 @@ source "$root/scripts/lib/container-engine.sh"
 ce_engine_choice
 offline=0
 docker_sock=0
+package_settings=0
 port=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --offline) offline=1; shift ;;
     --docker) docker_sock=1; shift ;;
+      --package-settings) package_settings=1; shift ;;
     --port) port="$2"; shift 2 ;;
     -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     *) break ;;
@@ -65,7 +69,7 @@ esac
 image="$(ce_image_ref "$image")"
 
 cache="$root/.sandbox-cache"
-mkdir -p "$cache/nuget" "$cache/nuget-http" "$cache/npm"
+mkdir -p "$cache/nuget" "$cache/nuget-http" "$cache/npm" "$cache/package-feeds"
 
 args=(
   run --rm
@@ -95,6 +99,9 @@ args=(
   -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*'
 )
 [[ "$CE_ENGINE" != podman ]] || args+=(--userns keep-id)
+if [[ $package_settings -eq 0 ]]; then
+  args+=(--tmpfs /work/.sandbox-cache/package-feeds:rw,noexec,nosuid,size=1m)
+fi
 [[ -t 0 && -t 1 ]] && args+=(-it)
 
 if [[ $offline -eq 1 ]]; then
@@ -152,6 +159,7 @@ fi
 
 # A label lets a caller find and stop its containers (scripts/analyze-worker: Stop in the explorer).
 [[ -n "${SANDBOX_LABEL:-}" ]] && args+=(--label "$SANDBOX_LABEL")
+[[ -n "${SANDBOX_EXTRA_LABEL:-}" ]] && args+=(--label "$SANDBOX_EXTRA_LABEL")
 
 # Entry: build a combined CA bundle without root (system roots + extra CA), then exec the command.
 entry='set -e

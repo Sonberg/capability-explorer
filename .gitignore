@@ -1,6 +1,9 @@
 # Sandbox caches (NuGet packages, npm cache) — see scripts/sandbox
 .sandbox-cache/
 
+/capabilities.local.json
+/.capabilities.local.json.*.tmp
+
 # Built from fixtures/src by scripts/build-fixtures.sh
 fixtures/.repos/
 fixtures/.work/
