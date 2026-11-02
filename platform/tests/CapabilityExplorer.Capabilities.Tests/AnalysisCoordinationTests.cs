@@ -138,5 +138,33 @@ public sealed class AnalysisCoordinationTests : IDisposable
         }
         Assert.Equal("unknown", store.ReadRun(run.RunId).State);
     }
+    [Fact]
+    public void Durable_record_cannot_drop_accepted_bindings_before_resolution_or_publication()
+    {
+        var bindings = Path.Combine(_directory, "bindings.json");
+        File.WriteAllText(bindings, "{}");
+        var store = new FileRunStore(Root);
+        store.Admit("sales", _configuration, bindings, new());
+        using var owner = store.AcquireWorker();
+        var run = store.ClaimNext(owner)!;
+        var attempt = new AttemptIdentity(run.RunId, run.AttemptId!);
+        var record = Path.Combine(store.RunDirectory(run.RunId), "run.json");
+        var original = File.ReadAllText(record);
+        void OmitBindings()
+        {
+            var changed = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(record))!;
+            changed["bindingsPath"] = null;
+            File.WriteAllText(record, changed.ToJsonString());
+        }
+        var resolved = new ResolvedManifest(run.AcceptedInputsHash, new Dictionary<string, string> { ["sha"] = new('a', 40) });
+        OmitBindings();
+        Assert.Throws<InvalidDataException>(() => store.BindResolved(owner, attempt, resolved));
+        File.WriteAllText(record, original);
+        var manifest = store.BindResolved(owner, attempt, resolved);
+        store.FinishExecution(owner, attempt, 0);
+        OmitBindings();
+        Assert.Throws<InvalidDataException>(() => store.BeginPublication(owner, attempt, manifest));
+        Assert.Equal("running", store.ReadRun(run.RunId).State);
+    }
     public void Dispose() => Directory.Delete(_directory, true);
 }

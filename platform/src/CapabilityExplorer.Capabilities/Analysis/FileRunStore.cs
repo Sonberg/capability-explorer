@@ -189,7 +189,8 @@ public sealed class FileRunStore
         var acceptedBytes = AnalysisPaths.ReadBounded(SafePath(run.RunId, "accepted.json"));
         using var document = JsonDocument.Parse(acceptedBytes);
         var accepted = document.RootElement;
-        if (AnalysisPaths.Hash(AnalysisPaths.ReadBounded(run.ConfigurationPath)) != accepted.GetProperty("configuration").GetString() ||
+        if ((run.BindingsPath is null) != (accepted.GetProperty("bindings").ValueKind == JsonValueKind.Null) ||
+            AnalysisPaths.Hash(AnalysisPaths.ReadBounded(run.ConfigurationPath)) != accepted.GetProperty("configuration").GetString() ||
             (run.BindingsPath is not null && AnalysisPaths.Hash(AnalysisPaths.ReadBounded(run.BindingsPath)) != accepted.GetProperty("bindings").GetString()) ||
             AnalysisPaths.Hash(JsonSerializer.Serialize(accepted, AnalysisPaths.Json)) != run.AcceptedInputsHash ||
             JsonSerializer.Serialize(run.Settings, AnalysisPaths.Json) != JsonSerializer.Serialize(accepted.GetProperty("settings"), AnalysisPaths.Json))
