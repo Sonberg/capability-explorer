@@ -89,3 +89,26 @@ Commands and actual counts are recorded with the implementation handoff. Initial
 planning is not a passing receipt. No new release, remote authentication,
 distributed ownership, automatic retry or repair of unknown analysis runs follows
 from this decision.
+
+## Shared interface and execution plan
+
+The Capabilities library owns `SourceCheck`, `SourceCheckAdmission` and
+`SourceCheckCancellation`. `FileRunStore` exposes `AdmitCheck(capabilityId,
+configurationPath)`, `ReadCheck(requestId)`, `ReadLatestCheck(capabilityId)`,
+`CancelCheck(requestId)`, `ClaimCheck(owner)` and guarded completion/failure
+methods. Admission freezes merged local/shared definitions and the existing
+host authentication policy. The DTO sent over HTTP omits private frozen paths.
+
+The worker claims checks and analyses under the same ownership handle. It resolves
+credentials only for acquisition, produces bounded sanitized snapshots, then
+validates identity/cancellation under the metadata gate before completing.
+Queries are linear in the bounded retained record count; admission/transition
+writes are constant-sized apart from the bounded frozen definition/snapshot.
+Duplicate admission returns the existing active immutable intent, not a second
+execution. Started uncertainty blocks both operation families.
+
+`PackageFeedCatalog` is the shared versioned public descriptor projection.
+Credential-bearing host settings are not that catalogue. Explorer's old input
+shape is rejected with a migration explanation; only the host imports legacy
+secrets. The catalogue's feed ID is the non-secret credential/configuration
+reference. A catalogue is configured status, never host liveness.
