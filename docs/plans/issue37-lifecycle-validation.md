@@ -50,6 +50,38 @@ the worktree cleanup handoff preserves these rather than dependency caches.
 No claim is made about paid-model savings, power-loss behavior, arbitrary
 descendant quiescence, distributed ownership or unqualified host combinations.
 
+## Requalification after main advanced
+
+Main advanced to `7984019` during the pause. The feature branch merged it,
+retaining local definition overlays, default import-only development startup,
+engine auto-selection, isolated export UUIDs, operator NuGet/npm feeds and
+`ANALYZE_JOBS` bounded parallel extraction. Legacy shell-orchestration tests move
+to managed behavioral tests; helper, Make-default and overlay tests remain.
+
+Native merged-source checks: 42 analysis integration cases passed with no skips,
+including concurrency barriers at 1, 2 and 20 jobs, fail/cancel draining, normal
+workspace/bin links, escaped/dangling dependency refusal, exact-label Docker
+cleanup, publication crashes and credential-bearing output suppression. The
+overlay store author separately passed 34 focused cases on macOS and Linux.
+
+Two complete host-worker runs using a local capability override had equal
+accepted/semantic input identities and canonical artifact hashes. Export UUID
+and manifest-path identities appropriately differ between attempts. Core state,
+separate enrichment outcome and removal of only manifest-owned source were
+verified after the complete worker path. A further `PACKAGES=1` smoke run
+installed the pinned fixture TypeScript dependency (npm coverage `1:0`, NuGet
+`0:0:0`), then published and reclaimed its export. No real private credentials
+or inaccessible repositories were required for qualification.
+
+Owner review caught and corrected a stale claimed-run record being passed to
+cleanup after publication; the full worker smoke checks above exercise the
+corrected path. Cleanup rejects stale identities and forged export evidence,
+and preserves unrelated source directories and symlink targets. Dependency
+confinement is checked before parsing and rechecked before publication.
+
+Final full local and hosted CI results must bind the final post-merge SHA.
+Earlier successful receipts from `313b8ee` do not validate this merged source.
+
 ## Review outcome and outstanding acceptance
 
 The non-author council judge found no remaining architecture blockers after

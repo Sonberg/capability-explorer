@@ -199,7 +199,7 @@ test-explorer: fixtures build
 # Analyse a capability's repositories: export (network + token) -> packages (nuget.org) -> extract (offline).
 analyze: build
 	@test -n "$(CAPABILITY)" || { echo "usage: make analyze CAPABILITY=<id>  (see $(CAPABILITIES))"; exit 2; }
-	CE_STORE_SANDBOX=1 GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) INCLUDE_TESTS=$(INCLUDE_TESTS) scripts/analyze $(CAPABILITY) $(CAPABILITIES)
+	GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) INCLUDE_TESTS=$(INCLUDE_TESTS) scripts/analyze $(CAPABILITY) $(CAPABILITIES)
 
 # Read-only UI over artifacts. The container publishes the port on 127.0.0.1 only.
 # Analysed artifacts come after the golden set: for the same repository, commit and unit, the later one wins.
@@ -278,7 +278,7 @@ postgres:
 # make analyze CAPABILITY=<id> CE_DATABASE='...' (printed above) while it runs; the explorer reloads by itself.
 # The explorer's Analyze code button queues a request that the analyze worker, started next to it, runs on the host.
 dev: dev-data
-	@CE_STORE_SANDBOX=1 CE_DATABASE='$(DEV_WORKER_DATABASE)' GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) scripts/analyze-worker $(CAPABILITIES) </dev/null & \
+	@CE_DATABASE='$(DEV_WORKER_DATABASE)' GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) scripts/analyze-worker $(CAPABILITIES) </dev/null & \
 	  trap "kill $$! 2>/dev/null" EXIT; \
 	  $(MAKE) --no-print-directory explore CE_DATABASE='$(DEV_DATABASE)'
 
@@ -289,7 +289,7 @@ DEV_REANALYZE ?= 0
 DEV_OLLAMA ?= 1
 dev-data: build postgres
 	@if [ "$(DEV_OLLAMA)" = 1 ]; then $(MAKE) --no-print-directory ollama || echo "-- Ollama unavailable; continuing without model services"; else echo "-- Ollama skipped (DEV_OLLAMA=0)"; fi
-	@if [ "$(DEV_REANALYZE)" = 1 ]; then CE_STORE_SANDBOX=1 GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) INCLUDE_TESTS=$(INCLUDE_TESTS) scripts/analyze-all $(CAPABILITIES); fi
+	@if [ "$(DEV_REANALYZE)" = 1 ]; then GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) INCLUDE_TESTS=$(INCLUDE_TESTS) scripts/analyze-all $(CAPABILITIES); fi
 	@mkdir -p .sandbox-cache && find $(subst $(comma), ,$(ARTIFACTS)) -name '*.jsonl' 2>/dev/null | sort > .sandbox-cache/dev-artifacts.txt
 	@echo "== import $$(wc -l < .sandbox-cache/dev-artifacts.txt | tr -d ' ') artifact(s) and embed"
 	@CE_DATABASE='$(DEV_DATABASE)' SANDBOX_PASS_ENV=CE_DATABASE SANDBOX_SOURCES="" $(DOTNET) bash -c '\
@@ -351,7 +351,7 @@ live-architecture-benchmark:
 
 .PHONY: analyze-all
 analyze-all: build
-	CE_STORE_SANDBOX=1 GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) INCLUDE_TESTS=$(INCLUDE_TESTS) scripts/analyze-all $(CAPABILITIES)
+	GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) INCLUDE_TESTS=$(INCLUDE_TESTS) scripts/analyze-all $(CAPABILITIES)
 
 .PHONY: test-postmerge-analysis
 test-postmerge-analysis:

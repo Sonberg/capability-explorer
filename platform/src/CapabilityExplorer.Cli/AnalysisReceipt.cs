@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Security.Cryptography;
 using CapabilityExplorer.Capabilities.Analysis;
 
 namespace CapabilityExplorer.Cli;
@@ -9,33 +10,45 @@ internal sealed class AnalysisReceipt
 {
     private readonly string _root;
     private readonly string _configurationHash;
+    private readonly string _effectiveConfigurationHash;
+    private readonly string? _localConfigurationHash;
     private readonly string? _bindingsHash;
     private readonly string _applicationCommit;
     private readonly string _sourceState;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
-    private AnalysisReceipt(string root, string configurationHash, string? bindingsHash, string commit, string state)
-    { _root=root; _configurationHash=configurationHash; _bindingsHash=bindingsHash; _applicationCommit=commit; _sourceState=state; }
+    private AnalysisReceipt(string root, string configurationHash, string effectiveHash, string? localHash, string? bindingsHash, string commit, string state)
+    { _root=root; _configurationHash=configurationHash; _effectiveConfigurationHash=effectiveHash; _localConfigurationHash=localHash;
+      _bindingsHash=bindingsHash; _applicationCommit=commit; _sourceState=state; }
+
+    private static string EffectiveHash(string configuration) => Convert.ToHexStringLower(SHA256.HashData(FileRunStore.CaptureConfiguration(configuration)));
+    private static string? LocalHash(string configuration)
+    {
+        var path = Path.ChangeExtension(configuration,".local" + Path.GetExtension(configuration));
+        AnalysisPreparation.RejectLinks(path);
+        return File.Exists(path) ? AnalysisWorkerCommand.HashFile(path) : null;
+    }
 
     internal static async Task<AnalysisReceipt> Start(string root, string configuration, string? bindings)
     {
         var output = Path.Combine(root,".sandbox-cache/analysis-receipt.json");
         AnalysisPreparation.RejectLinks(output);
         if (File.Exists(output)) File.Delete(output);
-        return new(root,AnalysisWorkerCommand.HashFile(configuration),bindings is null ? null : AnalysisWorkerCommand.HashFile(bindings),
+        return new(root,AnalysisWorkerCommand.HashFile(configuration),EffectiveHash(configuration),LocalHash(configuration),bindings is null ? null : AnalysisWorkerCommand.HashFile(bindings),
             (await Git(root,["rev-parse","--verify","HEAD"])).Trim(),
             string.IsNullOrWhiteSpace(await Git(root,["status","--porcelain","--untracked-files=all"])) ? "clean" : "dirty");
     }
 
     internal async Task Complete(FileRunStore store, IReadOnlyList<string> runIds, string configuration, string? bindings)
     {
-        if (AnalysisWorkerCommand.HashFile(configuration) != _configurationHash || (bindings is null ? null : AnalysisWorkerCommand.HashFile(bindings)) != _bindingsHash)
+        if (AnalysisWorkerCommand.HashFile(configuration) != _configurationHash || EffectiveHash(configuration) != _effectiveConfigurationHash ||
+            LocalHash(configuration) != _localConfigurationHash || (bindings is null ? null : AnalysisWorkerCommand.HashFile(bindings)) != _bindingsHash)
             throw new InvalidOperationException("aggregate inputs changed during analysis");
         var artifacts = new SortedDictionary<string,object>(StringComparer.Ordinal);
         var runs = new List<object>();
         foreach (var runId in runIds)
         {
             var run = store.ReadRun(runId);
-            if (run.State != "done" || run.ManifestHash is null || AnalysisWorkerCommand.HashFile(run.ConfigurationPath) != _configurationHash ||
+            if (run.State != "done" || run.ManifestHash is null || EffectiveHash(run.ConfigurationPath) != _effectiveConfigurationHash ||
                 (run.BindingsPath is null ? null : AnalysisWorkerCommand.HashFile(run.BindingsPath)) != _bindingsHash)
                 throw new InvalidOperationException("aggregate requires completed runs with identical frozen configuration");
             var resolvedPath = Path.Combine(store.RunDirectory(runId),"resolved.json");
@@ -58,7 +71,8 @@ internal sealed class AnalysisReceipt
         }
         if (artifacts.Count == 0) throw new InvalidOperationException("aggregate contains no artifacts");
         var receipt = new { format="ce.analysis-replay.v1", applicationCommit=_applicationCommit, sourceState=_sourceState,
-            capabilitiesHash=_configurationHash, runtimeImagesHash=AnalysisWorkerCommand.HashFile(Path.Combine(_root,"config/runtime/images.env")),
+            capabilitiesHash=_configurationHash, localCapabilitiesHash=_localConfigurationHash, effectiveCapabilitiesHash=_effectiveConfigurationHash,
+            runtimeImagesHash=AnalysisWorkerCommand.HashFile(Path.Combine(_root,"config/runtime/images.env")),
             bindingsHash=_bindingsHash, artifacts=artifacts.Values, runs };
         var destination = Path.Combine(_root,".sandbox-cache/analysis-receipt.json");
         AnalysisPreparation.RejectLinks(destination);

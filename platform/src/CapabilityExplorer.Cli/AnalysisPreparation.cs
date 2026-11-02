@@ -107,6 +107,8 @@ internal static class AnalysisPreparation
         Directory.CreateDirectory(locks); Directory.CreateDirectory(packageDir);
         var sources = repositories.ToDictionary(repo => repo.Id, repo => AnalysisPackagePreparation.SourceIdentity(repo.Source), StringComparer.Ordinal);
         var packageInputs = await AnalysisPackagePreparation.Run(root, run, process, repositories, work, locks, packageDir);
+        // Prove npm/workspace links stay confined before any offline parser can follow them.
+        var dependencies = repositories.ToDictionary(repo => repo.Id, repo => AnalysisPackagePreparation.DependencyIdentity(repo.Source), StringComparer.Ordinal);
         await AnalysisParallelExtraction.Run(root, store, run, process, repositories, work, locks, packageDir);
         process.CheckCancellation();
         if (runtime != RuntimeIdentity(root)) throw new InvalidOperationException("runtime changed during preparation");
@@ -118,7 +120,8 @@ internal static class AnalysisPreparation
             if (sources[repo.Id] != AnalysisPackagePreparation.SourceIdentity(repo.Source)) throw new InvalidOperationException("exported source changed during preparation");
             inputs["source:" + repo.Id] = sources[repo.Id];
             inputs["export-path:" + repo.Id] = Path.GetRelativePath(work, repo.Source).Replace('\\', '/');
-            inputs["npm-dependencies:" + repo.Id] = AnalysisPackagePreparation.DependencyIdentity(repo.Source);
+            if (dependencies[repo.Id] != AnalysisPackagePreparation.DependencyIdentity(repo.Source)) throw new InvalidOperationException("installed dependencies changed during extraction");
+            inputs["npm-dependencies:" + repo.Id] = dependencies[repo.Id];
             foreach (var file in CheckedFiles(repo.Staging))
             {
                 if (!file.EndsWith(".jsonl",StringComparison.Ordinal)) throw new FormatException("unexpected staging file");

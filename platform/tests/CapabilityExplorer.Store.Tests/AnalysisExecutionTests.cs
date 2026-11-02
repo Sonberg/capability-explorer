@@ -98,6 +98,32 @@ public sealed class AnalysisExecutionTests(PostgresFixture database)
     }
 
     [Fact]
+    public async Task Isolated_export_publication_and_cleanup_bind_the_durable_attempt_and_preserve_other_sources()
+    {
+        using var environment = new DatabaseEnvironment(null);
+        using var f = new ExecutionFixture(exportGroup:Guid.NewGuid().ToString("N"));
+        var prepared = f.Prepare();
+        var source = prepared.Repositories[0].Source;
+        var stale = Path.Combine(f.Store.AttemptDirectory(f.Identity),"src",Guid.NewGuid().ToString("N"),"stale");
+        Directory.CreateDirectory(stale);
+        File.WriteAllText(Path.Combine(stale,"sentinel"),"preserve");
+        Directory.CreateSymbolicLink(Path.Combine(source,"external-link"),stale);
+        Assert.Throws<InvalidOperationException>(() => AnalysisSourceCleanup.AfterPublication(f.Store,f.Run,prepared));
+        using (var permit = f.Begin())
+        {
+            await AnalysisPublication.Publish(f.Root,f.Run,prepared,permit);
+            permit.Complete();
+        }
+        Assert.Throws<InvalidOperationException>(() => AnalysisSourceCleanup.AfterPublication(f.Store,f.Run with { AttemptId=Guid.NewGuid().ToString("N") },prepared));
+        var forged = prepared with { Inputs=new(prepared.Inputs) { ["export-path:" + prepared.Repositories[0].Id]=Path.GetRelativePath(f.Store.AttemptDirectory(f.Identity),stale) } };
+        Assert.Throws<InvalidDataException>(() => AnalysisSourceCleanup.AfterPublication(f.Store,f.Run,forged));
+        Assert.True(Directory.Exists(source));
+        AnalysisSourceCleanup.AfterPublication(f.Store,f.Run,prepared);
+        Assert.False(Directory.Exists(source));
+        Assert.Equal("preserve",File.ReadAllText(Path.Combine(stale,"sentinel")));
+    }
+
+    [Fact]
     public async Task Later_repository_failure_retains_confirmed_partial_effect_without_false_success()
     {
         using var environment = new DatabaseEnvironment(null);
@@ -206,7 +232,7 @@ public sealed class AnalysisExecutionTests(PostgresFixture database)
         Directory.CreateDirectory(Path.GetDirectoryName(script)!);
         File.WriteAllText(script, "#!/bin/sh\nexit 9\n");
         File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        var process = new AnalysisProcess(f.Root, f.Store, f.Run, CancellationToken.None, new FakeRuntime());
+        using var process = new AnalysisProcess(f.Root, f.Store, f.Run, CancellationToken.None, new FakeRuntime());
         await Assert.ThrowsAsync<InvalidOperationException>(() => process.Run("scripts/sandbox", []));
         Assert.False(process.TerminationConfirmed);
         Assert.Equal("unknown", f.Store.FinishExecution(f.Owner, f.Identity, 9, process.TerminationConfirmed).State);
@@ -218,7 +244,7 @@ public sealed class AnalysisExecutionTests(PostgresFixture database)
         using var f = new ExecutionFixture();
         var runtime = new FakeRuntime();
         f.Store.Cancel(f.Run.RunId);
-        var process = new AnalysisProcess(f.Root,f.Store,f.Run,CancellationToken.None,runtime);
+        using var process = new AnalysisProcess(f.Root,f.Store,f.Run,CancellationToken.None,runtime);
         await Assert.ThrowsAsync<OperationCanceledException>(() => process.Run("scripts/sandbox",[]));
         Assert.False(runtime.Frozen);
         Assert.True(process.TerminationConfirmed);
@@ -235,7 +261,7 @@ public sealed class AnalysisExecutionTests(PostgresFixture database)
         File.WriteAllText(script,"#!/bin/sh\nprintf ready > started\nexec sleep 60\n");
         File.SetUnixFileMode(script,UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var runtime = new FakeRuntime();
-        var process = new AnalysisProcess(f.Root,f.Store,f.Run,CancellationToken.None,runtime);
+        using var process = new AnalysisProcess(f.Root,f.Store,f.Run,CancellationToken.None,runtime);
         var execution = process.Run("scripts/sandbox",[]);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         while (!File.Exists(Path.Combine(f.Root,"started"))) await Task.Delay(10,timeout.Token);
@@ -320,9 +346,11 @@ public sealed class AnalysisExecutionTests(PostgresFixture database)
         public FileRunStore Store { get; }
         public WorkerOwnership Owner { get; }
         public AnalysisRun Run { get; private set; }
+        private readonly string? _exportGroup;
         public AttemptIdentity Identity => new(Run.RunId, Run.AttemptId!);
-        public ExecutionFixture(bool withBindings = false)
+        public ExecutionFixture(bool withBindings = false,string? exportGroup = null)
         {
+            _exportGroup=exportGroup;
             Directory.CreateDirectory(Root);
             var configuration = Path.Combine(Root, "capabilities.json");
             var capability = "test-lifecycle-" + Guid.NewGuid().ToString("N");
@@ -343,7 +371,11 @@ public sealed class AnalysisExecutionTests(PostgresFixture database)
             var staging = Path.Combine(Store.AttemptDirectory(Identity), "out", id, revision);
             Directory.CreateDirectory(staging);
             if (includeArtifact) File.WriteAllText(Path.Combine(staging, "artifact.jsonl"), text);
-            return new(id, revision, Path.Combine(Store.AttemptDirectory(Identity), "src", id), staging);
+            var sourceRoot = Path.Combine(Store.AttemptDirectory(Identity),"src");
+            if (_exportGroup is not null) sourceRoot=Path.Combine(sourceRoot,_exportGroup);
+            var source = Path.Combine(sourceRoot,id);
+            Directory.CreateDirectory(source);
+            return new(id, revision, source, staging);
         }
         public PreparedAnalysis Prepare(string? additionalFixture = null)
         {
@@ -357,6 +389,7 @@ public sealed class AnalysisExecutionTests(PostgresFixture database)
             {
                 var artifact = Path.Combine(item.Staging,"artifact.jsonl");
                 inputs["revision:" + item.Id] = item.Sha;
+                inputs["export-path:" + item.Id] = Path.GetRelativePath(Store.AttemptDirectory(Identity),item.Source).Replace('\\','/');
                 inputs["artifact:" + item.Id + ":artifact.jsonl"] = Hash(artifact);
                 artifacts[artifact] = Hash(artifact);
             }

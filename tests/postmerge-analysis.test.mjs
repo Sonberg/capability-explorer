@@ -197,7 +197,7 @@ test('analysis wrappers pass literal arguments to the host coordinator without t
   write(root,'bin/dotnet','#!/usr/bin/env node\nrequire("fs").writeFileSync("args.json",JSON.stringify(process.argv.slice(2)));process.exit(23);\n');
   chmodSync(join(root,'bin/dotnet'),0o700);
   write(root,receiptPath,'preserve until ownership');
-  const result=spawnSync('bash',['scripts/'+script,...args],{cwd:root,encoding:'utf8',timeout:20000,env:{PATH:join(root,'bin')+':'+process.env.PATH}});
+  const result=spawnSync('bash',['scripts/'+script,...args],{cwd:root,encoding:'utf8',timeout:20000,env:{PATH:join(root,'bin')+':'+process.env.PATH,CE_CONTAINER_ENGINE:'docker'}});
   assert.equal(result.status,23,result.stderr);
   assert.deepEqual(JSON.parse(readFileSync(join(root,'args.json'),'utf8')).slice(1),[command,...expected]);
   assert.equal(readFileSync(join(root,receiptPath),'utf8'),'preserve until ownership');

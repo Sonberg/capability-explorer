@@ -37,10 +37,19 @@ internal static class AnalysisPublicationBinding
         var attemptDirectory = Path.Combine(runDirectory,"attempt-" + run.AttemptId);
         foreach (var repo in prepared.Repositories)
         {
+            var sourcePath = resolved.Inputs.GetValueOrDefault("export-path:" + repo.Id) ?? "src/" + repo.Id;
+            var sourceParts = sourcePath.Split('/');
+            if (sourceParts.Length is not (2 or 3) || sourceParts[0] != "src" || sourceParts[^1] != repo.Id)
+                throw new InvalidDataException("invalid resolved export path");
+            if (sourceParts.Length == 3) RequireIdentity(sourceParts[1]);
             if (!SafeRepository(repo.Id) || !revisions.TryGetValue(repo.Id,out var sha) || sha != repo.Sha ||
                 sha.Length != 40 || sha.Any(c => !(char.IsAsciiDigit(c) || c is >= 'a' and <= 'f')) ||
-                repo.Source != Path.Combine(attemptDirectory,"src",repo.Id) || repo.Staging != Path.Combine(attemptDirectory,"out",repo.Id,sha))
+                repo.Source != Path.Combine(attemptDirectory,sourcePath) || repo.Staging != Path.Combine(attemptDirectory,"out",repo.Id,sha))
                 throw new InvalidDataException("prepared repository identity or attempt path mismatch");
+            if (resolved.Inputs.TryGetValue("source:" + repo.Id,out var sourceIdentity) && AnalysisPackagePreparation.SourceIdentity(repo.Source) != sourceIdentity)
+                throw new InvalidDataException("exported sources changed after preparation");
+            if (resolved.Inputs.TryGetValue("npm-dependencies:" + repo.Id,out var dependencyIdentity) && AnalysisPackagePreparation.DependencyIdentity(repo.Source) != dependencyIdentity)
+                throw new InvalidDataException("installed dependency inputs changed after preparation");
             foreach (var input in resolved.Inputs.Where(p => p.Key.StartsWith("artifact:" + repo.Id + ":",StringComparison.Ordinal)))
             {
                 var relative = input.Key[(10 + repo.Id.Length)..];

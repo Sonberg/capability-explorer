@@ -178,10 +178,10 @@ internal static class AnalysisPackagePreparation
                     if (!dependency) { AnalysisPreparation.RejectLinks(entry); continue; }
                     var direct = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(entry)!, info.LinkTarget));
                     if (Path.IsPathRooted(info.LinkTarget) || !Within(root, direct)) throw new IOException("dependency link escapes the exported source");
-                    var target = info.ResolveLinkTarget(returnFinalTarget: true) ?? throw new IOException("unresolved dependency link");
-                    if (!target.Exists || !Within(root, target.FullName)) throw new IOException("dependency link target is absent or escapes the exported source");
-                    AnalysisPreparation.RejectLinks(target.FullName);
-                    identities.Add("link:" + Relative(root, entry) + ":" + Relative(root, target.FullName));
+                    var remainingLinks = 64;
+                    var target = ResolveConfined(root,direct,ref remainingLinks);
+                    AnalysisPreparation.RejectLinks(target);
+                    identities.Add("link:" + Relative(root, entry) + ":" + Relative(root, target));
                     continue;
                 }
                 AnalysisPreparation.RejectLinks(entry);
@@ -197,4 +197,20 @@ internal static class AnalysisPackagePreparation
     }
     private static bool Within(string root, string path) => Path.GetRelativePath(root, path) is var relative &&
         relative != ".." && !relative.StartsWith("../", StringComparison.Ordinal) && !Path.IsPathRooted(relative);
+
+    private static string ResolveConfined(string root,string path,ref int remainingLinks)
+    {
+        if (!Within(root,path)) throw new IOException("dependency link escapes the exported source");
+        var current = root;
+        foreach (var component in Path.GetRelativePath(root,path).Split(Path.DirectorySeparatorChar))
+        {
+            current = Path.Combine(current,component);
+            var target = new FileInfo(current).LinkTarget;
+            if (target is null) continue;
+            if (--remainingLinks < 0 || Path.IsPathRooted(target)) throw new IOException("cyclic or absolute dependency link");
+            current = ResolveConfined(root,Path.GetFullPath(Path.Combine(Path.GetDirectoryName(current)!,target)),ref remainingLinks);
+        }
+        if (!File.Exists(current) && !Directory.Exists(current)) throw new IOException("dependency link target is absent");
+        return current;
+    }
 }

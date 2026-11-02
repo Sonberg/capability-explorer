@@ -7,7 +7,7 @@ and guarded publication. PostgreSQL remains optional artifact storage.
 
 This slice does not complete the literal Explorer credential prohibition in
 issue #37 A9. The existing private-source Check workflow still uses an Explorer
-GitHub token. Analysis admission introduces no credential values or engine
+GitHub token, and main also added credential-bearing package-feed Settings. Analysis admission introduces no credential values or engine
 socket into Explorer, and offline extraction receives neither. Moving existing
 private-source checks behind a credential-free boundary requires separate owner
 review; do not close #37 or describe all A1–A11 as complete on this package alone.
@@ -19,6 +19,10 @@ The launcher executes the built `ce.dll` on the host; Docker-only SDK builds do
 not provide that runtime. Native development builds also require the existing
 host SDK/toolchain. The scripts check for `dotnet` and the built CLI; they do not
 install a runtime or download dependencies automatically.
+
+When `PACKAGES=1`, host Node.js 22 also resolves host `.npmrc` credentials before
+containerized package fetching. `PACKAGES=0` avoids that resolution step. No
+repository lifecycle scripts are enabled by package acquisition.
 
 Worker database and model endpoints must be reachable from the host. Do not
 reuse a container-only `host.docker.internal` address for a native client. The
