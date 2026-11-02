@@ -112,7 +112,7 @@ rules and reviewer identities rather than rewriting observations.
 `make EXECUTION=sandbox test-platform-plan` checks catalogue integrity and negative
 cases using the existing Node image. Actual JSON Schema shape tests run in the
 existing Contracts.Tests suite; `make EXECUTION=sandbox platform-contract-check`
-selects them after the ordinary build. This is not OpenAPI certification or a
+restores and builds only the selected contract-test project. This is not OpenAPI certification or a
 provider/consumer service test. Global runtime/refinement/completion claims remain
 incomplete; the plan checker rejects borrowing foundation success for them.
 

@@ -25,9 +25,11 @@ test-platform-plan:
 
 # Shape conformance uses the existing Contracts.Tests dependency graph. This is
 # not a central provider/consumer integration test or an OpenAPI certification.
-platform-contract-check: build
+platform-contract-check:
 ifeq ($(EXECUTION),sandbox)
-	scripts/sandbox --offline dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Contracts.Tests --filter FullyQualifiedName~PlatformExchangeContractTests'
+	scripts/sandbox dotnet sh -c 'cd platform && dotnet restore --locked-mode tests/CapabilityExplorer.Contracts.Tests'
+	scripts/sandbox --offline dotnet sh -c 'cd platform && dotnet test --no-restore tests/CapabilityExplorer.Contracts.Tests --filter FullyQualifiedName~PlatformExchangeContractTests'
 else
-	cd platform && dotnet test --no-build tests/CapabilityExplorer.Contracts.Tests --filter FullyQualifiedName~PlatformExchangeContractTests
+	cd platform && dotnet restore --locked-mode tests/CapabilityExplorer.Contracts.Tests
+	cd platform && dotnet test --no-restore tests/CapabilityExplorer.Contracts.Tests --filter FullyQualifiedName~PlatformExchangeContractTests
 endif
