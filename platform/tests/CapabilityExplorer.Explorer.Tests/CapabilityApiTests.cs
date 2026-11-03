@@ -77,18 +77,14 @@ public sealed class CapabilityApiTests : IDisposable
     }
 
     [Fact]
-    public async Task A_capability_scopes_every_view_to_its_repositories_at_their_locked_revisions()
+    public async Task A_capability_scopes_file_views_while_integrations_require_the_database()
     {
         var view = await _client.GetFromJsonAsync<Dictionary<string, string>>("/api/view?cap=demand-pricing");
         Assert.Equal(["forecast-cs", "pricing-node"], view!.Keys.Order());
         Assert.Equal(Fixtures.Lock["forecast-cs"]["v1-base"], view["forecast-cs"]); // locked ref, not the latest
 
-        var integrations = await _client.GetFromJsonAsync<JsonElement>("/api/integrations?cap=demand-pricing");
-        var services = integrations.GetProperty("services").EnumerateArray().Select(s => s.GetProperty("service").GetProperty("repositoryId").GetString()).ToHashSet();
-        Assert.Equal(["forecast-cs", "pricing-node"], services.Order());
-        // At the locked forecast revision, pricing's call to /api/forecasts/{} has a candidate endpoint.
-        var link = integrations.GetProperty("http").EnumerateArray().Single(l => l.GetProperty("request").GetProperty("from").GetProperty("name").GetString() == "getForecast");
-        Assert.Equal("route", link.GetProperty("match").GetString());
+        using var integrations = await _client.GetAsync(new Uri("/api/integrations?cap=demand-pricing", UriKind.Relative));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, integrations.StatusCode);
 
         var hits = await _client.GetFromJsonAsync<JsonElement>("/api/search?q=average&cap=demand-pricing");
         Assert.DoesNotContain(hits.EnumerateArray(), h => h.GetProperty("repositoryId").GetString() is "api-cs" or "worker-cs" or "web-ts");
