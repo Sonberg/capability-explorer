@@ -1,5 +1,33 @@
 # Handoff: remaining work
 
+## Portable decision navigation and branch lifecycle
+
+[MADR-0028](adr/0028-portable-decision-ledger.md) proposes a bounded portable
+typed graph and faceted taxonomy, not a full ontology reasoner. The
+[generated index](research/decision-ledger-preview/index.md) covers every local
+decision and records reviewed-proposed topic groups and cited navigation
+relationships. These are not adopted classifications or inferred dependencies.
+Canonical sources remain authoritative; collections may use Markdown or JSON.
+
+`make test-decision-ledger` validates source receipts and checked-in projections
+offline, with 29 focused tests. Explicitly refresh changed sidecar receipts and
+run `node scripts/decisions/check.mjs generate` to update views; read-only checks
+never repair stale output. See the [contract evaluation](research/decision-ledger-architecture.md)
+for bounded adapters and unresolved semantic/authority questions.
+
+An authorized second workspace was assessed read-only: the new explicit
+single-object JSON scalar profile parsed 75/75 standalone records, and the
+array profile parsed 13 archive records. Nested relationship objects and other
+metadata remain uninterpreted, not qualified typed edges or adoption evidence.
+No private record content was copied into this repository.
+
+[MADR-0014](adr/0014-pr-publication-worktree-retention.md#remote-topic-branches-after-owner-merge)
+now distinguishes authorized merged-topic remote deletion from local worktree
+retention. All 17 audited candidates remain retained: protection visibility was
+incomplete and Tigon32 lacked admin permission to enable automatic deletion.
+The setting remains false; an authorized repository administrator must resolve
+that gap. No branches or other-workspace content were changed.
+
 ## Issue #53: business-object and event assessment research
 
 [Specification](research/domain-object-specification.md), proposed

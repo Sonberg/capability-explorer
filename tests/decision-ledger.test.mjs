@@ -47,8 +47,8 @@ test('inventory coverage', () => {
   const actual = loadLedger(root, 'config/decisions/project.json');
   const paths = discover(root, config.projects[0], config.limits);
   assert.deepEqual(actual.records.map(r => r.path).sort(), paths.sort());
-  assert.equal(actual.edges.length, 0, 'prose hyperlinks are not asserted semantic edges');
-  assert.ok(actual.records.every(r => r.facets.length === 0), 'no title/folder category inference');
+  assert.ok(actual.edges.every(e => e.standing === 'review-proposed'), 'navigation is explicitly reviewed, not inferred or adopted');
+  assert.ok(actual.records.every(r => r.facets.every(f => f.standing === 'review-proposed')), 'classification is a review proposal');
   const { config: c, ledger: l } = data();
   l.records.pop();
   assert.throws(() => reconcile(fixture, c, l), /inventory coverage/);
@@ -197,6 +197,30 @@ test('relation cycles', () => {
     { type: 'depends-on', from: key('a', 'one'), to: { project: 'a', id: 'two', state: 'resolved' } },
     { type: 'references', from: key('a', 'two'), to: { project: 'a', id: 'one', state: 'resolved' } }
   ]);
+});
+
+test('mixed prerequisite cycles and draft status', () => {
+  assert.throws(() => validateCycles([
+    { type: 'depends-on', from: key('p', 'a'), to: { project: 'p', id: 'b', state: 'resolved' } },
+    { type: 'extends', from: key('p', 'b'), to: { project: 'p', id: 'a', state: 'resolved' } }
+  ]), /cycle: prerequisite/);
+  const { config, ledger } = data();
+  const record = ledger.records.find(r => r.id === 'choice-b');
+  config.projects.find(p => p.id === record.project).statusMap.push({ raw: sourceFor(record, config).rawStatus, state: 'draft' });
+  record.status.state = 'draft';
+  assert.equal(reconcile(fixture, config, ledger).records.find(r => r.id === record.id).status.state, 'draft');
+  assert.equal(COLORS.draft, '#f8d7da');
+});
+
+test('single-object JSON requires an explicit profile', () => {
+  const bytes = Buffer.from(JSON.stringify({ id: 'local-0005', title: 'Standalone decision', status: 'Proposed' }));
+  const profile = { collection: '', id: 'id', title: 'title', status: 'status', relations: [] };
+  assert.throws(() => parseCollection(bytes, profile), /must be an array/);
+  const [source] = parseCollection(bytes, { ...profile, singleObject: true });
+  assert.equal(source.pointer, '');
+  assert.equal(source.statusPointer, '/status');
+  assert.equal(source.alias, 'local-0005');
+  assert.throws(() => parseCollection(Buffer.from('[]'), { ...profile, singleObject: true }), /must be an object/);
 });
 
 test('scope and relation semantics', () => {

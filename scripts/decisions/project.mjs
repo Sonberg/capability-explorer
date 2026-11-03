@@ -59,7 +59,8 @@ export function projections(ledger, config, root = '.', output = config.output) 
   for (const r of ledger.records) {
     const k = key(r.project, r.id), n = node(k);
     lines.push(`| ${md(r.project)} / ${md(r.id)} | ${md(r.alias)} | [${md(r.title)}](${href(root, output, r, config.projects)}) | ${md(r.rawStatus ?? '(missing)')} | ${md(r.status.state)} / ${md(r.status.scope)} |`);
-    graph.push(`  ${n}["${mermaid(`${r.project}/${r.alias}: ${r.title} (${r.status.state})`)}"]`);
+    const stateLabel = r.status.state === 'accepted' ? `accepted; scope: ${r.status.scope}` : r.status.state;
+    graph.push(`  ${n}["${mermaid(`${r.project}/${r.alias}: ${r.title} (${stateLabel})`)}"]`);
     graph.push(`  style ${n} fill:${COLORS[r.status.state]}`);
   }
   const external = new Set();
@@ -73,10 +74,12 @@ export function projections(ledger, config, root = '.', output = config.output) 
     graph.push(`  ${from} ${RELATIONS[e.type].symmetric ? '<-->' : '-->'}|"${mermaid(e.type)}"| ${to}`);
   }
   lines.push('', `Records: ${ledger.records.length}; asserted relationships: ${ledger.edges.length}.`,
-    '', '## Diagnostics', '', '```json', canonical(ledger.diagnostics).trimEnd(), '```',
-    '', '## Scope, alias and source-change review', '', '```json', canonical(summary).trimEnd(), '```', '');
+    '', '## Legend', '', 'Accepted: green, exact recorded scope only; proposed: yellow; draft: red.',
+    'Rejected/deprecated/superseded: gray; unknown: neutral. No color proves implementation.',
+    '', '## Diagnostics', '', ...ledger.diagnostics.map(d => `- ${md(JSON.stringify(d))}`),
+    '', '## Scope, alias and source-change review', '', '```json', JSON.stringify(JSON.parse(canonical(summary))), '```', '');
   return {
-    'ledger.json': canonical({ ...ledger, report: summary }),
+    'ledger.json': JSON.stringify(JSON.parse(canonical({ ...ledger, report: summary }))) + '\n',
     'index.md': lines.join('\n'),
     'graph.mmd': graph.join('\n') + '\n'
   };

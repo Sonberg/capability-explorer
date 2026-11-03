@@ -48,6 +48,7 @@ try {
       )).trimEnd());
       else outputViews(root, output, views, mode);
     } else console.log(`decision-ledger: ${ledger.records.length} records, ${ledger.edges.length} asserted edges, ${ledger.diagnostics.length} explicit diagnostics`);
+    if (mode === 'all') outputViews(root, config.output, projections(ledger, config, root), 'check');
   }
   if (mode === 'all') {
     const result = spawnSync(process.execPath, ['--test', 'tests/decision-ledger.test.mjs'], { cwd: codeRoot, stdio: 'inherit' });

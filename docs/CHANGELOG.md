@@ -11,6 +11,14 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Portable, source-bound decision-ledger schema, configured canonical-source
+  adapters, proposed topic facets and typed relationships with deterministic
+  generated navigation and offline checks (MADR-0028). No full ontology
+  reasoning, cross-project acceptance or inferred identity is introduced.
+- Explicit guarded post-merge remote-topic branch lifecycle in MADR-0014,
+  separate from local worktree cleanup. Permission/protection gaps defer
+  deletion; no automatic-deletion setting change or actual cleanup is claimed.
+
 - Proposed source-bound business-object/domain/integration-event assessment
   research, gap analysis, separate maturity/exposure profiles, draft schema and
   nine synthetic cases (MADR-0027). Offline contract tests cover hard ceilings,

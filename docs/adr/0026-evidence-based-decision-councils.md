@@ -110,6 +110,15 @@ supersession metadata does not erase the earlier acceptance evidence.
 
 ### Status and navigation maintenance
 
+The proposed [portable ledger](0028-portable-decision-ledger.md) adds explicit
+project-qualified identities, source-bound sidecars and deterministic views.
+Maintain sidecar receipts and regenerate/check views with every canonical
+record mutation. Canonical format is configured per collection, not universally
+Markdown. Preserve directed source relationships and scoped overrides; taxonomy
+facets and generated groups cannot infer authority or hard prerequisites.
+Unclassified records stay visible; classification requires reviewed evidence.
+Source hashes prove recorded bytes, not the truth or authentication of claims.
+
 The record is authoritative; the index reflects its declared status and scope.
 Green means accepted **only within its recorded scope**, yellow proposed/pending,
 and red draft/not ready for review, not a severity score. No color implies

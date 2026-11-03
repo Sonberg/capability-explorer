@@ -3,7 +3,7 @@
 * Status: proposed for owner review; no existing decision is accepted by this record
 * Date: 2026-11-03
 * Scope: bounded decision-ledger contract, synthetic portability and repository inventory
-* Related: MADR-0026; existing lifecycle MADRs remain unchanged
+* Related: MADR-0026; the separate scoped branch lifecycle update is in MADR-0014
 
 ## Context
 
@@ -48,8 +48,8 @@ Markdown mentions are not silently imported as reviewed typed edges. Unknown
 source metadata/status and unavailable targets remain explicit diagnostics.
 
 The integration owner chooses checked-in views and shared CI wiring. This
-proposal does not amend existing MADRs 0005/0014/0026 or their branch-retention
-clauses; any amendment requires the separate owner-reviewed lifecycle change.
+proposal is accompanied by separately reviewed lifecycle updates in
+MADR-0014/0026; it does not accept those proposals or widen merge authority.
 Branch eligibility is a fail-closed policy only. The worker cannot delete refs,
 enable automatic deletion, publish, merge or change protection/settings.
 
@@ -67,3 +67,9 @@ collections, Unicode/spaces, renames, repeated aliases, source changes, unknown
 status, directional/inverse relations, invalid cycles and read-only stale checks.
 Real-workspace adoption, semantic equivalence, authenticated approvals, complete
 CI and hosted publication are not established by this proposed record.
+
+Integration enrolls every local record with a reviewed-proposed topic facet and
+the selected source-backed navigation edges, preserving their scoped meanings.
+Classification is a proposal, not inferred from discovery. Draft is red and
+historical states gray; prerequisite-cycle checks also cover mixed
+depends-on/extends cycles. Checked-in views must match during the offline gate.

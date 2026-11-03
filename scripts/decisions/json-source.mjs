@@ -63,13 +63,15 @@ export function resolvePointer(value, pointer) {
 export function parseCollection(bytes, profile) {
   const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes), lines = text.split('\n');
   const document = strictJSON(text), collection = resolvePointer(document, profile.collection);
-  if (!Array.isArray(collection)) throw new Error('JSON collection must be an array');
+  if (profile.singleObject ? (!collection || typeof collection !== 'object' || Array.isArray(collection)) : !Array.isArray(collection))
+    throw new Error(profile.singleObject ? 'JSON single decision must be an object' : 'JSON collection must be an array');
+  const entries = profile.singleObject ? [collection] : collection;
   const consumed = new Set([profile.id, profile.title, profile.status, profile.acceptance, ...profile.relations.map(r => r.field)]);
-  return collection.map((entry, index) => {
+  return entries.map((entry, index) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('JSON decision must be an object');
     for (const field of [profile.id, profile.title, profile.status])
       if (typeof entry[field] !== 'string' || !entry[field].trim()) throw new Error(`JSON scalar field: ${field}`);
-    const pointer = `${profile.collection}/${index}`;
+    const pointer = profile.singleObject ? profile.collection : `${profile.collection}/${index}`;
     if (profile.acceptance && Object.hasOwn(entry, profile.acceptance)) {
       const a = entry[profile.acceptance];
       if (!a || typeof a !== 'object' || Array.isArray(a) ||

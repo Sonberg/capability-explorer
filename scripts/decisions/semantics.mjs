@@ -9,8 +9,8 @@ export const RELATIONS = Object.freeze({
   'full-supersedes': { cyclic: false, symmetric: false, transitive: false, coverage: 'whole' }
 });
 export const COLORS = Object.freeze({
-  proposed: '#fff3cd', accepted: '#d1e7dd', rejected: '#f8d7da',
-  deprecated: '#e2e3e5', superseded: '#cfe2ff', unknown: '#eeeeee'
+  draft: '#f8d7da', proposed: '#fff3cd', accepted: '#d1e7dd',
+  rejected: '#e2e3e5', deprecated: '#e2e3e5', superseded: '#e2e3e5', unknown: '#eeeeee'
 });
 export const key = (project, id) => JSON.stringify([project, id]);
 export const canonical = value => JSON.stringify(sortKeys(value), null, 2) + '\n';
@@ -34,8 +34,14 @@ export function relationError(edge) {
 export function validateCycles(edges) {
   for (const [type, rule] of Object.entries(RELATIONS)) {
     if (rule.cyclic) continue;
+    checkCycles(edges.filter(e => e.type === type), type);
+  }
+  checkCycles(edges.filter(e => ['depends-on', 'extends'].includes(e.type)), 'prerequisite');
+}
+
+function checkCycles(edges, type) {
     const graph = new Map();
-    for (const e of edges.filter(e => e.type === type && e.to.state === 'resolved')) {
+    for (const e of edges.filter(e => e.to.state === 'resolved')) {
       if (!graph.has(e.from)) graph.set(e.from, []);
       graph.get(e.from).push(key(e.to.project, e.to.id));
     }
@@ -51,7 +57,6 @@ export function validateCycles(edges) {
         active.add(node);
         stack.push([node, true]);
         for (const next of graph.get(node) ?? []) stack.push([next, false]);
-      }
     }
   }
 }
