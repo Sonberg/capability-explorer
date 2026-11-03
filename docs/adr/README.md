@@ -15,7 +15,7 @@ No existing status was changed to produce this index.
 | Red | D: draft | Not yet ready for decision review; not a severity rating. |
 | Gray | H: historical | Rejected, deprecated or superseded; retain the decision and replacement links. |
 
-There are **26 local records: 1 scoped accepted, 25 proposed, 0 draft,
+There are **27 local records: 1 scoped accepted, 26 proposed, 0 draft,
 0 historical**. MADR-0016 is accepted for the **operator workflow only**.
 Both `0005` paths are distinct records, named `0005-G` and `0005-PR` below solely
 for navigation. No `0015` exists; this is a numbering gap, not a missing file
@@ -49,6 +49,7 @@ invented by the index. MADR-0025 landed in owner-merged #55 and remains proposed
 | 0024 | [Issue labels and explicit delivery dependencies](0024-issue-labels-and-dependencies.md) | P: operator-authorized label pilot; pending owner review |
 | 0025 | [Language-neutral frontend contract and deterministic unit discovery](0025-language-neutral-frontends-and-discovery.md) | P: owner review proposed; not adopted or implemented |
 | 0026 | [Evidence-based decision councils and a navigable MADR ledger](0026-evidence-based-decision-councils.md) | P: proposed; accepts no existing decision |
+| 0027 | [Proposed source-bound assessment of business objects and events](0027-domain-object-event-assessment.md) | P: research contract only; no production grading |
 
 ## Relationship map
 
@@ -87,6 +88,7 @@ flowchart LR
     a12["0012 Binding preview [P]"]:::proposed
     a13["0013 Integration contracts [P]"]:::proposed
     a25["0025 Frontend discovery [P]"]:::proposed
+    a27["0027 Object and event assessment [P]"]:::proposed
   end
   subgraph Runtime_and_exchange
     a17["0017 PostgreSQL snapshots [P]"]:::proposed
@@ -123,6 +125,10 @@ flowchart LR
   a22 -.-> a21
   a23 -.-> a22
   a25 -.-> a23
+  a27 -.-> a02
+  a27 -.-> a08
+  a27 -.-> a13
+  a27 -.-> a26
   classDef accepted fill:#dcfce7,stroke:#166534,color:#14532d
   classDef proposed fill:#fef9c3,stroke:#854d0e,color:#713f12
   classDef draft fill:#fee2e2,stroke:#991b1b,color:#7f1d1d
@@ -160,6 +166,7 @@ referencing/extending/overriding record to its target.
 | 0022 | 0017, 0020, 0021 | Related metadata in [record](0022-local-analysis-lifecycle.md). |
 | 0023 | 0022 | Related metadata in [record](0023-host-acquisition-boundary.md). |
 | 0025 | 0023 | Related/context in the [record](0025-language-neutral-frontends-and-discovery.md#context-and-problem); no implementation prerequisite inferred. |
+| 0027 | 0002, 0008, 0013, 0026 | Related metadata in the [record](0027-domain-object-event-assessment.md); not acceptance or an implementation prerequisite. |
 
 ## Updating the ledger
 

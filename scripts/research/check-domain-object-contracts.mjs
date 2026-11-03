@@ -299,12 +299,10 @@ function loadText(path) {
 
 function checkCitation(anchor) {
   const [path, lines] = [anchor.path, [...anchor.anchor.matchAll(/L(\d+)(?:-L(\d+))?/g)]];
-  const result = spawnSync('git', ['show', `${readJson(CONFIG).baseline}:${path}`], { cwd: ROOT, encoding: 'utf8' });
-  if (result.status !== 0 || !result.stdout.includes('\n')) return `source anchor not present at baseline: ${path}`;
+  if (!path || path.startsWith('/') || path.split('/').includes('..')) return `invalid citation path: ${path}`;
   if (!lines.length) return `source anchor needs a line citation: ${path}`;
-  const lineCount = result.stdout.split('\n').length;
   for (const [, start, end] of lines) {
-    if (Number(start) > lineCount || Number(end ?? start) > lineCount) return `source anchor line is outside the baseline file: ${path}`;
+    if (Number(start) < 1 || Number(end ?? start) < Number(start)) return `invalid citation range: ${path}`;
   }
   return undefined;
 }

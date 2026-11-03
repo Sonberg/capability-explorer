@@ -3,6 +3,10 @@
 Baseline for all repository citations: [`ceba8797eab7b465f214ac02847f4ee90b43d34d`](https://github.com/Sonberg/capability-explorer/tree/ceba8797eab7b465f214ac02847f4ee90b43d34d).
 The table reports repository contract/source facts, not an analyzed customer's
 domain. No private target or runtime consumer was examined.
+The offline checker checks citation syntax and exact baseline links, not Git
+history availability or the truth of source passages. Integration separately
+reads the pinned source ranges; worktree Git metadata is not exposed to the
+Node sandbox.
 
 ## Current evidence inventory
 

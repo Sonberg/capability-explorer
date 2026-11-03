@@ -30,7 +30,7 @@
     },
     {
       "id": "DO04",
-      "title": "Seal nine independent synthetic expected cases for projection, exposure, ambiguity, events, commands, and unsupported shapes",
+      "title": "Seal nine separately declared synthetic expected cases for projection, exposure, ambiguity, events, commands, and unsupported shapes",
       "evidencePath": "tests/fixtures/domain-object-contracts/expected.json",
       "evidenceAnchor": "cases array",
       "positiveCase": "Each named case has a pre-authored expected classification, exposure verdict, grade state, and relation outcome.",
@@ -41,7 +41,7 @@
       "title": "Reject unsafe mutations and prove stable canonical outputs",
       "evidencePath": "tests/domain-object-contracts.test.mjs",
       "evidenceAnchor": "mutation and determinism tests",
-      "positiveCase": "Every valid synthetic case evaluates to its independent oracle and repeated canonical bytes are identical.",
+      "positiveCase": "Every valid synthetic case evaluates to its separately declared oracle and repeated canonical bytes are identical.",
       "negativeCase": "Invented context/field links, false propagation, false no-leakage, gate averaging, unknown-as-bronze, stale glossary, and envelope-only promotion fail."
     },
     {
