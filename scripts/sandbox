@@ -93,6 +93,7 @@ args=(
   -e NUGET_XMLDOC_MODE=skip
   -e npm_config_cache=/work/.sandbox-cache/npm
   -e npm_config_ignore_scripts=true
+  -e npm_config_prefer_offline=true
   -e npm_config_fund=false
   -e npm_config_audit=false
   -e npm_config_update_notifier=false
