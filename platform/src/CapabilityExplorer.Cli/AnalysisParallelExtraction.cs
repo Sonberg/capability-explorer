@@ -13,7 +13,7 @@ internal static class AnalysisParallelExtraction
     internal static async Task Run(string root, FileRunStore store, AnalysisRun run, AnalysisProcess process,
         IReadOnlyList<AnalysisRepository> repositories, string work, string locks, string packageDir)
     {
-        if (run.Settings.ExtractionJobs is < 1 or > 9999) throw new ArgumentException("extraction jobs must be from 1 to 9999");
+        if (run.Settings.ExtractionJobs is < 1 or > 4) throw new ArgumentException("extraction jobs must be from 1 to 4");
         var attempt = new AttemptIdentity(run.RunId,run.AttemptId!);
         if (Path.GetFullPath(work) != store.AttemptDirectory(attempt)) throw new IOException("extraction work is not attempt-owned");
         var languages = new List<string> { "cs" };

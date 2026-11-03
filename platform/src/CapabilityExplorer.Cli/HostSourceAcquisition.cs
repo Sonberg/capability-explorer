@@ -68,7 +68,10 @@ internal static class HostSourceAcquisition
             using var definitions = CapabilityStore.Open(check.ConfigurationPath, Path.Combine(root, ".sandbox-cache/sources/snapshots.json"), loadSnapshots: false);
             var definition = definitions.Find(check.CapabilityId) ?? throw new InvalidDataException("accepted capability is missing");
             sync = new SourceSync(Path.Combine(root, ".sandbox-cache/sources"), auth: auth);
-            var snapshot = await sync.CheckAsync(definition, cancel.Token);
+            await AnalysisPreparation.SourceAcquisitionGate.WaitAsync(cancel.Token);
+            CapabilitySnapshot snapshot;
+            try { snapshot = await sync.CheckAsync(definition, cancel.Token); }
+            finally { AnalysisPreparation.SourceAcquisitionGate.Release(); }
             cancel.Token.ThrowIfCancellationRequested();
             if (sync.ExecutionUncertain) throw new InvalidOperationException("source acquisition termination is uncertain");
             store.CompleteCheck(owner, attempt, snapshot);

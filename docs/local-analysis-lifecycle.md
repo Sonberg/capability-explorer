@@ -46,6 +46,18 @@ analysis state. A worker already running for Explorer also excludes direct
 A second worker refuses before recovery changes live records.
 Direct `ce export` is disabled; it cannot bypass this owner.
 
+The one owner may execute independent capability runs concurrently. The default
+capability-worker ceiling is **2**; set host `ANALYZE_WORKERS` to **1–4** to
+choose a different bound. `ANALYZE_JOBS` (or `--extraction-jobs` for direct
+commands) bounds extraction tasks within each run to **1–4**. Their configured
+product must not exceed **16**. `analysis-all` uses the same bounded scheduler
+as the background worker; it is not a fan-out of independent CLI owners.
+Per-capability admission remains unique. A failed task stops further dispatch
+but does not cancel its siblings; every started task drains before the command
+returns. Publication is serialized by the host. A source acquisition or package
+fetch gate protects shared Git and package-fetch caches; exported sources,
+package outputs, attempts and logs use run/attempt-private paths.
+
 For an existing run, `ce reconcile-publication --run <run-id> --attempt
 <attempt-id>` reports PostgreSQL attempt evidence and the matching host journal.
 It is a read-only report, not a recovery command.
@@ -134,19 +146,23 @@ container labels identify that run/attempt. Container labels also include the
 project identity. Prior runs are retained independently of the capability's
 latest status.
 
-Admission freezes configuration, optional bindings and analysis settings in
-private run files. Preparation resolves exact repository SHAs and records
-runtime/extractor, exported-source, package and artifact identities. Completion
-and publication evidence must match the run, attempt and immutable manifest.
+Admission freezes configuration, optional bindings and analysis settings,
+including worker/extraction ceilings, in private run files. Preparation
+resolves exact repository SHAs and records runtime/extractor, exported-source,
+package/lock/cache and artifact identities. Package outputs and extraction
+staging are private to the attempt; feed configuration is read only by the
+trusted host. Completion and publication evidence must match the run, attempt
+and immutable manifest. Output artifact hashes are bound after extraction and
+validation, before publication.
 Changing the original configuration after admission does not change the frozen
 request; changing its frozen copy prevents publication. Frozen-input paths are relative
 on disk and resolved beneath the current journal root.
 
 Before claiming work, `analysis-worker` publishes its validated non-secret
 defaults: package/locked flags, GitHub auth mode, private-feed credential variable
-names, authorized feed origins and an optional `INCLUDE_TESTS` override. Explorer
-copies this profile into each new admission; it receives no credential values or
-engine socket. Without a profile, standard defaults and the capability's
+names, authorized feed origins, capability-worker and extraction-job ceilings,
+and an optional `INCLUDE_TESTS` override. Explorer copies this profile into each
+new admission; it receives no credential values or engine socket. Without a profile, standard defaults and the capability's
 `includeTests` apply. A retained profile means last configured defaults, not a
 live worker or permission to execute. Changing it cannot alter queued runs.
 Restart the worker to publish changed defaults before admitting new work.

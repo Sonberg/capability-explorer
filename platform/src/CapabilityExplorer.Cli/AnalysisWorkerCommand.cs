@@ -9,6 +9,8 @@ namespace CapabilityExplorer.Cli;
 /// <summary>Single trusted host owns preparation and publication; sandbox children only produce staging.</summary>
 internal static class AnalysisWorkerCommand
 {
+    private static readonly SemaphoreSlim PublicationGate = new(1, 1);
+
     public static async Task<int> RunAsync(string command, IReadOnlyDictionary<string, string> options)
     {
         try
@@ -42,7 +44,8 @@ internal static class AnalysisWorkerCommand
                         GitHubAuth:Environment.GetEnvironmentVariable("GITHUB_AUTH") is { Length: > 0 } auth ? auth : "auto",
                         NugetPassEnv:Environment.GetEnvironmentVariable("NUGET_PASS_ENV") ?? "",
                         NugetAllowedOrigins:Environment.GetEnvironmentVariable("CE_NUGET_ALLOWED_ORIGINS"),
-                        ExtractionJobs: ParseJobs(Environment.GetEnvironmentVariable("ANALYZE_JOBS")));
+                        ExtractionJobs: ParseJobs(Environment.GetEnvironmentVariable("ANALYZE_JOBS")),
+                        CapabilityWorkers: ParseWorkers(Environment.GetEnvironmentVariable("ANALYZE_WORKERS")));
                     AnalysisPreparation.ValidateSettings(hostDefaults);
                     store.PublishWorkerDefaults(owner,hostDefaults,includeTestsOverride);
 
@@ -55,9 +58,10 @@ internal static class AnalysisWorkerCommand
                             if (store.ReadBlockReason() is not null) return 1;
                             continue;
                         }
-                        var next = store.ClaimNext(owner);
-                        if (next is null) { await Task.Delay(300, stop.Token); continue; }
-                        if (await Execute(root, store, owner, next, stop.Token) != 0) return 1;
+                        var result = await AnalysisCapabilityScheduler.RunPending(store, owner, hostDefaults.CapabilityWorkers,
+                            run => Execute(root, store, owner, run, stop.Token), stop.Token);
+                        if (result != 0) return result;
+                        await Task.Delay(300, stop.Token);
                     }
                     return 0;
                 }
@@ -65,7 +69,7 @@ internal static class AnalysisWorkerCommand
                 var bindings = options.GetValueOrDefault("bindings") ?? Environment.GetEnvironmentVariable("BINDINGS");
                 var receipt = command == "analysis-all" ? await AnalysisReceipt.Start(root,configuration,bindings) : null;
                 using var definitions = CapabilityStore.Open(configuration, Path.Combine(root, ".sandbox-cache/sources/snapshots.json"));
-                var completedRuns = new List<string>();
+                var acceptedRuns = new List<AnalysisRun>();
                 var ids = command == "analysis-all" ? definitions.Capabilities.Select(c => c.Id).ToArray()
                     : new[] { options.GetValueOrDefault("capability") ?? throw new ArgumentException("--capability is required") };
                 if (ids.Length is < 1 or > 1000) throw new ArgumentException("expected 1 to 1000 capabilities");
@@ -78,15 +82,23 @@ internal static class AnalysisWorkerCommand
                         GitHubAuth: options.GetValueOrDefault("github-auth") ?? Environment.GetEnvironmentVariable("GITHUB_AUTH") ?? "auto",
                         NugetPassEnv: Environment.GetEnvironmentVariable("NUGET_PASS_ENV") ?? "",
                         NugetAllowedOrigins: Environment.GetEnvironmentVariable("CE_NUGET_ALLOWED_ORIGINS"),
-                        ExtractionJobs: ParseJobs(options.GetValueOrDefault("extraction-jobs") ?? Environment.GetEnvironmentVariable("ANALYZE_JOBS")));
+                        ExtractionJobs: ParseJobs(options.GetValueOrDefault("extraction-jobs") ?? Environment.GetEnvironmentVariable("ANALYZE_JOBS")),
+                        CapabilityWorkers: ParseWorkers(Environment.GetEnvironmentVariable("ANALYZE_WORKERS")));
                     AnalysisPreparation.ValidateSettings(settings);
                     var admitted = store.Admit(id, configuration, bindings, settings);
                     if (!admitted.Accepted) throw new InvalidOperationException("capability has unresolved run " + admitted.Run.RunId);
-                    var run = store.ClaimNext(owner, admitted.Run.RunId) ?? throw new InvalidOperationException("accepted run could not be claimed");
-                    if (await Execute(root, store, owner, run, stop.Token) != 0) return 1;
-                    completedRuns.Add(run.RunId);
+                    acceptedRuns.Add(admitted.Run);
                 }
-                if (receipt is not null) await receipt.Complete(store,completedRuns,configuration,bindings);
+                var completedRuns = new System.Collections.Concurrent.ConcurrentBag<string>();
+                var executionResult = await AnalysisCapabilityScheduler.RunAdmitted(store, owner, acceptedRuns,
+                    acceptedRuns[0].Settings.CapabilityWorkers, async run =>
+                    {
+                        var result = await Execute(root, store, owner, run, stop.Token);
+                        if (result == 0) completedRuns.Add(run.RunId);
+                        return result;
+                    }, stop.Token);
+                if (executionResult != 0) return executionResult;
+                if (receipt is not null) await receipt.Complete(store,completedRuns.Order(StringComparer.Ordinal).ToArray(),configuration,bindings);
                 return 0;
             }
             finally { Console.CancelKeyPress -= interrupt; }
@@ -113,14 +125,21 @@ internal static class AnalysisWorkerCommand
         try
         {
             if (ResolveEngine() != "docker") throw new InvalidOperationException("analysis requires the qualified Docker host profile");
-            var prepared = await AnalysisPreparation.Prepare(root, store, run, process);
+            var prepared = await AnalysisPreparation.Prepare(root, store, run, process, stop);
             process.CheckCancellation();
             var manifest = store.BindResolved(owner, attempt, new ResolvedManifest(run.AcceptedInputsHash, prepared.Inputs));
             store.FinishExecution(owner, attempt, 0);
             process.CheckCancellation();
-            using var publication = store.BeginPublication(owner, attempt, manifest);
-            await AnalysisPublication.Publish(root, store.ReadRun(run.RunId), prepared, publication);
-            var completed = publication.Complete("Core artifacts published; optional enrichment pending.");
+            AnalysisRun completed;
+            await PublicationGate.WaitAsync(stop);
+            try
+            {
+                process.CheckCancellation();
+                using var publication = store.BeginPublication(owner, attempt, manifest);
+                await AnalysisPublication.Publish(root, store.ReadRun(run.RunId), prepared, publication);
+                completed = publication.Complete("Core artifacts published; optional enrichment pending.");
+            }
+            finally { PublicationGate.Release(); }
             try { AnalysisSourceCleanup.AfterPublication(store,completed,prepared); }
             catch (Exception cleanupError) when (cleanupError is IOException or InvalidOperationException or UnauthorizedAccessException)
             { Console.Error.WriteLine("analysis: source cleanup incomplete; preserved attempt data for inspection"); }
@@ -142,10 +161,17 @@ internal static class AnalysisWorkerCommand
     internal static int ParseJobs(string? value)
     {
         if (value is null or "") return 2;
-        if (value.Length > 4 || value[0] is < '1' or > '9' || !value.All(char.IsAsciiDigit) ||
-            !int.TryParse(value,System.Globalization.NumberStyles.None,System.Globalization.CultureInfo.InvariantCulture,out var jobs) || jobs > 9999)
-            throw new ArgumentException("ANALYZE_JOBS must be an integer from 1 to 9999");
-        return jobs;
+        if (value.Length != 1 || value[0] is < '1' or > '4')
+            throw new ArgumentException("ANALYZE_JOBS must be an integer from 1 to 4");
+        return value[0] - '0';
+    }
+
+    internal static int ParseWorkers(string? value)
+    {
+        if (value is null or "") return 2;
+        if (value.Length != 1 || value[0] is < '1' or > '4')
+            throw new ArgumentException("ANALYZE_WORKERS must be an integer from 1 to 4");
+        return value[0] - '0';
     }
     internal static string ResolveEngine()
     {

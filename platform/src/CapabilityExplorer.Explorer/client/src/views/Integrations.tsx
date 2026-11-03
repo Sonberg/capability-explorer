@@ -151,8 +151,33 @@ function MarkControl({ id, marks }: { id: string; marks: Marks }) {
   const [editing, setEditing] = useState(false);
   const [status, setStatus] = useState<Mark["status"]>(mark?.status ?? "deprecated");
   const [note, setNote] = useState(mark?.note ?? "");
-  const save = () => request("/api/deprecations", { method: "PUT", body: JSON.stringify({ key: id, status, note }) }).then(() => { setEditing(false); marks.reload(); });
-  const clear = () => request(`/api/deprecations?key=${encodeURIComponent(id)}`, { method: "DELETE" }).then(() => { setEditing(false); marks.reload(); });
+  const [expectedVersion, setExpectedVersion] = useState(mark?.version);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const edit = () => {
+    setStatus(mark?.status ?? "deprecated");
+    setNote(mark?.note ?? "");
+    setExpectedVersion(mark?.version);
+    setError("");
+    setEditing(true);
+  };
+  const mutate = async (remove: boolean) => {
+    setBusy(true);
+    setError("");
+    try {
+      if (remove) {
+        await request(`/api/deprecations?key=${encodeURIComponent(id)}&expectedVersion=${expectedVersion}`, { method: "DELETE" });
+      } else {
+        await request("/api/deprecations", { method: "PUT", body: JSON.stringify({ key: id, status, note, expectedVersion }) });
+      }
+      setEditing(false);
+      marks.reload();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "The mark could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5 align-middle">
       {mark && (
@@ -162,7 +187,7 @@ function MarkControl({ id, marks }: { id: string; marks: Marks }) {
       )}
       {mark?.note && !editing && <span className="text-xs text-zinc-500">{mark.note}</span>}
       {!editing && (
-        <button type="button" onClick={() => setEditing(true)} className="text-xs text-zinc-500 hover:underline">
+        <button type="button" onClick={edit} className="text-xs text-zinc-500 hover:underline">
           {mark ? "edit" : "mark…"}
         </button>
       )}
@@ -173,9 +198,10 @@ function MarkControl({ id, marks }: { id: string; marks: Marks }) {
             <option value="obsolete">obsolete</option>
           </select>
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="note" aria-label="Note" className="rounded border border-zinc-300 bg-transparent px-1.5 text-xs dark:border-zinc-700" />
-          <button type="button" onClick={save} className="text-xs font-semibold text-blue-700 dark:text-blue-300">save</button>
-          {mark && <button type="button" onClick={clear} className="text-xs text-red-600">unmark</button>}
-          <button type="button" onClick={() => setEditing(false)} className="text-xs text-zinc-500">cancel</button>
+          <button type="button" disabled={busy} onClick={() => void mutate(false)} className="text-xs font-semibold text-blue-700 dark:text-blue-300">save</button>
+          {mark && <button type="button" disabled={busy || expectedVersion === undefined} onClick={() => void mutate(true)} className="text-xs text-red-600">unmark</button>}
+          <button type="button" disabled={busy} onClick={() => setEditing(false)} className="text-xs text-zinc-500">cancel</button>
+          {error && <span role="alert" className="text-xs text-red-600">{error}</span>}
         </span>
       )}
     </span>

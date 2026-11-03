@@ -37,10 +37,16 @@ if (source == "postgres")
     if (dataSource is null) throw new InvalidOperationException("PostgreSQL source requires CE_DATABASE");
     if (!AppContext.TryGetSwitch("System.Globalization.Invariant", out var invariant) || !invariant)
         throw new InvalidOperationException("PostgreSQL search requires the pinned invariant globalization runtime");
+}
+if (dataSource is not null)
+{
     builder.Services.AddSingleton(dataSource);
     builder.Services.AddSingleton<ExplorerQueryCursor>();
     builder.Services.AddSingleton<IExplorerQueries, PostgresExplorerQueries>();
     builder.Services.AddSingleton(new DatabaseExplorerConfiguration(options));
+    builder.Services.AddSingleton<IDeprecationRepository, PostgresDeprecationRepository>();
+    builder.Services.AddSingleton<DeprecationService>();
+    builder.Services.AddSingleton<PostgresDeprecationRemovals>();
 }
 var intelligence = new Intelligence(interpretation, builder.Configuration["modelSettings"] ?? ModelSettings.DefaultPath, dataSource is null ? null : new EmbeddingStore(dataSource)) { DataSource = dataSource };
 builder.Services.AddSingleton(intelligence);
@@ -75,6 +81,7 @@ app.Use(async (context, next) =>
 app.UseResponseCompression();
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.MapDeprecationsApi();
 if (source == "postgres") app.MapPostgresExplorerApi();
 else
 {

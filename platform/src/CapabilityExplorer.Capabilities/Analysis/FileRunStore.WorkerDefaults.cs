@@ -35,7 +35,9 @@ public sealed partial class FileRunStore
     private static void ValidateWorkerDefaults(WorkerDefaults defaults)
     {
         var settings = defaults.Settings ?? throw new InvalidDataException("worker defaults settings are missing");
-        if (settings.ExtractionJobs is < 1 or > 9999) throw new InvalidDataException("extraction jobs must be from 1 to 9999");
+        if (settings.ExtractionJobs is < 1 or > 4 || settings.CapabilityWorkers is < 1 or > 4 ||
+            settings.ExtractionJobs * settings.CapabilityWorkers > 16)
+            throw new InvalidDataException("worker and extraction limits exceed the bounded analysis resource ceiling");
         if (settings.GitHubAuth is not ("auto" or "git" or "none")) throw new InvalidDataException("invalid worker authentication policy");
         if (settings.RuntimeIdentity is not null && (settings.RuntimeIdentity.Length != 64 || !settings.RuntimeIdentity.All(char.IsAsciiHexDigit)))
             throw new InvalidDataException("worker runtime identity must be a hash or unresolved");

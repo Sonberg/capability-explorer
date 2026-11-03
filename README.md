@@ -168,7 +168,8 @@ output and not committed. `make frontend` serves it with hot reload and proxies 
   their evidence. Edge kinds can be toggled.
 - **Integrations**: services and endpoints; HTTP calls with their candidate endpoint (a route match is
   labelled a candidate while the base URL is unbound); channels and tables grouped by name with every
-  distinct key kept apart.
+  distinct key kept apart. This view now requires a migrated PostgreSQL database and a published
+  snapshot; it never falls back to legacy files. Global deprecated/obsolete marks use versioned writes.
 - **Calculations**: all implementations side by side. Values that differ from the most common value in
   a column are highlighted. `unknown` is shown as unknown, never filled in. Tick two rows for a
   deterministic attribute-by-attribute comparison.
@@ -374,8 +375,9 @@ CE_DATABASE='Host=127.0.0.1;Port=5433;Database=ce;Username=ce;Password=...' make
 ```
 
 Step 4 of `make analyze` then runs migrations and imports every artifact it just wrote. The importer is
-idempotent, and only this step gets the connection string. Tests start their own PostgreSQL with
-Testcontainers; nothing else touches a database.
+idempotent, and only the trusted host import step gets the connection string during analysis.
+The Explorer also uses the configured database for curated marks and pinned integrations.
+Tests start their own PostgreSQL with Testcontainers.
 
 `bindings.json` is a human-maintained service map from an `@unbound:` hint to a concrete service or store
 (format in [schema/README.md](schema/README.md#unbound-resources)). It is read by both consumers:
@@ -389,6 +391,32 @@ Testcontainers; nothing else touches a database.
   `ce import --bindings bindings.json <artifacts…>` does the same by hand.
 
 Binding adds `human`-derived edges beside the facts. `node`, `edge` and `artifact` rows are never changed.
+
+Deprecation marks are global curated PostgreSQL rows, not snapshot members. After `ce migrate`,
+explicitly import the legacy JSON array once (repeat imports are safe):
+
+```sh
+dotnet platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll import-deprecations --file /absolute/path/deprecations.json
+```
+
+Set `CE_DATABASE` in the trusted host environment. Import preserves timestamps, inserts missing
+marks and reports invalid/conflicting entries without overwriting existing values; any diagnostic
+returns exit 1 for operator review. It does not modify `capabilities.json` or delete the legacy file.
+Runtime never reads that legacy file, including during database outages.
+
+`GET /api/deprecations` lists marks with a `version`. `PUT /api/deprecations` takes
+`{key,status,note,expectedVersion?}`: omit the token only for creation. Delete with
+`DELETE /api/deprecations?key=...&expectedVersion=...`. Stale tokens return 409; unavailable
+PostgreSQL returns 503. Reload before retrying a conflict. The Integrations editor retains the
+token captured when editing starts and displays write failures.
+
+`GET /api/integrations?cap=...&snapshot=...&view=repo:full-sha,...` pins one published analysis
+snapshot and revision selection plus the current global mark set. Omitting `snapshot` resolves the
+current publication once. Removal facts use only revisions inside that snapshot, ending at the
+selected revision; they do not follow a newer publication. Database projections are capped at
+1,000 integration edges and 1,000 relevant nodes with an eight-KiB per-row guard, a one-MiB
+response limit and a ten-second request deadline. Exceeding a budget is explicit, never truncation.
+Other file-mode views remain available, but integrations/marks without `CE_DATABASE` return 503.
 
 ### Validating extractor output
 

@@ -198,6 +198,7 @@ export interface Mark {
   status: "deprecated" | "obsolete";
   note: string;
   markedAt: string;
+  version: number;
   /** Set when the key is gone from the newest analysed revision: the first analysed commit without it. */
   removal?: { repositoryId: string; lastSeen: string; removedIn: string; subject?: string };
 }

@@ -37,7 +37,7 @@ invented by the index. MADR-0025 landed in owner-merged #55 and remains proposed
 | 0011 | [Source-bound security validation with explicit unresolved findings](0011-source-bound-security-validation.md) | P: owner review proposed; applied in this workstream |
 | 0012 | [Revision-bound binding preview and explicit export](0012-revision-bound-binding-preview.md) | P: owner review proposed; applied in this workstream |
 | 0013 | [Versioned integration contracts as evidence, separate from inference](0013-integration-contract-standards.md) | P: owner review proposed; does not itself authorize extractor implementation |
-| 0014 | [Remove recoverable worktrees after PR publication](0014-pr-publication-worktree-retention.md) | P: repository-wide adoption proposed; applied to this operator's agent-assisted work |
+| 0014 | [Remove recoverable worktrees after PR publication](0014-pr-publication-worktree-retention.md) | P: repository-wide adoption proposed; operator-authorized publication and merged-to-main cleanup checkpoints |
 | 0016 | [Merge PRs only into main and reconcile the existing stage history](0016-main-only-pr-integration.md) | A: operator workflow accepted by explicit directive; implementation subject to owner review |
 | 0017 | [PostgreSQL snapshots and bounded Explorer reads](0017-postgres-explorer-snapshots.md) | P: implementation authorized for review; owner retains final architecture decision |
 | 0018 | [Evaluate RuVector separately from canonical fact storage](0018-ruvector-evaluation-boundary.md) | P: experiment authorized; adoption requires owner decision |

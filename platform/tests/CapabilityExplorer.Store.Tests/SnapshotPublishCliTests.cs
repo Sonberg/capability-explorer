@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using CapabilityExplorer.Binding;
 using CapabilityExplorer.Contracts;
+using CapabilityExplorer.Explorer;
 using CapabilityExplorer.Store;
 using Xunit;
 
@@ -37,6 +38,31 @@ public sealed class SnapshotPublishCliTests(PostgresFixture db)
         var result=await Ce(db.ConnectionString,["publish","--scope",scope,..files]);
         Assert.True(result.Exit==0,result.Output);
         return(await Current(scope))!;
+    }
+
+    [Fact]
+    public async Task Explicit_legacy_mark_import_is_idempotent_and_does_not_change_capability_configuration()
+    {
+        using var input=new InputFiles();
+        var path=Path.Combine(input.Directory,"deprecations.json");
+        var capabilities=Path.Combine(input.Directory,"capabilities.json");
+        const string definition="{\"capabilities\":[]}";
+        await File.WriteAllTextAsync(capabilities,definition);
+        var key="cli-mark|"+Guid.NewGuid().ToString("N");
+        await File.WriteAllTextAsync(path,$$"""[{"key":"{{key}}","status":"deprecated","note":"retained","markedAt":"2024-01-02T03:04:05.1234567Z"}]""");
+        var first=await Ce(db.ConnectionString,"import-deprecations","--file",path);
+        Assert.True(first.Exit==0,first.Output);
+        Assert.Contains("\"imported\":1",first.Output,StringComparison.Ordinal);
+        var again=await Ce(db.ConnectionString,"import-deprecations","--file",path);
+        Assert.True(again.Exit==0,again.Output);
+        Assert.Contains("\"unchanged\":1",again.Output,StringComparison.Ordinal);
+        Assert.Equal(definition,await File.ReadAllTextAsync(capabilities));
+        await File.WriteAllTextAsync(path,$$"""[{"key":"{{key}}","status":"obsolete","note":"conflict","markedAt":"2024-01-02T03:04:05Z"}]""");
+        var conflict=await Ce(db.ConnectionString,"import-deprecations","--file",path);
+        Assert.Equal(1,conflict.Exit);
+        Assert.Contains("\"issues\":[{",conflict.Output,StringComparison.Ordinal);
+        var persisted=Assert.Single(await new PostgresDeprecationRepository(db.DataSource).ListAsync(),m=>m.Key==key);
+        Assert.Equal(DeprecationStatus.Deprecated,persisted.Status);
     }
 
     [Fact]
@@ -144,6 +170,12 @@ public sealed class SnapshotPublishCliTests(PostgresFixture db)
         await using(var reader=await edges.ExecuteReaderAsync())
             while(await reader.ReadAsync()) actual.Add((reader.GetString(0),reader.GetString(1),reader.GetString(2),reader.GetString(3),reader.GetString(4)));
         Assert.Equal(expected.Edges.OrderBy(e=>e.Edge.Id,StringComparer.Ordinal).Select(e=>(e.Edge.Id,e.Edge.To!,e.Status==BindingStatus.Bound?"bound":"broken",Binder.RuleName,Binder.RuleVersion)),actual);
+        var queries=new PostgresExplorerQueries(db.DataSource,new ExplorerQueryCursor(new byte[32]));
+        var context=(await queries.ResolveAsync(scope,snapshotId:published.Id))!;
+        var integrations=await queries.IntegrationsAsync(context,[]);
+        var request=Assert.Single(integrations.Http,link=>link.Request.From.Name=="getForecast");
+        Assert.Equal("broken",request.Match);
+        Assert.Equal("http|forecast-cs/Forecast.Api|GET /api/forecasts/{}",Assert.Single(request.Candidates).Key);
         var retry=await Ce(db.ConnectionString,["publish","--scope",scope,"--bindings",bindingPath,..files.Reverse()]);
         Assert.True(retry.Exit==0,retry.Output);
         Assert.Equal(published,await Current(scope));

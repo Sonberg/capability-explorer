@@ -1,4 +1,5 @@
 using System.Globalization;
+using CapabilityExplorer.Capabilities;
 using Npgsql;
 
 namespace CapabilityExplorer.Explorer;
@@ -6,7 +7,7 @@ namespace CapabilityExplorer.Explorer;
 /// <summary>Opt-in bounded database API. It never falls back to file indexes.</summary>
 public static class PostgresExplorerApi
 {
-    private static readonly string[] Supported = ["meta", "generation", "view", "revisions", "search", "symbol", "symbol/edges", "symbol/evidence", "artifacts", "calculations", "calculation", "source"];
+    private static readonly string[] Supported = ["meta", "generation", "view", "revisions", "search", "symbol", "symbol/edges", "symbol/evidence", "artifacts", "calculations", "calculation", "source", "integrations", "deprecations"];
 
     public static void MapPostgresExplorerApi(this IEndpointRouteBuilder app)
     {
@@ -20,19 +21,10 @@ public static class PostgresExplorerApi
                 if (!Supported.Contains(path, StringComparer.Ordinal))
                     return Json(new { error = "this view is not yet migrated to PostgreSQL", source = "postgres", status = "pending", supported = Supported }, 501);
                 using var definitions = config.OpenDefinitions();
-                var cap = Text(http, "cap", 100) ?? "*";
-                if (cap != "*" && definitions.Find(cap) is null) return Json(new { error = "unknown capability" }, 400);
+                var scoped = await ResolveContextAsync(http, queries, definitions, cancellationToken);
+                if (scoped.Error is { } error) return error;
+                var context = scoped.Context!;
                 var cursor = Text(http, "cursor", 16384);
-                var snapshotText = Text(http, "snapshot", 36);
-                Guid? snapshot = snapshotText is null ? null : Guid.TryParse(snapshotText, out var id) ? id : throw new ArgumentException("invalid snapshot");
-                if (cursor is not null && snapshot is null) throw new ArgumentException("continuation requires its snapshot");
-                var selection = Selection(Text(http, "view", 16384));
-                var context = await queries.ResolveAsync(cap, selection, snapshot, cancellationToken);
-                if (context is null) return Json(new { error = snapshot is null ? "no published analysis; import and publish a snapshot first" : "snapshot is unavailable; restart pagination", source = "postgres" }, snapshot is null ? 503 : 409);
-                // A snapshot must remain inside today's configured capability, even on retained pages.
-                if (cap != "*" && definitions.Find(cap) is { } definition
-                    && context.Selection.Keys.Any(repo => !definition.Repositories.Any(r => r.Id == repo)))
-                    return Json(new { error = "snapshot is outside the current capability scope" }, 403);
                 var page = Page(http, cursor);
                 switch (path)
                 {
@@ -40,7 +32,7 @@ public static class PostgresExplorerApi
                     {
                         source = "postgres", status = "ready", context.SnapshotId, context.Generation, context.Capability,
                         selection = context.Selection, supported = Supported,
-                        capabilities = definitions.Capabilities.Select(c => new { c.Id, c.Name, repositories = c.Repositories.Select(r => r.Id) }),
+                        capabilities = definitions.Capabilities.Select(c => new { c.Id, c.Name, repositories = c.Repositories.Select(r => r.Id).ToArray() }).ToArray(),
                     });
                     case "generation": return Json(new { context.Generation, context.SnapshotId });
                     case "view": return Json(context.Selection);
@@ -69,6 +61,23 @@ public static class PostgresExplorerApi
             catch (InvalidOperationException) { return Json(new { error = "query or snapshot exceeds the supported budget" }, 413); }
         });
         app.MapMethods("/api/{**path}", ["POST", "PUT", "DELETE", "PATCH"], () => Json(new { error = "write workflows are not yet migrated to PostgreSQL", status = "pending" }, 501));
+    }
+
+    internal static async Task<(ExplorerQueryContext? Context, IResult? Error)> ResolveContextAsync(HttpContext http,
+        IExplorerQueries queries, CapabilityStore definitions, CancellationToken ct)
+    {
+        var cap = Text(http, "cap", 100) ?? "*";
+        if (cap != "*" && definitions.Find(cap) is null) return (null, Json(new { error = "unknown capability" }, 400));
+        var cursor = Text(http, "cursor", 16384);
+        var snapshotText = Text(http, "snapshot", 36);
+        Guid? snapshot = snapshotText is null ? null : Guid.TryParse(snapshotText, out var id) ? id : throw new ArgumentException("invalid snapshot");
+        if (cursor is not null && snapshot is null) throw new ArgumentException("continuation requires its snapshot");
+        var context = await queries.ResolveAsync(cap, Selection(Text(http, "view", 16384)), snapshot, ct);
+        if (context is null) return (null, Json(new { error = snapshot is null ? "no published analysis; import and publish a snapshot first" : "snapshot is unavailable; restart pagination", source = "postgres" }, snapshot is null ? 503 : 409));
+        if (cap != "*" && definitions.Find(cap) is { } definition
+            && context.Selection.Keys.Any(repo => !definition.Repositories.Any(r => r.Id == repo)))
+            return (null, Json(new { error = "snapshot is outside the current capability scope" }, 403));
+        return (context, null);
     }
 
     private static async Task<IResult> Source(HttpContext http, IExplorerQueries queries, DatabaseExplorerConfiguration config, ExplorerQueryContext context, CancellationToken ct)
