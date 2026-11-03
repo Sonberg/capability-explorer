@@ -128,6 +128,52 @@ test('a policy violation must retain its independent verdict and hard ceiling', 
   assert.ok(validateDraftRecord(record, schema, rubric).some(error => error.includes('mandatory hard ceiling')));
 });
 
+test('changing source bytes and all evidence hashes does not renew current reviews', () => {
+  const record = materializeDraftRecord(byId('public-projection'));
+  record.source.sha256 = 'e'.repeat(64);
+  for (const evidence of record.evidence) evidence.source.sha256 = 'e'.repeat(64);
+  const identity = computeAssessmentIdentity(record);
+  record.assessmentId = identity;
+  record.result.identityDigest = identity;
+  assert.ok(validateDraftRecord(record, schema, rubric).some(error =>
+    error.includes('stale against assessed source/tool/config/version inputs')));
+});
+
+for (const [input, mutate] of [
+  ['extractor version', record => { record.versions.extractor.version = '2'; }],
+  ['extractor configuration', record => { record.versions.extractor.configHash = 'f'.repeat(64); }],
+]) {
+  test(`changing ${input} does not renew current reviews`, () => {
+    const record = materializeDraftRecord(byId('public-projection'));
+    mutate(record);
+    const identity = computeAssessmentIdentity(record);
+    record.assessmentId = identity;
+    record.result.identityDigest = identity;
+    assert.ok(validateDraftRecord(record, schema, rubric).some(error =>
+      error.includes('stale against assessed source/tool/config/version inputs')));
+  });
+}
+
+test('duplicate evidence/review IDs and invalid criterion statuses block grading', () => {
+  const duplicateEvidence = structuredClone(byId('public-projection'));
+  duplicateEvidence.evidenceIds.push(duplicateEvidence.evidenceIds[0]);
+  const evidenceOutcome = evaluateScenario(duplicateEvidence, cases, rubric);
+  assert.equal(evidenceOutcome.grade, null);
+  assert.ok(evidenceOutcome.errors.some(error => error.includes('duplicate evidence id')));
+
+  const duplicateReview = structuredClone(byId('public-projection'));
+  duplicateReview.reviewIds.push(duplicateReview.reviewIds[0]);
+  const reviewOutcome = evaluateScenario(duplicateReview, cases, rubric);
+  assert.equal(reviewOutcome.grade, null);
+  assert.ok(reviewOutcome.errors.some(error => error.includes('duplicate review id')));
+
+  const invalidCriterion = structuredClone(byId('public-projection'));
+  invalidCriterion.criteria['shape-supported'] = 'invented';
+  const criterionOutcome = evaluateScenario(invalidCriterion, cases, rubric);
+  assert.equal(criterionOutcome.grade, null);
+  assert.ok(criterionOutcome.errors.some(error => error.includes('invalid criterion status')));
+});
+
 for (const [version, changed, expectedError] of [
   ['glossary', record => { record.versions.glossary = 'g-8'; }, 'glossary review is stale'],
   ['context map', record => { record.versions.contextMap = 'ctx-5'; }, 'context-map version'],

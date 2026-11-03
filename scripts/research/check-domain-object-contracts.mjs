@@ -4,7 +4,11 @@ import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { computeAssessmentIdentity, validateDraftRecord } from '../../tests/fixtures/domain-object-contracts/schema-validator.mjs';
+import {
+  computeAssessmentIdentity,
+  computeReviewBasis,
+  validateDraftRecord,
+} from '../../tests/fixtures/domain-object-contracts/schema-validator.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const CASES = 'tests/fixtures/domain-object-contracts/cases.json';
@@ -45,8 +49,8 @@ function scenarioErrors(scenario, fixtureRoot) {
   const reviews = new Set(scenario.reviewIds ?? []);
   const hasEvidence = prefix => [...evidence].some(id => id.startsWith(prefix));
   const hasReview = prefix => [...reviews].some(id => id.startsWith(prefix));
-  if (new Set(scenario.evidenceIds ?? []).size !== evidence.size) errors.push('duplicate evidence id');
-  if (new Set(scenario.reviewIds ?? []).size !== reviews.size) errors.push('duplicate review id');
+  if (evidence.size !== (scenario.evidenceIds ?? []).length) errors.push('duplicate evidence id');
+  if (reviews.size !== (scenario.reviewIds ?? []).length) errors.push('duplicate review id');
   if (!['business-object', 'domain-event', 'integration-event'].includes(scenario.profile)) errors.push('unknown profile');
   if (!['approved', 'needs-review', 'policy-violation', 'unknown'].includes(scenario.exposure)) errors.push('unknown exposure verdict');
   if (!['supported', 'partial', 'unsupported'].includes(scenario.sourceShape)) errors.push('unknown source shape');
@@ -80,6 +84,10 @@ function scenarioErrors(scenario, fixtureRoot) {
   if (scenario.glossary?.status === 'current-reviewed' &&
       (!hasEvidence('glossary-evidence-') || !hasReview('glossary-review-'))) {
     errors.push('current glossary meaning lacks context-scoped review evidence');
+  }
+  const validCriterionStatuses = new Set(['pass', 'fail', 'unknown', 'not-applicable']);
+  for (const [criterion, status] of Object.entries(scenario.criteria ?? {})) {
+    if (!validCriterionStatuses.has(status)) errors.push(`invalid criterion status for ${criterion}: ${status}`);
   }
   for (const relation of scenario.relations ?? []) {
     if (!evidence.has(relation.evidence)) errors.push(`invented relation evidence: ${relation.evidence}`);
@@ -214,6 +222,7 @@ export function materializeDraftRecord(scenario, fixturePath = CASES) {
       reviewer: 'fixture-only oracle; not a human reviewer',
       reviewedAt: '2026-11-03T00:00:00Z',
       version,
+      reviewBasisDigest: '',
       contextId: ['unknown', 'ambiguous'].includes(scenario.context) ? undefined : scenario.context,
       evidence: [evidenceId ?? sourceEvidenceId],
     });
@@ -276,6 +285,8 @@ export function materializeDraftRecord(scenario, fixturePath = CASES) {
     criteria,
     result: { state: outcome.state, grade: outcome.grade, hardCeilings: outcome.hardCeilings ?? [], identityDigest: '', mode: 'fixture-reference-only' },
   };
+  const reviewBasisDigest = computeReviewBasis(record);
+  for (const review of record.reviews) review.reviewBasisDigest = reviewBasisDigest;
   const identity = computeAssessmentIdentity(record);
   record.assessmentId = identity;
   record.result.identityDigest = identity;
@@ -335,7 +346,7 @@ export function pseudocodeErrors() {
   if (steps.length !== 14 || steps.some((step, index) => step !== index + 1)) errors.push('ordered procedure must define steps 1 through 14 once, in order');
   if (!text.includes('O(F + L + P + V + C + E log E)')) errors.push('bounded complexity omits fields/relations/proposals/reviews/criteria/evidence');
   const ids = new Set(expected.expectations.map(item => item.id));
-  if (cases.cases.length !== ids.size || cases.cases.some(item => !ids.has(item.id))) errors.push('pseudocode fixtures are not one-to-one with independent expected outcomes');
+  if (cases.cases.length !== ids.size || cases.cases.some(item => !ids.has(item.id))) errors.push('pseudocode fixtures are not one-to-one with separately declared expected outcomes');
   for (const scenario of cases.cases) {
     const outcome = evaluateScenario(scenario, cases, readJson(RUBRIC));
     if (!outcome.state || !Object.hasOwn(outcome, 'grade')) errors.push(`no deterministic outcome for ${scenario.id}`);

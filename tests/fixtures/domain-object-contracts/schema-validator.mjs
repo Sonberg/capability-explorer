@@ -25,6 +25,22 @@ export function computeAssessmentIdentity(record) {
   return createHash('sha256').update(JSON.stringify(canonicalize(identity))).digest('hex');
 }
 
+export function computeReviewBasis(record) {
+  const basis = {
+    source: record.source,
+    profile: record.profile,
+    versions: record.versions,
+    subject: record.subject,
+    evidence: record.evidence,
+    facts: record.facts,
+    proposals: record.proposals,
+    relations: record.relations,
+    exposure: record.exposure,
+    criteria: record.criteria,
+  };
+  return createHash('sha256').update(JSON.stringify(canonicalize(basis))).digest('hex');
+}
+
 function resolveRef(schema, ref) {
   if (!ref.startsWith('#/')) throw new Error(`external schema reference is unsupported: ${ref}`);
   return ref.slice(2).split('/').reduce((value, part) => value?.[part.replaceAll('~1', '/').replaceAll('~0', '~')], schema);
@@ -87,6 +103,7 @@ const allFields = fields => fields.flatMap(field => [field, ...allFields(field.c
 
 export function validateDraftRecord(record, schema, rubric) {
   const errors = validateSchemaInstance(schema, record);
+  const reviewBasis = computeReviewBasis(record);
   const ids = new Set((record.evidence ?? []).map(item => item.id));
   const evidenceRefs = [
     ...(record.subject?.contextEvidence ?? []),
@@ -145,6 +162,9 @@ export function validateDraftRecord(record, schema, rubric) {
     }[review.decision];
     if (review.status === 'current' && expectedVersion && review.version !== expectedVersion) {
       errors.push(`review ${review.id} is stale against ${review.decision} version`);
+    }
+    if (review.status === 'current' && review.reviewBasisDigest !== reviewBasis) {
+      errors.push(`review ${review.id} is stale against assessed source/tool/config/version inputs`);
     }
   }
   for (const collection of [record.facts, record.proposals, record.reviews]) {

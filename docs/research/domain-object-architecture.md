@@ -59,7 +59,7 @@ authorized, would be separate evidence with its own scope and timestamp.
   legitimate. Its passive-aggressive command example is a review lead, and
   sender/recipient direction may require live observation.
 * Microsoft event guidance at commit
-  [`7716b982e6de4da9f050176d2a8b1daa6c78ba3e`](https://github.com/dotnet-architecture/eShopOnContainers/blob/7716b982e6de4da9f050176d2a8b1daa6c78ba3e/docs/microservice-ddd-cqrs-patterns/domain-events-design-implementation.md)
+  [`7716b982e6de4da9f050176d2a8b1daa6c78ba3e`](https://github.com/dotnet/docs/blob/7716b982e6de4da9f050176d2a8b1daa6c78ba3e/docs/architecture/microservices/microservice-ddd-cqrs-patterns/domain-events-design-implementation.md)
   discusses local side effects and integration propagation of committed
   changes; its in-process/asynchronous convention is not a universal definition.
 * AsyncAPI 3.1.0 permits event, command, request and response messages and

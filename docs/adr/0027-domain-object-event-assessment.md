@@ -153,7 +153,7 @@ the shared index/diagram remain for the integration owner.
   [Ubiquitous Language](https://martinfowler.com/bliki/UbiquitousLanguage.html),
   and [What do you mean by “Event-Driven”?](https://martinfowler.com/articles/201701-event-driven.html)
   (updated 2017-02-08).
-* Microsoft, [Domain events: design and implementation](https://github.com/dotnet-architecture/eShopOnContainers/blob/7716b982e6de4da9f050176d2a8b1daa6c78ba3e/docs/microservice-ddd-cqrs-patterns/domain-events-design-implementation.md).
+* Microsoft, [Domain events: design and implementation](https://github.com/dotnet/docs/blob/7716b982e6de4da9f050176d2a8b1daa6c78ba3e/docs/architecture/microservices/microservice-ddd-cqrs-patterns/domain-events-design-implementation.md).
 * [AsyncAPI 3.1.0](https://www.asyncapi.com/docs/reference/specification/v3.1.0);
   [CloudEvents 1.0.2](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md).
 * OWASP, [API3:2023 Broken Object Property Level Authorization](https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/)

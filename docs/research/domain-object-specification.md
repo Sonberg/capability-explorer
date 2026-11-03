@@ -46,6 +46,10 @@ pointer/span, and content hash; extractor/tool version, binding/configuration
 hash, rules, rubric, context map, glossary, exposure policy, and review versions
 are separate. Hashes provide byte identity only, not source authenticity,
 authorization, or proof that a declared deployment is live.
+Each review binds a stable digest of the assessed source, tool/configuration and
+versioned inputs, computed without including reviews or results. Changing those
+inputs makes current reviews stale; recomputing the assessment identity alone
+does not renew them.
 
 The proposed profiles are **business-object**, **domain-event**, and
 **integration-event**. All criteria use pass/fail/unknown/not-applicable.
@@ -105,7 +109,7 @@ reassessment. Preserve stale records as stale; do not silently reuse a badge.
 | DO01 | Define object/event/command/envelope/context and three profile differences. | [Proposed MADR](../adr/0027-domain-object-event-assessment.md) decision table and source comparisons. | Name, topic, handler or schema does not prove business classification or flow. |
 | DO02 | Map C#, TS, SQL, ce.v1 and glossary facts/declarations to inventory, with gaps. | [Architecture gap analysis](domain-object-architecture.md), exact base paths/lines. | Dynamic/recursive/unsupported shapes, runtime routing and unreviewed boundaries remain unknown. |
 | DO03 | Require typed identity, nesting, ambiguity, exposure, applicability, ceiling and stale review. | [Draft schema](../../schema/research/domain-object-assessment.schema.json), versioned config, conformance tests. | Unknown property, stale review, missing evidence or profile mismatch rejected. |
-| DO04 | Carry nine independently authored synthetic expected cases. | Fixture `cases.json` and separate `expected.json`. | No runtime/extractor/accuracy claim from synthetic oracle. |
+| DO04 | Carry nine synthetic cases with separately declared expected outcomes. | Fixture `cases.json` and separate `expected.json`; expectations were authored by the same worker, not independently human-authored. | No runtime/extractor/accuracy claim from synthetic oracle. |
 | DO05 | Exercise semantic mutations and byte determinism. | Focused `node:test` cases and phase checker. | Invented links, false propagation/no-leakage, average-away, unknown-bronze, stale glossary and schema-only promotion fail. |
 | DO06 | Define expert gold-set protocol and metrics without fabricating results. | [Completion protocol](domain-object-completion.md). | No measured precision, recall, agreement, or actual gold-set assertion. |
 | DO07 | Recommend exactly one conditional, bounded pilot. | [Pilot gate](domain-object-completion.md). | No implementation, extra issue, or unsatisfied prerequisites assumed. |
