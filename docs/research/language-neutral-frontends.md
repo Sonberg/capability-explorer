@@ -196,7 +196,7 @@ synthetic fixture suite cannot satisfy real-corpus demand or semantic accuracy.
 | Specification | 97/100 | 19 issue obligations and machine-checkable constraints; missing/duplicate/self-attested evidence mutations rejected. |
 | Pseudocode | 97/100 | Ordered discovery/adapter procedures, hard boundaries, budgets, failure states and complexity checked. |
 | Architecture | 97/100 | Source-pinned research, proposed MADR, strict contract drafts, compatibility cases and independently authored inventories. |
-| Refinement | 97/100 | 43 focused tests passed; all 20 sealed fixture outputs matched; malformed schema instances and unsafe/unknown cases rejected. |
+| Refinement | 97/100 | 44 focused tests passed; all 20 sealed fixture outputs matched; malformed schema instances and unsafe/unknown cases rejected. |
 | Completion | 97/100 | The focused package gates below passed; research limitations and parent-owned integration are explicit. |
 
 Focused commands:

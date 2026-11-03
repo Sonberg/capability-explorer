@@ -220,6 +220,18 @@ test('glob oracle uses UTF-8 ordinal ordering and ignores input enumeration orde
   assert.deepEqual(expected.units.map(unit => unit.unitKey), [...expected.units.map(unit => unit.unitKey)].sort(compareUtf8));
 });
 
+test('one-directory unit takes ownership over the repository root', () => {
+  const scenario = structuredClone(architectureInputs().scenarios.positive.find(item => item.id === 'nested-project'));
+  scenario.units[1].root = 'src';
+  scenario.units[1].markerPath = 'src/Api.csproj';
+  const result = evaluate(scenario);
+  assert.equal(result.status, 'complete');
+  assert.deepEqual(result.units.map(unit => [unit.unitKey, unit.files]), [
+    ['unit:v1/.#root', []],
+    ['unit:v1/src#api', ['src/Api/Program.cs', 'src/App.cs']],
+  ]);
+});
+
 test('explicit excludes override includes while advisory category overrides remain unsupported', () => {
   const { scenarios, expectedInventories } = architectureInputs();
   const scenario = scenarios.positive.find(item => item.id === 'explicit-exclude-wins');

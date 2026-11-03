@@ -13,6 +13,7 @@ const schemaKeywords = new Set([
 ]);
 const featureRegistry = new Set(['declarations', 'references', 'source-spans', 'workspace-links']);
 const unitIdPattern = /^[A-Za-z0-9._-]{1,128}$/;
+const ownerDepth = unit => unit.root === '.' ? 0 : unit.root.split('/').length;
 
 export function validateSchemaDefinition(schema, path = '$schema') {
   const errors = Object.keys(schema).filter(key => !schemaKeywords.has(key))
@@ -321,10 +322,10 @@ export function evaluateScenario(scenario, registry) {
       excluded.set(path, 'explicit-exclude');
       continue;
     }
-    matches.sort((a, b) => b.root.split('/').length - a.root.split('/').length || compareUtf8(a.key, b.key));
+    matches.sort((a, b) => ownerDepth(b) - ownerDepth(a) || compareUtf8(a.key, b.key));
     if (matches.length) {
       const owner = matches[0];
-      if (matches.some(match => match.root.split('/').length === owner.root.split('/').length && match.key !== owner.key)) {
+      if (matches.some(match => ownerDepth(match) === ownerDepth(owner) && match.key !== owner.key)) {
         return fail('failed', 'ownership-conflict');
       }
       owners.set(path, owner);

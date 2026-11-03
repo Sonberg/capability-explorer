@@ -11,6 +11,11 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Proposed language-neutral frontend and repository-discovery contracts,
+  compatibility research and sealed synthetic conformance checks (MADR-0025).
+  Existing ce.v1 stays unchanged; no parser, new language or production scanner
+  is adopted. A future pilot requires demonstrated demand and qualification.
+
 - Explicit, optional grounded glossary proposals with versioned input/model
   caching, recorded-model validation and PostgreSQL-backed human acceptance or
   rejection. Selected occurrence roles become reviewed assertions atomically;
