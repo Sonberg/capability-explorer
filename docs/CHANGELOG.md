@@ -11,6 +11,12 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Linked MADR title/status ledger, RAG relationship map and source-backed edge
+  ledger. Proposed MADR-0026 defines bounded SME/adversary/advisory/judge reviews,
+  explicit acceptance authority, evidence receipts and atomic CRUD lifecycle
+  maintenance of records and navigation; no existing proposals are automatically
+  accepted or existing decision scopes widened.
+
 - Proposed language-neutral frontend and repository-discovery contracts,
   compatibility research and sealed synthetic conformance checks (MADR-0025).
   Existing ce.v1 stays unchanged; no parser, new language or production scanner
