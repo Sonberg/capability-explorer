@@ -31,6 +31,82 @@ public sealed class SharedResourceTests : IDisposable
     }
 
     [Fact]
+    public void Ef_context_shared_from_two_projects_has_one_store_when_connection_is_unknown()
+    {
+        UseRuntimeCosmosRegistrations();
+        AddSiblingContext();
+        var edges = _edges.Value;
+        var read = edges.Single(e => e.From == "cs|shop|Shop.Application|M:Shop.Application.GetAuditLogsQuery.Run" && e.Relation == "READS").To;
+        var write = edges.Single(e => e.From == "cs|shop|Shop.Infrastructure|M:Shop.Infrastructure.AuditLogsRepository.Append(Shop.Data.AuditLog)" && e.Relation == "WRITES").To;
+
+        Assert.Equal(read, write);
+        Assert.EndsWith(":conn=unknown;context=Shop.Data.ShopDb|audit-logs", read, StringComparison.Ordinal);
+        Assert.Single(edges, e => e.From == "cs|shop|Shop.Data|T:Shop.Data.AuditLog" && e.Relation == "MAPS_TO" && e.To == read);
+        Assert.Equal(2, edges.Where(e => e.To.Contains("@unbound:shop/Shop.Data:", StringComparison.Ordinal) && e.To.EndsWith("|audit-logs", StringComparison.Ordinal))
+            .Select(e => e.To).Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
+    public void Same_container_in_distinct_ef_contexts_stays_separate_when_connections_are_unknown()
+    {
+        UseRuntimeCosmosRegistrations();
+        AddSiblingContext();
+        var edges = _edges.Value;
+        var shopStore = edges.Single(e => e.From == "cs|shop|Shop.Application|M:Shop.Application.GetAuditLogsQuery.Run" && e.Relation == "READS").To;
+        var siblingStore = edges.Single(e => e.From == "cs|shop|Shop.Application|M:Shop.Application.OtherAuditLogReader.Read" && e.Relation == "READS").To;
+
+        Assert.NotEqual(shopStore, siblingStore);
+    }
+
+    [Fact]
+    public void Same_entity_in_two_unknown_contexts_stays_with_the_context_it_is_read_through()
+    {
+        UseRuntimeCosmosRegistrations();
+        File.WriteAllText(Path.Combine(_root, "Shop.Data", "SecondaryDb.cs"), """
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Data;
+
+            public class SecondaryDb : DbContext
+            {
+                public DbSet<AuditLog> AuditLogs { get; } = new();
+
+                public void OnModelCreating(ModelBuilder model) => model.Entity<AuditLog>().ToContainer("audit-logs");
+            }
+            """);
+        File.WriteAllText(Path.Combine(_root, "Shop.Application", "SecondaryAuditLogReader.cs"), """
+            using Shop.Data;
+
+            namespace Shop.Application;
+
+            public class SecondaryAuditLogReader(SecondaryDb db)
+            {
+                public object Read() => db.AuditLogs;
+            }
+            """);
+        var edges = _edges.Value;
+        var shopStore = edges.Single(e => e.From == "cs|shop|Shop.Application|M:Shop.Application.GetAuditLogsQuery.Run" && e.Relation == "READS").To;
+        var secondaryStore = edges.Single(e => e.From == "cs|shop|Shop.Application|M:Shop.Application.SecondaryAuditLogReader.Read" && e.Relation == "READS").To;
+
+        Assert.NotEqual(shopStore, secondaryStore);
+        Assert.EndsWith("context=Shop.Data.ShopDb|audit-logs", shopStore, StringComparison.Ordinal);
+        Assert.EndsWith("context=Shop.Data.SecondaryDb|audit-logs", secondaryStore, StringComparison.Ordinal);
+        Assert.Equal([secondaryStore, shopStore], edges.Where(e => e.From == "cs|shop|Shop.Data|T:Shop.Data.AuditLog" && e.Relation == "MAPS_TO").Select(e => e.To).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void Unknown_context_store_identity_remains_repository_scoped()
+    {
+        UseRuntimeCosmosRegistrations();
+        var shopStore = _edges.Value.Single(e => e.From == "cs|shop|Shop.Application|M:Shop.Application.GetAuditLogsQuery.Run" && e.Relation == "READS").To;
+        var otherStore = Extract("other").Single(e => e.From == "cs|other|Shop.Application|M:Shop.Application.GetAuditLogsQuery.Run" && e.Relation == "READS").To;
+
+        Assert.NotEqual(shopStore, otherStore);
+        Assert.Contains("@unbound:shop/", shopStore, StringComparison.Ordinal);
+        Assert.Contains("@unbound:other/", otherStore, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Ef_model_builders_and_their_generic_extensions_do_not_query_tables()
     {
         File.WriteAllText(Path.Combine(_root, "Shop.Stubs", "ModelConfigurationExtensions.cs"), """
@@ -91,16 +167,70 @@ public sealed class SharedResourceTests : IDisposable
     private string[] Relations(string from, string to) =>
         _edges.Value.Where(e => e.From == from && e.To == to).Select(e => e.Relation).Distinct().ToArray();
 
-    private (string, string, string)[] Extract()
+    private (string From, string Relation, string To)[] Extract()
+        => Extract("shop");
+
+    private (string From, string Relation, string To)[] Extract(string repositoryId)
     {
         var packs = Path.GetFullPath(Path.Combine(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", "..", "packs"));
-        var results = new CSharpExtractor(new ExtractorOptions(_root, "shop", new string('a', 40), null, packs)).Extract();
+        var results = new CSharpExtractor(new ExtractorOptions(_root, repositoryId, new string('a', 40), null, packs)).Extract();
         _lines = results.SelectMany(r => r.Jsonl.Split('\n', StringSplitOptions.RemoveEmptyEntries)).ToArray();
-        return _lines
+        return Edges(_lines);
+    }
+
+    private static (string From, string Relation, string To)[] Edges(IEnumerable<string> lines) =>
+        lines
             .Select(l => { using var d = JsonDocument.Parse(l); return d.RootElement.Clone(); })
             .Where(r => r.GetProperty("kind").GetString() == "edge" && r.TryGetProperty("to", out _))
             .Select(r => (r.GetProperty("from").GetString()!, r.GetProperty("relation").GetString()!, r.GetProperty("to").GetString()!))
             .ToArray();
+
+    // Cosmos options name the account only at runtime, so neither context has a statically known connection.
+    private void UseRuntimeCosmosRegistrations()
+    {
+        File.WriteAllText(Path.Combine(_root, "Shop.Stubs", "CosmosOptions.cs"), """
+            namespace Microsoft.EntityFrameworkCore;
+            public static class CosmosOptions
+            {
+                public static object UseCosmos(this object options, string endpoint, string key, string database) => options;
+            }
+            """);
+        var path = Path.Combine(_root, "Shop.Host", "Program.cs");
+        var text = File.ReadAllText(path)
+            .Replace("using System;", "using System;\nusing Microsoft.EntityFrameworkCore;", StringComparison.Ordinal)
+            .Replace("_ => config.GetConnectionString(\"Shop\")", "o => o.UseCosmos(config[\"Cosmos:Endpoint\"]!, config[\"Cosmos:Key\"]!, \"shop\")", StringComparison.Ordinal)
+            .Replace("_ => config.GetConnectionString(\"Archive\")", "o => o.UseCosmos(config[\"Cosmos:Endpoint\"]!, config[\"Cosmos:Key\"]!, \"archive\")", StringComparison.Ordinal);
+        Assert.Contains("UseCosmos", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetConnectionString(\"Shop\")", text, StringComparison.Ordinal);
+        File.WriteAllText(path, text);
+    }
+
+    private void AddSiblingContext()
+    {
+        File.WriteAllText(Path.Combine(_root, "Shop.Data", "OtherDb.cs"), """
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Shop.Data;
+
+            public class OtherAuditLog { public int Id { get; set; } }
+
+            public class OtherDb : DbContext
+            {
+                public DbSet<OtherAuditLog> AuditLogs { get; } = new();
+
+                public void OnModelCreating(ModelBuilder model) => model.Entity<OtherAuditLog>().ToContainer("audit-logs");
+            }
+            """);
+        File.WriteAllText(Path.Combine(_root, "Shop.Application", "OtherAuditLogReader.cs"), """
+            using Shop.Data;
+
+            namespace Shop.Application;
+
+            public class OtherAuditLogReader(OtherDb db)
+            {
+                public object Read() => db.AuditLogs;
+            }
+            """);
     }
 
     private static void CopyDirectory(string from, string to)
