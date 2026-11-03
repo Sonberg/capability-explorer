@@ -165,6 +165,34 @@ public sealed class AnalysisExecutionTests(PostgresFixture database)
     }
 
     [Fact]
+    public async Task Database_commit_before_host_confirmation_keeps_the_two_receipts_separate()
+    {
+        using var environment = new DatabaseEnvironment(database.ConnectionString);
+        using var f = new ExecutionFixture();
+        var prepared = f.Prepare();
+        analysiscli::CapabilityExplorer.Cli.AnalysisPublication.BeforeHostConfirmationForTests =
+            _ => Task.FromException(new IOException("deterministic pre-confirmation barrier"));
+        try
+        {
+            using var permit = f.Begin();
+            await Assert.ThrowsAsync<IOException>(() =>
+                AnalysisPublication.Publish(f.Root, f.Run, prepared, permit));
+        }
+        finally
+        {
+            analysiscli::CapabilityExplorer.Cli.AnalysisPublication.BeforeHostConfirmationForTests = null;
+        }
+
+        var journal = f.Store.ReadRun(f.Run.RunId);
+        var report = await new SnapshotStore(database.DataSource).ReconcilePublicationAttemptAsync(
+            f.Run.RunId, f.Run.AttemptId!);
+        Assert.Equal("unknown", journal.State);
+        Assert.Contains(journal.Effects!, effect => effect.Surface == "postgres" && effect.State == "pending");
+        Assert.Equal("confirmed-published", report.Outcome);
+        Assert.Equal("published", report.AttemptResult);
+    }
+
+    [Fact]
     public async Task Process_death_after_actual_database_commit_blocks_republication()
     {
         var childRoot = Environment.GetEnvironmentVariable("CE_PUBLICATION_CRASH_ROOT");

@@ -161,6 +161,22 @@ public sealed class PostgresExplorerQueryTests(PostgresFixture db)
         using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _queries.SearchAsync(context, null, null, null, new(50), cancelled.Token));
     }
+
+    [Fact]
+    public async Task CandidateSnapshotCannotBeResolvedForExplorerReads()
+    {
+        var capability = "candidate-" + Guid.NewGuid().ToString("N");
+        var validation = ArtifactValidator.Validate(Fixtures.Golden("web-ts/v1-base/_fixture_web.jsonl"));
+        Assert.True(validation.IsValid);
+        var artifact = await new ArtifactImporter(db.DataSource).ImportAsync(validation.Artifact!);
+        var candidate = await new SnapshotStore(db.DataSource).CreateAsync(
+            capability, "unconfirmed-" + Guid.NewGuid().ToString("N"), [artifact.ArtifactId]);
+
+        Assert.Equal("candidate", candidate.Status);
+        Assert.Null(await _queries.ResolveAsync(capability));
+        Assert.Null(await _queries.ResolveAsync(capability, snapshotId: candidate.Id));
+    }
+
     [Fact]
     public async Task OversizedUtf8NodeProjectionFailsBeforeMaterializingRows()
     {

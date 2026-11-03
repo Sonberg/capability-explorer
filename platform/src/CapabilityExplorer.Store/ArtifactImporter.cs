@@ -24,7 +24,10 @@ public sealed class InvalidArtifactException(IReadOnlyList<Problem> problems)
 /// The analysis key is already stored with different content. Extractors must be deterministic for a given
 /// revision, unit, extractor version and configuration, so this is an error, never an overwrite.
 /// </summary>
-public sealed class ArtifactConflictException(string message) : Exception(message);
+public sealed class ArtifactConflictException(string message, string? existingContentSha256 = null) : Exception(message)
+{
+    public string? ExistingContentSha256 { get; } = existingContentSha256;
+}
 
 /// <summary>
 /// Imports validated artifacts. All rows of one artifact are written in a single transaction: either the whole

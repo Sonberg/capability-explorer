@@ -8,6 +8,8 @@ namespace CapabilityExplorer.Cli;
 
 internal static class AnalysisPublication
 {
+    internal static Func<CancellationToken,Task>? BeforeHostConfirmationForTests { get; set; }
+
     internal static async Task Publish(string root, AnalysisRun run, PreparedAnalysis prepared, PublicationPermit permit)
     {
         permit.RequireIdentity(new AttemptIdentity(run.RunId,run.AttemptId!),run.AcceptedInputsHash,run.ManifestHash!);
@@ -15,7 +17,7 @@ internal static class AnalysisPublication
         var files = new List<string>();
         var canonicalHashes = new HashSet<string>(StringComparer.Ordinal);
         // Validate every artifact before the first externally visible effect.
-        foreach (var pair in prepared.Artifacts)
+        foreach (var pair in prepared.Artifacts.OrderBy(p => p.Key, StringComparer.Ordinal))
         {
             AnalysisPreparation.RejectLinks(pair.Key);
             if (AnalysisWorkerCommand.HashFile(pair.Key) != pair.Value) throw new IOException("artifact changed after binding");
@@ -34,6 +36,7 @@ internal static class AnalysisPublication
             AnalysisPreparation.RejectLinks(destination); AnalysisPreparation.RejectLinks(previous);
             if (Directory.Exists(previous) || File.Exists(destination)) throw new IOException("publication destination contains unreconciled evidence");
             var expected = prepared.Artifacts.Where(p => p.Key.StartsWith(repo.Staging + Path.DirectorySeparatorChar,StringComparison.Ordinal))
+                .OrderBy(p => p.Key,StringComparer.Ordinal)
                 .ToDictionary(p => Path.GetRelativePath(repo.Staging,p.Key),p => p.Value,StringComparer.Ordinal);
             AssertFiles(repo.Staging,expected);
             permit.Intent("local-artifacts",destination);
@@ -43,7 +46,7 @@ internal static class AnalysisPublication
             AssertFiles(destination,expected);
             var evidence = AnalysisWorkerCommand.HashText(string.Join('\n',expected.OrderBy(p => p.Key,StringComparer.Ordinal).Select(p => p.Key + ":" + p.Value)));
             permit.Confirm("local-artifacts",destination,evidence);
-            files.AddRange(expected.Keys.Select(p => Path.Combine(destination,p)));
+            files.AddRange(expected.Keys.Order(StringComparer.Ordinal).Select(p => Path.Combine(destination,p)));
             // Preserve the previous directory as crash evidence. No unguarded cleanup/retry.
         }
         if (Environment.GetEnvironmentVariable("CE_DATABASE") is not { Length: > 0 } connection) return;
@@ -52,24 +55,37 @@ internal static class AnalysisPublication
         await Migrator.MigrateAsync(database);
         var options = new Dictionary<string,string> { ["scope"] = run.CapabilityId };
         if (run.BindingsPath is {} binding) options["bindings"] = binding;
-        var result = await ImportCommand.RunAsync(database,files,options,publish:true);
-        if (result != 0) throw new InvalidOperationException("database publication not confirmed");
-        var published = await new SnapshotStore(database).GetPublishedAsync(run.CapabilityId)
-            ?? throw new InvalidOperationException("database publication receipt unavailable");
-        var actual = new HashSet<string>(StringComparer.Ordinal);
-        await using (var query = database.CreateCommand("select a.content_sha256 from analysis_snapshot_artifact s join artifact a on a.id=s.artifact_id where s.snapshot_id=$1"))
+        var expectations = new List<PublicationArtifactExpectation>(files.Count);
+        for (var index = 0; index < files.Count; index++)
         {
-            query.Parameters.AddWithValue(published.Id);
-            await using var reader = await query.ExecuteReaderAsync();
-            while (await reader.ReadAsync()) actual.Add(reader.GetString(0));
+            var report = ArtifactValidator.Validate(await File.ReadAllTextAsync(files[index]));
+            if (!report.IsValid) throw new FormatException("artifact changed after the publication move");
+            var header = report.Artifact!.Header;
+            expectations.Add(new(index, header.RepositoryId, header.CommitSha, header.Unit.Path,
+                header.Extractor.Name, header.Extractor.Version, header.ConfigHash,
+                report.Artifact.ContentSha256, AnalysisWorkerCommand.HashFile(files[index])));
         }
+        var result = await ImportCommand.RunAnalysisAsync(database,files,options,run.RunId,run.AttemptId!,
+            run.AcceptedInputsHash,run.ManifestHash!,expectations);
+        if (result != 0) throw new InvalidOperationException("database publication not confirmed");
+        var receipt = await new SnapshotStore(database).ReconcilePublicationAttemptAsync(run.RunId,run.AttemptId!);
         var orderedHashes = string.Join('\n',canonicalHashes.Order(StringComparer.Ordinal));
         var bindingIdentity = run.BindingsPath is null ? "no-bindings" : AnalysisWorkerCommand.HashText(
             BindingStore.ImportedSnapshotIdentityVersion + "\n" + Binder.RuleName + "\n" + Binder.RuleVersion + "\n" + orderedHashes + "\n" + BindingFile.Load(run.BindingsPath).Sha256);
         var expectedIdentity = AnalysisWorkerCommand.HashText("ce-analysis-snapshot.v2\n" + bindingIdentity + "\n" + orderedHashes + "\n");
-        if (!actual.SetEquals(canonicalHashes) || published.ArtifactCount != canonicalHashes.Count || published.InputIdentity != expectedIdentity)
-            throw new InvalidOperationException("published snapshot does not match resolved artifact receipt");
-        permit.Confirm("postgres",run.CapabilityId,AnalysisWorkerCommand.HashText(run.AcceptedInputsHash + ":" + run.ManifestHash + ":" + published.Id + ":" + published.InputIdentity));
+        if (receipt.Outcome != "confirmed-published" || receipt.CapabilityId != run.CapabilityId ||
+            receipt.AcceptedInputsHash != run.AcceptedInputsHash || receipt.ManifestHash != run.ManifestHash ||
+            receipt.CandidateInputIdentity != expectedIdentity || receipt.CandidateSnapshotId is null ||
+            receipt.CandidatePublicationState != "published" || receipt.AttemptPublishedGeneration is null ||
+            receipt.CandidatePublishedGeneration != receipt.AttemptPublishedGeneration ||
+            receipt.Artifacts.Count != expectations.Count ||
+            receipt.Artifacts.Any(a => a.Outcome is not ("imported" or "reused")) ||
+            !receipt.Artifacts.Select(a => a.ContentSha256).ToHashSet(StringComparer.Ordinal).SetEquals(canonicalHashes))
+            throw new InvalidOperationException("durable publication attempt receipt does not match the resolved artifact selection");
+        if (BeforeHostConfirmationForTests is { } barrier)
+            await barrier(CancellationToken.None);
+        permit.Confirm("postgres",run.CapabilityId,AnalysisWorkerCommand.HashText(
+            run.AcceptedInputsHash + ":" + run.ManifestHash + ":" + receipt.CandidateSnapshotId + ":" + receipt.CandidateInputIdentity));
     }
 
     private static void AssertFiles(string directory, Dictionary<string,string> expected)
