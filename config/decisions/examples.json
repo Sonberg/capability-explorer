@@ -1,0 +1,11 @@
+{
+  "precedence": ["source-bytes", "adapter-metadata", "explicit-status-map", "reviewed-sidecar", "validation", "projection"],
+  "cases": [
+    {"name": "ordinary reference is not prerequisite", "type": "references", "coverage": "partial", "scope": "local", "expected": null},
+    {"name": "unknown relation fails", "type": "similar-means-identical", "coverage": "partial", "scope": "local", "expected": "unknown relation"},
+    {"name": "override does not replace whole decision", "type": "scoped-overrides", "coverage": "whole", "scope": "local", "expected": "relation coverage"},
+    {"name": "supersedes needs whole coverage", "type": "full-supersedes", "coverage": "partial", "scope": "local", "expected": "relation coverage"},
+    {"name": "scope cannot be missing", "type": "extends", "coverage": "partial", "scope": "", "expected": "missing relation scope"},
+    {"name": "cross-project supersession is not identity", "type": "full-supersedes", "coverage": "whole", "scope": "local", "expected": null}
+  ]
+}

@@ -20,6 +20,14 @@ endif
 test-domain-object-contracts:
 	scripts/sandbox --offline node node scripts/research/check-domain-object-contracts.mjs all
 
+.PHONY: test-decision-ledger
+ifeq ($(EXECUTION),sandbox)
+ci: test-decision-ledger
+endif
+
+test-decision-ledger:
+	scripts/sandbox --offline node node scripts/decisions/check.mjs all
+
 platform-plan-check:
 ifeq ($(PHASE),)
 	scripts/sandbox --offline node node scripts/check-platform-contract-plan.mjs foundation

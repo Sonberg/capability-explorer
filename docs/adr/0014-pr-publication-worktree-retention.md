@@ -71,7 +71,35 @@ these checks pass. Publishing a PR must not terminate an in-progress user previe
 or erase the session executing the handoff. Do not ask again for routine qualifying
 cleanup under this authorization; ask only if a necessary action exceeds it.
 
-### Continuing review
+### Remote topic branches after owner merge
+
+Remote branch retention is separate from the worktree cleanup authorization
+above. The operator explicitly authorized a bounded audit/cleanup on 2026-11-03
+and requested automatic deletion of merged PR heads. This expands only the
+previous no-branch-deletion boundary for qualifying topic refs; it grants no
+merge, history rewrite, main/stage/shared/release deletion or wider permissions.
+
+For each authorized topic ref, record its exact current head, main-based merged
+PR/head/merge receipt, reachable merge result, recovery identity, protections
+and acknowledged absence of active ownership/open PRs. Squash/rebase requires
+explicit PR provenance; `git branch --merged` alone is insufficient. Retain
+advanced heads, unknown protections or ownership and any uncertain history.
+Recheck immediately before deletion and use an exact expected-head guard;
+a raced ref must remain intact, never retry deletion with a newer SHA.
+Keep local branches and worktrees unless separately authorized.
+
+Automatic head deletion is a separate GitHub repository setting requiring
+sufficient administrative permission. It does not clean historical refs or
+override protection rules. Read back the setting after changing it; refusal
+means deferred, not enabled. In this pass Tigon32 had push/triage but no admin/
+maintain permission, setting update returned HTTP404 and remained false;
+ruleset inspection returned HTTP403. All 17 audit candidates were retained.
+An authorized repository administrator must resolve the setting/protection
+gap. Do not switch identity or bypass protections to complete cleanup.
+
+This manual lifecycle is not an implemented cleanup scheduler.
+
+### Recreating a review checkout
 
 Recreate a temporary worktree from the retained local branch after verifying its
 published identity, or fetch the remote branch and create a new local tracking

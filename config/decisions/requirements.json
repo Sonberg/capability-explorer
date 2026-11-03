@@ -1,0 +1,23 @@
+{
+  "version": "decision-ledger.v1",
+  "fixtures": [
+    {"id": "markdown-header", "config": "tests/fixtures/decision-ledger/project.json", "project": "alpha", "adapter": "markdown-header-v1"},
+    {"id": "json-collection", "config": "tests/fixtures/decision-ledger/project.json", "project": "beta", "adapter": "json-collection-v1"},
+    {"id": "frontmatter-adoption", "config": "tests/fixtures/decision-ledger/project.json", "project": "gamma", "adapter": "frontmatter-scalars-v1"}
+  ],
+  "requirements": [
+    {"id": 1, "question": "Which decision is active for this exact scope; what is unreviewed?", "boundary": "Only explicit acceptance receipts qualify; contradictions are reported, not adjudicated.", "tests": ["scope qualified acceptance", "conflicting acceptance"], "negative": "reject"},
+    {"id": 2, "question": "How do project, record, revision and equivalent local aliases differ?", "boundary": "Paths are locators; renames preserve explicit identities; no automatic equivalence.", "tests": ["portable identities and rename", "external target states"], "negative": "reject"},
+    {"id": 3, "question": "What explicitly depends on, extends, amends or supersedes this?", "boundary": "No inferred edges, inheritance or transitive asserted closure.", "tests": ["relation cycles", "scope and relation semantics"], "negative": "reject"},
+    {"id": 4, "question": "What evidence and authority support each assertion?", "boundary": "Source bytes and passage are verified; unknown metadata remains unresolved.", "tests": ["source change invalidates", "unknown metadata", "scope qualified acceptance"], "negative": "reject"},
+    {"id": 5, "question": "Are inventory, titles, status, colors and generated views complete and current?", "boundary": "Read-only check never regenerates; references are not dependencies.", "tests": ["canonical projections", "readonly stale check", "inventory coverage"], "negative": "reject"},
+    {"id": 6, "question": "Does the same contract work for heterogeneous project layouts?", "boundary": "Synthetic qualification only; no claim about private architecture workspace.", "tests": ["heterogeneous adapters", "portable identities and rename"], "negative": "unresolved"},
+    {"id": 7, "question": "When could a separately authorized lead delete an audited remote branch?", "boundary": "This worker cannot delete or enable settings; unknown permissions/protection retain.", "tests": ["branch eligibility policy"], "negative": "retain"}
+  ],
+  "branchPolicy": {
+    "required": ["freshExactHead", "mainBasedMergedPR", "mergedResultReachableMain", "noOpenPR", "notAdvanced", "notShared", "notProtected", "notDefaultReleaseStage", "noActiveClaim", "durableRecovery", "explicitSquashRebaseProvenance", "immediateExactSHARecheck", "separateAuthorization"],
+    "unknown": "retain",
+    "executor": "lead-only",
+    "permissionReceipt": "delete_branch_on_merge PATCH 404; readback false; rulesets 403; all 17 conditional deletions deferred by lead"
+  }
+}

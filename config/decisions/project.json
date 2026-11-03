@@ -1,0 +1,44 @@
+{
+  "version": "decision-ledger.v1",
+  "projects": [
+    {
+      "id": "capability-explorer",
+      "root": ".",
+      "directories": ["docs/adr"],
+      "exclude": ["docs/adr/README.md"],
+      "adapter": "markdown-header-v1",
+      "canonical": "markdown",
+      "statusMap": [
+        {"raw": "proposed", "state": "proposed"},
+        {"raw": "proposed for repository-wide adoption; applied in this workstream", "state": "proposed"},
+        {"raw": "applied in this workstream at the operator's request; proposed for contributor-wide adoption", "state": "proposed"},
+        {"raw": "applied in this workstream; proposed for contributor-wide adoption", "state": "proposed"},
+        {"raw": "proposed; applied in this workstream", "state": "proposed"},
+        {"raw": "applied to this operator's agent-assisted work; proposed for repository-wide adoption", "state": "proposed"},
+        {"raw": "applied to this operator's work; proposed for repository-wide adoption", "state": "proposed"},
+        {"raw": "applied in this workstream; proposed for owner review", "state": "proposed"},
+        {"raw": "proposed for owner review; implementation and validation in progress", "state": "proposed"},
+        {"raw": "proposed for owner review; extractor implementation not authorized by this decision alone", "state": "proposed"},
+        {"raw": "accepted for the operator workflow by explicit directive; owner review of implementation in PR #27", "state": "accepted"},
+        {"raw": "proposed; implementation authorized for review, owner retains final architecture decision", "state": "proposed"},
+        {"raw": "proposed; experiment authorized, adoption requires owner decision", "state": "proposed"},
+        {"raw": "proposed for repository-wide adoption; applied to issue #31 by operator instruction", "state": "proposed"},
+        {"raw": "proposed for owner review; first shape-contract package authorized for review only", "state": "proposed"},
+        {"raw": "Proposed", "state": "proposed"},
+        {"raw": "Proposed; implementation contract authorized by the operator", "state": "proposed"},
+        {"raw": "proposed; operator-authorized label pilot, pending owner review", "state": "proposed"},
+        {"raw": "proposed for owner review; not adopted or implemented", "state": "proposed"},
+        {"raw": "proposed; no existing decision is accepted by this record", "state": "proposed"},
+        {"raw": "proposed for independent owner review; not accepted", "state": "proposed"},
+        {"raw": "proposed for owner review; no existing decision is accepted by this record", "state": "proposed"}
+      ]
+    }
+  ],
+  "sidecar": "config/decisions/ledger.json",
+  "output": "docs/research/decision-ledger-preview",
+  "vocabulary": [
+    {"facet": "topic", "values": ["governance", "semantics", "architecture", "storage"]},
+    {"facet": "concern", "values": ["portability", "authority", "compatibility", "evidence"]}
+  ],
+  "limits": {"maxFiles": 1000, "maxBytes": 10000000, "maxEdges": 10000}
+}

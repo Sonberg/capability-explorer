@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:decision-ledger:v1",
+  "$ref": "#/$defs/ledger",
+  "$defs": {
+    "text": {"type": "string", "minLength": 1},
+    "identity": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"},
+    "revision": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "state": {"enum": ["draft", "proposed", "accepted", "rejected", "deprecated", "superseded", "unknown"]},
+    "authority": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "agent"],
+      "properties": {
+        "kind": {"enum": ["source-recorded", "review-recorded"]},
+        "agent": {"$ref": "#/$defs/text"}
+      }
+    },
+    "evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["record", "revision", "start", "end", "quote", "sha256"],
+      "properties": {
+        "record": {"$ref": "#/$defs/text"},
+        "revision": {"$ref": "#/$defs/revision"},
+        "start": {"type": "integer", "minimum": 1},
+        "end": {"type": "integer", "minimum": 1},
+        "quote": {"$ref": "#/$defs/text"},
+        "pointer": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "acceptance": {
+      "type": "object", "additionalProperties": false, "required": ["scope", "authority", "evidence"],
+      "properties": {
+        "scope": {"$ref": "#/$defs/text"},
+        "authority": {"$ref": "#/$defs/authority"},
+        "evidence": {"$ref": "#/$defs/evidence"}
+      }
+    },
+    "status": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state", "scope", "authority", "evidence"],
+      "properties": {
+        "state": {"$ref": "#/$defs/state"},
+        "scope": {"$ref": "#/$defs/text"},
+        "authority": {"$ref": "#/$defs/authority"},
+        "evidence": {"$ref": "#/$defs/evidence"},
+        "acceptance": {"$ref": "#/$defs/acceptance"}
+      }
+    },
+    "facet": {
+      "type": "object", "additionalProperties": false,
+      "required": ["facet", "value", "standing", "scope", "authority", "evidence"],
+      "properties": {
+        "facet": {"$ref": "#/$defs/identity"},
+        "value": {"$ref": "#/$defs/identity"},
+        "standing": {"enum": ["source-declared", "review-proposed", "review-confirmed"]},
+        "scope": {"$ref": "#/$defs/text"},
+        "authority": {"$ref": "#/$defs/authority"},
+        "evidence": {"$ref": "#/$defs/evidence"}
+      }
+    },
+    "record": {
+      "type": "object", "additionalProperties": false,
+      "required": ["project", "id", "alias", "path", "revision", "title", "status", "facets", "implementation"],
+      "properties": {
+        "project": {"$ref": "#/$defs/identity"},
+        "id": {"$ref": "#/$defs/identity"},
+        "alias": {"$ref": "#/$defs/text"},
+        "path": {"$ref": "#/$defs/text"},
+        "pointer": {"type": "string"},
+        "revision": {"$ref": "#/$defs/revision"},
+        "title": {"$ref": "#/$defs/text"},
+        "status": {"$ref": "#/$defs/status"},
+        "facets": {"type": "array", "items": {"$ref": "#/$defs/facet"}},
+        "implementation": {"enum": ["not-assessed"]}
+      }
+    },
+    "target": {
+      "type": "object", "additionalProperties": false, "required": ["project", "id", "state"],
+      "properties": {
+        "project": {"$ref": "#/$defs/identity"},
+        "id": {"$ref": "#/$defs/identity"},
+        "state": {"enum": ["resolved", "unresolved", "private"]},
+        "revision": {"$ref": "#/$defs/revision"},
+        "reason": {"$ref": "#/$defs/text"}
+      }
+    },
+    "edge": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "from", "fromRevision", "to", "type", "scope", "coverage", "standing", "authority", "evidence"],
+      "properties": {
+        "id": {"$ref": "#/$defs/identity"},
+        "from": {"$ref": "#/$defs/text"},
+        "fromRevision": {"$ref": "#/$defs/revision"},
+        "to": {"$ref": "#/$defs/target"},
+        "type": {"enum": ["references", "related-to", "related-from", "depends-on", "extends", "scoped-amends", "scoped-overrides", "full-supersedes"]},
+        "scope": {"$ref": "#/$defs/text"},
+        "coverage": {"enum": ["partial", "whole"]},
+        "standing": {"enum": ["source-declared", "review-proposed", "review-confirmed"]},
+        "authority": {"$ref": "#/$defs/authority"},
+        "evidence": {"$ref": "#/$defs/evidence"},
+        "corroboration": {"type": "array", "items": {"$ref": "#/$defs/evidence"}}
+      }
+    },
+    "ledger": {
+      "type": "object", "additionalProperties": false, "required": ["version", "records", "edges"],
+      "properties": {
+        "version": {"const": "decision-ledger.v1"},
+        "records": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/record"}},
+        "edges": {"type": "array", "items": {"$ref": "#/$defs/edge"}}
+      }
+    },
+    "project": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "root", "directories", "exclude", "adapter", "canonical", "statusMap"],
+      "properties": {
+        "id": {"$ref": "#/$defs/identity"},
+        "root": {"$ref": "#/$defs/text"},
+        "directories": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/text"}},
+        "exclude": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/text"}},
+        "adapter": {"enum": ["markdown-header-v1", "frontmatter-scalars-v1", "json-collection-v1"]},
+        "canonical": {"enum": ["markdown", "json"]},
+        "jsonProfile": {"$ref": "#/$defs/jsonProfile"},
+        "statusMap": {
+          "type": "array", "items": {
+            "type": "object", "additionalProperties": false, "required": ["raw", "state"],
+            "properties": {"raw": {"$ref": "#/$defs/text"}, "state": {"$ref": "#/$defs/state"}}
+          }
+        }
+      }
+    },
+    "jsonProfile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["collection", "id", "title", "status", "relations"],
+      "properties": {
+        "collection": {"type": "string", "pattern": "^(/[^/~]+)*$"},
+        "singleObject": {"type": "boolean"},
+        "id": {"$ref": "#/$defs/identity"},
+        "title": {"$ref": "#/$defs/identity"},
+        "status": {"$ref": "#/$defs/identity"},
+        "acceptance": {"$ref": "#/$defs/identity"},
+        "relations": {
+          "type": "array", "items": {
+            "type": "object", "additionalProperties": false, "required": ["field", "type", "direction"],
+            "properties": {
+              "field": {"$ref": "#/$defs/identity"},
+              "type": {"enum": ["references", "related-from", "depends-on", "extends", "scoped-amends", "scoped-overrides", "full-supersedes"]},
+              "direction": {"enum": ["forward", "inverse"]}
+            }
+          }
+        }
+      }
+    },
+    "config": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "projects", "sidecar", "output", "vocabulary", "limits"],
+      "properties": {
+        "version": {"const": "decision-ledger.v1"},
+        "projects": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/project"}},
+        "sidecar": {"$ref": "#/$defs/text"},
+        "output": {"$ref": "#/$defs/text"},
+        "vocabulary": {
+          "type": "array", "items": {
+            "type": "object", "additionalProperties": false, "required": ["facet", "values"],
+            "properties": {
+              "facet": {"$ref": "#/$defs/identity"},
+              "values": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/identity"}}
+            }
+          }
+        },
+        "limits": {
+          "type": "object", "additionalProperties": false, "required": ["maxFiles", "maxBytes", "maxEdges"],
+          "properties": {
+            "maxFiles": {"type": "integer", "minimum": 1, "maximum": 100000},
+            "maxBytes": {"type": "integer", "minimum": 1, "maximum": 100000000},
+            "maxEdges": {"type": "integer", "minimum": 1, "maximum": 100000}
+          }
+        }
+      }
+    }
+  }
+}
