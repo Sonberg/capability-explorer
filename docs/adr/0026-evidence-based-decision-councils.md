@@ -132,7 +132,8 @@ selection of relationships, explicitly not an exhaustive dependency analysis.
 ### MADR lifecycle: CRUD includes navigation
 
 The index and diagram are part of the decision-record lifecycle, not optional
-follow-up documentation. Perform each operation in one reviewed change:
+follow-up documentation. Every mutating operation updates the record and
+navigation in one reviewed change; reading requires no change or approval:
 
 | Operation | Record and evidence | Index and diagram |
 |---|---|---|
