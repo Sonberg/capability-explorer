@@ -1,5 +1,22 @@
 # Handoff: remaining work
 
+## Issue #42: language-neutral frontend and discovery research
+
+[Research and acceptance](research/language-neutral-frontends.md), proposed
+[MADR-0025](adr/0025-language-neutral-frontends-and-discovery.md), draft schemas
+and sealed synthetic inventories define a bounded adapter/discovery direction.
+`make test-frontend-contracts` checks the package offline and is part of sandbox
+CI. The fixture oracle is not a filesystem scanner or compiler adapter; passing
+it does not establish semantic accuracy, arbitrary-layout support, inventory
+precision/recall or source-span conversion correctness. ce.v1 is unchanged.
+
+A future pilot requires actual language/unit demand, approved frozen sources,
+pinned toolchain/offline dependencies, independent gold inventories and explicit
+thresholds, budgets and rollback. No language/parser adoption, schema migration,
+analyzed build execution or new service follows from this proposal. #23's corpus
+gap and #24's release/security gate remain. Business-object/domain/integration
+event maturity and exposure research is separately parked in #53.
+
 ## Issue #37: local analysis lifecycle
 
 The host CLI owns the run journal and execution/publication handles; extraction

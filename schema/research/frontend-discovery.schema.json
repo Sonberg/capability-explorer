@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://capability-explorer/schema/research/frontend-discovery.contractDraft.v1.schema.json",
+  "title": "Proposed bounded repository analysis-unit discovery result",
+  "description": "Research-only discovery contract. Not a production scanner, manifest runtime, or all-layouts claim.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "sourceSnapshot", "policy", "units", "coverage", "status"],
+  "properties": {
+    "contract": { "const": "ce.discovery.contractDraft.v1" },
+    "sourceSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repositoryId", "revisionSha", "snapshotSha256"],
+      "properties": {
+        "repositoryId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$" },
+        "revisionSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "snapshotSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registryId", "registryVersion", "maxDepth", "maxCandidates", "maxFilesPerUnit", "maxFiles", "maxBytes", "includeTests"],
+      "properties": {
+        "registryId": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,63}$" },
+        "registryVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "maxDepth": { "type": "integer", "minimum": 1 },
+        "maxCandidates": { "type": "integer", "minimum": 1 },
+        "maxFilesPerUnit": { "type": "integer", "minimum": 1 },
+        "maxFiles": { "type": "integer", "minimum": 1 },
+        "maxBytes": { "type": "integer", "minimum": 1 },
+        "includeTests": { "enum": ["exclude", "include", "explicit-only"] },
+        "hardBoundaries": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["snapshot-root", "symlink", "nested-repository", "path-traversal"] }
+        }
+      }
+    },
+    "units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["unitKey", "ownerDirectory", "markerPath", "declaredUnitId", "languageProfileId", "capabilities", "files", "references"],
+        "properties": {
+          "unitKey": { "type": "string", "pattern": "^unit:v1/.+#[-A-Za-z0-9._]+$" },
+          "ownerDirectory": { "type": "string", "pattern": "^(?:\\.|(?!/)(?!.*\\\\)(?!.*:)(?![A-Za-z]:)(?![A-Za-z][A-Za-z0-9+.-]*://)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))(?!.*//)(?!.*\\/$)[^\\x00]+)$" },
+          "markerPath": { "type": "string", "pattern": "^(?!/)(?!.*\\\\)(?!.*:)(?![A-Za-z]:)(?![A-Za-z][A-Za-z0-9+.-]*://)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))(?!.*//)(?!.*\\/$)[^\\x00]+$" },
+          "declaredUnitId": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,128}$" },
+          "languageProfileId": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,63}$" },
+          "capabilities": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,63}$" } },
+          "files": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^(?!/)(?!.*\\\\)(?!.*:)(?![A-Za-z]:)(?![A-Za-z][A-Za-z0-9+.-]*://)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))(?!.*//)(?!.*\\/$)[^\\x00]+$" }
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["targetUnitKey", "relation", "status"],
+              "properties": {
+                "targetUnitKey": { "type": "string", "pattern": "^unit:v1/.+#[-A-Za-z0-9._]+$" },
+                "relation": { "enum": ["project", "workspace", "shared-input"] },
+                "status": { "enum": ["resolved", "missing-dependency", "unsupported"] }
+              }
+            }
+          }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateMarkers", "unitsAccepted", "filesIncluded", "pathsExcluded", "diagnostics"],
+      "properties": {
+        "candidateMarkers": { "type": "integer", "minimum": 0 },
+        "unitsAccepted": { "type": "integer", "minimum": 0 },
+        "filesIncluded": { "type": "integer", "minimum": 0 },
+        "pathsExcluded": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^(?!/)(?!.*\\\\)(?!.*:)(?![A-Za-z]:)(?![A-Za-z][A-Za-z0-9+.-]*://)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))(?!.*//)(?!.*\\/$)[^\\x00]+$" } },
+        "diagnostics": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "status": { "type": "string", "enum": ["complete", "partial", "ambiguous", "unsupported", "failed"] }
+  }
+}

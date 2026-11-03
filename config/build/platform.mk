@@ -4,6 +4,14 @@ ifeq ($(EXECUTION),sandbox)
 ci: test-platform-plan
 endif
 
+.PHONY: test-frontend-contracts
+ifeq ($(EXECUTION),sandbox)
+ci: test-frontend-contracts
+endif
+
+test-frontend-contracts:
+	scripts/sandbox --offline node node scripts/research/check-frontend-contracts.mjs all
+
 platform-plan-check:
 ifeq ($(PHASE),)
 	scripts/sandbox --offline node node scripts/check-platform-contract-plan.mjs foundation
