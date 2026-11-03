@@ -70,10 +70,10 @@ can represent—not achieved accuracy in this repository.
 
 | Producer | Semantic fidelity and spans | Identity/context unit | License and maintenance | Reproducibility/offline | Execution risk |
 |---|---|---|---|---|---|
-| Compiler APIs (e.g. Roslyn, TypeScript) | Upstream APIs expose parse/syntax and symbol/binding/semantic layers; compiler-resolved identities require supplied/resolved references, options, source and supported versions. Source positions need adapter normalization. | Invocation-scoped `Compilation`/`Program` and source trees; neither API supplies this project's stable unit key. Roslyn repo `MIT`; TypeScript `Apache-2.0`. Maintained separately; pin compiler/API version, SDK/runtime, references and config. The TypeScript API guide warns it covers 6.0 and earlier and says 7.1 will have a different API; this does not establish feature or API equivalence. | Potentially repeatable when compiler, reference, config and source inputs are pinned; dependencies must be pre-provisioned offline. | No generic risk rating: a supplied host/plugin/config/source reader may add risk. Avoid builds and user scripts; constrain reads to the snapshot, deny ambient network/credentials and do not evaluate MSBuild. |
-| Tree-sitter | Concrete syntax trees and byte/row-column ranges; incremental parsing is supported. Syntax/grammar nodes do not establish cross-file binding, types or compiler resolution. | One parse `Tree`, not a project semantic context. Core runtime `MIT`; each grammar/binding has its own license and maintenance history. Pin runtime and exact grammar revisions. | Parser inputs and compiled grammar can be pinned for offline use; grammar/runtime versions and source encoding must be fixed. | The core is an in-process parser library, not a build runner; still review parser/grammar code and bound untrusted input. Downstream wrappers can add other risks. |
-| SCIP protocol and indexers | `scip.proto` permits a precision spectrum from compiler-backed indexers to syntax-directed heuristics. It supplies symbol occurrences and positions; SCIP is an exchange format, not a semantic oracle. Position encoding differs by indexer. Independent indexer counts/activity are time-sensitive, not qualification evidence. | A static index has project-rooted `Document` entries; it has no live analysis session. SCIP repo `Apache-2.0`; each indexer/dependency/license and maintenance cadence must be checked separately. Pin protocol and exact indexer. | A saved index can be consumed offline; producing it requires the pinned indexer and its project/reference inputs. Exact no-build behavior is indexer- and mode-specific, not established here. | Risk is version/mode/indexer-specific. An indexer may invoke compiler/build machinery, but this pass did not establish that for every indexer; verify before a pilot and never run analyzed repository scripts or install dependencies during discovery. |
-| Controlled LSP | The protocol offers document/position requests such as definition and feature capability negotiation, but does not standardize a language-independent compiler symbol/domain model. Semantic fidelity depends on the selected server and supplied project inputs. | Stateful server session with documents addressed by URI/position, not a stable persisted index identity. The inspected VS Code Node SDK is `MIT`; each server has its own license and release cadence. Protocol-document terms were not audited. Pin server, client/protocol version and settings. | Offline operation requires exact server/runtime/workspace inputs pre-provisioned; initialization, readiness and workspace/config state need deterministic capture. | Starting the server is process execution; any additional project tooling/config behavior is server-specific and unqualified. A future adapter needs a sealed local batch/session wrapper, bounded I/O, no credentials and no network. |
+| Compiler APIs (e.g. Roslyn, TypeScript) | Upstream APIs expose parse/syntax and symbol/binding/semantic layers; compiler-resolved identities require supplied/resolved references, options, source and supported versions. Source positions need adapter normalization. | Invocation-scoped `Compilation`/`Program` and source trees; neither API supplies this project's stable unit key. | Roslyn repo `MIT`; TypeScript `Apache-2.0`; implementations are maintained separately. Pin compiler/API version, SDK/runtime, references and config. The TypeScript API guide warns it covers 6.0 and earlier and says 7.1 will have a different API; this does not establish feature or API equivalence. | Potentially repeatable when compiler, reference, config and source inputs are pinned; dependencies must be pre-provisioned offline. | No generic risk rating: a supplied host/plugin/config/source reader may add risk. Avoid builds and user scripts; constrain reads to the snapshot, deny ambient network/credentials and do not evaluate MSBuild. |
+| Tree-sitter | Concrete syntax trees and byte/row-column ranges; incremental parsing is supported. Syntax/grammar nodes do not establish cross-file binding, types or compiler resolution. | One parse `Tree`, not a project semantic context. | Core runtime `MIT`; each grammar/binding has its own license and maintenance history. Pin runtime and exact grammar revisions. | Parser inputs and compiled grammar can be pinned for offline use; grammar/runtime versions and source encoding must be fixed. | The core is an in-process parser library, not a build runner; still review parser/grammar code and bound untrusted input. Downstream wrappers can add other risks. |
+| SCIP protocol and indexers | `scip.proto` permits a precision spectrum from compiler-backed indexers to syntax-directed heuristics. It supplies symbol occurrences and positions; SCIP is an exchange format, not a semantic oracle. Position encoding differs by indexer. Independent indexer counts/activity are time-sensitive, not qualification evidence. | A static index has project-rooted `Document` entries; it has no live analysis session. | SCIP repo `Apache-2.0`; each indexer/dependency/license and maintenance cadence must be checked separately. Pin protocol and exact indexer. | A saved index can be consumed offline; producing it requires the pinned indexer and its project/reference inputs. Exact no-build behavior is indexer- and mode-specific, not established here. | Risk is version/mode/indexer-specific. An indexer may invoke compiler/build machinery, but this pass did not establish that for every indexer; verify before a pilot and never run analyzed repository scripts or install dependencies during discovery. |
+| Controlled LSP | The protocol offers document/position requests such as definition and feature capability negotiation, but does not standardize a language-independent compiler symbol/domain model. Semantic fidelity depends on the selected server and supplied project inputs. | Stateful server session with documents addressed by URI/position, not a stable persisted index identity. | Inspected VS Code Node SDK is `MIT`; each server has its own license and release cadence. Protocol-document terms were not audited. Pin server, client/protocol version and settings. | Offline operation requires exact server/runtime/workspace inputs pre-provisioned; initialization, readiness and workspace/config state need deterministic capture. | Starting the server is process execution; any additional project tooling/config behavior is server-specific and unqualified. A future adapter needs a sealed local batch/session wrapper, bounded I/O, no credentials and no network. |
 
 For primary-source details and exact checked revisions see
 [References](#primary-references-checked-2026-11-03). No candidate was installed,
@@ -105,12 +105,24 @@ Core rules:
 ## Executable research evidence
 
 `tests/frontend-contracts.test.mjs` validates representative instances against a
-strict supported subset of the proposed JSON Schema drafts and executes a
-small fixture-only policy oracle against the independently authored expected
-inventories. The oracle exercises nested ownership, same-unit overlap
-deduplication, missing links, ambiguity, conflicts, depth/file/byte limits,
-unknown profiles/capabilities, traversal and symlink rejection. Canonical
-inventory bytes sort object keys and exclude operational timestamps.
+strict supported subset of the proposed JSON Schema drafts and uses the
+fixture-only policy oracle in
+[`conformance.mjs`](../../tests/fixtures/frontend-contracts/conformance.mjs)
+against independently authored expected inventories. It exercises recursive
+glob depth, zero-or-many `**` path segments, UTF-8 ordinal ordering under
+permuted input, explicit exclude-over-include precedence, nested ownership,
+deduplication, missing links, ambiguity, conflicts, depth/per-unit/total-file/
+byte limits, unknown profiles/capabilities and path/symlink rejection.
+Preclassified test/generated entries remain excluded; category overrides are
+future-only and untested. Canonical inventory bytes use UTF-8 ordinal key/path
+ordering and exclude operational timestamps.
+
+Adapter evidence `startByte`/`endByte` always addresses bytes in the original
+frozen source. Optional line/character positions carry a separate UTF-16 or
+UTF-32 coordinate encoding. The draft's status checks reject profile mismatch
+and complete results containing diagnostics, unresolved/candidate facts,
+omissions or unsupported features. The focused byte test uses a UTF-8 non-ASCII
+fixture; it is not a general source-coordinate or compiler-span validator.
 
 This is an executable specification for the sealed synthetic cases only. It
 does not walk a repository filesystem, discover projects, load a compiler,
@@ -121,11 +133,13 @@ command remains the direct test evidence.
 ## Safety, reproducibility and future pilot
 
 Discovery and adapter requests bind a full repository revision and an immutable
-snapshot digest. Paths are normalized repository-relative POSIX paths. Symlinks,
-absolute paths, `..`, nested-repository escape, unknown profile/capability,
-conflicting ownership and hard-budget exhaustion fail explicitly. Missing
+snapshot digest. Paths are normalized repository-relative POSIX paths; empty,
+`.`/`..`, absolute, drive, URI, backslash and NUL aliases are rejected. Symlinks,
+nested-repository escape, unknown profile/capability, conflicting ownership and
+hard-budget exhaustion fail explicitly. Missing
 references are visible partial results; marker-free ambiguity is not successful
-empty discovery. A profile must specify file, depth, candidate and byte budgets;
+empty discovery. A profile must specify per-unit file, total candidate-file, depth, candidate
+marker and byte budgets;
 values must be benchmarked and agreed before any implementation, not invented by
 this research.
 
@@ -182,7 +196,7 @@ synthetic fixture suite cannot satisfy real-corpus demand or semantic accuracy.
 | Specification | 97/100 | 19 issue obligations and machine-checkable constraints; missing/duplicate/self-attested evidence mutations rejected. |
 | Pseudocode | 97/100 | Ordered discovery/adapter procedures, hard boundaries, budgets, failure states and complexity checked. |
 | Architecture | 97/100 | Source-pinned research, proposed MADR, strict contract drafts, compatibility cases and independently authored inventories. |
-| Refinement | 97/100 | 35 focused tests passed; all 16 sealed fixture outputs matched; malformed schema instances and unsafe/unknown cases rejected. |
+| Refinement | 97/100 | 43 focused tests passed; all 20 sealed fixture outputs matched; malformed schema instances and unsafe/unknown cases rejected. |
 | Completion | 97/100 | The focused package gates below passed; research limitations and parent-owned integration are explicit. |
 
 Focused commands:

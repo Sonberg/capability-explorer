@@ -76,6 +76,33 @@
         { "path": "vendor/child/Child.csproj", "reason": "nested-repository-boundary" }
       ],
       "diagnostics": ["nested-repository-boundary"]
+    },
+    {
+      "scenarioId": "deep-glob-ordinal-order",
+      "status": "complete",
+      "units": [{
+        "unitKey": "unit:v1/.#web",
+        "languageProfileId": "typescript",
+        "files": ["root.ts", "src/deep/nested/é.ts", "src/deep/z.ts", "src/file.ts"],
+        "references": []
+      }],
+      "excluded": [],
+      "diagnostics": ["same-owner-path-deduplicated"]
+    },
+    {
+      "scenarioId": "explicit-exclude-wins",
+      "status": "complete",
+      "units": [{
+        "unitKey": "unit:v1/web#web",
+        "languageProfileId": "typescript",
+        "files": ["web/src/visible.ts"],
+        "references": []
+      }],
+      "excluded": [
+        { "path": "web/src/private.ts", "reason": "explicit-exclude" },
+        { "path": "web/tests/hidden.ts", "reason": "test-policy-exclude" }
+      ],
+      "diagnostics": []
     }
   ],
   "negative": [
@@ -85,6 +112,8 @@
     { "scenarioId": "conflicting-owner", "status": "failed", "units": [], "diagnostics": ["ownership-conflict"] },
     { "scenarioId": "conflicting-override", "status": "failed", "units": [], "diagnostics": ["conflicting-unit-identity"] },
     { "scenarioId": "budget-exceeded", "status": "failed", "units": [], "diagnostics": ["limit-exceeded"] },
+    { "scenarioId": "per-unit-file-budget", "status": "failed", "units": [], "diagnostics": ["limit-exceeded"] },
+    { "scenarioId": "total-file-budget", "status": "failed", "units": [], "diagnostics": ["limit-exceeded"] },
     { "scenarioId": "path-traversal", "status": "failed", "units": [], "diagnostics": ["path-escape"] },
     { "scenarioId": "symlink-escape", "status": "failed", "units": [], "diagnostics": ["symlink-escape"] }
   ]

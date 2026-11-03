@@ -21,12 +21,13 @@
     "policy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["registryId", "registryVersion", "maxDepth", "maxCandidates", "maxFiles", "maxBytes", "includeTests"],
+      "required": ["registryId", "registryVersion", "maxDepth", "maxCandidates", "maxFilesPerUnit", "maxFiles", "maxBytes", "includeTests"],
       "properties": {
         "registryId": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,63}$" },
         "registryVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
         "maxDepth": { "type": "integer", "minimum": 1 },
         "maxCandidates": { "type": "integer", "minimum": 1 },
+        "maxFilesPerUnit": { "type": "integer", "minimum": 1 },
         "maxFiles": { "type": "integer", "minimum": 1 },
         "maxBytes": { "type": "integer", "minimum": 1 },
         "includeTests": { "enum": ["exclude", "include", "explicit-only"] },
@@ -45,15 +46,15 @@
         "required": ["unitKey", "ownerDirectory", "markerPath", "declaredUnitId", "languageProfileId", "capabilities", "files", "references"],
         "properties": {
           "unitKey": { "type": "string", "pattern": "^unit:v1/.+#[-A-Za-z0-9._]+$" },
-          "ownerDirectory": { "type": "string", "pattern": "^(?:\\.|(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*)$" },
-          "markerPath": { "type": "string", "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))[^\\\\\\n]+$" },
+          "ownerDirectory": { "type": "string", "pattern": "^(?:\\.|(?!/)(?!.*\\\\)(?!.*:)(?![A-Za-z]:)(?![A-Za-z][A-Za-z0-9+.-]*://)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))(?!.*//)(?!.*\\/$)[^\\x00]+)$" },
+          "markerPath": { "type": "string", "pattern": "^(?!/)(?!.*\\\\)(?!.*:)(?![A-Za-z]:)(?![A-Za-z][A-Za-z0-9+.-]*://)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))(?!.*//)(?!.*\\/$)[^\\x00]+$" },
           "declaredUnitId": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,128}$" },
           "languageProfileId": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,63}$" },
           "capabilities": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,63}$" } },
           "files": {
             "type": "array",
             "uniqueItems": true,
-            "items": { "type": "string", "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))[^\\\\\\n]+$" }
+            "items": { "type": "string", "pattern": "^(?!/)(?!.*\\\\)(?!.*:)(?![A-Za-z]:)(?![A-Za-z][A-Za-z0-9+.-]*://)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))(?!.*//)(?!.*\\/$)[^\\x00]+$" }
           },
           "references": {
             "type": "array",
@@ -62,7 +63,7 @@
               "additionalProperties": false,
               "required": ["targetUnitKey", "relation", "status"],
               "properties": {
-                "targetUnitKey": { "type": "string", "minLength": 1 },
+                "targetUnitKey": { "type": "string", "pattern": "^unit:v1/.+#[-A-Za-z0-9._]+$" },
                 "relation": { "enum": ["project", "workspace", "shared-input"] },
                 "status": { "enum": ["resolved", "missing-dependency", "unsupported"] }
               }
@@ -79,7 +80,7 @@
         "candidateMarkers": { "type": "integer", "minimum": 0 },
         "unitsAccepted": { "type": "integer", "minimum": 0 },
         "filesIncluded": { "type": "integer", "minimum": 0 },
-        "pathsExcluded": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "pathsExcluded": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^(?!/)(?!.*\\\\)(?!.*:)(?![A-Za-z]:)(?![A-Za-z][A-Za-z0-9+.-]*://)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))(?!.*//)(?!.*\\/$)[^\\x00]+$" } },
         "diagnostics": { "type": "array", "items": { "type": "string", "minLength": 1 } }
       }
     },

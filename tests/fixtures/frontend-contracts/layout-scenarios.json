@@ -7,7 +7,7 @@
   "positive": [
     {
       "id": "root-project",
-      "budgets": { "maxDepth": 8, "maxCandidates": 4, "maxFiles": 12, "maxBytes": 2048 },
+      "budgets": { "maxDepth": 8, "maxCandidates": 4, "maxFilesPerUnit": 8, "maxFiles": 12, "maxBytes": 2048 },
       "entries": [
         { "path": "App.csproj", "kind": "marker", "bytes": 120 },
         { "path": "Program.cs", "kind": "source", "bytes": 100 },
@@ -15,12 +15,12 @@
         { "path": "obj/Generated.cs", "kind": "generated", "bytes": 75 }
       ],
       "units": [
-        { "root": ".", "markerPath": "App.csproj", "id": "app", "language": "csharp", "capabilities": ["declarations", "references"], "includePatterns": ["**/*.cs"], "references": [] }
+        { "root": ".", "markerPath": "App.csproj", "id": "app", "language": "csharp", "capabilities": ["declarations", "references"], "includePatterns": ["**/*.cs"], "excludePatterns": [], "references": [] }
       ]
     },
     {
       "id": "nested-project",
-      "budgets": { "maxDepth": 8, "maxCandidates": 4, "maxFiles": 12, "maxBytes": 2048 },
+      "budgets": { "maxDepth": 8, "maxCandidates": 4, "maxFilesPerUnit": 8, "maxFiles": 12, "maxBytes": 2048 },
       "entries": [
         { "path": "Root.csproj", "kind": "marker", "bytes": 120 },
         { "path": "src/App.cs", "kind": "source", "bytes": 100 },
@@ -28,13 +28,13 @@
         { "path": "src/Api/Program.cs", "kind": "source", "bytes": 90 }
       ],
       "units": [
-        { "root": ".", "markerPath": "Root.csproj", "id": "root", "language": "csharp", "capabilities": ["declarations"], "includePatterns": ["src/**/*.cs"], "references": [] },
-        { "root": "src/Api", "markerPath": "src/Api/Api.csproj", "id": "api", "language": "csharp", "capabilities": ["declarations"], "includePatterns": ["**/*.cs"], "references": [] }
+        { "root": ".", "markerPath": "Root.csproj", "id": "root", "language": "csharp", "capabilities": ["declarations"], "includePatterns": ["src/**/*.cs"], "excludePatterns": [], "references": [] },
+        { "root": "src/Api", "markerPath": "src/Api/Api.csproj", "id": "api", "language": "csharp", "capabilities": ["declarations"], "includePatterns": ["**/*.cs"], "excludePatterns": [], "references": [] }
       ]
     },
     {
       "id": "mixed-language-monorepo",
-      "budgets": { "maxDepth": 8, "maxCandidates": 5, "maxFiles": 15, "maxBytes": 4096 },
+      "budgets": { "maxDepth": 8, "maxCandidates": 5, "maxFilesPerUnit": 8, "maxFiles": 15, "maxBytes": 4096 },
       "entries": [
         { "path": "api/Api.csproj", "kind": "marker", "bytes": 130 },
         { "path": "api/Program.cs", "kind": "source", "bytes": 100 },
@@ -44,14 +44,14 @@
         { "path": "ops/select.sql", "kind": "source", "bytes": 95 }
       ],
       "units": [
-        { "root": "api", "markerPath": "api/Api.csproj", "id": "api", "language": "csharp", "capabilities": ["declarations"], "includePatterns": ["**/*.cs"], "references": [] },
-        { "root": "web", "markerPath": "web/tsconfig.json", "id": "web", "language": "typescript", "capabilities": ["declarations", "references", "source-spans"], "includePatterns": ["**/*.ts"], "references": [] },
-        { "root": "ops", "markerPath": "ops/sql-profile.json", "id": "queries", "language": "sql", "capabilities": ["declarations"], "includePatterns": ["**/*.sql"], "references": [] }
+        { "root": "api", "markerPath": "api/Api.csproj", "id": "api", "language": "csharp", "capabilities": ["declarations"], "includePatterns": ["**/*.cs"], "excludePatterns": [], "references": [] },
+        { "root": "web", "markerPath": "web/tsconfig.json", "id": "web", "language": "typescript", "capabilities": ["declarations", "references", "source-spans"], "includePatterns": ["**/*.ts"], "excludePatterns": [], "references": [] },
+        { "root": "ops", "markerPath": "ops/sql-profile.json", "id": "queries", "language": "sql", "capabilities": ["declarations"], "includePatterns": ["**/*.sql"], "excludePatterns": [], "references": [] }
       ]
     },
     {
       "id": "multiple-markers",
-      "budgets": { "maxDepth": 8, "maxCandidates": 4, "maxFiles": 10, "maxBytes": 2048 },
+      "budgets": { "maxDepth": 8, "maxCandidates": 4, "maxFilesPerUnit": 8, "maxFiles": 10, "maxBytes": 2048 },
       "entries": [
         { "path": "web/package.json", "kind": "marker", "bytes": 120 },
         { "path": "web/tsconfig.json", "kind": "marker", "bytes": 150 },
@@ -59,41 +59,41 @@
         { "path": "web/src/legacy.js", "kind": "source", "bytes": 90 }
       ],
       "units": [
-        { "root": "web", "markerPath": "web/tsconfig.json", "id": "web", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["src/**/*.ts", "src/**/*.js"], "references": [] }
+        { "root": "web", "markerPath": "web/tsconfig.json", "id": "web", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["src/**/*.ts", "src/**/*.js"], "excludePatterns": [], "references": [] }
       ]
     },
     {
       "id": "standalone-source",
-      "budgets": { "maxDepth": 8, "maxCandidates": 4, "maxFiles": 8, "maxBytes": 1024 },
+      "budgets": { "maxDepth": 8, "maxCandidates": 4, "maxFilesPerUnit": 8, "maxFiles": 8, "maxBytes": 1024 },
       "entries": [{ "path": "tools/run.js", "kind": "source", "bytes": 100 }],
       "units": []
     },
     {
       "id": "overlap-dedupe",
-      "budgets": { "maxDepth": 8, "maxCandidates": 4, "maxFiles": 10, "maxBytes": 2048 },
+      "budgets": { "maxDepth": 8, "maxCandidates": 4, "maxFilesPerUnit": 8, "maxFiles": 10, "maxBytes": 2048 },
       "entries": [
         { "path": "web/tsconfig.json", "kind": "marker", "bytes": 120 },
         { "path": "web/src/app.ts", "kind": "source", "bytes": 100 },
         { "path": "web/src/util.ts", "kind": "source", "bytes": 80 }
       ],
       "units": [
-        { "root": "web", "markerPath": "web/tsconfig.json", "id": "web", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["src/**/*.ts", "src/app.ts"], "references": [] }
+        { "root": "web", "markerPath": "web/tsconfig.json", "id": "web", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["src/**/*.ts", "src/app.ts"], "excludePatterns": [], "references": [] }
       ]
     },
     {
       "id": "missing-dependency",
-      "budgets": { "maxDepth": 8, "maxCandidates": 4, "maxFiles": 10, "maxBytes": 2048 },
+      "budgets": { "maxDepth": 8, "maxCandidates": 4, "maxFilesPerUnit": 8, "maxFiles": 10, "maxBytes": 2048 },
       "entries": [
         { "path": "app/App.csproj", "kind": "marker", "bytes": 130 },
         { "path": "app/Program.cs", "kind": "source", "bytes": 100 }
       ],
       "units": [
-        { "root": "app", "markerPath": "app/App.csproj", "id": "app", "language": "csharp", "capabilities": ["declarations", "references"], "includePatterns": ["**/*.cs"], "references": [{ "target": "shared#core", "relation": "project" }] }
+        { "root": "app", "markerPath": "app/App.csproj", "id": "app", "language": "csharp", "capabilities": ["declarations", "references"], "includePatterns": ["**/*.cs"], "excludePatterns": [], "references": [{ "target": "shared#core", "relation": "project" }] }
       ]
     },
     {
       "id": "nested-repository-boundary",
-      "budgets": { "maxDepth": 8, "maxCandidates": 4, "maxFiles": 10, "maxBytes": 2048 },
+      "budgets": { "maxDepth": 8, "maxCandidates": 4, "maxFilesPerUnit": 8, "maxFiles": 10, "maxBytes": 2048 },
       "entries": [
         { "path": "Root.csproj", "kind": "marker", "bytes": 120 },
         { "path": "Program.cs", "kind": "source", "bytes": 100 },
@@ -102,50 +102,77 @@
         { "path": "vendor/child/Child.cs", "kind": "source", "bytes": 90 }
       ],
       "units": [
-        { "root": ".", "markerPath": "Root.csproj", "id": "root", "language": "csharp", "capabilities": ["declarations"], "includePatterns": ["**/*.cs"], "references": [] }
+        { "root": ".", "markerPath": "Root.csproj", "id": "root", "language": "csharp", "capabilities": ["declarations"], "includePatterns": ["**/*.cs"], "excludePatterns": [], "references": [] }
+      ]
+    },
+    {
+      "id": "deep-glob-ordinal-order",
+      "budgets": { "maxDepth": 8, "maxCandidates": 4, "maxFilesPerUnit": 8, "maxFiles": 10, "maxBytes": 2048 },
+      "entries": [
+        { "path": "tsconfig.json", "kind": "marker", "bytes": 100 },
+        { "path": "root.ts", "kind": "source", "bytes": 12 },
+        { "path": "src/file.ts", "kind": "source", "bytes": 12 },
+        { "path": "src/deep/z.ts", "kind": "source", "bytes": 12 },
+        { "path": "src/deep/nested/é.ts", "kind": "source", "bytes": 12 }
+      ],
+      "units": [
+        { "root": ".", "markerPath": "tsconfig.json", "id": "web", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["src/**/*.ts", "**/*"], "excludePatterns": [], "references": [] }
+      ]
+    },
+    {
+      "id": "explicit-exclude-wins",
+      "budgets": { "maxDepth": 8, "maxCandidates": 4, "maxFilesPerUnit": 8, "maxFiles": 10, "maxBytes": 2048 },
+      "entries": [
+        { "path": "web/tsconfig.json", "kind": "marker", "bytes": 100 },
+        { "path": "web/src/visible.ts", "kind": "source", "bytes": 12 },
+        { "path": "web/src/private.ts", "kind": "source", "bytes": 12 },
+        { "path": "web/tests/hidden.ts", "kind": "test", "bytes": 12 }
+      ],
+      "units": [
+        { "root": "web", "markerPath": "web/tsconfig.json", "id": "web", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["**/*.ts"], "excludePatterns": ["src/private.ts"], "references": [] }
       ]
     }
   ],
   "negative": [
     {
       "id": "unknown-language",
-      "budgets": { "maxDepth": 4, "maxCandidates": 4, "maxFiles": 8, "maxBytes": 1024 },
+      "budgets": { "maxDepth": 4, "maxCandidates": 4, "maxFilesPerUnit": 8, "maxFiles": 8, "maxBytes": 1024 },
       "entries": [{ "path": "src/file.x", "kind": "source", "bytes": 20 }],
       "units": [{ "root": ".", "markerPath": "unit.json", "id": "new", "language": "new-language-not-selected", "capabilities": [], "includePatterns": ["**/*"], "references": [] }]
     },
     {
       "id": "unknown-capability",
-      "budgets": { "maxDepth": 4, "maxCandidates": 4, "maxFiles": 8, "maxBytes": 1024 },
+      "budgets": { "maxDepth": 4, "maxCandidates": 4, "maxFilesPerUnit": 8, "maxFiles": 8, "maxBytes": 1024 },
       "entries": [{ "path": "src/file.ts", "kind": "source", "bytes": 20 }],
       "units": [{ "root": ".", "markerPath": "tsconfig.json", "id": "web", "language": "typescript", "capabilities": ["semantic.magic"], "includePatterns": ["**/*.ts"], "references": [] }]
     },
     {
       "id": "marker-free-ambiguity",
-      "budgets": { "maxDepth": 4, "maxCandidates": 4, "maxFiles": 8, "maxBytes": 1024 },
+      "budgets": { "maxDepth": 4, "maxCandidates": 4, "maxFilesPerUnit": 8, "maxFiles": 8, "maxBytes": 1024 },
       "entries": [{ "path": "src/file.ts", "kind": "source", "bytes": 20 }],
       "units": []
     },
     {
       "id": "conflicting-owner",
-      "budgets": { "maxDepth": 4, "maxCandidates": 4, "maxFiles": 8, "maxBytes": 1024 },
+      "budgets": { "maxDepth": 4, "maxCandidates": 4, "maxFilesPerUnit": 8, "maxFiles": 8, "maxBytes": 1024 },
       "entries": [{ "path": "src/shared.ts", "kind": "source", "bytes": 20 }],
       "units": [
-        { "root": "src", "markerPath": "src/a.json", "id": "a", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["shared.ts"], "references": [] },
-        { "root": "src", "markerPath": "src/b.json", "id": "b", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["shared.ts"], "references": [] }
+        { "root": "src", "markerPath": "src/a.json", "id": "a", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["shared.ts"], "excludePatterns": [], "references": [] },
+        { "root": "src", "markerPath": "src/b.json", "id": "b", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["shared.ts"], "excludePatterns": [], "references": [] }
       ]
     },
     {
       "id": "conflicting-override",
-      "budgets": { "maxDepth": 4, "maxCandidates": 4, "maxFiles": 8, "maxBytes": 1024 },
+      "budgets": { "maxDepth": 4, "maxCandidates": 4, "maxFilesPerUnit": 8, "maxFiles": 8, "maxBytes": 1024 },
       "entries": [{ "path": "app/main.ts", "kind": "source", "bytes": 20 }],
       "units": [
-        { "root": "app", "markerPath": "app/tsconfig.json", "id": "app", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["main.ts"], "references": [] },
-        { "root": "app", "markerPath": "app/ce-unit.json", "id": "app", "language": "javascript", "capabilities": ["declarations"], "includePatterns": ["main.ts"], "references": [] }
+        { "root": "app", "markerPath": "app/tsconfig.json", "id": "app", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["main.ts"], "excludePatterns": [], "references": [] },
+        { "root": "app", "markerPath": "app/ce-unit.json", "id": "app", "language": "javascript", "capabilities": ["declarations"], "includePatterns": ["main.ts"], "excludePatterns": [], "references": [] }
       ]
     },
     {
       "id": "budget-exceeded",
-      "budgets": { "maxDepth": 1, "maxCandidates": 2, "maxFiles": 8, "maxBytes": 1024 },
+      "budgets": { "maxDepth": 1, "maxCandidates": 2, "maxFilesPerUnit": 8, "maxFiles": 8, "maxBytes": 1024 },
       "entries": [
         { "path": "unit.json", "kind": "marker", "bytes": 5 },
         { "path": "src/deep/a.ts", "kind": "source", "bytes": 8 },
@@ -154,16 +181,36 @@
       "units": [{ "root": ".", "markerPath": "unit.json", "id": "web", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["**/*.ts"], "references": [] }]
     },
     {
+      "id": "per-unit-file-budget",
+      "budgets": { "maxDepth": 4, "maxCandidates": 4, "maxFilesPerUnit": 1, "maxFiles": 8, "maxBytes": 1024 },
+      "entries": [
+        { "path": "unit.json", "kind": "marker", "bytes": 5 },
+        { "path": "src/a.ts", "kind": "source", "bytes": 8 },
+        { "path": "src/b.ts", "kind": "source", "bytes": 8 }
+      ],
+      "units": [{ "root": ".", "markerPath": "unit.json", "id": "web", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["**/*.ts"], "excludePatterns": [], "references": [] }]
+    },
+    {
+      "id": "total-file-budget",
+      "budgets": { "maxDepth": 4, "maxCandidates": 4, "maxFilesPerUnit": 8, "maxFiles": 1, "maxBytes": 1024 },
+      "entries": [
+        { "path": "unit.json", "kind": "marker", "bytes": 5 },
+        { "path": "src/a.ts", "kind": "source", "bytes": 8 },
+        { "path": "src/b.ts", "kind": "source", "bytes": 8 }
+      ],
+      "units": [{ "root": ".", "markerPath": "unit.json", "id": "web", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["**/*.ts"], "excludePatterns": [], "references": [] }]
+    },
+    {
       "id": "path-traversal",
-      "budgets": { "maxDepth": 4, "maxCandidates": 4, "maxFiles": 8, "maxBytes": 1024 },
+      "budgets": { "maxDepth": 4, "maxCandidates": 4, "maxFilesPerUnit": 8, "maxFiles": 8, "maxBytes": 1024 },
       "entries": [{ "path": "../escape.ts", "kind": "source", "bytes": 20 }],
       "units": [{ "root": ".", "markerPath": "unit.json", "id": "web", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["**/*.ts"], "references": [] }]
     },
     {
       "id": "symlink-escape",
-      "budgets": { "maxDepth": 4, "maxCandidates": 4, "maxFiles": 8, "maxBytes": 1024 },
+      "budgets": { "maxDepth": 4, "maxCandidates": 4, "maxFilesPerUnit": 8, "maxFiles": 8, "maxBytes": 1024 },
       "entries": [{ "path": "src/outside.ts", "kind": "symlink", "target": "../../outside.ts", "bytes": 0 }],
-      "units": [{ "root": ".", "markerPath": "unit.json", "id": "web", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["**/*.ts"], "references": [] }]
+      "units": [      { "root": ".", "markerPath": "unit.json", "id": "web", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["**/*.ts"], "excludePatterns": [], "references": [] }]
     }
   ]
 }

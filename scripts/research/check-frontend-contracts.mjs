@@ -14,13 +14,16 @@ const COMPATIBILITY_IDS = ['C01', 'C02', 'C03', 'C04', 'C05', 'C06', 'C07', 'C08
 const POSITIVE_LAYOUTS = [
   'root-project', 'nested-project', 'mixed-language-monorepo', 'multiple-markers',
   'standalone-source', 'overlap-dedupe', 'missing-dependency', 'nested-repository-boundary',
+  'deep-glob-ordinal-order', 'explicit-exclude-wins',
 ];
 const NEGATIVE_LAYOUTS = [
   'unknown-language', 'unknown-capability', 'marker-free-ambiguity',
   'conflicting-owner', 'conflicting-override', 'budget-exceeded', 'path-traversal', 'symlink-escape',
+  'per-unit-file-budget', 'total-file-budget',
 ];
 const PHASES = ['specification', 'pseudocode', 'architecture', 'all'];
 const text = value => typeof value === 'string' && value.trim().length > 0;
+const compareUtf8 = (left, right) => Buffer.compare(Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'));
 
 function readRegular(root, path, limit = 131072) {
   const file = join(root, path);
@@ -172,6 +175,15 @@ function validateSchemaDraft(schema, expected) {
     need(value?.type === type || (Array.isArray(value?.type) && value.type.includes(type)),
       `${expected.name} field ${path} must have type ${type}`);
   }
+  for (const [path, fields] of Object.entries(expected.requiredPaths ?? {})) {
+    const required = path.split('.').reduce((cursor, key) => cursor?.[key], schema);
+    need(Array.isArray(required) && fields.every(field => required.includes(field)),
+      `${expected.name} ${path} required fields incomplete`);
+  }
+  for (const [path, value] of Object.entries(expected.constants ?? {})) {
+    const found = path.split('.').reduce((cursor, key) => cursor?.[key], schema);
+    need(found?.const === value, `${expected.name} ${path} must be ${value}`);
+  }
   errors.push(...containsCompletionClaim(schema));
   return errors;
 }
@@ -205,10 +217,10 @@ export function validateFixtureCatalogue(scenarios, expected) {
       `${item.scenarioId} expected outcome needs a status, unit list and diagnostics`);
     const units = item.units ?? [];
     const keys = units.map(unit => unit.unitKey);
-    need(keys.every(text) && JSON.stringify(keys) === JSON.stringify([...keys].sort())
+    need(keys.every(text) && JSON.stringify(keys) === JSON.stringify([...keys].sort(compareUtf8))
       && new Set(keys).size === keys.length, `${item.scenarioId} unit identities must be unique and ordered`);
     for (const unit of units) {
-      need(Array.isArray(unit.files) && JSON.stringify(unit.files) === JSON.stringify([...unit.files].sort())
+      need(Array.isArray(unit.files) && JSON.stringify(unit.files) === JSON.stringify([...unit.files].sort(compareUtf8))
         && new Set(unit.files).size === unit.files.length,
       `${item.scenarioId} file inventory must be independently ordered and deduplicated`);
       need(Array.isArray(unit.references), `${item.scenarioId} references must be explicit`);
@@ -286,8 +298,22 @@ export function validateArchitecture(contract, report, adr, adapterSchema, disco
     'docs/adr/0013-integration-contract-standards.md#L85-L102',
     'docs/adr/0023-host-acquisition-boundary.md#L61-L65',
   ]) need(report.includes(citation), `exact-source citation missing: ${citation}`);
-  for (const producer of ['Compiler APIs', 'Tree-sitter', 'SCIP protocol and indexers', 'Controlled LSP']) {
+  for (const producer of ['Compiler APIs (e.g. Roslyn, TypeScript)', 'Tree-sitter', 'SCIP protocol and indexers', 'Controlled LSP']) {
     need(report.includes(producer), `producer comparison missing ${producer}`);
+  }
+  const producerRows = [];
+  let inProducerTable = false;
+  for (const line of report.split('## Producer comparison')[1]?.split('\n') ?? []) {
+    if (line.trim().startsWith('|')) {
+      inProducerTable = true;
+      producerRows.push(line.trim());
+    } else if (inProducerTable) break;
+  }
+  need(producerRows.length === 6 && producerRows.every(row => row.split('|').length - 2 === 6),
+    'producer comparison header and all four rows must have six aligned cells');
+  for (const producer of ['Compiler APIs (e.g. Roslyn, TypeScript)', 'Tree-sitter', 'SCIP protocol and indexers', 'Controlled LSP']) {
+    need(producerRows.some(row => row.split('|')[1]?.trim() === producer),
+      `producer comparison row missing or misaligned: ${producer}`);
   }
   for (const fact of ['MIT', 'Apache-2.0', 'offline', 'source-span', 'not-measured', 'no analyzed builds/package scripts']) {
     need(reportText.toLowerCase().includes(fact.toLowerCase()), `architecture evidence/limitation missing: ${fact}`);
@@ -313,6 +339,14 @@ export function validateArchitecture(contract, report, adr, adapterSchema, disco
       'properties.result.properties.coverage': 'object',
       'properties.result.properties.status': 'string',
     },
+    requiredPaths: {
+      'properties.result.properties.facts.items.properties.evidence.items.required': [
+        'startByte', 'endByte', 'byteOffsetEncoding',
+      ],
+    },
+    constants: {
+      'properties.result.properties.facts.items.properties.evidence.items.properties.byteOffsetEncoding': 'source-bytes',
+    },
   }));
   errors.push(...validateSchemaDraft(discoverySchema, {
     name: 'discovery',
@@ -321,9 +355,13 @@ export function validateArchitecture(contract, report, adr, adapterSchema, disco
     fields: {
       'properties.sourceSnapshot': 'object',
       'properties.policy': 'object',
+      'properties.policy.properties.maxFilesPerUnit': 'integer',
       'properties.units': 'array',
       'properties.coverage': 'object',
       'properties.status': 'string',
+    },
+    requiredPaths: {
+      'properties.policy.required': ['maxFilesPerUnit', 'maxFiles'],
     },
   }));
 

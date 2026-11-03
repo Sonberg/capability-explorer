@@ -18,7 +18,7 @@ adapt(request, producer, consumerProfile, frozenSnapshot):
   A02 verify producer/toolchain name, version and executable digest; negotiate only declared features
   A03 require an already provisioned trusted toolchain in offline credential-free isolation; never run repository scripts
   A04 reject unknown profile/capability or unavailable toolchain as unsupported, not empty success
-  A05 validate every source span against frozen bytes; preserve source coordinate encoding and provenance
+  A05 encode offsets in original frozen-source bytes; carry optional line/character positions with their own encoding
   A06 preserve resolved/static-target/candidate/unresolved state and evidence; never promote weaker resolution
   A07 compute file/fact coverage, omitted paths, diagnostics and complete/partial/failed status; keep telemetry separate
   A08 canonicalize ordered facts/evidence without operational timestamps; emit only the new draft envelope
@@ -56,8 +56,10 @@ unit contract without changing the owner path key.
 2. A pinned explicit repository declaration selects approved marker profiles,
    units and allowed extensions. Unknown language/capability values are errors.
 3. Explicit excludes take precedence over includes for a path. A user include can
-   override an advisory test/vendor/generated category only when the declaration
-   says so; it cannot reopen a hard safety boundary.
+   select ordinary in-snapshot files; an explicit exclude always wins. The
+   fixture policy excludes preclassified test/generated entries regardless of
+   glob. Whether a future declaration may override those advisory categories is
+   deliberately unspecified and is not exercised here.
 4. A nested declared unit owns paths below its root unless that unit explicitly
    declares the same file as shared input. Same-owner overlapping globs are
    deduplicated by normalized path. Equal-depth cross-unit overlap is a conflict,
@@ -77,11 +79,11 @@ discover(snapshot, registry, declaration, budgets):
   P01 validate snapshot identity and authorized root boundary
   P02 validate pinned registry, declaration, profile and budget ceilings
   P03 collect directory entries without following symlinks; stop at hard/nested-repository boundaries
-  P04 visit entries in normalized POSIX byte order; reject depth/file/candidate/byte budget exhaustion
+  P04 visit entries in normalized POSIX byte order; reject depth/file/per-unit/candidate/byte budget exhaustion
   P05 read only bounded recognized markers; never evaluate imports, macros or scripts
   P06 parse and normalize owner, unit identity, language, capabilities and references
   P07 reject unknowns, malformed markers, invalid paths and conflicting owner identities
-  P08 apply exclusions/includes, nearest ownership and same-owner deduplication
+  P08 apply explicit-exclude-over-include precedence, nearest ownership and same-owner deduplication
   P09 reject cross-owner overlap; retain missing project references and explicit coverage loss
   P10 sort all output; return canonical inventory separately from operational telemetry
   P11 return explicit complete/partial/ambiguous/unsupported/failed status; never serialize timestamps into inventory bytes
@@ -89,11 +91,20 @@ discover(snapshot, registry, declaration, budgets):
 
 ## Budgets, categories and failures
 
-Budgets are explicit positive ceilings for depth, candidate markers, files per
-unit, total files and aggregate marker/source bytes. The exact values are profile
-inputs to be benchmarked before any pilot; this research sets no invented
-production defaults. Exceeding any hard ceiling stops the run with
-`limit-exceeded`; it does not truncate to a successful partial inventory.
+Budgets are explicit positive ceilings for depth, candidate markers, total
+in-snapshot candidate files (before category filtering), selected files per
+unit, and aggregate marker/source bytes. The exact values are profile inputs to
+be benchmarked before any pilot; this research sets no invented production
+defaults. Exceeding any hard ceiling stops the run with `limit-exceeded`; it
+does not truncate to a successful partial inventory.
+
+Glob syntax is deliberately restricted to literal path segments, `*` within one
+segment, and `**` as a complete segment matching zero or more path segments.
+Unsupported forms such as `?`, character classes, braces, embedded `**`, empty
+segments and traversal are invalid declarations, not literal fallback patterns.
+All unit, marker, source and reference paths are normalized repository-relative
+POSIX forms: no empty, `.` or `..` segment, absolute prefix, drive path, URI,
+backslash or NUL alias is accepted.
 
 Nested repositories are hard boundaries. A separately authorized snapshot may
 analyze one as its own root; an outer snapshot never follows through its boundary.
@@ -105,11 +116,17 @@ symlink.
 
 Statuses are distinct: `complete` means no required source/reference was omitted;
 `partial` means a declared optional/linked input is missing and the omitted path
-is explicit; `ambiguous` means a human declaration is required; `unsupported`
+is explicit; for the adapter draft, `complete` also requires zero diagnostics,
+zero unresolved/candidate facts, and full file coverage. Adapter request and
+result profile identifiers must match. `ambiguous` means a human declaration is required; `unsupported`
 means the registry lacks a required capability; `failed` means malformed input,
 conflict, safety violation or hard budget failure. Only `complete` and explicitly
 accepted `partial` inventories contain ordered units; consumers must not treat
 either as equivalent quality.
+
+Canonical ordering uses unsigned UTF-8 byte order for unit keys, repository paths,
+references and object keys; array ordering is explicit by field. This is ordinal
+and locale-independent.
 
 ## Complexity
 
@@ -133,13 +150,14 @@ for a future frontend.
 | File, depth, candidate or byte ceiling exceeded | `failed/limit-exceeded`; never silently truncate |
 | Referenced project absent from frozen snapshot | `partial/missing-dependency` with link and coverage deficit |
 | Two globs within one unit include the same file | One ordered path, with stable deduplication |
-| Test/generated/vendor include/exclude disagreement | Apply explicit precedence; preserve decision as diagnostic |
+| Explicit include/exclude overlap | Explicit exclude wins; retain the excluded path |
+| Test/generated category override | Not implemented in the oracle; future policy only |
 | Optional language server or compiler profile unavailable offline | `unsupported` or `failed`; never fetch/install or downgrade to syntax-only success |
 
 ## Conformance boundary
 
 Fixture inventories are authored independently from the fixture-only oracle in
-`tests/frontend-contracts.test.mjs`. It checks those declared policy cases and
+`tests/fixtures/frontend-contracts/conformance.mjs`. It checks those declared policy cases and
 canonical ordering only. It does not walk a repository filesystem, call an
 extractor, parse real compiler projects, prove reference resolution, establish
 precision/recall, validate source spans or certify every repository layout.

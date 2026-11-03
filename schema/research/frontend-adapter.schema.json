@@ -29,7 +29,7 @@
           "required": ["unitKey", "path", "name"],
           "properties": {
             "unitKey": { "type": "string", "minLength": 1, "maxLength": 512 },
-            "path": { "type": "string", "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))[^\\\\\\n]+$" },
+            "path": { "type": "string", "pattern": "^(?:\\.|(?!/)(?!.*\\\\)(?!.*:)(?![A-Za-z]:)(?![A-Za-z][A-Za-z0-9+.-]*://)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))(?!.*//)(?!.*\\/$)[^\\x00]+)$" },
             "name": { "type": "string", "minLength": 1, "maxLength": 200 }
           }
         },
@@ -84,17 +84,25 @@
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["path", "sourceSha256", "startByte", "endByte", "sourceEncoding"],
+                  "required": ["path", "sourceSha256", "startByte", "endByte", "byteOffsetEncoding"],
                   "properties": {
-                    "path": { "type": "string", "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))[^\\\\\\n]+$" },
+                    "path": { "type": "string", "pattern": "^(?!/)(?!.*\\\\)(?!.*:)(?![A-Za-z]:)(?![A-Za-z][A-Za-z0-9+.-]*://)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))(?!.*//)(?!.*\\/$)[^\\x00]+$" },
                     "sourceSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
                     "startByte": { "type": "integer", "minimum": 0 },
                     "endByte": { "type": "integer", "minimum": 0 },
-                    "sourceEncoding": { "enum": ["utf8-bytes", "utf16-code-units", "utf32-code-units"] },
-                    "startLine": { "type": "integer", "minimum": 0 },
-                    "startCharacter": { "type": "integer", "minimum": 0 },
-                    "endLine": { "type": "integer", "minimum": 0 },
-                    "endCharacter": { "type": "integer", "minimum": 0 }
+                    "byteOffsetEncoding": { "const": "source-bytes" },
+                    "position": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["encoding", "startLine", "startCharacter", "endLine", "endCharacter"],
+                      "properties": {
+                        "encoding": { "enum": ["utf-16-code-units", "utf-32-code-points"] },
+                        "startLine": { "type": "integer", "minimum": 0 },
+                        "startCharacter": { "type": "integer", "minimum": 0 },
+                        "endLine": { "type": "integer", "minimum": 0 },
+                        "endCharacter": { "type": "integer", "minimum": 0 }
+                      }
+                    }
                   }
                 }
               }
@@ -108,7 +116,7 @@
           "properties": {
             "filesTotal": { "type": "integer", "minimum": 0 },
             "filesAnalyzed": { "type": "integer", "minimum": 0 },
-            "omittedPaths": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+            "omittedPaths": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^(?!/)(?!.*\\\\)(?!.*:)(?![A-Za-z]:)(?![A-Za-z][A-Za-z0-9+.-]*://)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))(?!.*//)(?!.*\\/$)[^\\x00]+$" } },
             "unresolvedFacts": { "type": "integer", "minimum": 0 },
             "diagnostics": { "type": "array", "items": { "type": "string", "minLength": 1 } }
           }
