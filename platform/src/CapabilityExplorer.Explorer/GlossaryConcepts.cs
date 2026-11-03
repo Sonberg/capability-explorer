@@ -9,7 +9,7 @@ namespace CapabilityExplorer.Explorer;
 /// Read-only concept projection over the selected artifacts (MADR-0005): fold representations, nest attributes,
 /// score with explainable features. Deterministic: no model, no database, ordinal ordering throughout.
 /// </summary>
-public static class GlossaryConcepts
+public static partial class GlossaryConcepts
 {
     private static readonly Regex CsOwner = new(@"^(cs\|[^|]*\|[^|]*\|)[PFM]:([^(]*)\.\w+(\(.*)?$", RegexOptions.CultureInvariant);
     private static readonly HashSet<string> ConceptKinds = new(StringComparer.Ordinal) { "Type", "Table", "MessageContract" };
@@ -141,6 +141,7 @@ public static class GlossaryConcepts
         }
 
         var attributes = Attributes(all, declaredBy);
+        var httpIntegrations = Queries.Integrations(view).Http;
         var memberAttributes = groups.ToDictionary(g => g.Key, g => MergeAttributes(g.Value.Members, attributes), StringComparer.Ordinal);
         var bearing = memberAttributes.Count(g => g.Value.Count > 0);
         var threshold = Math.Max(3, weights.GenericLabelShare * bearing);
@@ -210,7 +211,7 @@ public static class GlossaryConcepts
                 MemberDtos(members, stems), MemberDtos(group.Variants, null),
                 attrs.OrderBy(a => a.Key, StringComparer.Ordinal).Select(a => new GlossaryField(
                     a.Key, a.Value.Name, IsGeneric(a.Key), a.Value.Declarations, a.Value.Evidence)).ToList(),
-                repositories, capabilities));
+                repositories, capabilities, IntegrationLinks(members, httpIntegrations)));
         }
 
         var metrics = Glossary.Build(view, membership).Where(c => c.Occurrences.Any(o => o.Role == "calculation")).ToList();

@@ -176,10 +176,20 @@ export interface PackageFeedSettings {
 export interface Integrations {
   services: { service: NodeDto; endpoints: { endpoint: NodeDto; handlers: SymbolRef[] }[] }[];
   /** group: who it talks to; base: the host, configuration name or client; sourcePath: request occurrence source file. */
-  http: { request: Edge; candidates: SymbolRef[]; match: "bound" | "binding" | "broken" | "route" | "none" | "dynamic"; note: string; base: string; group: string; sourcePath: string | null }[];
+  http: HttpLink[];
   channels: ResourceGroup[];
   data: ResourceGroup[];
   marks: Mark[];
+}
+
+export interface HttpLink {
+  request: Edge;
+  candidates: SymbolRef[];
+  match: "bound" | "binding" | "broken" | "route" | "none" | "dynamic";
+  note: string;
+  base: string;
+  group: string;
+  sourcePath: string | null;
 }
 
 /** key: "group|http|Klarna" for a whole integration, otherwise an endpoint, request, channel or table key. */
@@ -449,6 +459,7 @@ export interface GlossaryConcept {
   attributes: GlossaryField[];
   repositories: string[];
   capabilities: string[];
+  integrations: HttpLink[];
 }
 
 export interface GlossaryConceptView {

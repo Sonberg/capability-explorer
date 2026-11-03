@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { shortSha, type GlossaryConcept, type GlossaryConceptView, type GlossaryMember } from "../api";
 import { SourceView } from "../components/source";
 import { Card, ErrorBox, H1, H2, inputClass, Loading, Mono, Muted, Note, Pill, Table } from "../components/ui";
-import { href, useApi } from "../state";
+import { href, symbolHref, useApi } from "../state";
 
 const tierTone = { core: "ok", supporting: "info", plumbing: "neutral" } as const;
 
@@ -103,6 +103,7 @@ function ConceptDetail({ concept, bias }: { concept: GlossaryConcept; bias: numb
         ])} />
       )}
     </Card>
+    <ConceptIntegrations concept={concept} />
     <H2>Members</H2>
     {concept.members.map((member) => <MemberCard key={member.id} member={member} />)}
     {concept.variants.length > 0 && <><H2>Variants</H2>{concept.variants.map((member) => <MemberCard key={member.id} member={member} />)}</>}
@@ -119,6 +120,28 @@ function MemberCard({ member }: { member: GlossaryMember }) {
       <button type="button" aria-expanded={showSource} onClick={() => setShowSource((shown) => !shown)} className="text-xs font-semibold text-blue-700 hover:underline dark:text-blue-300">{showSource ? "Hide" : "Show"} source evidence ({member.evidence.length}) for {member.name}</button>
       {showSource && member.evidence.map((evidence) => <div key={evidence.id} className="mt-2"><div className="break-all text-xs text-zinc-500">{evidence.repositoryId} · <Mono>{evidence.commitSha}</Mono></div><SourceView evidence={evidence} /></div>)}
     </div>}
+  </Card>;
+}
+
+function ConceptIntegrations({ concept }: { concept: GlossaryConcept }) {
+  return <Card>
+    <H2>HTTP integration leads</H2>
+    <Muted className="mb-2 text-xs">Matched from declaration and usage symbols. A match is a lead, not proof that values cross the request.</Muted>
+    {concept.integrations.length === 0 ? <Note>No matching HTTP request symbols were found in the selected revisions.</Note> : (
+      <ul className="space-y-3">
+        {concept.integrations.map((link) => <li key={`${link.request.repositoryId}:${link.request.commitSha}:${link.request.from.key}:${link.request.evidence[0]?.id ?? ""}`} className="border-t border-zinc-100 pt-2 first:border-0 first:pt-0 dark:border-zinc-800">
+          <div className="font-semibold">{link.group} · {String(link.request.props?.method ?? "HTTP")} · {link.request.to?.name ?? "dynamic target"}</div>
+          <div className="text-xs text-zinc-500">
+            Request from <a href={symbolHref(link.request.from.key)} className="text-blue-700 hover:underline dark:text-blue-300">{link.request.from.name}</a>
+            {link.sourcePath && <> · <Mono>{link.sourcePath}</Mono></>}
+          </div>
+          {link.candidates.length > 0 && <div className="mt-1 text-xs">Endpoint candidates: {link.candidates.map((candidate, index) => <span key={candidate.key}>
+            {index > 0 && ", "}<a href={symbolHref(candidate.key)} className="text-blue-700 hover:underline dark:text-blue-300">{candidate.name}</a>
+          </span>)}</div>}
+          <div className="mt-1 text-xs text-zinc-500">{link.note}</div>
+        </li>)}
+      </ul>
+    )}
   </Card>;
 }
 
