@@ -52,6 +52,10 @@ Existing implementation claims are not converted into qualification receipts.
 
 The bounded Markdown adapter reads one H1 and one scalar Status metadata value;
 the bounded frontmatter adapter supports scalar metadata, not arbitrary YAML.
+Architecture-phase portability evidence added a configured canonical JSON
+collection profile: generated Markdown elsewhere is not presumed authoritative.
+Its explicit field/direction mapping and limits are specified in the architecture
+evaluation; no real-workspace qualification is inferred from synthetic coverage.
 Original metadata is retained. Ambiguous/malformed supported metadata fails;
 unknown scalar fields remain visible as uninterpreted metadata, not acceptance.
 No Git history resolver, network dereference, OWL reasoner, graph database,
@@ -77,6 +81,7 @@ Only new `schema/decisions`, `config/decisions`, `scripts/decisions`, focused
 tests/fixtures, this research family and proposed MADR-0028 belong to this worker.
 The integration owner alone changes build/CI, main index, changelog, handoff and
 existing lifecycle MADRs. Existing Markdown remains authoritative.
+This authority statement is repository-local, not imposed on other source profiles.
 
 Branch receipt supplied by lead: authenticated Tigon32 can push/triage but cannot
 administer/maintain; automatic deletion PATCH returned 404, readback remained

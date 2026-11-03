@@ -1,6 +1,7 @@
 export const RELATIONS = Object.freeze({
   'references': { cyclic: true, symmetric: false, transitive: false, coverage: 'partial' },
   'related-to': { cyclic: true, symmetric: true, transitive: false, coverage: 'partial' },
+  'related-from': { cyclic: true, symmetric: false, transitive: false, coverage: 'partial' },
   'depends-on': { cyclic: false, symmetric: false, transitive: false, coverage: 'partial' },
   'extends': { cyclic: false, symmetric: false, transitive: false, coverage: 'partial' },
   'scoped-amends': { cyclic: true, symmetric: false, transitive: false, coverage: 'partial' },

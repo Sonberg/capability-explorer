@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { key, relationError, validateCycles } from './semantics.mjs';
+import { strictJSON } from './json-source.mjs';
 
-export const readJSON = path => JSON.parse(readFileSync(path, 'utf8'));
+export const readJSON = path => strictJSON(readFileSync(path, 'utf8'));
 export function specification(contract) {
   assert.equal(contract.version, 'decision-ledger.v1', 'specification version');
   assert.deepEqual(contract.requirements.map(r => r.id).sort(), [1, 2, 3, 4, 5, 6, 7], 'seven unique obligations');

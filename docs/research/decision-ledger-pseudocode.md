@@ -1,11 +1,13 @@
 # Portable decision ledger: executable pseudocode
 
-Status: proposed bounded algorithm. Markdown remains authoritative.
+Status: proposed bounded algorithm. Configured canonical sources retain authority;
+this repository authors Markdown, while another profile may author JSON.
 
 ```text
 load config and sidecar -> reject unknown keys, versions, adapters, vocabularies
 resolve relative project roots beneath explicit caller root; forbid symlink escape
 discover configured .md files, excluding only explicitly named navigation files
+  or configured canonical JSON collections; archive/generated exclusions explicit
   -> fail on unreadable input, duplicate locator or file/byte budget exhaustion
 for every source:
   decode strict UTF-8; extract a single H1 and bounded header/frontmatter scalars
@@ -42,6 +44,8 @@ symmetric for navigation, but its source assertion is emitted once, not as an
 invented reverse assertion. No relation is promoted to a transitive assertion.
 `extends` adds a decision without replacing it: not taxonomy `broader`.
 `references` is documentary, not an ordering constraint.
+Source-directed `related-from` is distinct from symmetric `related-to`; configured
+inverse supersession declarations corroborate one edge rather than duplicating it.
 `full-supersedes` replaces the whole target scope; it is not identity, including
 across projects. `scoped-amends` changes part of a decision without declaring a
 winner. `scoped-overrides` takes precedence only in the explicitly named scope.
