@@ -48,8 +48,8 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
 
     private CSharpExtractor.SourceFile Source(SyntaxTree tree, SemanticModel model) => new(relative(tree.FilePath), tree.GetText().ToString(), tree, model);
 
-    /// <summary>A connection name plus the place it is configured. Evidence is only recorded when the key actually uses it.</summary>
-    private sealed record Conn(string Name, CSharpExtractor.SourceFile? File, SyntaxNode? Node, string Assembly)
+    /// <summary>A connection source and, for an unresolved EF store, its proven context type. Evidence is recorded when the key uses it.</summary>
+    private sealed record Conn(string Name, CSharpExtractor.SourceFile? File, SyntaxNode? Node, string Assembly, string? StoreOwner = null)
     {
         public string? Site(ArtifactBuilder b) => File is null ? null : File.Evidence(b, Node!);
     }
@@ -455,7 +455,10 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
 
     // ---------------------------------------------------------------- Entity Framework Core
 
-    private sealed record EfModel(Dictionary<string, (string Table, List<(CSharpExtractor.SourceFile, SyntaxNode)> Sites, string Mapping)> Entities, Dictionary<string, string> DbSets, Dictionary<string, Conn> Connections, Conn Fallback, string? Schema);
+    private sealed record DbContextOwner(string Key, string Assembly, string Type);
+
+    private sealed record EfModel(Dictionary<string, (string Table, List<(CSharpExtractor.SourceFile, SyntaxNode)> Sites, string Mapping)> Entities, Dictionary<string, string> DbSets, Dictionary<string, Conn> Connections,
+        Dictionary<string, Dictionary<string, Conn>> ContextConnections, Conn Fallback, string? Schema);
 
     private EfModel? _ef;
 
@@ -475,7 +478,17 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
         string? schema = null;
         Conn? untyped = null;
         var registrations = new Dictionary<string, List<Conn>>(StringComparer.Ordinal);
-        var entityContext = new Dictionary<string, (string Key, string Assembly)>(StringComparer.Ordinal);
+        var entityContext = new Dictionary<string, List<DbContextOwner>>(StringComparer.Ordinal);
+        void Own(string entity, INamedTypeSymbol contextType)
+        {
+            var owner = new DbContextOwner(keys.Of(contextType), contextType.ContainingAssembly.Name, contextType.ToDisplayString());
+            var owners = entityContext.TryGetValue(entity, out var known) ? known : entityContext[entity] = [];
+            if (!owners.Contains(owner))
+            {
+                owners.Add(owner);
+            }
+        }
+
         var all = context.Trees().Select(t => new CSharpExtractor.SourceFile(relative(t.Tree.FilePath), t.Tree.GetText().ToString(), t.Tree, t.Model)).ToList();
 
         foreach (var f in all)
@@ -520,7 +533,10 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                     var key = keys.Of(entity);
                     dbSets[keys.Of(dbSet)] = key;
                     entities.TryAdd(key, (dbSet.Name, [(f, prop)], "convention"));
-                    entityContext.TryAdd(key, (keys.Of(dbSet.ContainingType), dbSet.ContainingAssembly.Name));
+                    if (IsDbContext(dbSet.ContainingType))
+                    {
+                        Own(key, dbSet.ContainingType);
+                    }
                 }
             }
 
@@ -553,7 +569,7 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                     entities[keys.Of(entity)] = (s is null ? table.Value : $"{s}.{table.Value}", [(f, inv)], container ? "container" : "fluent");
                     if (inv.Ancestors().OfType<ClassDeclarationSyntax>().FirstOrDefault() is { } host && f.Model.GetDeclaredSymbol(host) is { } hostType && IsDbContext(hostType))
                     {
-                        entityContext.TryAdd(keys.Of(entity), (keys.Of(hostType), hostType.ContainingAssembly.Name));
+                        Own(keys.Of(entity), hostType);
                     }
                 }
             }
@@ -566,24 +582,48 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
             entities[k] = (!table.Contains('.', StringComparison.Ordinal) && schema is not null && mapping != "container" ? $"{schema}.{table}" : table, sites, mapping);
         }
 
-        // A context's connection is the one its registration names; disagreeing registrations prove nothing, so the context's own project anchors "unknown".
-        Conn Resolve(string contextKey, string contextAssembly) =>
-            registrations.GetValueOrDefault(contextKey) is { } named
-                ? named.Select(c => c.Name).Distinct().Count() == 1 ? named.OrderBy(c => c.Assembly, StringComparer.Ordinal).First() : new Conn("unknown", null, null, contextAssembly)
-                : untyped ?? new Conn("unknown", null, null, contextAssembly);
-        var contexts = entityContext.Values.Distinct().ToList();
+        // Explicit connection names keep their existing identity; unresolved stores use the owning context type.
+        Conn Resolve(DbContextOwner owner)
+        {
+            var registered = registrations.GetValueOrDefault(owner.Key);
+            if (registered is not null)
+            {
+                return registered.Select(c => c.Name).Distinct().Count() == 1
+                    ? registered.OrderBy(c => c.Assembly, StringComparer.Ordinal).First()
+                    : new Conn("unknown", null, null, owner.Assembly, owner.Type);
+            }
+
+            if (untyped is not null)
+            {
+                return untyped.File is null && untyped.Node is null ? untyped with { StoreOwner = owner.Type } : untyped;
+            }
+
+            return new Conn("unknown", null, null, owner.Assembly, owner.Type);
+        }
+
+        var contexts = entityContext.Values.SelectMany(o => o).Distinct().ToList();
         var connections = new Dictionary<string, Conn>(StringComparer.Ordinal);
+        var contextConnections = new Dictionary<string, Dictionary<string, Conn>>(StringComparer.Ordinal);
         foreach (var k in entities.Keys)
         {
             // Entities configured away from a context (IEntityTypeConfiguration, [Table]) belong to the only context there is.
-            if (entityContext.TryGetValue(k, out var owner) || contexts.Count == 1 && (owner = contexts[0]) != default)
+            var owners = entityContext.GetValueOrDefault(k) ?? (contexts.Count == 1 ? [contexts[0]] : []);
+            if (owners.Count == 0)
             {
-                connections[k] = Resolve(owner.Key, owner.Assembly);
+                continue;
             }
+
+            var byContext = owners.ToDictionary(o => o.Key, Resolve, StringComparer.Ordinal);
+            var distinct = byContext.Values.DistinctBy(StoreIdentity).ToList();
+            contextConnections[k] = byContext;
+            // Without a receiver context, an entity shared by contexts with different stores belongs to none of them.
+            connections[k] = distinct.Count == 1 ? distinct[0] : new Conn("unknown", null, null, k.Split('|') is [_, _, var assembly, ..] ? assembly : Assembly, "ambiguous");
         }
 
-        return _ef = new EfModel(entities, dbSets, connections, untyped ?? new Conn("unknown", null, null, Assembly), schema);
+        return _ef = new EfModel(entities, dbSets, connections, contextConnections, untyped ?? new Conn("unknown", null, null, Assembly), schema);
     }
+
+    private static (string, string, string?) StoreIdentity(Conn connection) => (connection.Name, connection.Assembly, connection.StoreOwner);
 
     private static bool IsDbContext(INamedTypeSymbol type)
     {
@@ -598,7 +638,11 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
         return false;
     }
 
-    private string TableKey(Conn connection, string table) => $"sql|{Unbound("conn", connection.Name, connection.Assembly)}|{table}";
+    private string TableKey(Conn connection, string table)
+    {
+        var identity = connection.StoreOwner is null ? connection.Name : $"unknown;context={connection.StoreOwner}";
+        return $"sql|{Unbound("conn", identity, connection.Assembly)}|{table}";
+    }
 
     // Outermost first, e.g. ["Supabase", "Postgrest"]: lets an access be traced to the package that provides the client.
     private static List<string> NamespaceChain(ITypeSymbol type)
@@ -613,8 +657,9 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
     }
 
     // No context owns the entity: anchor "unknown" on the project that declares it, so every caller lands on the same node.
-    private static Conn ConnFor(EfModel ef, string entity) =>
-        ef.Connections.GetValueOrDefault(entity) ?? (ef.Fallback.Name == "unknown" && ef.Fallback.File is null && entity.Split('|') is [_, _, var assembly, ..] ? ef.Fallback with { Assembly = assembly } : ef.Fallback);
+    private static Conn ConnFor(EfModel ef, string entity, string? contextKey = null) =>
+        (contextKey is null ? null : ef.ContextConnections.GetValueOrDefault(entity)?.GetValueOrDefault(contextKey))
+        ?? ef.Connections.GetValueOrDefault(entity) ?? (ef.Fallback.Name == "unknown" && ef.Fallback.File is null && entity.Split('|') is [_, _, var assembly, ..] ? ef.Fallback with { Assembly = assembly } : ef.Fallback);
 
     private static bool IsEfModelConfiguration(IMethodSymbol method)
     {
@@ -638,15 +683,18 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                 continue;
             }
 
-            var evidence = sites.Select(s => s.Item1.Evidence(b, s.Item2)).ToList();
-            var conn = ConnFor(ef, entity);
-            if (conn.Site(b) is { } connectionSite)
+            var stores = ef.ContextConnections.TryGetValue(entity, out var byContext) ? byContext.Values.DistinctBy(StoreIdentity).ToList() : [ConnFor(ef, entity)];
+            foreach (var conn in stores)
             {
-                evidence.Add(connectionSite);
-            }
+                var evidence = sites.Select(s => s.Item1.Evidence(b, s.Item2)).ToList();
+                if (conn.Site(b) is { } connectionSite)
+                {
+                    evidence.Add(connectionSite);
+                }
 
-            b.Edge(entity, "MAPS_TO", TableKey(conn, table), evidence, "rule", "unresolved", "configuration", EfRule,
-                new JsonObject { ["mapping"] = mapping, ["connectionName"] = conn.Name, ["table"] = table });
+                b.Edge(entity, "MAPS_TO", TableKey(conn, table), evidence, "rule", "unresolved", "configuration", EfRule,
+                    new JsonObject { ["mapping"] = mapping, ["connectionName"] = conn.Name, ["table"] = table });
+            }
         }
 
         // Generic repositories: methods on T that read or write db.Set<T>().
@@ -671,8 +719,9 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                     && ef.DbSets.TryGetValue(keys.Of(prop), out var entity) && ef.Entities.TryGetValue(entity, out var mapped) && OwnerKey(f, access) is { } owner)
                 {
                     var writes = access.Parent is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Add" or "AddRange" or "Remove" or "Update" or "AddAsync" };
-                    b.Edge(owner, writes ? "WRITES" : "READS", TableKey(ConnFor(ef, entity), mapped.Table), [f.Evidence(b, access)], "rule", "unresolved", "configuration", EfRule,
-                        new JsonObject { ["via"] = keys.Of(prop.ContainingType), ["connectionName"] = ConnFor(ef, entity).Name });
+                    var conn = ConnFor(ef, entity, keys.Of(prop.ContainingType));
+                    b.Edge(owner, writes ? "WRITES" : "READS", TableKey(conn, mapped.Table), [f.Evidence(b, access)], "rule", "unresolved", "configuration", EfRule,
+                        new JsonObject { ["via"] = keys.Of(prop.ContainingType), ["connectionName"] = conn.Name });
                 }
                 else if (node is InvocationExpressionSyntax inv && f.Model.GetSymbolInfo(inv).Symbol is IMethodSymbol target
                     && generic.TryGetValue(keys.Of(target.OriginalDefinition), out var relation)
