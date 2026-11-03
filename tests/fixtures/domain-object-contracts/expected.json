@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "expectations": [
+    { "id": "public-projection", "classification": "integration-event", "exposure": "approved", "grade": "gold", "state": "graded", "relation": "explicit-projection" },
+    { "id": "orm-exposure", "classification": "integration-event", "exposure": "policy-violation", "grade": null, "state": "blocked", "relation": "direct-entity-serialization" },
+    { "id": "ambiguous-shared-word-two-contexts", "classification": "unknown", "exposure": "unknown", "grade": null, "state": "unassessed", "relation": "none" },
+    { "id": "benign-envelope-field", "classification": "integration-event", "exposure": "approved", "grade": "silver", "state": "graded", "relation": "none" },
+    { "id": "sensitive-nested-field", "classification": "integration-event", "exposure": "needs-review", "grade": null, "state": "insufficient-evidence", "relation": "none" },
+    { "id": "intentional-event-carried-state", "classification": "integration-event", "exposure": "approved", "grade": "silver", "state": "graded", "relation": "none" },
+    { "id": "command-as-event", "classification": "command", "exposure": "unknown", "grade": null, "state": "blocked", "relation": "none" },
+    { "id": "domain-to-integration-projection", "classification": "integration-event", "exposure": "approved", "grade": "silver", "state": "graded", "relation": "explicit-projection" },
+    { "id": "unsupported-dynamic-recursion", "classification": "unknown", "exposure": "unknown", "grade": null, "state": "unassessed", "relation": "none" }
+  ]
+}

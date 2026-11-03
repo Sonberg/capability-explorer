@@ -11,6 +11,12 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Proposed source-bound business-object/domain/integration-event assessment
+  research, gap analysis, separate maturity/exposure profiles, draft schema and
+  nine synthetic cases (MADR-0027). Offline contract tests cover hard ceilings,
+  uncertainty and stale reviews; no semantic extractor, production grade,
+  measured accuracy or security certification is introduced.
+
 - Linked MADR title/status ledger, RAG relationship map and source-backed edge
   ledger. Proposed MADR-0026 defines bounded SME/adversary/advisory/judge reviews,
   explicit acceptance authority, evidence receipts and atomic CRUD lifecycle

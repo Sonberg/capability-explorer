@@ -12,6 +12,14 @@ endif
 test-frontend-contracts:
 	scripts/sandbox --offline node node scripts/research/check-frontend-contracts.mjs all
 
+.PHONY: test-domain-object-contracts
+ifeq ($(EXECUTION),sandbox)
+ci: test-domain-object-contracts
+endif
+
+test-domain-object-contracts:
+	scripts/sandbox --offline node node scripts/research/check-domain-object-contracts.mjs all
+
 platform-plan-check:
 ifeq ($(PHASE),)
 	scripts/sandbox --offline node node scripts/check-platform-contract-plan.mjs foundation

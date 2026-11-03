@@ -1,5 +1,21 @@
 # Handoff: remaining work
 
+## Issue #53: business-object and event assessment research
+
+[Specification](research/domain-object-specification.md), proposed
+[MADR-0027](adr/0027-domain-object-event-assessment.md), source-bound gap analysis,
+draft schema/rubric and nine synthetic cases define separate object, domain-event
+and integration-event profiles. `make test-domain-object-contracts` runs 35
+focused contract tests offline as part of sandbox CI. Exposure verdicts stay
+independent, unknown is not bronze, and current reviews bind assessed inputs.
+
+This is not a semantic extractor, production grader, exposure-policy enforcement
+or measured real-corpus accuracy. ce.v1/runtime/dependencies remain unchanged.
+The [gold-set and pilot protocol](research/domain-object-completion.md) requires
+authorized frozen sources, domain/context/glossary and policy owners,
+independent reviewers, thresholds and budgets before a pilot can start.
+MADR-0027 remains proposed; #23, #24, #43 and #54 retain their separate gates.
+
 ## Issue #42: language-neutral frontend and discovery research
 
 [Research and acceptance](research/language-neutral-frontends.md), proposed
@@ -15,7 +31,7 @@ pinned toolchain/offline dependencies, independent gold inventories and explicit
 thresholds, budgets and rollback. No language/parser adoption, schema migration,
 analyzed build execution or new service follows from this proposal. #23's corpus
 gap and #24's release/security gate remain. Business-object/domain/integration
-event maturity and exposure research is separately parked in #53.
+event maturity and exposure research is separately described above for #53.
 
 ## Issue #37: local analysis lifecycle
 
