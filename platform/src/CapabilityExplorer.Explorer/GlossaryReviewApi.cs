@@ -85,7 +85,7 @@ public static class GlossaryReviewApi
             await Write(request, service, async store => Result(await store.DeleteIssueAsync(id, body.ExpectedVersion, body.Reviewer, ct)), ct));
     }
 
-    private static ViewIndex Selected(ExplorerSnapshot snapshot, string? cap, string? view)
+    internal static ViewIndex Selected(ExplorerSnapshot snapshot, string? cap, string? view)
     {
         var index = snapshot.Index;
         var caps = snapshot.Capabilities;
@@ -110,7 +110,7 @@ public static class GlossaryReviewApi
         return index.View(view, scope);
     }
 
-    private static async Task<IResult> Write(HttpRequest request, GlossaryReviewService service, Func<GlossaryStore, Task<IResult>> action, CancellationToken ct)
+    internal static async Task<IResult> Write(HttpRequest request, GlossaryReviewService service, Func<GlossaryStore, Task<IResult>> action, CancellationToken ct)
     {
         if (!GlossaryWriteGuard.Allowed(request)) return Error(403, "Glossary writes require a trusted local same-origin JSON request and X-CE-Glossary-Write: 1.");
         if (!service.Configured) return Error(503, "Glossary review is read-only without CE_DATABASE.");
@@ -124,7 +124,7 @@ public static class GlossaryReviewApi
         _ => Results.Ok(result),
     };
 
-    private static async Task<IResult> Safe(Func<Task<IResult>> action)
+    internal static async Task<IResult> Safe(Func<Task<IResult>> action)
     {
         try { return await action(); }
         catch (ArgumentException e) { return Error(400, e.Message); }

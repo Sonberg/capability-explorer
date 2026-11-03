@@ -11,6 +11,12 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Explicit, optional grounded glossary proposals with versioned input/model
+  caching, recorded-model validation and PostgreSQL-backed human acceptance or
+  rejection. Selected occurrence roles become reviewed assertions atomically;
+  suggested relationships never become source facts. Deterministic candidates
+  remain available without a model, and review is read-only without a database.
+
 - Host-local analysis run and attempt journals, atomic admission, exclusive
   execution, guarded publication and conservative crash recovery. Analysis now
   requires a host .NET 10 runtime; incompatible host/container lock domains fail

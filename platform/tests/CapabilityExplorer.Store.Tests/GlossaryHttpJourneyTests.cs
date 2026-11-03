@@ -153,11 +153,13 @@ internal sealed class GlossaryHttpFactory : WebApplicationFactory<ExplorerIndex>
     private readonly string _directory = Directory.CreateTempSubdirectory("ce-glossary-http-host").FullName;
     private readonly string _connection;
     private readonly string _artifacts;
+    private readonly string? _recordings;
 
-    public GlossaryHttpFactory(string connection, string? artifacts = null)
+    public GlossaryHttpFactory(string connection, string? artifacts = null, string? recordings = null)
     {
         _connection = connection;
         _artifacts = artifacts ?? Fixtures.ExpectedDirectory;
+        _recordings = recordings;
         File.WriteAllText(Path.Combine(_directory, "capabilities.json"), JsonSerializer.Serialize(new
         {
             capabilities = new[] { new { id = "forecast-only", name = "Forecast only", repositories = new[]
@@ -173,7 +175,8 @@ internal sealed class GlossaryHttpFactory : WebApplicationFactory<ExplorerIndex>
         builder.UseSetting("capabilities", Path.Combine(_directory, "capabilities.json"));
         builder.UseSetting("workspace", Path.Combine(_directory, "workspace"));
         builder.UseSetting("requests", Path.Combine(_directory, "requests"));
-        builder.UseSetting("interpretation:provider", "none");
+        builder.UseSetting("interpretation:provider", _recordings is null ? "none" : "recorded");
+        if (_recordings is not null) builder.UseSetting("interpretation:recordings", _recordings);
     }
 
     protected override void Dispose(bool disposing)
