@@ -81,7 +81,7 @@ internal static class AnalysisPublication
         var result = await ImportCommand.RunAnalysisAsync(database,files,options,run.RunId,run.AttemptId!,
             run.AcceptedInputsHash,run.ManifestHash!,expectations);
         if (result != 0) throw new InvalidOperationException("database publication not confirmed");
-        var receipt = await new SnapshotStore(database).ReconcilePublicationAttemptAsync(run.RunId,run.AttemptId!);
+        var receipt = await new SnapshotStore(database).ConfirmPublicationAttemptAsync(run.RunId,run.AttemptId!,expectations);
         var orderedHashes = string.Join('\n',canonicalHashes.Order(StringComparer.Ordinal));
         var bindingIdentity = run.BindingsPath is null ? "no-bindings" : AnalysisWorkerCommand.HashText(
             BindingStore.ImportedSnapshotIdentityVersion + "\n" + Binder.RuleName + "\n" + Binder.RuleVersion + "\n" + orderedHashes + "\n" + BindingFile.Load(run.BindingsPath).Sha256);

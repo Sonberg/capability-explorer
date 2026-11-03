@@ -21,8 +21,32 @@ public sealed partial class SnapshotStore
 {
     public const int MaximumReconciliationArtifacts = 1000;
 
-    public async Task<PublicationReconciliationReport> ReconcilePublicationAttemptAsync(string runId,
-        string attemptId, CancellationToken cancellationToken = default)
+    public Task<PublicationReconciliationReport> ReconcilePublicationAttemptAsync(string runId,
+        string attemptId, CancellationToken cancellationToken = default) =>
+        ReadPublicationAttemptAsync(runId, attemptId, MaximumReconciliationArtifacts, 256 * 1024, cancellationToken);
+
+    internal async Task<PublicationReconciliationReport> ConfirmPublicationAttemptAsync(string runId,
+        string attemptId, IReadOnlyList<PublicationArtifactExpectation> expectedArtifacts,
+        CancellationToken cancellationToken = default)
+    {
+        if (expectedArtifacts.Count is < 1 or > MaximumArtifacts)
+            throw new ArgumentException("invalid publication confirmation selection", nameof(expectedArtifacts));
+        long identityBytes = 0;
+        foreach (var a in expectedArtifacts)
+            foreach (var value in new[] { a.RepositoryId, a.CommitSha, a.UnitPath, a.ExtractorName,
+                a.ExtractorVersion, a.ConfigHash, a.ContentSha256, a.SourceSha256 })
+                identityBytes = checked(identityBytes + Encoding.UTF8.GetByteCount(value));
+        var report = await ReadPublicationAttemptAsync(runId, attemptId, expectedArtifacts.Count,
+            identityBytes, cancellationToken);
+        var actual = report.Artifacts.Select(a => new PublicationArtifactExpectation(a.Index,
+            a.RepositoryId, a.CommitSha, a.UnitPath, a.ExtractorName, a.ExtractorVersion, a.ConfigHash,
+            a.ContentSha256, a.SourceSha256)).ToArray();
+        return SelectionHash(actual) == SelectionHash(expectedArtifacts)
+            ? report : report with { Outcome = "unresolved", ReceiptState = "conflicting" };
+    }
+
+    private async Task<PublicationReconciliationReport> ReadPublicationAttemptAsync(string runId,
+        string attemptId, int maximumArtifacts, long maximumIdentityBytes, CancellationToken cancellationToken)
     {
         if (runId.Length != 32 || attemptId.Length != 32 ||
             runId.Any(c => !(c is >= '0' and <= '9' or >= 'a' and <= 'f')) ||
@@ -87,7 +111,7 @@ public sealed partial class SnapshotStore
         var receiptConflict = false;
         if (candidateIdentity is { Length: > 1024 } || actualCandidateIdentity is { Length: > 1024 })
             throw new InvalidDataException("publication reconciliation exceeds identity budget");
-        if (expectedCount is < 1 or > MaximumReconciliationArtifacts)
+        if (expectedCount < 1 || expectedCount > maximumArtifacts)
             throw new InvalidDataException("publication reconciliation exceeds report artifact budget");
         await using (var budget = new NpgsqlCommand("""
             select count(*),coalesce(sum(octet_length(repository_id)+octet_length(commit_sha)+
@@ -99,7 +123,7 @@ public sealed partial class SnapshotStore
             budget.Parameters.AddWithValue(runId); budget.Parameters.AddWithValue(attemptId);
             await using var reader = await budget.ExecuteReaderAsync(cancellationToken);
             await reader.ReadAsync(cancellationToken);
-            if (reader.GetInt64(0) > MaximumReconciliationArtifacts || reader.GetDecimal(1) > 256 * 1024)
+            if (reader.GetInt64(0) > maximumArtifacts || reader.GetDecimal(1) > maximumIdentityBytes)
                 throw new InvalidDataException("publication reconciliation exceeds report data budget");
         }
         await using (var query = new NpgsqlCommand("""
@@ -113,15 +137,16 @@ public sealed partial class SnapshotStore
             left join artifact existing on existing.repository_id=i.repository_id and existing.commit_sha=i.commit_sha
                 and existing.unit_path=i.unit_path and existing.extractor_name=i.extractor_name
                 and existing.extractor_version=i.extractor_version and existing.config_hash=i.config_hash
-            where i.run_id=$1 and i.attempt_id=$2 order by i.artifact_index limit 1001
+            where i.run_id=$1 and i.attempt_id=$2 order by i.artifact_index limit $3
             """, connection, transaction))
         {
             query.Parameters.AddWithValue(runId);
             query.Parameters.AddWithValue(attemptId);
+            query.Parameters.AddWithValue(maximumArtifacts + 1);
             await using var reader = await query.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                if (artifacts.Count >= MaximumReconciliationArtifacts)
+                if (artifacts.Count >= maximumArtifacts)
                     throw new InvalidDataException("publication reconciliation exceeds report artifact budget");
                 var index = reader.GetInt32(0);
                 var repository = reader.GetString(1);
@@ -165,14 +190,15 @@ public sealed partial class SnapshotStore
                 actualCandidateIdentity != candidateIdentity ||
                 artifacts.Any(a => a.Outcome is not ("imported" or "reused"))) receiptConflict = true;
             await using var membership = new NpgsqlCommand("""
-                select artifact_id from analysis_snapshot_artifact where snapshot_id=$1 order by artifact_id limit 1001
+                select artifact_id from analysis_snapshot_artifact where snapshot_id=$1 order by artifact_id limit $2
                 """, connection, transaction);
             membership.Parameters.AddWithValue(candidateId.Value);
+            membership.Parameters.AddWithValue(maximumArtifacts + 1);
             var selected = new List<long>();
             await using var reader = await membership.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                if (selected.Count >= MaximumReconciliationArtifacts)
+                if (selected.Count >= maximumArtifacts)
                     throw new InvalidDataException("publication reconciliation exceeds membership budget");
                 selected.Add(reader.GetInt64(0));
             }

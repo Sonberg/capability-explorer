@@ -282,6 +282,12 @@ identity-data budget and **1 MiB** encoded JSON output ceiling. Over-budget
 selections, corrupt oversized query results or escaped output fail explicitly
 as `unresolved` with `report-budget-exceeded`, without partial report success,
 repair or retry authority. This report limit does not reduce the import limit.
+Core publication confirmation uses a separate internal read-only profile bounded
+by the exact in-memory selection (up to the existing 100,000-artifact publication
+maximum), not the operator report row/data budget. It verifies the same durable
+identity, artifact membership and attempt evidence without serializing an
+operator report; a valid large commit therefore does not lose host confirmation
+merely because its diagnostic report would exceed the operator ceiling.
 Malformed host receipts fail as unreadable/conflicting; failed terminal-receipt
 recording emits a bounded diagnostic rather than silently implying certainty.
 
