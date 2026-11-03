@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { lstatSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ACCEPTANCE_IDS = [
@@ -376,7 +377,12 @@ export function run(argv, root) {
     errors.push(...validateEvidenceAnchors(contract, root, argv[0] === 'all'));
   }
   if (errors.length) throw new Error(errors.join('\n'));
-  return `${argv[0]}: ${ACCEPTANCE_IDS.length} issue obligations traced; constraints checked; no implementation or semantic-accuracy claim`;
+  const summary = `${argv[0]}: ${ACCEPTANCE_IDS.length} issue obligations traced; constraints checked; no implementation or semantic-accuracy claim`;
+  if (argv[0] !== 'all') return summary;
+  const tests = spawnSync(process.execPath, ['--test', 'tests/frontend-contracts.test.mjs'],
+    { cwd: root, encoding: 'utf8' });
+  if (tests.error || tests.status !== 0) throw new Error(`focused refinement tests failed:\n${tests.stdout ?? ''}${tests.stderr ?? tests.error?.message ?? ''}`);
+  return `${summary}\n${tests.stdout.trim()}`;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

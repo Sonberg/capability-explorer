@@ -102,6 +102,22 @@ Core rules:
    consumer's schema. Rollback restores a previously accepted producer, profile
    and consumer together; it never reinterprets new bytes as old.
 
+## Executable research evidence
+
+`tests/frontend-contracts.test.mjs` validates representative instances against a
+strict supported subset of the proposed JSON Schema drafts and executes a
+small fixture-only policy oracle against the independently authored expected
+inventories. The oracle exercises nested ownership, same-unit overlap
+deduplication, missing links, ambiguity, conflicts, depth/file/byte limits,
+unknown profiles/capabilities, traversal and symlink rejection. Canonical
+inventory bytes sort object keys and exclude operational timestamps.
+
+This is an executable specification for the sealed synthetic cases only. It
+does not walk a repository filesystem, discover projects, load a compiler,
+resolve semantics, or establish that a real layout was scanned. `all` invokes
+the focused tests as a package gate; the separately required `node --test`
+command remains the direct test evidence.
+
 ## Safety, reproducibility and future pilot
 
 Discovery and adapter requests bind a full repository revision and an immutable

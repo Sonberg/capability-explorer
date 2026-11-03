@@ -138,7 +138,8 @@ for a future frontend.
 
 ## Conformance boundary
 
-Fixture inventories are authored independently from the reference algorithm.
-The oracle checks policy cases and canonical ordering only. It does not call an
+Fixture inventories are authored independently from the fixture-only oracle in
+`tests/frontend-contracts.test.mjs`. It checks those declared policy cases and
+canonical ordering only. It does not walk a repository filesystem, call an
 extractor, parse real compiler projects, prove reference resolution, establish
 precision/recall, validate source spans or certify every repository layout.

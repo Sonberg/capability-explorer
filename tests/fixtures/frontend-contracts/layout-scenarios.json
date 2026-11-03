@@ -145,10 +145,10 @@
     },
     {
       "id": "budget-exceeded",
-      "budgets": { "maxDepth": 4, "maxCandidates": 2, "maxFiles": 1, "maxBytes": 10 },
+      "budgets": { "maxDepth": 1, "maxCandidates": 2, "maxFiles": 8, "maxBytes": 1024 },
       "entries": [
         { "path": "unit.json", "kind": "marker", "bytes": 5 },
-        { "path": "src/a.ts", "kind": "source", "bytes": 8 },
+        { "path": "src/deep/a.ts", "kind": "source", "bytes": 8 },
         { "path": "src/b.ts", "kind": "source", "bytes": 8 }
       ],
       "units": [{ "root": ".", "markerPath": "unit.json", "id": "web", "language": "typescript", "capabilities": ["declarations"], "includePatterns": ["**/*.ts"], "references": [] }]
