@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "issue": 53,
+  "scope": "bounded-domain-object-event-assessment-research",
+  "baseline": "ceba8797eab7b465f214ac02847f4ee90b43d34d",
+  "acceptance": [
+    {
+      "id": "DO01",
+      "title": "Define terms, context ownership, evidence classes, separate profiles, and assessment alternatives",
+      "evidencePath": "docs/adr/0027-domain-object-event-assessment.md",
+      "evidenceAnchor": "Decision and evidence-class sections",
+      "positiveCase": "Business objects, internal domain events, integration projections, envelopes, and commands remain distinct.",
+      "negativeCase": "A type suffix, topic name, or in-process handler alone does not classify business meaning or public exposure."
+    },
+    {
+      "id": "DO02",
+      "title": "Map current supported facts and declarations to the proposed inventory with limitations",
+      "evidencePath": "docs/research/domain-object-architecture.md",
+      "evidenceAnchor": "Source-bound inventory gap table",
+      "positiveCase": "C#, TypeScript, SQL, ce.v1, and reviewed glossary evidence have exact base-revision citations.",
+      "negativeCase": "Dynamic SQL, unsupported serialization, recursive shapes, and missing runtime routing remain unknown."
+    },
+    {
+      "id": "DO03",
+      "title": "Draft strict versioned identity, nested-shape, ambiguity, exposure, applicability, ceiling, and stale-review contract",
+      "evidencePath": "schema/research/domain-object-assessment.schema.json",
+      "evidenceAnchor": "$defs and top-level required fields",
+      "positiveCase": "Source/tool/rubric/glossary/context/policy identities are separately versioned and assessment inputs are explicit.",
+      "negativeCase": "Unknown fields, stale semantic reviews, absent evidence, and invalid profile links cannot be silently accepted."
+    },
+    {
+      "id": "DO04",
+      "title": "Seal nine independent synthetic expected cases for projection, exposure, ambiguity, events, commands, and unsupported shapes",
+      "evidencePath": "tests/fixtures/domain-object-contracts/expected.json",
+      "evidenceAnchor": "cases array",
+      "positiveCase": "Each named case has a pre-authored expected classification, exposure verdict, grade state, and relation outcome.",
+      "negativeCase": "Fixtures are not source-extractor outputs, measured accuracy, real exposure findings, or runtime-grade evidence."
+    },
+    {
+      "id": "DO05",
+      "title": "Reject unsafe mutations and prove stable canonical outputs",
+      "evidencePath": "tests/domain-object-contracts.test.mjs",
+      "evidenceAnchor": "mutation and determinism tests",
+      "positiveCase": "Every valid synthetic case evaluates to its independent oracle and repeated canonical bytes are identical.",
+      "negativeCase": "Invented context/field links, false propagation, false no-leakage, gate averaging, unknown-as-bronze, stale glossary, and envelope-only promotion fail."
+    },
+    {
+      "id": "DO06",
+      "title": "Define an expert-reviewed gold set and honest evaluation measures",
+      "evidencePath": "docs/research/domain-object-completion.md",
+      "evidenceAnchor": "Gold-set protocol and metrics",
+      "positiveCase": "Precision/recall, unsupported rate, shape correctness, and reviewer agreement have explicit denominators and labels.",
+      "negativeCase": "No actual gold set or measured accuracy is claimed."
+    },
+    {
+      "id": "DO07",
+      "title": "Recommend one demand-gated bounded pilot with prerequisites and owner decisions",
+      "evidencePath": "docs/research/domain-object-completion.md",
+      "evidenceAnchor": "Single pilot gate",
+      "positiveCase": "The pilot requires approved context/glossary/policy/review inputs and a bounded owner-selected repository.",
+      "negativeCase": "No extractor, grader, schema/v1 change, extra issue, or automatic follow-on implementation is started."
+    }
+  ],
+  "sourceAnchors": [
+    {
+      "path": "schema/v1/record.schema.json",
+      "anchor": "L104-L169",
+      "claim": "ce.v1 contains generic MessageContract, Channel, PUBLISHES, CONSUMES, derivation, resolution, and evidence fields, not DDD classification or field-flow proof."
+    },
+    {
+      "path": "schema/v1/relations.json",
+      "anchor": "L128-L151",
+      "claim": "PUBLISHES and CONSUMES can target channels or message contracts within existing node kinds."
+    },
+    {
+      "path": "platform/src/CapabilityExplorer.Extractors.CSharp/CSharpExtractor.cs",
+      "anchor": "L13-L20",
+      "claim": "C# uses Roslyn project compilations without running analyzed code; missing references produce partial diagnostics."
+    },
+    {
+      "path": "platform/src/CapabilityExplorer.Extractors.CSharp/Rules.cs",
+      "anchor": "L686-L696;L858-L870",
+      "claim": "EF entity-to-table and Service Bus publish/consume links are rule/configuration evidence, not proof of business meaning or live consumers."
+    },
+    {
+      "path": "extractors/ts/src/sql/ddl.ts",
+      "anchor": "L1-L31",
+      "claim": "SQL parser declarations include tables, views, columns, routines, static ranges, and an explicit dynamic-body marker."
+    },
+    {
+      "path": "extractors/ts/src/sql/extractor.ts",
+      "anchor": "L21-L23;L59-L68",
+      "claim": "SQL is statically tokenized and dynamic SQL creates an incomplete-coverage diagnostic."
+    },
+    {
+      "path": "extractors/ts/src/contracts/records.ts",
+      "anchor": "L1-L30",
+      "claim": "TypeScript record views mirror ce.v1 identity/evidence/derivation and do not add reviewed business semantics."
+    },
+    {
+      "path": "docs/adr/0008-glossary-flow-and-reviewed-assertions.md",
+      "anchor": "L9-L45",
+      "claim": "Name groups are not business meaning; exact human assertions stay distinct from call/read/write/channel context and become stale on revision change."
+    },
+    {
+      "path": "docs/adr/0013-integration-contract-standards.md",
+      "anchor": "L8-L33;L43-L61",
+      "claim": "Contract declarations and standards do not prove deployment, traffic, compatibility, or business meaning; versions and evidence identities stay explicit."
+    }
+  ],
+  "constraints": [
+    "This package proposes a research model and synthetic contract checks; it does not implement a semantic extractor, production grader, or source scanner.",
+    "The proposed bronze/silver/gold/platinum labels are project proposals, not DDD standards, security certifications, or medallion data-processing tiers.",
+    "Facts, model suggestions, human reviews, exposure decisions, and maturity results are separate evidence classes.",
+    "Context, field, projection, and consumer relationships require source evidence or a current reviewed assertion; names, calls, topics, and schemas do not establish them.",
+    "Unknown, unassessed, and insufficient evidence never silently become bronze or a safe exposure verdict.",
+    "A confirmed policy violation is a non-averagable hard stop; applicability requires rationale and cannot waive prohibited exposure.",
+    "Gold and platinum require current reviewed context-scoped ubiquitous language; spelling and model suggestions are not substitutes.",
+    "Internal domain events do not need a broker, outbox, external consumer, CloudEvents, or AsyncAPI to qualify for an applicable high profile.",
+    "Intentional event-carried state is not automatically leakage; field names and envelopes alone are not semantic proof.",
+    "Unsupported dynamic, generated, external, and recursive shapes remain explicit uncertainty, not silent no-leakage evidence.",
+    "Cryptographic hashes bind bytes but do not establish source authenticity or reviewer authorization.",
+    "Do not modify ce.v1, runtime extractors, dependencies, shared build wiring, MADR indexes, or the primary checkout."
+  ]
+}
