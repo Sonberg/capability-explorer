@@ -93,6 +93,8 @@ public sealed partial class ArtifactImporter
         if (complete is null) throw Invalid(line, "last record must be 'complete' (artifact is truncated or unfinished)");
         await ValidateStagedAsync(connection, tx, complete, line, cancellationToken);
         var sha = Convert.ToHexStringLower(hash.GetHashAndReset());
+        if (publicationAttempt is not null)
+            await ValidateAttemptStreamAsync(connection, tx, publicationAttempt, header, sha, cancellationToken);
         return await CommitStagedAsync(connection, tx, header, complete, sha, cancellationToken, publicationAttempt);
     }
 

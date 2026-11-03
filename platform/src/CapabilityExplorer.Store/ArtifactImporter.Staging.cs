@@ -7,6 +7,25 @@ namespace CapabilityExplorer.Store;
 
 public sealed partial class ArtifactImporter
 {
+    private static async Task ValidateAttemptStreamAsync(NpgsqlConnection c, NpgsqlTransaction tx,
+        PublicationArtifactImport attempt, HeaderRecord header, string actualSourceHash, CancellationToken ct)
+    {
+        await using var query = new NpgsqlCommand("""
+            select 1 from analysis_publication_attempt_artifact
+            where run_id=$1 and attempt_id=$2 and artifact_index=$3 and import_state='pending'
+                and source_sha256=$4 and content_sha256=$4 and source_sha256=$5
+                and repository_id=$6 and commit_sha=$7 and unit_path=$8 and extractor_name=$9
+                and extractor_version=$10 and config_hash=$11
+            for update
+            """, c, tx);
+        foreach (var value in new object[] { attempt.RunId, attempt.AttemptId, attempt.Index,
+            actualSourceHash, attempt.SourceSha256, header.RepositoryId, header.CommitSha, header.Unit.Path,
+            header.Extractor.Name, header.Extractor.Version, header.ConfigHash })
+            query.Parameters.AddWithValue(value);
+        if (await query.ExecuteScalarAsync(ct) is null)
+            throw new InvalidOperationException("actual artifact stream differs from its durable publication binding");
+    }
+
     private static async Task<ImportResult> CommitStagedAsync(NpgsqlConnection c, NpgsqlTransaction tx,
         HeaderRecord h, CompleteRecord complete, string sha, CancellationToken ct,
         PublicationArtifactImport? publicationAttempt = null)
@@ -45,7 +64,7 @@ public sealed partial class ArtifactImporter
             {
                 if (publicationAttempt is not null)
                 {
-                    await RecordAttemptArtifactAsync(c, tx, publicationAttempt, "conflict", null, existingSha, ct);
+                    await RecordAttemptArtifactAsync(c, tx, publicationAttempt, "conflict", null, existingSha, sha, ct);
                     await tx.CommitAsync(ct);
                 }
                 else await tx.RollbackAsync(ct);
@@ -53,7 +72,7 @@ public sealed partial class ArtifactImporter
             }
             if (publicationAttempt is not null)
             {
-                await RecordAttemptArtifactAsync(c, tx, publicationAttempt, "reused", id, sha, ct);
+                await RecordAttemptArtifactAsync(c, tx, publicationAttempt, "reused", id, sha, sha, ct);
                 await tx.CommitAsync(ct);
             }
             else await tx.RollbackAsync(ct);
@@ -90,13 +109,14 @@ public sealed partial class ArtifactImporter
             """,ct,artifactId,NodeSearchNormalization.NormalizerId);
         await Exec(c,tx,"insert into artifact_search_projection(artifact_id,normalizer_id) values($1,$2)",ct,artifactId,NodeSearchNormalization.NormalizerId);
         if (publicationAttempt is not null)
-            await RecordAttemptArtifactAsync(c, tx, publicationAttempt, "imported", artifactId, sha, ct);
+            await RecordAttemptArtifactAsync(c, tx, publicationAttempt, "imported", artifactId, sha, sha, ct);
         await tx.CommitAsync(ct);
         return new ImportResult(artifactId,ImportOutcome.Imported);
     }
 
     private static async Task RecordAttemptArtifactAsync(NpgsqlConnection c, NpgsqlTransaction tx,
-        PublicationArtifactImport attempt, string state, long? artifactId, string observedHash, CancellationToken ct)
+        PublicationArtifactImport attempt, string state, long? artifactId, string observedHash,
+        string actualSourceHash, CancellationToken ct)
     {
         await using (var owner = new NpgsqlCommand("""
             select 1 from analysis_publication_attempt where run_id=$1 and attempt_id=$2 for update
@@ -128,7 +148,7 @@ public sealed partial class ArtifactImporter
         update.Parameters.AddWithValue(state);
         update.Parameters.AddWithValue((object?)artifactId ?? DBNull.Value);
         update.Parameters.AddWithValue(observedHash);
-        update.Parameters.AddWithValue(attempt.SourceSha256);
+        update.Parameters.AddWithValue(actualSourceHash);
         if (await update.ExecuteNonQueryAsync(ct) != 1)
             throw new InvalidOperationException("publication artifact receipt is missing, conflicting, or already final");
     }

@@ -9,12 +9,14 @@ namespace CapabilityExplorer.Cli;
 internal static class AnalysisPublication
 {
     internal static Func<CancellationToken,Task>? BeforeHostConfirmationForTests { get; set; }
+    internal static Func<Task>? BeforeDatabaseImportForTests { get; set; }
 
     internal static async Task Publish(string root, AnalysisRun run, PreparedAnalysis prepared, PublicationPermit permit)
     {
         permit.RequireIdentity(new AttemptIdentity(run.RunId,run.AttemptId!),run.AcceptedInputsHash,run.ManifestHash!);
         prepared = AnalysisPublicationBinding.Validate(root,run,prepared);
         var files = new List<string>();
+        var originalHashes = new Dictionary<string,string>(StringComparer.Ordinal);
         var canonicalHashes = new HashSet<string>(StringComparer.Ordinal);
         // Validate every artifact before the first externally visible effect.
         foreach (var pair in prepared.Artifacts.OrderBy(p => p.Key, StringComparer.Ordinal))
@@ -46,7 +48,12 @@ internal static class AnalysisPublication
             AssertFiles(destination,expected);
             var evidence = AnalysisWorkerCommand.HashText(string.Join('\n',expected.OrderBy(p => p.Key,StringComparer.Ordinal).Select(p => p.Key + ":" + p.Value)));
             permit.Confirm("local-artifacts",destination,evidence);
-            files.AddRange(expected.Keys.Order(StringComparer.Ordinal).Select(p => Path.Combine(destination,p)));
+            foreach (var path in expected.Keys.Order(StringComparer.Ordinal))
+            {
+                var file = Path.Combine(destination,path);
+                files.Add(file);
+                originalHashes.Add(file,expected[path]);
+            }
             // Preserve the previous directory as crash evidence. No unguarded cleanup/retry.
         }
         if (Environment.GetEnvironmentVariable("CE_DATABASE") is not { Length: > 0 } connection) return;
@@ -55,15 +62,21 @@ internal static class AnalysisPublication
         await Migrator.MigrateAsync(database);
         var options = new Dictionary<string,string> { ["scope"] = run.CapabilityId };
         if (run.BindingsPath is {} binding) options["bindings"] = binding;
+        if (BeforeDatabaseImportForTests is { } importBarrier) await importBarrier();
         var expectations = new List<PublicationArtifactExpectation>(files.Count);
         for (var index = 0; index < files.Count; index++)
         {
-            var report = ArtifactValidator.Validate(await File.ReadAllTextAsync(files[index]));
+            AnalysisPreparation.RejectLinks(files[index]);
+            var bytes = await File.ReadAllBytesAsync(files[index]);
+            var sourceHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes));
+            if (sourceHash != originalHashes[files[index]])
+                throw new IOException("artifact changed from its original publication binding");
+            var report = ArtifactValidator.Validate(System.Text.Encoding.UTF8.GetString(bytes));
             if (!report.IsValid) throw new FormatException("artifact changed after the publication move");
             var header = report.Artifact!.Header;
             expectations.Add(new(index, header.RepositoryId, header.CommitSha, header.Unit.Path,
                 header.Extractor.Name, header.Extractor.Version, header.ConfigHash,
-                report.Artifact.ContentSha256, AnalysisWorkerCommand.HashFile(files[index])));
+                report.Artifact.ContentSha256, sourceHash));
         }
         var result = await ImportCommand.RunAnalysisAsync(database,files,options,run.RunId,run.AttemptId!,
             run.AcceptedInputsHash,run.ManifestHash!,expectations);

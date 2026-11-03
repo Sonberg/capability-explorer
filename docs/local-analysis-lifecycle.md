@@ -196,7 +196,10 @@ claim that every destination failed or succeeded.
 Before attempting the snapshot compare-and-swap, the host records the exact
 run/attempt, frozen input hashes, scope, expected generation, selected artifact
 hashes and candidate identity in PostgreSQL. Each successful import outcome is
-recorded alongside its immutable artifact transaction. A successful pointer
+recorded alongside its immutable artifact transaction. Destination bytes remain
+bound to their original resolved hashes after local moves; imports verify the
+actual streamed bytes and analysis identity against that durable selection
+before any permanent import commit. A successful pointer
 update and its run/attempt-specific publication result commit in the same
 PostgreSQL transaction. A stale-generation rejection is durably recorded
 without moving the pointer. A lost commit response is not converted into
@@ -273,6 +276,14 @@ to retry, reset, repair, archive or clear unknown evidence. Preserve it and
 follow the operator procedure above.
 
 ## Bounds and limits
+
+Reconciliation reports at most **1,000 artifacts**, with a **256 KiB** database
+identity-data budget and **1 MiB** encoded JSON output ceiling. Over-budget
+selections, corrupt oversized query results or escaped output fail explicitly
+as `unresolved` with `report-budget-exceeded`, without partial report success,
+repair or retry authority. This report limit does not reduce the import limit.
+Malformed host receipts fail as unreadable/conflicting; failed terminal-receipt
+recording emits a bounded diagnostic rather than silently implying certainty.
 
 The default store retains at most **1,000 run records**. At the ceiling it
 refuses new admission; it never automatically deletes history, active work or

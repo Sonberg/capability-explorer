@@ -88,6 +88,36 @@ public sealed class AnalysisExecutionTests(PostgresFixture database)
     }
 
     [Fact]
+    public async Task Artifact_mutation_after_local_move_cannot_be_rebound_or_imported()
+    {
+        using var environment = new DatabaseEnvironment(database.ConnectionString);
+        using var f = new ExecutionFixture();
+        var prepared = f.Prepare();
+        var before = await database.CountAsync("artifact");
+        AnalysisPublication.BeforeDatabaseImportForTests = () =>
+        {
+            var destination = f.Destination(prepared.Repositories[0]);
+            var rows = File.ReadAllText(destination).TrimEnd('\n').Split('\n');
+            var header = System.Text.Json.Nodes.JsonNode.Parse(rows[0])!;
+            header["configHash"] = Convert.ToHexStringLower(SHA256.HashData(Guid.NewGuid().ToByteArray()));
+            rows[0] = header.ToJsonString();
+            File.WriteAllText(destination, string.Join('\n', rows) + "\n");
+            return Task.CompletedTask;
+        };
+        try
+        {
+            using var permit = f.Begin();
+            await Assert.ThrowsAsync<IOException>(() => AnalysisPublication.Publish(f.Root, f.Run, prepared, permit));
+        }
+        finally { AnalysisPublication.BeforeDatabaseImportForTests = null; }
+
+        Assert.Equal(before, await database.CountAsync("artifact"));
+        Assert.Null(await new SnapshotStore(database.DataSource).GetPublishedAsync(f.Run.CapabilityId));
+        Assert.Contains(f.Store.ReadRun(f.Run.RunId).Effects!,
+            effect => effect.Surface == "local-artifacts" && effect.State == "confirmed");
+    }
+
+    [Fact]
     public async Task Caller_cannot_omit_accepted_bindings_before_publication()
     {
         using var f = new ExecutionFixture(withBindings: true);

@@ -189,9 +189,16 @@ internal static class ImportCommand
     private static async Task TryRecordPrepublicationFailure(SnapshotStore? snapshots,
         AnalysisPublicationContext attempt, Guid? candidateId, CancellationToken cancellationToken)
     {
-        if (snapshots is null) return;
+        if (snapshots is null)
+        {
+            Console.Error.WriteLine("import: terminal receipt recording unavailable; publication outcome unresolved");
+            return;
+        }
         try { await snapshots.RecordPrepublicationFailureAsync(attempt.RunId, attempt.AttemptId, candidateId, cancellationToken); }
-        catch (Exception error) when (error is NpgsqlException or InvalidOperationException or OperationCanceledException) { }
+        catch (Exception error) when (error is NpgsqlException or InvalidOperationException or OperationCanceledException)
+        {
+            Console.Error.WriteLine($"import: terminal receipt recording failed ({error.GetType().Name}); publication outcome unresolved");
+        }
     }
 
     private static async Task<string> Identity(NpgsqlDataSource database, long[] ids, string bindingIdentity, IReadOnlyDictionary<string, string> defaults, CancellationToken ct)

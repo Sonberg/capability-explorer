@@ -11,6 +11,7 @@ internal static class PublicationReconciliationCommand
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly JsonSerializerOptions PrettyJson = new(Json) { WriteIndented = true };
+    internal const int MaximumReportBytes = 1024 * 1024;
 
     internal static async Task<int> RunAsync(IReadOnlyDictionary<string, string> options)
     {
@@ -33,6 +34,7 @@ internal static class PublicationReconciliationCommand
                 databaseReport = await new SnapshotStore(database).ReconcilePublicationAttemptAsync(runId, attemptId);
             }
         }
+        catch (InvalidDataException) { databaseError = "report-budget-exceeded"; }
         catch (NpgsqlException) { databaseError = "database-unavailable"; }
         catch (TimeoutException) { databaseError = "database-unavailable"; }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException)
@@ -90,7 +92,13 @@ internal static class PublicationReconciliationCommand
                 localArtifactEffects = localEffects
             }
         };
-        Console.WriteLine(JsonSerializer.Serialize(report, PrettyJson));
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(report, PrettyJson);
+        if (bytes.Length > MaximumReportBytes || databaseError == "report-budget-exceeded")
+        {
+            Console.WriteLine("""{"outcome":"unresolved","error":"report-budget-exceeded","authorization":"none"}""");
+            return 1;
+        }
+        Console.WriteLine(Encoding.UTF8.GetString(bytes));
         return outcome == "unresolved" ? 1 : 0;
     }
 
@@ -111,9 +119,18 @@ internal static class PublicationReconciliationCommand
         var run = JsonSerializer.Deserialize<AnalysisRun>(bytes, Json) ?? throw new InvalidDataException("empty run record");
         if (run.RunId != runId || run.AttemptId is null && run.State is ("publishing" or "unknown" or "done") ||
             run.AttemptId is not null && !Id(run.AttemptId) ||
-            run.AcceptedInputsHash.Length != 64 || run.AcceptedInputsHash.Any(c => !Uri.IsHexDigit(c)) ||
+            run.AcceptedInputsHash is not { Length: 64 } || run.AcceptedInputsHash.Any(c => !Uri.IsHexDigit(c)) ||
+            string.IsNullOrWhiteSpace(run.CapabilityId) || run.CapabilityId.Length > 100 ||
+            run.State is not ("queued" or "running" or "publishing" or "unknown" or "done" or "failed" or "cancelled") ||
             run.ManifestHash is not null && (run.ManifestHash.Length != 64 || run.ManifestHash.Any(c => !Uri.IsHexDigit(c))))
             throw new InvalidDataException("run receipt identity is invalid");
+        if (run.Effects is { } effects && (effects.Count > 1000 || effects.Any(effect =>
+                effect is null || effect.Surface is not ("postgres" or "local-artifacts") ||
+                string.IsNullOrWhiteSpace(effect.Destination) || effect.Destination.Length > 4096 ||
+                effect.State is not ("pending" or "confirmed") ||
+                effect.EvidenceHash is not null && (effect.EvidenceHash.Length != 64 ||
+                    effect.EvidenceHash.Any(c => !Uri.IsHexDigit(c))))))
+            throw new InvalidDataException("run effect receipt is invalid");
         return run;
     }
 
