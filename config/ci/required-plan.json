@@ -12,7 +12,7 @@
     "scripts/local-check": "3c14bf537b6515524a91377f99935ec0f4a9ea75e6b9c9f7fed7e3d12264ffe7",
     "scripts/sandbox": "75e51a89d0e52b37daa8bf6bbf7373078cec0904da893d881ff7f0ef6c9e730b",
     "scripts/security-check": "cf188b4c9db3af854a018595bcbb77965c9ad4818f3af6b9d495b995b1f805ef",
-    "scripts/compile-fixtures.sh": "225bdc21e03c96fac2ed7731c477b7ef4f92e26c38c5d3633e6f8c5aee1cb1d8",
+    "scripts/compile-fixtures.sh": "491d99f773ee0f247d113a59f7d262052cd8c00dc6a4102009b242637c718569",
     "scripts/ci/check-frugal-ci": "e2f0e04fbf475a831ddb40f14ca36144ef7526eb6286a8ecc145aeae8140aacf",
     "scripts/ci/check-frugal-ci.mjs": "721149e1321147c164b23a9a8305bfd45dccdca58a312a8582307306b426b310"
   },

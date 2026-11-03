@@ -63,6 +63,12 @@ execute_case() {
   local phase=$1 repo=$2 tag=$3 entry=$4 expect=$5
   local dir log status
   dir=$(checkout "$repo" "$tag") || { echo "FAIL checkout $repo@$tag"; return 1; }
+  if [[ $phase == *-dotnet ]]; then
+    # Concurrent first use must not race .NET's HOME-based migration mutex tree.
+    export HOME="$dir/.dotnet-home"
+    export DOTNET_CLI_HOME="$HOME"
+    mkdir -p "$HOME"
+  fi
 
   case "$phase" in
     restore-dotnet)

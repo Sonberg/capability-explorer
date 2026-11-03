@@ -36,7 +36,10 @@ outputs or treating a cache hit as a test pass.
 Retain `make EXECUTION=sandbox ci` as the executable canonical plan for both
 local act and GitHub. Serialize Make recipes even if a caller supplies `-j`.
 Fixture compilation alone may run two cases concurrently, each in its own
-`fixtures/.work/<repository>@<tag>` directory and log. Restore and build phases,
+`fixtures/.work/<repository>@<tag>` directory and log. Each .NET case's
+HOME/CLI first-use migration state is isolated as well.
+The shared NuGet download cache stays in the sandbox's declared package path.
+Restore and build phases,
 fixture generation, extraction and platform tests must not overlap. The helper
 accepts only jobs `1` or `2`; no environment-driven unbounded pool. It waits for
 launched workers, propagates unexpected failures and fails on interruption.

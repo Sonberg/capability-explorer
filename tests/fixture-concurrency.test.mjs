@@ -56,7 +56,7 @@ const barrier = process.env.FIXTURE_BARRIER_TARGET;
 locked(state => {
   state.active[key] = (state.active[key] ?? 0) + 1;
   state.max[key] = Math.max(state.max[key] ?? 0, state.active[key]);
-  state.events.push({ type: 'start', key, caseName });
+  state.events.push({ type: 'start', key, caseName, home: process.env.HOME, cliHome: process.env.DOTNET_CLI_HOME });
   state.arrivals[key] = (state.arrivals[key] ?? 0) + 1;
   if (barrier && state.arrivals[key] >= Number(barrier)) writeFileSync(path.join(stateDir, key + '.ready'), key);
   if (barrier && !process.env.FIXTURE_HOLD && state.arrivals[key] >= Number(barrier)) writeFileSync(path.join(stateDir, key + '.open'), 'open');
@@ -166,6 +166,14 @@ test('fixture phases use a bounded, failure-aggregating worker pool', async () =
         const ends = state.events.filter(event => event.type === 'end' && event.key === operation);
         assert.deepEqual(starts.map(event => event.caseName).sort(), [...expected].sort(), phase);
         assert.deepEqual(ends.map(event => event.caseName).sort(), [...expected].sort(), `${phase} waited for every child`);
+        if (dotnet) {
+          assert.equal(new Set(starts.map(event => event.home)).size, expected.length, 'each .NET case isolates first-use mutex state');
+          for (const event of starts) {
+            assert.equal(event.home, event.cliHome);
+            assert.equal(path.basename(event.home), '.dotnet-home');
+            assert.equal(path.basename(path.dirname(event.home)), event.caseName);
+          }
+        }
         assert.ok(state.max[operation] <= jobs, `${phase} exceeded its ${jobs}-worker limit`);
         if (jobs === 2) assert.equal(state.max[operation], 2, `${phase} barrier proved actual overlap`);
       }
