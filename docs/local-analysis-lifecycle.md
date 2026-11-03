@@ -254,7 +254,12 @@ data, write a receipt, update the host journal, publish, retry, archive or clear
 markers. Imported, reused, conflicting, missing, invalid and uncertain artifact
 outcomes retain their exact analysis/content identities. Pending evidence,
 missing attempt/candidate receipts, conflicting values, an unavailable database
-or an incomplete host receipt are reported as unresolved. A local directory
+or a contradictory host receipt are reported as unresolved. Candidate identity
+and artifact membership must agree with the durable attempt; reconciliation
+never repairs a mismatch. Artifact rows include extractor/version,
+configuration and original byte hashes as well as repository/revision/content.
+A missing or pending host confirmation remains a separate axis and cannot
+negate an exact committed database result. A local directory
 move is not evidence that PostgreSQL succeeded, and a different current pointer
 does not prove an attempt never published.
 

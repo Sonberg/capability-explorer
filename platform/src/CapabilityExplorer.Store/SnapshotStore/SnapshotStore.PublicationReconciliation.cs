@@ -6,7 +6,8 @@ using Npgsql;
 namespace CapabilityExplorer.Store;
 
 public sealed record PublicationArtifactReconciliation(int Index, string RepositoryId, string CommitSha,
-    string UnitPath, string ContentSha256, string Outcome, long? ArtifactId, string? ObservedContentSha256);
+    string UnitPath, string ContentSha256, string Outcome, long? ArtifactId, string? ObservedContentSha256,
+    string ExtractorName, string ExtractorVersion, string ConfigHash, string SourceSha256);
 
 public sealed record PublicationReconciliationReport(string Outcome, string ReceiptState, string RunId,
     string AttemptId, string? CapabilityId, string? AcceptedInputsHash, string? ManifestHash,
@@ -34,14 +35,15 @@ public sealed partial class SnapshotStore
         string? capability = null, accepted = null, manifest = null, candidateIdentity = null, candidateCapability = null;
         long? expectedGeneration = null, candidateGeneration = null, resultGeneration = null;
         Guid? candidateId = null, currentId = null, resultSnapshotId = null;
-        string? candidateStatus = null, result = null, resultReason = null;
+        string? candidateStatus = null, actualCandidateIdentity = null, result = null, resultReason = null;
         long currentGeneration = 0;
         int expectedCount = 0;
         string? expectedSelection = null;
         await using (var query = new NpgsqlCommand("""
             select a.capability_id,a.accepted_inputs_hash,a.manifest_hash,a.expected_generation,
                 a.expected_artifact_count,a.selection_sha256,a.candidate_snapshot_id,a.input_identity,
-                s.capability_id,s.status,s.generation,p.snapshot_id,p.generation,r.outcome,r.reason,r.snapshot_id,r.publication_generation
+                s.capability_id,s.status,s.generation,p.snapshot_id,p.generation,r.outcome,r.reason,r.snapshot_id,r.publication_generation,
+                s.input_identity
             from analysis_publication_attempt a
             left join analysis_snapshot s on s.id=a.candidate_snapshot_id
             left join published_snapshot p on p.capability_id=a.capability_id
@@ -74,6 +76,7 @@ public sealed partial class SnapshotStore
             resultReason = reader.IsDBNull(14) ? null : reader.GetString(14);
             resultSnapshotId = reader.IsDBNull(15) ? null : reader.GetGuid(15);
             resultGeneration = reader.IsDBNull(16) ? null : reader.GetInt64(16);
+            actualCandidateIdentity = reader.IsDBNull(17) ? null : reader.GetString(17);
         }
 
         var artifacts = new List<PublicationArtifactReconciliation>();
@@ -126,14 +129,29 @@ public sealed partial class SnapshotStore
                 };
                 if (!valid) receiptConflict = true;
                 var reportOutcome = !valid ? "conflicting-receipt" : state == "pending" ? "uncertain" : state;
-                artifacts.Add(new(index, repository, commit, unit, contentHash, reportOutcome, artifactId, observedHash));
+                artifacts.Add(new(index, repository, commit, unit, contentHash, reportOutcome, artifactId, observedHash,
+                    extractor, extractorVersion, configHash, sourceHash));
             }
         }
         if (artifacts.Count != expectedCount || artifacts.Select(a => a.Index).Distinct().Count() != expectedCount ||
             SelectionHash(expectations) != expectedSelection || candidateId.HasValue != (candidateIdentity is not null))
             receiptConflict = true;
 
-        if (candidateId is not null && (candidateStatus is null || candidateCapability != capability)) receiptConflict = true;
+        if (candidateId is not null)
+        {
+            if (candidateStatus is null || candidateCapability != capability ||
+                actualCandidateIdentity != candidateIdentity ||
+                artifacts.Any(a => a.Outcome is not ("imported" or "reused"))) receiptConflict = true;
+            await using var membership = new NpgsqlCommand("""
+                select artifact_id from analysis_snapshot_artifact where snapshot_id=$1 order by artifact_id
+                """, connection, transaction);
+            membership.Parameters.AddWithValue(candidateId.Value);
+            var selected = new List<long>();
+            await using var reader = await membership.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken)) selected.Add(reader.GetInt64(0));
+            if (!selected.SequenceEqual(artifacts.Where(a => a.ArtifactId.HasValue)
+                    .Select(a => a.ArtifactId!.Value).Order())) receiptConflict = true;
+        }
         if (candidateStatus == "candidate" && candidateGeneration is not null) receiptConflict = true;
         if (candidateStatus == "published" && candidateGeneration is null) receiptConflict = true;
         if (resultSnapshotId is not null && resultSnapshotId != candidateId) receiptConflict = true;
@@ -141,7 +159,8 @@ public sealed partial class SnapshotStore
             (resultReason != "committed" || candidateId is null || candidateStatus != "published" ||
              resultGeneration is null || candidateGeneration != resultGeneration)) receiptConflict = true;
         if (result == "not_published" &&
-            (resultReason is null or "committed" || resultGeneration is not null)) receiptConflict = true;
+            (resultReason is not ("stale_generation" or "prepublication_failure") ||
+             resultGeneration is not null || artifacts.Any(a => a.Outcome == "uncertain"))) receiptConflict = true;
         if (result is not (null or "published" or "not_published")) receiptConflict = true;
         if (currentId is null && currentGeneration != 0 || currentId is not null && currentGeneration < 1)
             receiptConflict = true;

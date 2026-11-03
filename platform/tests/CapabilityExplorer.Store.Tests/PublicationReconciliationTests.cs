@@ -243,6 +243,59 @@ public sealed class PublicationReconciliationTests(PostgresFixture db)
         Assert.False(Directory.Exists(hostRunPath));
     }
 
+    [Theory]
+    [InlineData("candidate-identity")]
+    [InlineData("candidate-membership")]
+    [InlineData("selection-hash")]
+    public async Task Contradictory_durable_receipts_remain_unresolved_without_repair(string corruption)
+    {
+        var prepared = await Prepare();
+        await prepared.Store.PublishAttemptAsync(prepared.Attempt.RunId, prepared.Attempt.AttemptId);
+        var sql = corruption switch
+        {
+            "candidate-identity" => "update analysis_snapshot set input_identity='contradictory' where id=$1",
+            "candidate-membership" => "delete from analysis_snapshot_artifact where snapshot_id=$1",
+            _ => "update analysis_publication_attempt set selection_sha256=repeat('0',64) where candidate_snapshot_id=$1"
+        };
+        await using var corrupt = db.DataSource.CreateCommand(sql);
+        corrupt.Parameters.AddWithValue(prepared.CandidateId);
+        await corrupt.ExecuteNonQueryAsync();
+        var before = await StateCounts();
+
+        var report = await prepared.Store.ReconcilePublicationAttemptAsync(prepared.Attempt.RunId, prepared.Attempt.AttemptId);
+
+        Assert.Equal("unresolved", report.Outcome);
+        Assert.Equal("conflicting", report.ReceiptState);
+        Assert.Equal(before, await StateCounts());
+    }
+
+    [Fact]
+    public async Task Partial_import_keeps_success_and_uncertainty_separate_and_cannot_bind_candidate()
+    {
+        var first = await NewArtifact();
+        var second = await NewArtifact();
+        var attempt = Descriptor(Scope(), 0, [first.Expectation, second.Expectation with { Index = 1 }]);
+        var store = new SnapshotStore(db.DataSource);
+        await store.BeginPublicationAttemptAsync(attempt);
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(first.Jsonl));
+        var imported = await new ArtifactImporter(db.DataSource).ImportForPublicationAsync(stream,
+            new PublicationArtifactImport(attempt.RunId, attempt.AttemptId, 0, first.Expectation.SourceSha256));
+        var candidate = await store.CreateAsync(attempt.CapabilityId, "partial-" + attempt.RunId, [imported.ArtifactId]);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            store.BindPublicationCandidateAsync(attempt.RunId, attempt.AttemptId, candidate.Id, candidate.InputIdentity));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            store.RecordPrepublicationFailureAsync(attempt.RunId, attempt.AttemptId, null));
+
+        var report = await store.ReconcilePublicationAttemptAsync(attempt.RunId, attempt.AttemptId);
+
+        Assert.Equal("unresolved", report.Outcome);
+        Assert.Equal("imported", report.Artifacts[0].Outcome);
+        Assert.Equal("uncertain", report.Artifacts[1].Outcome);
+        Assert.Null(report.AttemptResult);
+        Assert.Null(report.CandidateSnapshotId);
+        Assert.Null(report.CurrentSnapshotId);
+    }
+
     private async Task<(SnapshotStore Store, PublicationAttemptDescriptor Attempt,
         PublicationArtifactExpectation Expectation, Guid CandidateId, string Jsonl)> Prepare(
         string? scope = null, long expectedGeneration = 0)
