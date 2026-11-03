@@ -15,7 +15,7 @@ No existing status was changed to produce this index.
 | Red | D: draft | Not yet ready for decision review; not a severity rating. |
 | Gray | H: historical | Rejected, deprecated or superseded; retain the decision and replacement links. |
 
-There are **28 local records: 1 scoped accepted, 27 proposed, 0 draft,
+There are **30 local records: 1 scoped accepted, 29 proposed, 0 draft,
 0 historical**. MADR-0016 is accepted for the **operator workflow only**.
 Both `0005` paths are distinct records, named `0005-G` and `0005-PR` below solely
 for navigation. No `0015` exists; this is a numbering gap, not a missing file
@@ -51,6 +51,8 @@ invented by the index. MADR-0025 landed in owner-merged #55 and remains proposed
 | 0026 | [Evidence-based decision councils and a navigable MADR ledger](0026-evidence-based-decision-councils.md) | P: proposed; accepts no existing decision |
 | 0027 | [Proposed source-bound assessment of business objects and events](0027-domain-object-event-assessment.md) | P: research contract only; no production grading |
 | 0028 | [Portable, source-bound decision navigation](0028-portable-decision-ledger.md) | P: bounded portable contract; no ontology reasoning or adoption |
+| 0029 | [Frugal CI with executable local and hosted parity](0029-frugal-ci-and-executable-parity.md) | P: proposed; full gates retained, measured optimization required |
+| 0030 | [Govern dependency caches across framework and toolchain upgrades](0030-dependency-cache-lifecycle.md) | P: proposed; scoped cleanup and retention policy, not implemented automation |
 
 ## Relationship map
 
@@ -78,6 +80,8 @@ flowchart LR
     a19["0019 Tool evaluation [P]"]:::proposed
     a24["0024 Issue labels [P]"]:::proposed
     a26["0026 Decision council [P]"]:::proposed
+    a29["0029 Frugal CI [P]"]:::proposed
+    a30["0030 Cache lifecycle [P]"]:::proposed
   end
   subgraph Evidence_and_language
     a02["0002 Ubiquitous language [P]"]:::proposed
@@ -133,6 +137,12 @@ flowchart LR
   a27 -.-> a26
   a28 -.-> a26
   a28 -.-> a14
+  a29 -.-> a03
+  a29 -.-> a11
+  a29 -.-> a28
+  a30 -.-> a03
+  a30 -.-> a28
+  a30 -.-> a29
   classDef accepted fill:#dcfce7,stroke:#166534,color:#14532d
   classDef proposed fill:#fef9c3,stroke:#854d0e,color:#713f12
   classDef draft fill:#fee2e2,stroke:#991b1b,color:#7f1d1d
@@ -172,6 +182,8 @@ referencing/extending/overriding record to its target.
 | 0025 | 0023 | Related/context in the [record](0025-language-neutral-frontends-and-discovery.md#context-and-problem); no implementation prerequisite inferred. |
 | 0027 | 0002, 0008, 0013, 0026 | Related metadata in the [record](0027-domain-object-event-assessment.md); not acceptance or an implementation prerequisite. |
 | 0028 | 0026, 0014 | Related metadata in the [record](0028-portable-decision-ledger.md); no acceptance inferred. |
+| 0029 | 0003, 0011, 0028 | Related metadata in the [record](0029-frugal-ci-and-executable-parity.md); retains full-gate and ledger rules, no acceptance inferred. |
+| 0030 | 0003, 0028, 0029 | Related metadata in the [record](0030-dependency-cache-lifecycle.md); upgrade housekeeping proposal, not cleanup authorization. |
 
 ## Updating the ledger
 

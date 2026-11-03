@@ -9,6 +9,10 @@ OFFLINE := $(SANDBOX) --offline
 include config/runtime/images.env
 include config/build/container-engine.mk
 
+# Only compile-fixtures owns bounded per-case concurrency. Shared build outputs
+# and fixture regeneration must not overlap, even when a caller supplies -j.
+.NOTPARALLEL:
+
 .PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
         restore ui build test-ts test-contracts test-evaluation test-extractors test-explorer test-store evaluate evaluate-golden \
 		extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze analyze-worker explore ollama postgres dev dev-data dev-down clean local-check pr-check install-git-hooks actions-audit test-local-ci test-mapping-replay test-package-feeds security-check
@@ -93,7 +97,12 @@ test-corpus-replay:
 test-security-regressions: build
 	$(OFFLINE) dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Capabilities.Tests && dotnet test --no-build tests/CapabilityExplorer.Interpretation.Tests && dotnet test --no-build tests/CapabilityExplorer.Extractors.Tests && dotnet test --no-build tests/CapabilityExplorer.Explorer.Tests'
 
-ci: test-container-engine-core security-check fixtures-compile test
+ci: test-frugal-ci test-container-engine-core security-check fixtures-compile test
+
+.PHONY: test-frugal-ci
+test-frugal-ci:
+	scripts/ci/check-frugal-ci
+	$(OFFLINE) node node --test tests/frugal-ci.test.mjs tests/fixture-concurrency.test.mjs
 
 test: test-postmerge-analysis test-local-ci test-mapping-replay test-package-feeds test-security-gates test-corpus-replay test-binding-preview golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
 
