@@ -2,6 +2,7 @@
 
 * Status: applied to this operator's agent-assisted work; proposed for repository-wide adoption
 * Date: 2026-11-01
+* Updated: 2026-11-03
 * Decision owner: operator; repository owner and contributors for wider adoption
 * Related: [MADR-0005](0005-pr-lifecycle-and-conflict-prevention.md), [MADR-0003](0003-local-ci-before-push.md)
 
@@ -70,6 +71,35 @@ An active checkout is marked **cleanup pending**, with its reason and owner, unt
 these checks pass. Publishing a PR must not terminate an in-progress user preview
 or erase the session executing the handoff. Do not ask again for routine qualifying
 cleanup under this authorization; ask only if a necessary action exceeds it.
+
+### Merged-to-main cleanup checkpoint
+
+The operator reaffirmed standing authorization on 2026-11-03 to remove local
+linked worktrees whose work has been published as a PR and merged into `main`.
+Review this inventory after an owner merge, at task handoff and when disk pressure
+is reported. This is a required housekeeping checkpoint, not a reason to interrupt
+active work or retain every completed checkout indefinitely.
+
+All required checks above still apply. Verify the PR is actually merged with base
+`main`, its recorded head equals the exact local HEAD, and its merge result is
+reachable from freshly fetched `origin/main`. For squash/rebase merges, use the
+PR's head and merge provenance; requiring the topic HEAD itself to be an ancestor
+of main would incorrectly retain completed work. A branch name, PR number,
+closed-but-unmerged state or old publication receipt is not sufficient.
+
+Retain an advanced or dirty head, uncertain ownership, active claims/processes,
+locked checkout or unverified recovery evidence as cleanup pending with its owner
+and reason. Preserve private non-reproducible evidence outside the checkout;
+discard only inspected reproducible dependencies/build/scanner caches. Keep the
+primary checkout, retained local branch refs and active implementation worktrees.
+Remote topic-branch deletion remains the separate authorization below.
+
+Record each candidate's path, PR/head/merge identities, eligibility checks,
+removal result and measured free space in the durable handoff. Recheck immediately
+before ordinary `git worktree remove`; never use force, wildcard deletion, global
+cache purges or blanket worktree pruning to overcome an uncertain or refused
+candidate. A future automated implementation must default to a read-only plan
+and test these exclusion/race boundaries; no cleanup daemon is required.
 
 ### Remote topic branches after owner merge
 
