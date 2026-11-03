@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "status": "proposed",
+  "profiles": {
+    "business-object": {
+      "tiers": {
+        "bronze": ["shape-supported", "identity-evidence", "context-ownership-evidence", "limitations-visible"],
+        "silver": ["contextual-definition-reviewed", "field-semantics-reviewed", "ambiguity-recorded", "exposure-review"],
+        "gold": ["current-context-language-review", "invariant-and-unit-evidence", "applicable-compatibility-evidence"],
+        "platinum": ["current-owner-stewardship", "independent-domain-review", "change-policy", "representative-consumer-evidence"]
+      }
+    },
+    "domain-event": {
+      "tiers": {
+        "bronze": ["occurrence-shape-supported", "identity-evidence", "context-ownership-evidence", "limitations-visible"],
+        "silver": ["business-occurrence-reviewed", "contextual-language-reviewed", "field-purpose-reviewed", "transaction-timing-evidence"],
+        "gold": ["current-context-language-review", "applicable-handler-and-invariant-tests", "exposure-review"],
+        "platinum": ["current-owner-stewardship", "independent-domain-review", "change-policy", "representative-handler-evidence"]
+      },
+      "externalInfrastructurePrerequisites": []
+    },
+    "integration-event": {
+      "tiers": {
+        "bronze": ["event-vs-command-classification", "shape-supported", "producer-boundary-evidence", "limitations-visible"],
+        "silver": ["business-occurrence-reviewed", "audience-and-purpose-reviewed", "public-vs-internal-payload-explicit", "field-exposure-review"],
+        "gold": ["current-context-language-review", "versioned-contract-evidence", "applicable-compatibility-tests", "delivery-guarantee-evidence"],
+        "platinum": ["current-owner-stewardship", "independent-producer-consumer-domain-review", "change-and-deprecation-policy", "monitored-drift-evidence"]
+      }
+    }
+  },
+  "exposureVerdicts": ["approved", "needs-review", "policy-violation", "unknown"],
+  "criterionStatuses": ["pass", "fail", "unknown", "not-applicable"],
+  "assessmentStates": ["graded", "unassessed", "insufficient-evidence", "blocked"],
+  "rules": {
+    "cumulative": true,
+    "averageAcrossGates": false,
+    "onlyCurrentReviewedEvidenceSatisfiesSemanticGate": true,
+    "unknownBronze": false,
+    "policyViolationMaximumGrade": null,
+    "nonApprovedExposureAwardableGrade": null,
+    "internalDomainEventRequiresExternalInfrastructure": false,
+    "notApplicableRequiresRationale": true,
+    "notApplicableMayWaiveExposurePolicy": false,
+    "schemaOrEnvelopeConformanceAloneMaximumGrade": null,
+    "staleSourceGlossaryContextPolicyOrRubricInvalidatesAssessmentIdentity": true
+  }
+}
