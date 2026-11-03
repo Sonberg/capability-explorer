@@ -86,6 +86,96 @@ public sealed class DeprecationSnapshotTests(PostgresFixture db)
             new PostgresDeprecationRemovals(db.DataSource).ReadAsync(new(snapshot.Id, scope, 1, selection)));
     }
 
+    [Theory]
+    [InlineData("partial-next-revision")]
+    [InlineData("missing-unit-next-revision")]
+    [InlineData("partial-other-repository")]
+    public async Task Incomplete_coverage_never_claims_a_global_key_was_removed(string uncertainty)
+    {
+        var old = await ImportIsolated("api-cs/v1-base/Sales.Api.jsonl");
+        var newer = await ImportIsolated("api-cs/v2-rename/Sales.Api.jsonl");
+        var oldSha = Fixtures.Lock["api-cs"]["v1-base"];
+        var newSha = Fixtures.Lock["api-cs"]["v2-rename"];
+        var selected = new Dictionary<string, string>(StringComparer.Ordinal) { ["api-cs"] = newSha };
+        var artifacts = new List<long> { old, newer };
+        long? partial = uncertainty == "partial-next-revision" ? newer : null;
+        if (uncertainty == "missing-unit-next-revision")
+            artifacts.Add(await ImportIsolated("api-cs/v1-base/Sales.Domain.jsonl"));
+        if (uncertainty == "partial-other-repository")
+        {
+            partial = await ImportIsolated("web-ts/v1-base/_fixture_web.jsonl");
+            artifacts.Add(partial.Value);
+            selected.Add("web-ts", Fixtures.Lock["web-ts"]["v1-base"]);
+        }
+        if (partial is { } id)
+        {
+            await using var mutation = db.DataSource.CreateCommand("update artifact set status='partial' where id=$1");
+            mutation.Parameters.AddWithValue(id);
+            Assert.Equal(1, await mutation.ExecuteNonQueryAsync());
+        }
+        var scope = "uncertain-" + Guid.NewGuid().ToString("N");
+        var snapshots = new SnapshotStore(db.DataSource);
+        var snapshot = await snapshots.CreateAsync(scope, uncertainty, artifacts, selected);
+        await SetOrder(snapshot.Id, oldSha, newSha);
+        await snapshots.PublishAsync(snapshot.Id, 0);
+
+        var removals = await new PostgresDeprecationRemovals(db.DataSource)
+            .ReadAsync(new(snapshot.Id, scope, 1, selected));
+
+        Assert.Empty(removals);
+    }
+
+    [Theory]
+    [InlineData("chan|test|scope/Orders", "PUBLISHES", "group|channel|Orders")]
+    [InlineData("sql|test|dbo.Orders#id", "READS", "group|data|dbo.Orders")]
+    public async Task Resource_groups_come_from_edges_not_node_declarations_matching_existing_presence_semantics(
+        string target, string relation, string group)
+    {
+        var old = await ImportIsolated("api-cs/v1-base/Sales.Api.jsonl");
+        var newer = await ImportIsolated("api-cs/v2-rename/Sales.Api.jsonl");
+        foreach (var id in new[] { old, newer })
+        {
+            await using var node = db.DataSource.CreateCommand("""
+                update node set symbol_key=$2 where artifact_id=$1
+                  and local_id=(select min(local_id) from node where artifact_id=$1)
+                """);
+            node.Parameters.AddWithValue(id);
+            node.Parameters.AddWithValue(target);
+            Assert.Equal(1, await node.ExecuteNonQueryAsync());
+        }
+        await using var edge = db.DataSource.CreateCommand("""
+            update edge set to_key=$2,relation=$3 where artifact_id=$1
+              and local_id=(select min(local_id) from edge where artifact_id=$1)
+            """);
+        edge.Parameters.AddWithValue(old);
+        edge.Parameters.AddWithValue(target);
+        edge.Parameters.AddWithValue(relation);
+        Assert.Equal(1, await edge.ExecuteNonQueryAsync());
+        var scope = "presence-" + Guid.NewGuid().ToString("N");
+        var oldSha = Fixtures.Lock["api-cs"]["v1-base"];
+        var newSha = Fixtures.Lock["api-cs"]["v2-rename"];
+        var selected = new Dictionary<string, string>(StringComparer.Ordinal) { ["api-cs"] = newSha };
+        var snapshots = new SnapshotStore(db.DataSource);
+        var snapshot = await snapshots.CreateAsync(scope, "groups", [old, newer], selected);
+        await SetOrder(snapshot.Id, oldSha, newSha);
+        await snapshots.PublishAsync(snapshot.Id, 0);
+
+        var removals = await new PostgresDeprecationRemovals(db.DataSource)
+            .ReadAsync(new(snapshot.Id, scope, 1, selected));
+
+        Assert.Equal(newSha, removals[group].RemovedIn);
+        Assert.DoesNotContain(target, removals.Keys);
+    }
+
+    private async Task<long> ImportIsolated(string fixture)
+    {
+        var records = Fixtures.Golden(fixture).TrimEnd('\n')
+            .Split('\n').Select(line => JsonNode.Parse(line)!.AsObject()).ToArray();
+        records[0]["configHash"] = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(string.Join('\n', records.Select(row => row.ToJsonString())) + "\n"));
+        return (await new ArtifactImporter(db.DataSource).ImportAsync(stream)).ArtifactId;
+    }
+
     private async Task<long> Import(string fixture) =>
         (await new ArtifactImporter(db.DataSource).ImportAsync(Fixtures.Golden(fixture))).ArtifactId;
 

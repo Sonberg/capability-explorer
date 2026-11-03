@@ -63,6 +63,29 @@ public sealed class PostgresDeprecationRemovals(NpgsqlDataSource dataSource)
 
         var byRevision = history.SelectMany(pair => pair.Value.Select(row => (pair.Key, Row: row)))
             .ToDictionary(pair => (pair.Key, pair.Row.Sha), pair => pair.Row);
+        await using var coverage = new NpgsqlCommand("""
+            with retained as (
+                select sa.repository_id,sa.commit_sha,sa.unit_path,a.status
+                from analysis_snapshot_artifact sa join artifact a on a.id=sa.artifact_id
+                join unnest($2::text[],$3::text[]) r(repo,sha)
+                  on r.repo=sa.repository_id and r.sha=sa.commit_sha::text
+                where sa.snapshot_id=$1
+            )
+            select exists(select 1 from retained where status<>'full')
+                or exists(select 1 from retained r group by repository_id,commit_sha
+                    having count(distinct unit_path) <
+                        (select count(distinct unit_path) from retained expected
+                         where expected.repository_id=r.repository_id))
+            """, connection, tx) { CommandTimeout = 5 };
+        coverage.Parameters.AddWithValue(context.SnapshotId);
+        coverage.Parameters.AddWithValue(byRevision.Keys.Select(key => key.Key).ToArray());
+        coverage.Parameters.AddWithValue(byRevision.Keys.Select(key => key.Sha).ToArray());
+        if ((bool)(await coverage.ExecuteScalarAsync(cancellationToken))!)
+        {
+            // Marks are global: unknown coverage in any selected repository can hide a still-present key.
+            await tx.CommitAsync(cancellationToken);
+            return new Dictionary<string, Removal>(StringComparer.Ordinal);
+        }
         await using var observations = new NpgsqlCommand("""
             with pinned as (
                 select a.artifact_id,a.repository_id,a.commit_sha from analysis_snapshot_artifact a
