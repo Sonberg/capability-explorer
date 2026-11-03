@@ -12,6 +12,7 @@ present: validators on both stacks, an idempotent PostgreSQL importer and the ex
 C#, TypeScript/JavaScript and the supported SQL routine calculations are extracted and gated.
 
 Shared terminology: [ubiquitous language](docs/ubiquitous-language.md).
+Decision overview: [MADR status ledger and relationship map](docs/adr/README.md).
 
 ## Contributing and PR updates
 
