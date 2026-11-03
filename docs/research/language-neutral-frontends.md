@@ -174,3 +174,31 @@ synthetic fixture suite cannot satisfy real-corpus demand or semantic accuracy.
 - [JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12/schema) is used for research-only schema drafts. No third-party validator or runtime library is adopted.
 - Existing repository precedent: [MADR-0013](https://github.com/Sonberg/capability-explorer/blob/3d0ff8813df60b07ac86c8220b811be3debe5401/docs/adr/0013-integration-contract-standards.md#L91-L102) requires sealed inputs, canonical byte comparison, zero network and no analyzed-code execution. This is guidance, not evidence that these proposals are implemented.
 - RuvNet process guidance: [`agent-sparc-coordinator/SKILL.md`](https://github.com/ruvnet/ruflo/blob/main/.agents/skills/agent-sparc-coordinator/SKILL.md) and [`sparc-refine/SKILL.md`](https://github.com/ruvnet/ruflo/blob/main/plugins/ruflo-sparc/skills/sparc-refine/SKILL.md) are documentation guidance for phase gates, not runtime capability claims. Brain retrieval was weak/ambiguous for a concrete schema-validation primitive; this package therefore adds no RuvNet library or asserted live capability.
+
+## Focused package completion
+
+| Gate | Score | Evidence |
+|---|---:|---|
+| Specification | 97/100 | 19 issue obligations and machine-checkable constraints; missing/duplicate/self-attested evidence mutations rejected. |
+| Pseudocode | 97/100 | Ordered discovery/adapter procedures, hard boundaries, budgets, failure states and complexity checked. |
+| Architecture | 97/100 | Source-pinned research, proposed MADR, strict contract drafts, compatibility cases and independently authored inventories. |
+| Refinement | 97/100 | 35 focused tests passed; all 16 sealed fixture outputs matched; malformed schema instances and unsafe/unknown cases rejected. |
+| Completion | 97/100 | The focused package gates below passed; research limitations and parent-owned integration are explicit. |
+
+Focused commands:
+
+```text
+node scripts/research/check-frontend-contracts.mjs specification
+node scripts/research/check-frontend-contracts.mjs pseudocode
+node scripts/research/check-frontend-contracts.mjs architecture
+node scripts/research/check-frontend-contracts.mjs all
+node --test tests/frontend-contracts.test.mjs
+git diff --check
+```
+
+These scores certify only the bounded research package and its focused tests.
+The oracle is fixture-only, the schema validator covers the package's declared
+subset, and neither is production discovery or a full Draft 2020-12 validator.
+No semantic-accuracy, real-corpus, arbitrary-layout, precision/recall, full
+repository CI or publication gate is claimed. Parent-owned integration,
+full local/pre-push/hosted CI and publication remain pending.
