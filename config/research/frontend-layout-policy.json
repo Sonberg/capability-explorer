@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "scope": "proposed-deterministic-discovery-policy",
+  "algorithm": "discover(snapshot, registry, declaration, budgets)",
+  "steps": [
+    { "id": "P01", "operation": "validate snapshot identity and authorized root boundary", "failure": "snapshot-outside-authority" },
+    { "id": "P02", "operation": "validate pinned registry, declaration, profile and budget ceilings", "failure": "invalid-policy-input" },
+    { "id": "P03", "operation": "collect directory entries without following symlinks; stop at hard/nested-repository boundaries", "failure": "symlink-or-nested-repository-escape" },
+    { "id": "P04", "operation": "visit entries in normalized POSIX byte order; reject depth/file/candidate/byte budget exhaustion", "failure": "limit-exceeded" },
+    { "id": "P05", "operation": "read only bounded recognized markers; never evaluate imports, macros or scripts", "failure": "unrecognized-or-unsafe-marker" },
+    { "id": "P06", "operation": "parse and normalize owner, unit identity, language, capabilities and references", "failure": "invalid-identity-or-reference" },
+    { "id": "P07", "operation": "reject unknowns, malformed markers, invalid paths and conflicting owner identities", "failure": "unsupported-or-conflicting-input" },
+    { "id": "P08", "operation": "apply exclusions/includes, nearest ownership and same-owner deduplication", "failure": "ambiguous-marker-or-ownership" },
+    { "id": "P09", "operation": "reject cross-owner overlap; retain missing project references and explicit coverage loss", "failure": "ownership-conflict-or-partial-dependency" },
+    { "id": "P10", "operation": "sort all output; return canonical inventory separately from operational telemetry", "failure": "canonicalization-error" },
+    { "id": "P11", "operation": "return explicit complete/partial/ambiguous/unsupported/failed status; never serialize timestamps into inventory bytes", "failure": "status-or-canonicalization-error" }
+  ],
+  "adapterSteps": [
+    { "id": "A01", "operation": "bind repository revision, unitKey, source/config digests and selected closed profile", "failure": "unbound-input" },
+    { "id": "A02", "operation": "verify producer/toolchain name, version and executable digest; negotiate only declared features", "failure": "unverified-toolchain-or-feature" },
+    { "id": "A03", "operation": "require an already provisioned trusted toolchain in offline credential-free isolation; never run repository scripts", "failure": "unsafe-or-unavailable-execution" },
+    { "id": "A04", "operation": "reject unknown profile/capability or unavailable toolchain as unsupported, not empty success", "failure": "unsupported-profile-or-capability" },
+    { "id": "A05", "operation": "validate every source span against frozen bytes; preserve source coordinate encoding and provenance", "failure": "invalid-span-or-provenance" },
+    { "id": "A06", "operation": "preserve resolved/static-target/candidate/unresolved state and evidence; never promote weaker resolution", "failure": "invalid-resolution-evidence" },
+    { "id": "A07", "operation": "compute file/fact coverage, omitted paths, diagnostics and complete/partial/failed status; keep telemetry separate", "failure": "unreported-coverage-or-status" },
+    { "id": "A08", "operation": "canonicalize ordered facts/evidence without operational timestamps; emit only the new draft envelope", "failure": "noncanonical-or-unsupported-output" },
+    { "id": "A09", "operation": "translate only facts representable by the selected closed consumer profile; malformed or unknown old-consumer inputs fail closed", "failure": "incompatible-or-malformed-consumer-input" },
+    { "id": "A10", "operation": "qualify against an independently authored gold inventory/link/span set; report measured precision, recall and false/missing links", "failure": "not-measured-or-below-threshold" },
+    { "id": "A11", "operation": "compare producer evidence and recorded demand before a bounded, reversible pilot; otherwise stop without language selection", "failure": "no-demand-or-pilot-gate-failed" }
+  ],
+  "requirementTrace": [
+    { "acceptanceId": "F01", "steps": ["A01", "A08"] },
+    { "acceptanceId": "F02", "steps": ["A02", "A05"] },
+    { "acceptanceId": "F03", "steps": ["A06", "A07"] },
+    { "acceptanceId": "F04", "steps": ["A09"] },
+    { "acceptanceId": "F05", "steps": ["A09"] },
+    { "acceptanceId": "F06", "steps": ["A11"] },
+    { "acceptanceId": "F07", "steps": ["A11"] },
+    { "acceptanceId": "D01", "steps": ["P02", "P05"] },
+    { "acceptanceId": "D02", "steps": ["P06"] },
+    { "acceptanceId": "D03", "steps": ["P06", "P08", "P09"] },
+    { "acceptanceId": "D04", "steps": ["P03", "P04"] },
+    { "acceptanceId": "D05", "steps": ["P05", "P07", "P08"] },
+    { "acceptanceId": "D06", "steps": ["P08", "P09", "P10"] },
+    { "acceptanceId": "Q01", "steps": ["P10", "P11", "A08"] },
+    { "acceptanceId": "Q02", "steps": ["A10"] },
+    { "acceptanceId": "Q03", "steps": ["P01", "P03", "P04", "P06", "P07", "P08"] },
+    { "acceptanceId": "Q04", "steps": ["P01", "P03", "P04", "P05", "P11", "A03", "A04"] },
+    { "acceptanceId": "G01", "steps": ["A08", "A09"] },
+    { "acceptanceId": "G02", "steps": ["A11"] }
+  ],
+  "complexity": {
+    "variables": { "directories": "D", "files": "F", "markers": "M", "references": "R", "boundedInputBytes": "B" },
+    "traversalAndNormalization": "O(D + F + B)",
+    "sorting": "O((F + M + R) log(F + M + R))",
+    "referenceIndex": "O(R)",
+    "memory": "O(F + M + R)",
+    "boundedBy": ["depth", "candidateMarkers", "filesPerUnit", "totalFiles", "aggregateBytes"]
+  }
+}

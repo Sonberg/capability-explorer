@@ -8,6 +8,7 @@ const ACCEPTANCE_IDS = [
   'D01', 'D02', 'D03', 'D04', 'D05', 'D06',
   'Q01', 'Q02', 'Q03', 'Q04', 'G01', 'G02',
 ];
+const POLICY_ACCEPTANCE = ACCEPTANCE_IDS;
 const PHASES = ['specification', 'pseudocode', 'architecture', 'all'];
 const text = value => typeof value === 'string' && value.trim().length > 0;
 
@@ -72,6 +73,68 @@ export function validateSpecification(contract, specification) {
   return errors;
 }
 
+/** Cross-check ordered policy steps, failure paths, acceptance trace and complexity. */
+export function validatePseudocode(policy, pseudocode) {
+  const errors = [];
+  const need = (condition, message) => { if (!condition) errors.push(message); };
+  need(policy?.version === 1 && policy.scope === 'proposed-deterministic-discovery-policy'
+    && policy.algorithm === 'discover(snapshot, registry, declaration, budgets)', 'pseudocode policy identity mismatch');
+
+  const algorithmBlock = heading => pseudocode.split(heading)[1]?.match(/```[\s\S]*?\n([\s\S]*?)```/)?.[1] ?? '';
+  const checkOrderedSteps = (heading, declaredValue, prefix, count) => {
+    const documented = [...algorithmBlock(heading).matchAll(new RegExp('^\\s*(' + prefix + '\\d{2})\\s+(.+)$', 'gm'))]
+      .map(match => ({ id: match[1], operation: match[2].trim() }));
+    const declared = Array.isArray(declaredValue) ? declaredValue : [];
+    need(declared.length === count && documented.length === count
+      && declared.every((step, index) => step?.id === `${prefix}${String(index + 1).padStart(2, '0')}`
+        && step.id === documented[index]?.id && step.operation === documented[index]?.operation && text(step.failure)),
+    `${prefix}01-${prefix}${String(count).padStart(2, '0')} must be ordered, independently documented and carry explicit failure outcomes`);
+    return new Set(declared.map(step => step?.id));
+  };
+  const layoutIds = checkOrderedSteps('## Deterministic bounded procedure', policy?.steps, 'P', 11);
+  const adapterIds = checkOrderedSteps('## Adapter and compatibility procedure', policy?.adapterSteps, 'A', 11);
+  const stepIds = new Set([...layoutIds, ...adapterIds]);
+  const traces = Array.isArray(policy?.requirementTrace) ? policy.requirementTrace : [];
+  need(traces.length === POLICY_ACCEPTANCE.length
+    && new Set(traces.map(trace => trace?.acceptanceId)).size === traces.length
+    && POLICY_ACCEPTANCE.every(id => traces.some(trace => trace?.acceptanceId === id)),
+  'policy trace must cover every issue acceptance ID exactly once');
+  for (const id of POLICY_ACCEPTANCE) {
+    const trace = traces.find(entry => entry?.acceptanceId === id);
+    need(Array.isArray(trace?.steps) && trace.steps.length > 0
+      && new Set(trace.steps).size === trace.steps.length
+      && trace.steps.every(step => stepIds.has(step)),
+    `${id} must map to existing distinct policy steps`);
+  }
+
+  const complexity = policy?.complexity;
+  for (const [key, expected] of Object.entries({
+    traversalAndNormalization: 'O(D + F + B)',
+    sorting: 'O((F + M + R) log(F + M + R))',
+    referenceIndex: 'O(R)',
+    memory: 'O(F + M + R)',
+  })) {
+    need(complexity?.[key] === expected && pseudocode.includes(expected), `complexity bound ${key} missing or undocumented`);
+  }
+  need(Array.isArray(complexity?.boundedBy)
+    && ['depth', 'candidateMarkers', 'filesPerUnit', 'totalFiles', 'aggregateBytes'].every(item => complexity.boundedBy.includes(item)),
+  'complexity must be bounded by every hard input budget');
+  const lowerPseudocode = pseudocode.replace(/\s+/g, ' ').toLowerCase();
+  const requiredSemantics = [
+    'unitkey = "unit:v1/"', 'nearest ownership', 'same-owner deduplication',
+    'equal-depth cross-unit overlap', 'missing-dependency', 'limit-exceeded',
+    'marker-free repository', 'no source path is resolved through a symlink.',
+    'timestamps', 'precision/recall',
+  ];
+  for (const phrase of requiredSemantics) need(lowerPseudocode.includes(phrase), `pseudocode semantics missing: ${phrase}`);
+  for (const phrase of [
+    'ce.v1', 'not-measured', 'false/missing links', 'rollback',
+    'without language selection', 'never run repository scripts',
+  ]) need(lowerPseudocode.includes(phrase), `adapter/qualification semantics missing: ${phrase}`);
+  errors.push(...containsCompletionClaim(policy));
+  return errors;
+}
+
 /** @param {string[]} argv @param {string} root */
 export function run(argv, root) {
   if (argv.length !== 1 || !PHASES.includes(argv[0])) {
@@ -80,6 +143,11 @@ export function run(argv, root) {
   const contract = JSON.parse(readRegular(root, 'config/research/frontend-contracts.json'));
   const specification = readRegular(root, 'docs/research/language-neutral-frontends-specification.md');
   const errors = validateSpecification(contract, specification);
+  if (argv[0] !== 'specification') {
+    const policy = JSON.parse(readRegular(root, 'config/research/frontend-layout-policy.json'));
+    const pseudocode = readRegular(root, 'docs/research/language-neutral-frontends-pseudocode.md');
+    errors.push(...validatePseudocode(policy, pseudocode));
+  }
   if (errors.length) throw new Error(errors.join('\n'));
   return `${argv[0]}: ${ACCEPTANCE_IDS.length} issue obligations traced; constraints checked; no implementation or semantic-accuracy claim`;
 }
