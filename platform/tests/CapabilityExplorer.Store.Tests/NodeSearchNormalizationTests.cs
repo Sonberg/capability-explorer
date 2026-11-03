@@ -158,7 +158,7 @@ public sealed class NodeSearchNormalizationTests(PostgresFixture db)
             try { await Task.WhenAll(output,error,process.WaitForExitAsync(timeout.Token)); }
             finally { if(!process.HasExited) process.Kill(true); }
             Assert.NotEqual(0,process.ExitCode);
-            Assert.Contains("publication unchanged",await output+await error,StringComparison.Ordinal);
+            Assert.Contains("publication was not confirmed",await output+await error,StringComparison.Ordinal);
             Assert.Equal(before,await db.CountAllAsync());
         }
         finally { Directory.Delete(directory,true); }
