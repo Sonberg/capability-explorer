@@ -306,10 +306,27 @@ links/issues across repositories. The trusted-local write guard is browser reque
 protection, not authentication. Audit history is append-only through the application;
 database administrators can still alter storage. No release version is assigned.
 
-Field-level value propagation, runtime traffic, inferred equivalence and LLM
-proposals remain unimplemented. Calls, bindings and shared term hubs must not be
+Optional `glossary/v1` proposals now use the configured interpretation model only
+after an explicit request. Exact source inputs, model and prompt/schema identify
+the cache; invented aliases, occurrences and evidence are rejected. Proposals
+remain `llm`/`unreviewed` until a human explicitly accepts selected occurrence
+roles or rejects the proposal. Migration 0006 persists that decision atomically
+with accepted terms/links and existing audit writes; relationships and ambiguities
+remain proposals, not source facts. Reviewer names are self-reported.
+
+Recorded-model tests cover grounding and source/scope invalidation; PostgreSQL
+HTTP tests cover acceptance, rejection, restart and conflicting/idempotent review.
+Browser checks exercise both fixture capabilities, exact source evidence,
+recorded proposal rendering, capability-change reset and database-disabled review.
+No live model or paid inference is needed. Browser database-backed review is not
+part of this check; persistence is covered by the HTTP integration tests.
+
+Field-level value propagation, runtime traffic and inferred equivalence remain
+unimplemented. Synonym embeddings and work-item integration are deferred.
+Calls, bindings and shared term hubs must not be
 reported as proof of value equality. #6 extractor gaps, live LikeC4 integration,
 #13 settling performance and owner-controlled #12 BPMN/DMN scope remain separate.
+The broad #4 acceptance is not closed by the optional proposal layer alone.
 See [execution evidence and commands](plans/glossary-flow-execution.md).
 
 ## Smaller follow-ups

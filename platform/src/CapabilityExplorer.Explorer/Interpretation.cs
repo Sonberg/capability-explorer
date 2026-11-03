@@ -8,6 +8,7 @@ namespace CapabilityExplorer.Explorer;
 public sealed record InterpretationLayer(InterpretationOptions Options, ExplanationService? Explanations, IChatModel? Chat = null)
 {
     public bool Enabled => Explanations is not null;
+    public GlossaryService? Glossary { get; init; }
 }
 
 /// <summary>
@@ -115,7 +116,10 @@ public sealed partial class Intelligence
         var options = saved?.ApplyTo(_configured) ?? _configured;
         var model = options.CreateModel();
         var explanations = model is not null ? new ExplanationService(model, options.CacheDirectory) : null;
-        return new State(new InterpretationLayer(options, explanations, model as IChatModel), options.CreateEmbeddingModel(), saved);
+        return new State(new InterpretationLayer(options, explanations, model as IChatModel)
+        {
+            Glossary = model is null ? null : new GlossaryService(model, options.CacheDirectory),
+        }, options.CreateEmbeddingModel(), saved);
     }
 
     // Ollama names look like "qwen2.5:7b" or "library/nomic-embed-text"; Foundry deployments are plainer.

@@ -80,6 +80,7 @@ else
 {
     app.MapExplorerApi(options.EvaluationReport);
     app.MapGlossaryReviewApi();
+    app.MapGlossaryProposalApi();
     app.MapBindingPreviewApi();
 }
 app.MapFallbackToFile("index.html");

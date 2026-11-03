@@ -3,6 +3,7 @@ import { shortSha, type AttributeValue, type Comparison, type GlossaryCandidate,
 import { SourceView } from "../components/source";
 import { GlossaryConcepts } from "./GlossaryConcepts";
 import { GlossaryReview } from "../components/glossary-review";
+import { GlossaryProposal } from "../components/glossary-proposal";
 import { Card, ErrorBox, H1, H2, inputClass, jsonText, Loading, Mono, Muted, Note, Pill, Table } from "../components/ui";
 import { href, useApi, useSelection } from "../state";
 
@@ -116,6 +117,7 @@ function CandidateFacts({ candidate }: { candidate: GlossaryCandidate }) {
 function CandidateDetail({ candidate, scope, occurrences }: { candidate: GlossaryCandidate; scope: string; occurrences: GlossaryOccurrence[] }) {
   const [occurrenceId, setOccurrenceId] = useState(candidate.occurrences[0]?.id);
   const [reviewGeneration, setReviewGeneration] = useState(0);
+  const [proposalReviewGeneration, setProposalReviewGeneration] = useState(0);
   const occurrence = candidate.occurrences.find((item) => item.id === occurrenceId);
   return <>
     <Card>
@@ -150,9 +152,13 @@ function CandidateDetail({ candidate, scope, occurrences }: { candidate: Glossar
     <H2>Source occurrences</H2>
     <p className="text-xs text-zinc-500">Choose the exact occurrence whose connections and reviewed membership you want to inspect. Repository, revision and role are kept distinct.</p>
     {candidate.occurrences.map((item) => <OccurrenceCard key={item.id} occurrence={item} selected={item.id === occurrenceId} onSelect={() => setOccurrenceId(item.id)} />)}
+    <GlossaryProposal key={scope} candidate={candidate} scope={scope} onChanged={() => {
+      setReviewGeneration((generation) => generation + 1);
+      setProposalReviewGeneration((generation) => generation + 1);
+    }} />
     {occurrence && <>
       <Suspense fallback={<Loading what="Loading connection canvas" />}><GlossaryFlow key={`${scope}:${occurrence.id}`} scope={scope} occurrence={occurrence} reviewGeneration={reviewGeneration} /></Suspense>
-      <GlossaryReview key={scope} scope={scope} occurrence={occurrence} occurrences={occurrences} onChanged={() => setReviewGeneration((generation) => generation + 1)} />
+      <GlossaryReview key={`${scope}:${proposalReviewGeneration}`} scope={scope} occurrence={occurrence} occurrences={occurrences} onChanged={() => setReviewGeneration((generation) => generation + 1)} />
     </>}
   </>;
 }
