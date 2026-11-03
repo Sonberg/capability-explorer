@@ -104,13 +104,18 @@ public sealed class PostgresExplorerApiTests(PostgresFixture db)
         Assert.Contains(current.GetProperty("marks").EnumerateArray(),m=>m.GetProperty("key").GetString()==key);
     }
 
-    [Fact]
-    public async Task Given_an_unavailable_database_when_reading_marks_then_no_legacy_file_success_is_returned()
+    [Theory]
+    [InlineData("GET")]
+    [InlineData("PUT")]
+    [InlineData("DELETE")]
+    public async Task Given_an_unavailable_database_when_accessing_marks_then_no_legacy_file_success_is_returned(string method)
     {
         using var factory=new DatabaseApiFactory("Host=127.0.0.1;Port=1;Database=unavailable;Username=test;Timeout=1;Pooling=false",Scope());
         File.WriteAllText(Path.Combine(Path.GetDirectoryName(factory.CapabilitiesPath)!,"deprecations.json"),"{\"marks\":[]}");
         using var client=factory.CreateClient();
-        using var response=await client.GetAsync(new Uri("/api/deprecations",UriKind.Relative));
+        using var request=new HttpRequestMessage(new HttpMethod(method),new Uri("/api/deprecations?key=outage&expectedVersion=1",UriKind.Relative));
+        if(method=="PUT") request.Content=JsonContent.Create(new{key="outage",status="deprecated",note="never fallback"});
+        using var response=await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.ServiceUnavailable,response.StatusCode);
         Assert.Contains("database",await response.Content.ReadAsStringAsync(),StringComparison.OrdinalIgnoreCase);
     }

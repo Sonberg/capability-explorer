@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using CapabilityExplorer.Binding;
 using CapabilityExplorer.Contracts;
+using CapabilityExplorer.Explorer;
 using CapabilityExplorer.Store;
 using Xunit;
 
@@ -169,6 +170,12 @@ public sealed class SnapshotPublishCliTests(PostgresFixture db)
         await using(var reader=await edges.ExecuteReaderAsync())
             while(await reader.ReadAsync()) actual.Add((reader.GetString(0),reader.GetString(1),reader.GetString(2),reader.GetString(3),reader.GetString(4)));
         Assert.Equal(expected.Edges.OrderBy(e=>e.Edge.Id,StringComparer.Ordinal).Select(e=>(e.Edge.Id,e.Edge.To!,e.Status==BindingStatus.Bound?"bound":"broken",Binder.RuleName,Binder.RuleVersion)),actual);
+        var queries=new PostgresExplorerQueries(db.DataSource,new ExplorerQueryCursor(new byte[32]));
+        var context=(await queries.ResolveAsync(scope,snapshotId:published.Id))!;
+        var integrations=await queries.IntegrationsAsync(context,[]);
+        var request=Assert.Single(integrations.Http,link=>link.Request.From.Name=="getForecast");
+        Assert.Equal("broken",request.Match);
+        Assert.Equal("http|forecast-cs/Forecast.Api|GET /api/forecasts/{}",Assert.Single(request.Candidates).Key);
         var retry=await Ce(db.ConnectionString,["publish","--scope",scope,"--bindings",bindingPath,..files.Reverse()]);
         Assert.True(retry.Exit==0,retry.Output);
         Assert.Equal(published,await Current(scope));
