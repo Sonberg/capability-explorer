@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Security.Cryptography;
 using CapabilityExplorer.Capabilities.Analysis;
 using Xunit;
 
@@ -5,13 +8,11 @@ namespace CapabilityExplorer.Tests;
 
 public sealed class AnalysisRunTests : IDisposable
 {
-    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ce-analysis-test-" + Guid.NewGuid().ToString("N"));
+    private readonly string _directory = Path.Combine(AppContext.BaseDirectory, "ce-analysis-test-" + Guid.NewGuid().ToString("N"));
     private readonly string _configuration;
     private readonly FileRunStore _store;
     public AnalysisRunTests()
     {
-        // macOS exposes /var through a symlink; use its physical temporary directory.
-        _directory = Path.GetFullPath(_directory.Replace("/var/", "/private/var/", StringComparison.Ordinal));
         Directory.CreateDirectory(_directory);
         _configuration = Path.Combine(_directory, "capabilities.json");
         File.WriteAllText(_configuration, """{"capabilities":[{"id":"sales","repositories":[]},{"id":"other","repositories":[]}]}""");
@@ -55,6 +56,49 @@ public sealed class AnalysisRunTests : IDisposable
         Assert.True(recovery.Blocked);
         Assert.Equal("unknown", _store.ReadRun(accepted.RunId).State);
         Assert.Throws<InvalidOperationException>(() => _store.ClaimNext(replacement));
+    }
+    [Fact]
+    public void One_coordinator_can_claim_distinct_capabilities_but_recovery_still_blocks_globally()
+    {
+        var sales = Admit("sales");
+        var other = Admit("other");
+        var duplicate = _store.Admit("sales", _configuration, null, new());
+        Assert.False(duplicate.Accepted);
+        Assert.Equal(sales.RunId, duplicate.Run.RunId);
+        using (var owner = _store.AcquireWorker())
+        {
+            var claimedSales = _store.ClaimNext(owner, sales.RunId)!;
+            var claimedOther = _store.ClaimNext(owner, other.RunId)!;
+            Assert.Equal("running", claimedSales.State);
+            Assert.Equal("running", claimedOther.State);
+            Assert.NotEqual(claimedSales.RunId, claimedOther.RunId);
+            Assert.NotEqual(claimedSales.AttemptId, claimedOther.AttemptId);
+        }
+        using var replacement = _store.AcquireWorker();
+        Assert.True(_store.Recover(replacement).Blocked);
+        Assert.Equal("unknown", _store.ReadRun(sales.RunId).State);
+        Assert.Equal("unknown", _store.ReadRun(other.RunId).State);
+        Assert.Throws<InvalidOperationException>(() => _store.ClaimNext(replacement));
+    }
+    [Fact]
+    public void Older_queued_run_without_capability_worker_limit_uses_conservative_default()
+    {
+        var admitted = Admit();
+        var acceptedPath = Path.Combine(_store.RunDirectory(admitted.RunId), "accepted.json");
+        var accepted = JsonNode.Parse(File.ReadAllText(acceptedPath))!.AsObject();
+        accepted["settings"]!.AsObject().Remove("capabilityWorkers");
+        var json = new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true };
+        var acceptedBytes = JsonSerializer.SerializeToUtf8Bytes(accepted, json);
+        File.WriteAllBytes(acceptedPath, acceptedBytes);
+
+        var runPath = Path.Combine(_store.RunDirectory(admitted.RunId), "run.json");
+        var run = JsonNode.Parse(File.ReadAllText(runPath))!.AsObject();
+        run["settings"]!.AsObject().Remove("capabilityWorkers");
+        run["acceptedInputsHash"] = Convert.ToHexStringLower(SHA256.HashData(acceptedBytes));
+        File.WriteAllBytes(runPath, JsonSerializer.SerializeToUtf8Bytes(run, json));
+
+        using var owner = _store.AcquireWorker();
+        Assert.Equal(2, _store.ClaimNext(owner, admitted.RunId)!.Settings.CapabilityWorkers);
     }
     [Fact]
     public void Queued_cancellation_cannot_be_claimed()

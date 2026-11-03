@@ -26,6 +26,20 @@ before recovery, admission from direct commands, preparation or shared writes.
 The host CLI owns publication; extraction sandboxes produce attempt staging.
 The `analyze`, `analyze-worker` and `analyze-all` scripts delegate to that CLI.
 
+The exclusive owner may dispatch independent capability attempts concurrently.
+It tracks the exact attempts it claimed in process memory; a second claim is
+allowed only while every other started nonterminal run is owned by that same
+coordinator. `Recover` clears this liveness set and records prior started work as
+unknown, so process loss still blocks execution globally. The host scheduler
+defaults to two capability tasks (configurable from one to four with
+`ANALYZE_WORKERS`). Per-run extraction is independently bounded from one to four
+jobs (`ANALYZE_JOBS` or `--extraction-jobs`), with a configured product ceiling
+of sixteen. Aggregate and background commands use this same scheduler.
+Publication is serialized by the owner; failure stops new dispatch but does not
+cancel siblings already started, and the command waits for them to drain.
+Shared source acquisition and package-fetch cache writes are serialized, while
+attempt workspaces, locks, package outputs and logs remain distinct.
+
 Persistent lock files use `FileStream` with `FileShare.None`; never unlink or
 replace them. Independent .NET process tests exercised exclusion and owner
 termination on native macOS and in the pinned Linux .NET sandbox. Those tests
@@ -134,7 +148,8 @@ the implementation handoff.
 
 Atomic replacement and file flushing do not establish power-loss durability or
 an atomic global filesystem/database commit. No distributed fencing, automatic
-rollback, multiworker throughput or central last-good policy is claimed.
+rollback, multiple coordinator processes or distributed worker throughput is
+claimed. The bounded scheduler is one host process only.
 
 ## Implementation and operating guidance
 

@@ -10,7 +10,7 @@ public sealed class AnalysisParallelTests
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
-    [InlineData(20)]
+    [InlineData(4)]
     public async Task Offline_jobs_overlap_within_the_bound_and_merge_isolated_outputs(int limit)
     {
         using var f = new ParallelFixture(limit);
@@ -76,7 +76,7 @@ public sealed class AnalysisParallelTests
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    [InlineData(10000)]
+    [InlineData(5)]
     public void Invalid_job_limits_refuse_before_any_child(int jobs) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => AnalysisPreparation.ValidateSettings(new(ExtractionJobs:jobs)));
 

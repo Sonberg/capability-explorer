@@ -108,6 +108,13 @@ public sealed partial class FileRunStore
         AnalysisPaths.Capability(capId);
         return All().Where(run => run.CapabilityId == capId).OrderByDescending(run => run.AcceptedAt).FirstOrDefault();
     }
+    public IReadOnlyList<AnalysisRun> Queued(WorkerOwnership owner)
+    {
+        Owner(owner);
+        using var gate = Gate();
+        return All().Where(run => run.State == "queued").OrderBy(run => run.AcceptedAt)
+            .ThenBy(run => run.RunId, StringComparer.Ordinal).ToArray();
+    }
     public AdmissionResult Admit(string capId, string configurationPath, string? bindingsPath, AnalysisSettings settings)
     {
         AnalysisPaths.Capability(capId);
@@ -160,6 +167,7 @@ public sealed partial class FileRunStore
         Owner(owner);
         using var gate = Gate();
         var runs = All();
+        owner.ClearAttempts();
         for (var index = 0; index < runs.Count; index++)
         {
             if (runs[index].State is not ("running" or "cancelling" or "publishing")) continue;
@@ -173,7 +181,8 @@ public sealed partial class FileRunStore
         Owner(owner);
         using var gate = Gate();
         var all = All();
-        if (Legacy() || ChecksBlock() || all.Any(run => !Terminal(run) && run.State != "queued"))
+        var foreignActive = all.Any(run => !Terminal(run) && run.State != "queued" && !owner.Owns(run));
+        if (Legacy() || ChecksBlock() || foreignActive)
             throw new InvalidOperationException("unreconciled execution or legacy evidence blocks execution");
         if (runId is not null) AnalysisPaths.Id(runId);
         var next = all.Where(run => run.State == "queued" && (runId is null || run.RunId == runId)).OrderBy(run => run.AcceptedAt).ThenBy(run => run.RunId, StringComparer.Ordinal).FirstOrDefault();
@@ -182,6 +191,7 @@ public sealed partial class FileRunStore
         var claimed = next with { State = "running", AttemptId = Guid.NewGuid().ToString("N") };
         AnalysisPaths.DirectoryPrivate(AttemptDirectory(new(claimed.RunId, claimed.AttemptId!)));
         Save(claimed);
+        owner.Register(new(claimed.RunId, claimed.AttemptId!));
         return claimed;
     }
     internal void VerifyAccepted(AnalysisRun run)
@@ -189,11 +199,18 @@ public sealed partial class FileRunStore
         var acceptedBytes = AnalysisPaths.ReadBounded(SafePath(run.RunId, "accepted.json"));
         using var document = JsonDocument.Parse(acceptedBytes);
         var accepted = document.RootElement;
+        var acceptedSettings = accepted.GetProperty("settings");
+        var runSettings = JsonSerializer.SerializeToNode(run.Settings, AnalysisPaths.Json)!.AsObject();
+        if (!acceptedSettings.TryGetProperty("capabilityWorkers", out _))
+        {
+            if (run.Settings.CapabilityWorkers != 2) throw new InvalidDataException("legacy analysis settings require the default worker ceiling");
+            runSettings.Remove("capabilityWorkers");
+        }
         if ((run.BindingsPath is null) != (accepted.GetProperty("bindings").ValueKind == JsonValueKind.Null) ||
             AnalysisPaths.Hash(CaptureConfiguration(run.ConfigurationPath)) != accepted.GetProperty("configuration").GetString() ||
             (run.BindingsPath is not null && AnalysisPaths.Hash(AnalysisPaths.ReadBounded(run.BindingsPath)) != accepted.GetProperty("bindings").GetString()) ||
             AnalysisPaths.Hash(JsonSerializer.Serialize(accepted, AnalysisPaths.Json)) != run.AcceptedInputsHash ||
-            JsonSerializer.Serialize(run.Settings, AnalysisPaths.Json) != JsonSerializer.Serialize(accepted.GetProperty("settings"), AnalysisPaths.Json))
+            JsonSerializer.Serialize(runSettings, AnalysisPaths.Json) != JsonSerializer.Serialize(acceptedSettings, AnalysisPaths.Json))
             throw new InvalidDataException("accepted inputs changed");
     }
     internal AnalysisRun Attempt(AttemptIdentity attempt)
@@ -228,6 +245,7 @@ public sealed partial class FileRunStore
         var state = !terminationConfirmed ? "unknown" : run.CancellationRequested ? "cancelled" : exitCode != 0 ? "failed" : "running";
         run = run with { State = state, ExecutionCompleted = terminationConfirmed && exitCode == 0 && !run.CancellationRequested, Detail = state == "running" ? "execution completed; publication pending" : $"execution exit {exitCode}; termination confirmed: {terminationConfirmed}" };
         Save(run);
+        if (state != "running") owner.Release(attempt);
         return run;
     }
     public AnalysisRun RecordEnrichment(WorkerOwnership owner, AttemptIdentity attempt, string outcome, string? detail = null)

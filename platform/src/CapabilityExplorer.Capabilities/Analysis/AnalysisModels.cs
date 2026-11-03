@@ -1,7 +1,9 @@
+using System.Collections.Concurrent;
+
 namespace CapabilityExplorer.Capabilities.Analysis;
 
 public sealed record AnalysisSettings(bool IncludeTests = false, bool Packages = true, bool Locked = false, string? RuntimeIdentity = null,
-    string GitHubAuth = "auto", string NugetPassEnv = "", string? NugetAllowedOrigins = null, int ExtractionJobs = 2);
+    string GitHubAuth = "auto", string NugetPassEnv = "", string? NugetAllowedOrigins = null, int ExtractionJobs = 2, int CapabilityWorkers = 2);
 /// <summary>Last configured nonsecret worker policy, without any liveness or execution authority.</summary>
 public sealed record WorkerDefaults(AnalysisSettings Settings, bool? IncludeTestsOverride);
 public sealed record AttemptIdentity(string RunId, string AttemptId);
@@ -19,8 +21,14 @@ public sealed record RecoveryReport(bool Blocked, IReadOnlyList<AnalysisRun> Run
 public sealed class WorkerOwnership : IDisposable
 {
     private readonly FileStream _stream;
+    private readonly ConcurrentDictionary<string, byte> _attempts = new(StringComparer.Ordinal);
     internal FileRunStore Store { get; }
     internal bool Disposed { get; private set; }
     internal WorkerOwnership(FileRunStore store, FileStream stream) { Store = store; _stream = stream; }
-    public void Dispose() { Disposed = true; _stream.Dispose(); }
+    internal void Register(AttemptIdentity attempt) => _attempts.TryAdd(Key(attempt), 0);
+    internal bool Owns(AnalysisRun run) => run.AttemptId is not null && _attempts.ContainsKey(Key(new(run.RunId, run.AttemptId)));
+    internal void Release(AttemptIdentity attempt) => _attempts.TryRemove(Key(attempt), out _);
+    internal void ClearAttempts() => _attempts.Clear();
+    private static string Key(AttemptIdentity attempt) => attempt.RunId + "/" + attempt.AttemptId;
+    public void Dispose() { Disposed = true; _attempts.Clear(); _stream.Dispose(); }
 }

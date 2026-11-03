@@ -10,6 +10,8 @@ internal sealed record PreparedAnalysis(IReadOnlyList<AnalysisRepository> Reposi
 
 internal static class AnalysisPreparation
 {
+    internal static readonly SemaphoreSlim SourceAcquisitionGate = new(1, 1);
+    internal static readonly SemaphoreSlim PackageAcquisitionGate = new(1, 1);
     private static readonly string[] ReservedEnvironmentPrefixes = ["CE_", "DOCKER_", "CONTAINER_", "SANDBOX_", "DOTNET_", "GITHUB_", "GH_", "GIT_", "npm_"];
     private static readonly string[] TokenVariables = ["GITHUB_TOKEN", "GH_TOKEN", "GH_CONFIG_DIR"];
     private const string Cli = "platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll";
@@ -18,7 +20,9 @@ internal static class AnalysisPreparation
 
     internal static void ValidateSettings(AnalysisSettings settings)
     {
-        if (settings.ExtractionJobs is < 1 or > 9999) throw new ArgumentOutOfRangeException(nameof(settings), "extraction jobs must be between 1 and 9999");
+        if (settings.ExtractionJobs is < 1 or > 4 || settings.CapabilityWorkers is < 1 or > 4 ||
+            settings.ExtractionJobs * settings.CapabilityWorkers > 16)
+            throw new ArgumentOutOfRangeException(nameof(settings), "worker and extraction limits exceed the bounded analysis resource ceiling");
         if (settings.GitHubAuth is not ("auto" or "git" or "none")) throw new ArgumentException("github-auth must be auto, git or none");
         var names = settings.NugetPassEnv.Split(',', StringSplitOptions.RemoveEmptyEntries);
         if (names.Length > 50 || names.Any(n => !Regex.IsMatch(n, "^[A-Z_][A-Z0-9_]{0,99}\\z") ||
@@ -47,7 +51,7 @@ internal static class AnalysisPreparation
         return AnalysisWorkerCommand.HashText(string.Join('\n', inputs.Concat(dlls).Concat(parserInputs)));
     }
 
-    internal static async Task<PreparedAnalysis> Prepare(string root, FileRunStore store, AnalysisRun run, AnalysisProcess process)
+    internal static async Task<PreparedAnalysis> Prepare(string root, FileRunStore store, AnalysisRun run, AnalysisProcess process, CancellationToken stop = default)
     {
         ValidateSettings(run.Settings);
         var runtime = RuntimeIdentity(root);
@@ -75,30 +79,36 @@ internal static class AnalysisPreparation
         // Git never executes repository code; subsequent extraction children retain the offline sandbox profile.
         var sync = new SourceSync(Path.Combine(root, ".sandbox-cache/sources"), auth: GitHubAuth.FromToken(token.Trim(), "host credential helper"));
         var priorCheck = store.ReadLatestCheck(definition.Id);
-        var snapshot = run.Settings.Locked
-            ? priorCheck is { State: "done", Snapshot: not null } && FileRunStore.CheckMatches(priorCheck, run.ConfigurationPath, run.Settings.GitHubAuth)
-                ? priorCheck.Snapshot : throw new InvalidOperationException("locked analysis requires a matching completed host source check")
-            : await process.AcquireSource(sync, token => sync.CheckAsync(definition, token));
-        if (sync.ExecutionUncertain) { process.MarkUncertainAcquisition(); throw new InvalidOperationException("source acquisition requires reconciliation"); }
-        process.CheckCancellation();
-        if (snapshot.Repositories.Count != definition.Repositories.Count || snapshot.Repositories.Any(repo => repo.CommitSha is null || repo.Error is not null))
-            throw new InvalidOperationException("source acquisition failed");
+        CapabilitySnapshot snapshot;
         var manifest = new List<string>();
-        foreach (var repository in snapshot.Repositories)
+        await SourceAcquisitionGate.WaitAsync(stop);
+        try
         {
+            snapshot = run.Settings.Locked
+                ? priorCheck is { State: "done", Snapshot: not null } && FileRunStore.CheckMatches(priorCheck, run.ConfigurationPath, run.Settings.GitHubAuth)
+                    ? priorCheck.Snapshot : throw new InvalidOperationException("locked analysis requires a matching completed host source check")
+                : await process.AcquireSource(sync, token => sync.CheckAsync(definition, token));
+            if (sync.ExecutionUncertain) { process.MarkUncertainAcquisition(); throw new InvalidOperationException("source acquisition requires reconciliation"); }
             process.CheckCancellation();
-            var source = definition.Repositories.Single(source => source.Id == repository.Id && source.Ref == repository.Ref);
-            var destination = Path.Combine(work, "src", source.Id);
-            await process.AcquireSource(sync, token => sync.ExportAsync(source, repository.CommitSha!, destination, token));
-            manifest.Add($"{source.Id}\t{repository.CommitSha}\tsrc/{source.Id}");
+            if (snapshot.Repositories.Count != definition.Repositories.Count || snapshot.Repositories.Any(repo => repo.CommitSha is null || repo.Error is not null))
+                throw new InvalidOperationException("source acquisition failed");
+            foreach (var repository in snapshot.Repositories)
+            {
+                process.CheckCancellation();
+                var source = definition.Repositories.Single(source => source.Id == repository.Id && source.Ref == repository.Ref);
+                var destination = Path.Combine(work, "src", source.Id);
+                await process.AcquireSource(sync, token => sync.ExportAsync(source, repository.CommitSha!, destination, token));
+                manifest.Add($"{source.Id}\t{repository.CommitSha}\tsrc/{source.Id}");
+            }
         }
+        finally { SourceAcquisitionGate.Release(); }
         process.CheckCancellation();
-        await File.WriteAllLinesAsync(Path.Combine(work, "manifest.tsv"), manifest);
-        await File.WriteAllTextAsync(Path.Combine(work, "include-tests"), definition.IncludeTests ? "1\n" : "0\n");
+        await File.WriteAllLinesAsync(Path.Combine(work, "manifest.tsv"), manifest, stop);
+        await File.WriteAllTextAsync(Path.Combine(work, "include-tests"), definition.IncludeTests ? "1\n" : "0\n", stop);
         var manifestPath = Path.Combine(work,"manifest.tsv");
         if (new FileInfo(manifestPath).Length > 1024 * 1024) throw new IOException("manifest too large");
         var repositories = new List<AnalysisRepository>();
-        foreach (var line in await File.ReadAllLinesAsync(manifestPath))
+        foreach (var line in await File.ReadAllLinesAsync(manifestPath, stop))
         {
             var fields = line.Split('\t');
             if (fields.Length != 3 || !Regex.IsMatch(fields[0], "^[a-z0-9][a-z0-9._-]{0,99}\\z") || !Regex.IsMatch(fields[1],"^[a-f0-9]{40}\\z")) throw new FormatException("invalid export manifest");
@@ -116,12 +126,15 @@ internal static class AnalysisPreparation
         }
         if (repositories.Count == 0 || repositories.Count != definition.Repositories.Count || repositories.Count > 1000)
             throw new FormatException("incomplete capability export; refusing partial analysis");
-        var packageDir = Path.Combine(root,".sandbox-cache/analyze-packages");
+        var packageDir = Path.Combine(work,"packages");
         var locks = Path.Combine(work,"locks");
         RejectLinks(locks); RejectLinks(packageDir);
         Directory.CreateDirectory(locks); Directory.CreateDirectory(packageDir);
         var sources = repositories.ToDictionary(repo => repo.Id, repo => AnalysisPackagePreparation.SourceIdentity(repo.Source), StringComparer.Ordinal);
-        var packageInputs = await AnalysisPackagePreparation.Run(root, run, process, repositories, work, locks, packageDir);
+        await PackageAcquisitionGate.WaitAsync(stop);
+        Dictionary<string, string> packageInputs;
+        try { packageInputs = await AnalysisPackagePreparation.Run(root, run, process, repositories, work, locks, packageDir); }
+        finally { PackageAcquisitionGate.Release(); }
         // Prove npm/workspace links stay confined before any offline parser can follow them.
         var dependencies = repositories.ToDictionary(repo => repo.Id, repo => AnalysisPackagePreparation.DependencyIdentity(repo.Source), StringComparer.Ordinal);
         await AnalysisParallelExtraction.Run(root, store, run, process, repositories, work, locks, packageDir);

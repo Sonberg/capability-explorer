@@ -62,6 +62,7 @@ public sealed class PublicationPermit : IDisposable
         _run = _run with { State = "done", Detail = detail };
         _store.Save(_run);
         _closed = true;
+        _owner.Release(new(_run.RunId, _run.AttemptId!));
         _gate.Dispose();
         return _run;
     }
@@ -75,6 +76,11 @@ public sealed class PublicationPermit : IDisposable
             if (current.State == "publishing")
                 _store.Save(current with { State = "unknown", Detail = "publication interrupted; effects require reconciliation" });
         }
-        finally { _closed = true; _gate.Dispose(); }
+        finally
+        {
+            _owner.Release(new(_run.RunId, _run.AttemptId!));
+            _closed = true;
+            _gate.Dispose();
+        }
     }
 }
