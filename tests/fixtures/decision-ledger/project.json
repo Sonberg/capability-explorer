@@ -1,0 +1,56 @@
+{
+  "version": "decision-ledger.v1",
+  "projects": [
+    {
+      "id": "alpha",
+      "root": "markdown project",
+      "directories": ["decisions"],
+      "exclude": [],
+      "adapter": "markdown-header-v1",
+      "canonical": "markdown",
+      "statusMap": [{"raw": "accepted for team α only", "state": "accepted"}]
+    },
+    {
+      "id": "beta",
+      "root": "json project",
+      "directories": ["registry"],
+      "exclude": ["registry/archive", "generated"],
+      "adapter": "json-collection-v1",
+      "canonical": "json",
+      "jsonProfile": {
+        "collection": "/decisions",
+        "id": "id",
+        "title": "title",
+        "status": "status",
+        "acceptance": "acceptance",
+        "relations": [
+          {"field": "related", "type": "related-from", "direction": "forward"},
+          {"field": "supersedes", "type": "full-supersedes", "direction": "forward"},
+          {"field": "superseded_by", "type": "full-supersedes", "direction": "inverse"}
+        ]
+      },
+      "statusMap": [
+        {"raw": "Proposed", "state": "proposed"},
+        {"raw": "Accepted", "state": "accepted"},
+        {"raw": "Superseded", "state": "superseded"},
+        {"raw": "Implemented", "state": "unknown"}
+      ]
+    },
+    {
+      "id": "gamma",
+      "root": "frontmatter project",
+      "directories": ["adoptions"],
+      "exclude": [],
+      "adapter": "frontmatter-scalars-v1",
+      "canonical": "markdown",
+      "statusMap": [{"raw": "Proposed", "state": "proposed"}]
+    }
+  ],
+  "sidecar": "ledger.json",
+  "output": "preview with spaces",
+  "vocabulary": [
+    {"facet": "topic", "values": ["governance", "semantics"]},
+    {"facet": "concern", "values": ["portability", "evidence"]}
+  ],
+  "limits": {"maxFiles": 100, "maxBytes": 1000000, "maxEdges": 1000}
+}

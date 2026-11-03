@@ -7,7 +7,8 @@ const supported = new Set(['$schema', '$id', '$ref', '$defs', 'type', 'enum', 'c
 export function auditSchema(node = schema) {
   for (const [k, v] of Object.entries(node)) {
     if (!supported.has(k)) throw new Error(`unsupported schema keyword: ${k}`);
-    if (k === '$ref' && !schema.$defs[v.slice('#/$defs/'.length)]) throw new Error(`unsupported schema ref: ${v}`);
+    if (k === '$ref' && (!v.startsWith('#/$defs/') || !Object.hasOwn(schema.$defs, v.slice('#/$defs/'.length))))
+      throw new Error(`unsupported schema ref: ${v}`);
     if (['properties', '$defs'].includes(k)) Object.values(v).forEach(n => auditSchema(n));
     if (k === 'items') auditSchema(v);
   }

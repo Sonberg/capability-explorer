@@ -36,7 +36,8 @@ export function reconcile(root, config, ledger) {
     unique(project.statusMap.map(m => m.raw), 'duplicate status mapping');
     if (project.jsonProfile) {
       const p = project.jsonProfile;
-      unique([p.id, p.title, p.status, ...p.relations.map(r => r.field)], 'ambiguous JSON field mapping');
+      unique([p.id, p.title, p.status, ...(p.acceptance ? [p.acceptance] : []),
+        ...p.relations.map(r => r.field)], 'ambiguous JSON field mapping');
     }
     projectMap.set(project.id, project);
     const projectRoot = localPath(root, project.root);
@@ -63,6 +64,8 @@ export function reconcile(root, config, ledger) {
     sources.set(k, source); recordMap.set(k, record);
   }
   if (sourceLocators.size) throw new Error(`inventory coverage: ${[...sourceLocators.keys()].join(', ')}`);
+  for (const project of config.projects.filter(p => p.canonical === 'json'))
+    unique(ledger.records.filter(r => r.project === project.id).map(r => r.alias), 'ambiguous JSON local id; configure separate collection namespaces');
   const vocabulary = new Map(config.vocabulary.map(v => [v.facet, new Set(v.values)]));
   for (const [k, record] of recordMap) {
     const source = sources.get(k), project = projectMap.get(record.project);
@@ -80,6 +83,8 @@ export function reconcile(root, config, ledger) {
       if (mapped !== 'accepted' || acceptance.scope !== record.status.scope) throw new Error('scope qualified acceptance');
       verifyEvidence(acceptance.evidence, sources, k);
       if (source.document !== undefined) {
+        if (!source.acceptancePointer || acceptance.evidence.pointer !== source.acceptancePointer)
+          throw new Error('JSON acceptance profile binding');
         const value = resolvePointer(source.document, acceptance.evidence.pointer);
         if (!value || typeof value !== 'object' || value.scope !== acceptance.scope ||
             value.agent !== acceptance.authority.agent) throw new Error('JSON acceptance receipt binding');
@@ -127,7 +132,14 @@ export function reconcile(root, config, ledger) {
         if (receipt.record !== own || !other || d.project !== other.project || d.target !== other.alias)
           throw new Error('JSON relation direction/target binding');
         declaredUsed.add(JSON.stringify([d.record, d.pointer]));
-      } else if (receipt.record !== edge.from) throw new Error('Markdown edge evidence must be source assertion');
+      } else {
+        if (receipt.record !== edge.from) throw new Error('Markdown edge evidence must be source assertion');
+        if (edge.standing === 'source-declared') {
+          const tokens = [from.id, edge.type, edge.to.id, edge.scope,
+            ...(from.project === edge.to.project ? [] : [edge.to.project])];
+          if (!tokens.every(token => receipt.quote.includes(token))) throw new Error('Markdown typed declaration binding');
+        }
+      }
     }
   }
   for (const d of declarations)

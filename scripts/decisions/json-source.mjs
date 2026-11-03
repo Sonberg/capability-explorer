@@ -64,12 +64,19 @@ export function parseCollection(bytes, profile) {
   const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes), lines = text.split('\n');
   const document = strictJSON(text), collection = resolvePointer(document, profile.collection);
   if (!Array.isArray(collection)) throw new Error('JSON collection must be an array');
-  const consumed = new Set([profile.id, profile.title, profile.status, ...profile.relations.map(r => r.field)]);
+  const consumed = new Set([profile.id, profile.title, profile.status, profile.acceptance, ...profile.relations.map(r => r.field)]);
   return collection.map((entry, index) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('JSON decision must be an object');
     for (const field of [profile.id, profile.title, profile.status])
       if (typeof entry[field] !== 'string' || !entry[field].trim()) throw new Error(`JSON scalar field: ${field}`);
     const pointer = `${profile.collection}/${index}`;
+    if (profile.acceptance && Object.hasOwn(entry, profile.acceptance)) {
+      const a = entry[profile.acceptance];
+      if (!a || typeof a !== 'object' || Array.isArray(a) ||
+          Object.keys(a).sort().join(',') !== 'agent,scope' ||
+          ![a.scope, a.agent].every(s => typeof s === 'string' && s.trim()))
+        throw new Error('unsupported JSON acceptance fields');
+    }
     const declaredRelations = [];
     for (const relation of profile.relations) {
       if (!Object.hasOwn(entry, relation.field)) continue;
@@ -86,6 +93,8 @@ export function parseCollection(bytes, profile) {
       titleLine: 1, titleEnd: lines.length, rawStatus: entry[profile.status],
       statusLine: 1, statusEnd: lines.length, statusPointer: `${pointer}/${escapePointer(profile.status)}`,
       titlePointer: `${pointer}/${escapePointer(profile.title)}`,
+      ...(profile.acceptance && Object.hasOwn(entry, profile.acceptance) ?
+        { acceptancePointer: `${pointer}/${escapePointer(profile.acceptance)}` } : {}),
       declaredRelations,
       metadata: Object.entries(entry).map(([key, value]) => ({ key, value, pointer: `${pointer}/${escapePointer(key)}` })),
       diagnostics: Object.keys(entry).filter(k => !consumed.has(k)).map(k => `uninterpreted JSON metadata: ${k}`)

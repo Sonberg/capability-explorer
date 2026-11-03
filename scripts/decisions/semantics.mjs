@@ -39,7 +39,7 @@ export function validateCycles(edges) {
       if (!graph.has(e.from)) graph.set(e.from, []);
       graph.get(e.from).push(key(e.to.project, e.to.id));
     }
-    // Iterative DFS bounds stack usage to the configured record budget.
+    // Iterative DFS stays within the configured record/edge budgets.
     const seen = new Set(), active = new Set();
     for (const start of graph.keys()) {
       const stack = [[start, false]];

@@ -1,10 +1,11 @@
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { readJSON, specification, pseudocode } from './contracts.mjs';
+import { readFileSync } from 'node:fs';
+import { readJSON, specification, pseudocode, traceability } from './contracts.mjs';
 import { auditSchema } from './schema.mjs';
 import { loadLedger } from './ledger.mjs';
-import { projections, outputViews } from './project.mjs';
+import { projections, outputViews, projectionBoundary } from './project.mjs';
 import { canonical } from './semantics.mjs';
 import { sha256, localPath } from './source.mjs';
 
@@ -27,13 +28,18 @@ try {
   if (options['--output'] && !['generate', 'check'].includes(mode)) throw new Error('--output only applies to generate/check');
   const root = resolve(options['--root'] ?? process.cwd());
   const configPath = options['--config'] ?? 'config/decisions/project.json';
-  if (['all', 'specification'].includes(mode))
-    specification(readJSON(resolve(codeRoot, 'config/decisions/requirements.json')));
+  if (['all', 'specification'].includes(mode)) {
+    const contract = readJSON(resolve(codeRoot, 'config/decisions/requirements.json'));
+    specification(contract);
+    traceability(contract, readFileSync(resolve(codeRoot, 'tests/decision-ledger.test.mjs'), 'utf8'),
+      path => readJSON(localPath(codeRoot, path)));
+  }
   if (['all', 'pseudocode'].includes(mode))
     pseudocode(readJSON(resolve(codeRoot, 'config/decisions/examples.json')));
   if (['all', 'architecture', 'generate', 'check'].includes(mode)) {
     auditSchema();
     const config = readJSON(localPath(root, configPath)), ledger = loadLedger(root, configPath);
+    projectionBoundary(root, options['--output'] ?? config.output, config, configPath, ledger);
     if (['generate', 'check'].includes(mode)) {
       const output = options['--output'] ?? config.output;
       const views = projections(ledger, config, root, output);

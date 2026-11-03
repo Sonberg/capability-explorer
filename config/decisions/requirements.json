@@ -1,5 +1,10 @@
 {
   "version": "decision-ledger.v1",
+  "fixtures": [
+    {"id": "markdown-header", "config": "tests/fixtures/decision-ledger/project.json", "project": "alpha", "adapter": "markdown-header-v1"},
+    {"id": "json-collection", "config": "tests/fixtures/decision-ledger/project.json", "project": "beta", "adapter": "json-collection-v1"},
+    {"id": "frontmatter-adoption", "config": "tests/fixtures/decision-ledger/project.json", "project": "gamma", "adapter": "frontmatter-scalars-v1"}
+  ],
   "requirements": [
     {"id": 1, "question": "Which decision is active for this exact scope; what is unreviewed?", "boundary": "Only explicit acceptance receipts qualify; contradictions are reported, not adjudicated.", "tests": ["scope qualified acceptance", "conflicting acceptance"], "negative": "reject"},
     {"id": 2, "question": "How do project, record, revision and equivalent local aliases differ?", "boundary": "Paths are locators; renames preserve explicit identities; no automatic equivalence.", "tests": ["portable identities and rename", "external target states"], "negative": "reject"},

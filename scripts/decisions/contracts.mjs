@@ -6,6 +6,9 @@ import { strictJSON } from './json-source.mjs';
 export const readJSON = path => strictJSON(readFileSync(path, 'utf8'));
 export function specification(contract) {
   assert.equal(contract.version, 'decision-ledger.v1', 'specification version');
+  assert.equal(new Set(contract.fixtures.map(f => f.id)).size, contract.fixtures.length, 'unique fixture trace IDs');
+  assert.deepEqual(contract.fixtures.map(f => f.adapter).sort(),
+    ['markdown-header-v1', 'frontmatter-scalars-v1', 'json-collection-v1'].sort(), 'heterogeneous adapter traceability');
   assert.deepEqual(contract.requirements.map(r => r.id).sort(), [1, 2, 3, 4, 5, 6, 7], 'seven unique obligations');
   for (const r of contract.requirements) {
     for (const field of ['question', 'boundary']) assert.ok(r[field]?.length > 20, `${r.id}: ${field}`);
@@ -19,6 +22,16 @@ export function specification(contract) {
   ].sort(), 'guarded branch eligibility');
   assert.equal(contract.branchPolicy.unknown, 'retain');
   assert.equal(contract.branchPolicy.executor, 'lead-only');
+}
+
+export function traceability(contract, testSource, fixtureConfig) {
+  const tests = new Set([...testSource.matchAll(/^test\('([^']+)',/gm)].map(m => m[1]));
+  for (const r of contract.requirements)
+    for (const name of r.tests) assert.ok(tests.has(name), `obligation ${r.id}: missing test ${name}`);
+  for (const f of contract.fixtures) {
+    const config = fixtureConfig(f.config), project = config.projects.find(p => p.id === f.project);
+    assert.equal(project?.adapter, f.adapter, `fixture profile ${f.id}`);
+  }
 }
 
 export function branchEligibility(facts, policy) {

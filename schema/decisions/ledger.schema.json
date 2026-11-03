@@ -136,6 +136,7 @@
         "id": {"$ref": "#/$defs/identity"},
         "title": {"$ref": "#/$defs/identity"},
         "status": {"$ref": "#/$defs/identity"},
+        "acceptance": {"$ref": "#/$defs/identity"},
         "relations": {
           "type": "array", "items": {
             "type": "object", "additionalProperties": false, "required": ["field", "type", "direction"],

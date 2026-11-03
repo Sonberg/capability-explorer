@@ -88,6 +88,10 @@ from discovery. A configured canonical/adapter mismatch fails.
   deliberately broad span is not a claim of precise JSON token line tracking.
   Unknown metadata is preserved. Archives/generated trees are config exclusions.
   Other JSON dialects need a separately qualified adapter, never guesses.
+  An optional acceptance field must be explicitly configured and supports only
+  `{scope, agent}` objects; unsupported qualifiers fail. Local JSON IDs must be
+  unique in a configured collection namespace; overlapping collections use
+  separate project namespaces.
 
 Explicit raw `Implemented` mapping is required; it does not imply accepted.
 Directed JSON related links use `related-from`, not symmetric `related-to`.
@@ -120,6 +124,8 @@ node scripts/decisions/check.mjs check --output docs/research/decision-ledger-pr
 
 `--root` and `--config` select a different bounded project/config. Config paths,
 project roots, source paths and output must remain within that explicit root.
+Output cannot overwrite canonical/config inputs or enter nonexcluded canonical
+discovery directories. These guards also apply to dry runs.
 `check` never writes, including for absent/stale projections. `all` runs S/P/A
 and launches the focused test suite once. The lead can wire a single cheap make/
 offline CI target around `all`, without running the focused suite twice.
