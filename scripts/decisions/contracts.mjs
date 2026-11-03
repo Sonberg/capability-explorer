@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { key, relationError, validateCycles } from './semantics.mjs';
 
 export const readJSON = path => JSON.parse(readFileSync(path, 'utf8'));
 export function specification(contract) {
@@ -21,4 +22,22 @@ export function specification(contract) {
 
 export function branchEligibility(facts, policy) {
   return policy.required.every(key => facts[key] === true) ? 'eligible-for-lead-recheck' : 'retain';
+}
+
+export function pseudocode(examples) {
+  assert.deepEqual(examples.precedence, ['source-bytes', 'adapter-metadata', 'explicit-status-map',
+    'reviewed-sidecar', 'validation', 'projection']);
+  assert.ok(examples.cases.length >= 6, 'positive and negative executable cases');
+  for (const example of examples.cases) {
+    const edge = { ...example, from: key('a', 'one'), to: { project: 'b', id: 'one' } };
+    assert.equal(relationError(edge), example.expected, example.name);
+  }
+  const cycle = type => [
+    { type, from: key('a', 'one'), to: { project: 'a', id: 'two', state: 'resolved' } },
+    { type, from: key('a', 'two'), to: { project: 'a', id: 'one', state: 'resolved' } }
+  ];
+  validateCycles(cycle('related-to'));
+  validateCycles(cycle('references'));
+  assert.throws(() => validateCycles(cycle('depends-on')), /cycle: depends-on/);
+  assert.throws(() => validateCycles(cycle('full-supersedes')), /cycle: full-supersedes/);
 }
