@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "status": "proposed-closed-profiles",
+  "currentArtifact": "ce.v1",
+  "draftAdapterContract": "ce.frontend.contractDraft.v1",
+  "cases": [
+    { "id": "C01", "producer": "old-ce-v1", "consumer": "old-ce-v1", "input": "valid historical ce.v1 record using an existing language", "expected": "accept unchanged", "rollback": "not-required" },
+    { "id": "C02", "producer": "new-ce-v1-existing-language", "consumer": "old-ce-v1", "input": "valid ce.v1 record with unchanged closed vocabulary", "expected": "accept if existing required fields and invariants hold", "rollback": "producer can return to prior compatible output" },
+    { "id": "C03", "producer": "new-language-producer", "consumer": "old-ce-v1", "input": "ce.v1 header with a language value absent from the old closed enum", "expected": "reject at schema validation; no vocabulary widening", "rollback": "disable producer profile and continue old ce.v1 output" },
+    { "id": "C04", "producer": "new-language-producer", "consumer": "draft-adapter-v1", "input": "profile id or capability not present in the exact pinned registry", "expected": "unsupported with diagnostic; never empty success", "rollback": "use a previously accepted closed profile" },
+    { "id": "C05", "producer": "any", "consumer": "any-strict", "input": "malformed JSON, unknown field, mismatched source digest, invalid span or invalid resolution/evidence relation", "expected": "reject before typed interpretation or ingestion", "rollback": "retain last compatible artifact and publish no partial replacement" },
+    { "id": "C06", "producer": "draft-adapter-v1", "consumer": "draft-adapter-v1", "input": "valid old record read through an adapter with a versioned closed profile", "expected": "explicit profile selection; preserve original ce.v1 bytes and provenance", "rollback": "switch profile only after pinned compatibility tests pass" },
+    { "id": "C07", "producer": "draft-adapter-v2", "consumer": "draft-adapter-v1", "input": "new major draft profile with unknown fields or capabilities", "expected": "reject or quarantine as unsupported; no guessed downgrade", "rollback": "restore v1 profile and its known producer" },
+    { "id": "C08", "producer": "draft-adapter-v1", "consumer": "registry-aware-adapter-v1", "input": "profile id resolves only through a pinned, versioned, closed offline registry", "expected": "accept only when registry digest, declared feature set and schemas match", "rollback": "pin prior registry digest; old ce.v1 consumer remains unchanged" }
+  ],
+  "alternatives": [
+    { "id": "versioned-closed-profiles", "behavior": "Each contract version closes its own fields, language profile and capabilities; old consumers keep their exact validator.", "risk": "Profile migrations require explicit compatibility and rollback tests." },
+    { "id": "registry-reference", "behavior": "Artifacts carry a profile identifier resolved against a pinned registry; registry can describe capabilities but cannot change a consumer's compiled ce.v1 enum.", "risk": "Registry drift or unpinned lookup creates interpretation ambiguity; offline digest and allowlist are mandatory." }
+  ]
+}

@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { run, validatePseudocode, validateSpecification } from '../scripts/research/check-frontend-contracts.mjs';
+import {
+  run, validateArchitecture, validateFixtureCatalogue, validatePseudocode, validateSpecification,
+} from '../scripts/research/check-frontend-contracts.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const readJson = path => JSON.parse(readFileSync(join(root, path), 'utf8'));
@@ -11,6 +13,16 @@ const contract = () => readJson('config/research/frontend-contracts.json');
 const specification = () => readFileSync(join(root, 'docs/research/language-neutral-frontends-specification.md'), 'utf8');
 const pseudocode = () => readFileSync(join(root, 'docs/research/language-neutral-frontends-pseudocode.md'), 'utf8');
 const policy = () => readJson('config/research/frontend-layout-policy.json');
+const architectureInputs = () => ({
+  contract: contract(),
+  report: readFileSync(join(root, 'docs/research/language-neutral-frontends.md'), 'utf8'),
+  adr: readFileSync(join(root, 'docs/adr/0025-language-neutral-frontends-and-discovery.md'), 'utf8'),
+  adapterSchema: readJson('schema/research/frontend-adapter.schema.json'),
+  discoverySchema: readJson('schema/research/frontend-discovery.schema.json'),
+  compatibility: readJson('config/research/frontend-compatibility.json'),
+  scenarios: readJson('tests/fixtures/frontend-contracts/layout-scenarios.json'),
+  expectedInventories: readJson('tests/fixtures/frontend-contracts/expected-inventories.json'),
+});
 
 test('specification traces every issue obligation to distinct review evidence', () => {
   assert.deepEqual(validateSpecification(contract(), specification()), []);
@@ -20,8 +32,8 @@ test('specification traces every issue obligation to distinct review evidence', 
 for (const [name, mutate, expected] of [
   ['missing checkbox', value => { value.acceptance.pop(); }, /map all 19 issue obligations/],
   ['duplicate checkbox', value => { value.acceptance[1].id = value.acceptance[0].id; }, /map all 19 issue obligations/],
-  ['missing negative obligation', value => { value.acceptance[0].negativeCase = ''; }, /F01 needs named evidence/],
-  ['evidence without heading', value => { value.acceptance[0].evidenceHeading = ''; }, /F01 needs named evidence/],
+  ['missing negative obligation', value => { value.acceptance[0].negativeCase = ''; }, /F01 needs typed evidence anchors/],
+  ['evidence without anchor', value => { value.acceptance[0].evidenceAnchor = ''; }, /F01 needs typed evidence anchors/],
   ['self-attested completion', value => { value.acceptance[0].complete = true; }, /self-attested status field/],
   ['dropped security boundary', value => { value.constraints.pop(); }, /machine-readable constraint missing/],
 ]) test(`specification rejects ${name}`, () => {
@@ -52,4 +64,39 @@ for (const [name, mutate, expected] of [
 ]) test(`pseudocode rejects ${name}`, () => {
   const value = policy(); mutate(value);
   assert.match(validatePseudocode(value, pseudocode()).join('\n'), expected);
+});
+
+test('architecture binds source observations, producer evidence, strict drafts and rollback matrix', () => {
+  const value = architectureInputs();
+  assert.deepEqual(validateArchitecture(value.contract, value.report, value.adr,
+    value.adapterSchema, value.discoverySchema, value.compatibility,
+    value.scenarios, value.expectedInventories), []);
+  assert.match(run(['architecture'], root), /19 issue obligations traced/);
+});
+
+for (const [name, mutate, expected] of [
+  ['source citation removal', value => { value.report = value.report.replace('schema/v1/record.schema.json#L61-L79', ''); }, /exact-source citation missing/],
+  ['claiming the MADR was implemented', value => { value.adr = value.adr.replace('not adopted or implemented', 'implemented'); }, /remain explicitly proposed/],
+  ['permitting an unknown adapter field', value => { value.adapterSchema.properties.request.additionalProperties = true; }, /adapter .* must reject unknown properties/],
+  ['dropping adapter toolchain provenance', value => { delete value.adapterSchema.properties.result.properties.producer; }, /adapter field properties.result.properties.producer/],
+  ['weakening old-consumer rejection', value => { value.compatibility.cases.find(item => item.id === 'C03').expected = 'accept new language'; }, /old artifact acceptance and old-consumer rejection/],
+  ['dropping rollback evidence', value => { value.compatibility.cases.find(item => item.id === 'C05').rollback = ''; }, /C05 must state producer/],
+  ['self-attesting compatibility', value => { value.compatibility.cases[0].passed = true; }, /self-attested status field/],
+]) test(`architecture rejects ${name}`, () => {
+  const value = architectureInputs(); mutate(value);
+  assert.match(validateArchitecture(value.contract, value.report, value.adr,
+    value.adapterSchema, value.discoverySchema, value.compatibility,
+    value.scenarios, value.expectedInventories).join('\n'), expected);
+});
+
+for (const [name, mutate, expected] of [
+  ['missing scenario expectation', value => { value.positive.pop(); }, /expected positive inventories must independently cover/],
+  ['standalone accidentally succeeds', value => { value.positive.find(item => item.scenarioId === 'standalone-source').status = 'complete'; }, /standalone source must remain explicitly ambiguous/],
+  ['negative case silently succeeds', value => { value.negative.find(item => item.scenarioId === 'symlink-escape').status = 'complete'; }, /negative case cannot be successful/],
+  ['overlap loses dedupe', value => { value.positive.find(item => item.scenarioId === 'overlap-dedupe').diagnostics = []; }, /overlap fixture must preserve/],
+  ['missing link hidden', value => { value.positive.find(item => item.scenarioId === 'missing-dependency').status = 'complete'; }, /missing dependency must remain an explicit partial/],
+  ['self-attested oracle status', value => { value.verified = true; }, /self-attested status field/],
+]) test(`sealed expected inventories reject ${name}`, () => {
+  const value = architectureInputs().expectedInventories; mutate(value);
+  assert.match(validateFixtureCatalogue(architectureInputs().scenarios, value).join('\n'), expected);
 });

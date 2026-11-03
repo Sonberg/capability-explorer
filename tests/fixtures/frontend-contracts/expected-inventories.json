@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "status": "independently-authored-before-reference-oracle",
+  "positive": [
+    {
+      "scenarioId": "root-project",
+      "status": "complete",
+      "units": [{ "unitKey": "unit:v1/.#app", "languageProfileId": "csharp", "files": ["Program.cs"], "references": [] }],
+      "excluded": [
+        { "path": "obj/Generated.cs", "reason": "generated" },
+        { "path": "tests/AppTests.cs", "reason": "test-policy-exclude" }
+      ],
+      "diagnostics": []
+    },
+    {
+      "scenarioId": "nested-project",
+      "status": "complete",
+      "units": [
+        { "unitKey": "unit:v1/.#root", "languageProfileId": "csharp", "files": ["src/App.cs"], "references": [] },
+        { "unitKey": "unit:v1/src/Api#api", "languageProfileId": "csharp", "files": ["src/Api/Program.cs"], "references": [] }
+      ],
+      "excluded": [],
+      "diagnostics": []
+    },
+    {
+      "scenarioId": "mixed-language-monorepo",
+      "status": "complete",
+      "units": [
+        { "unitKey": "unit:v1/api#api", "languageProfileId": "csharp", "files": ["api/Program.cs"], "references": [] },
+        { "unitKey": "unit:v1/ops#queries", "languageProfileId": "sql", "files": ["ops/select.sql"], "references": [] },
+        { "unitKey": "unit:v1/web#web", "languageProfileId": "typescript", "files": ["web/src/index.ts"], "references": [] }
+      ],
+      "excluded": [],
+      "diagnostics": []
+    },
+    {
+      "scenarioId": "multiple-markers",
+      "status": "complete",
+      "units": [{ "unitKey": "unit:v1/web#web", "languageProfileId": "typescript", "files": ["web/src/app.ts", "web/src/legacy.js"], "references": [] }],
+      "excluded": [],
+      "diagnostics": ["package-context-under-tsconfig"]
+    },
+    {
+      "scenarioId": "standalone-source",
+      "status": "ambiguous",
+      "units": [],
+      "excluded": [],
+      "diagnostics": ["marker-free-source-ambiguous"]
+    },
+    {
+      "scenarioId": "overlap-dedupe",
+      "status": "complete",
+      "units": [{ "unitKey": "unit:v1/web#web", "languageProfileId": "typescript", "files": ["web/src/app.ts", "web/src/util.ts"], "references": [] }],
+      "excluded": [],
+      "diagnostics": ["same-owner-path-deduplicated"]
+    },
+    {
+      "scenarioId": "missing-dependency",
+      "status": "partial",
+      "units": [{
+        "unitKey": "unit:v1/app#app",
+        "languageProfileId": "csharp",
+        "files": ["app/Program.cs"],
+        "references": [{ "targetUnitKey": "unit:v1/shared#core", "relation": "project", "status": "missing-dependency" }]
+      }],
+      "excluded": [],
+      "diagnostics": ["missing-dependency"]
+    },
+    {
+      "scenarioId": "nested-repository-boundary",
+      "status": "complete",
+      "units": [{ "unitKey": "unit:v1/.#root", "languageProfileId": "csharp", "files": ["Program.cs"], "references": [] }],
+      "excluded": [
+        { "path": "vendor/child/.git", "reason": "nested-repository-boundary" },
+        { "path": "vendor/child/Child.cs", "reason": "nested-repository-boundary" },
+        { "path": "vendor/child/Child.csproj", "reason": "nested-repository-boundary" }
+      ],
+      "diagnostics": ["nested-repository-boundary"]
+    }
+  ],
+  "negative": [
+    { "scenarioId": "unknown-language", "status": "unsupported", "units": [], "diagnostics": ["unknown-language-profile"] },
+    { "scenarioId": "unknown-capability", "status": "unsupported", "units": [], "diagnostics": ["unknown-capability"] },
+    { "scenarioId": "marker-free-ambiguity", "status": "ambiguous", "units": [], "diagnostics": ["marker-free-source-ambiguous"] },
+    { "scenarioId": "conflicting-owner", "status": "failed", "units": [], "diagnostics": ["ownership-conflict"] },
+    { "scenarioId": "conflicting-override", "status": "failed", "units": [], "diagnostics": ["conflicting-unit-identity"] },
+    { "scenarioId": "budget-exceeded", "status": "failed", "units": [], "diagnostics": ["limit-exceeded"] },
+    { "scenarioId": "path-traversal", "status": "failed", "units": [], "diagnostics": ["path-escape"] },
+    { "scenarioId": "symlink-escape", "status": "failed", "units": [], "diagnostics": ["symlink-escape"] }
+  ]
+}
