@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "issue": 42,
+  "baseline": "3d0ff8813df60b07ac86c8220b811be3debe5401",
+  "scope": "bounded-language-neutral-research",
+  "specification": "docs/research/language-neutral-frontends-specification.md",
+  "acceptance": [
+    { "id": "F01", "title": "Adapter inputs and outputs", "evidencePath": "docs/research/language-neutral-frontends.md", "evidenceHeading": "Adapter boundary", "positiveCase": "adapter preserves source-bound output", "negativeCase": "adapter rejects malformed output" },
+    { "id": "F02", "title": "Toolchain, features and spans", "evidencePath": "schema/research/frontend-adapter.schema.json", "evidenceHeading": "toolchain", "positiveCase": "adapter accepts declared feature and span", "negativeCase": "adapter rejects undeclared feature" },
+    { "id": "F03", "title": "Resolution, coverage and failures", "evidencePath": "schema/research/frontend-adapter.schema.json", "evidenceHeading": "resolution", "positiveCase": "adapter reports partial coverage", "negativeCase": "adapter rejects unqualified success" },
+    { "id": "F04", "title": "Old/new compatibility", "evidencePath": "docs/research/language-neutral-frontends.md", "evidenceHeading": "Compatibility matrix", "positiveCase": "old consumer accepts old ce.v1 artifact", "negativeCase": "old consumer rejects new language value" },
+    { "id": "F05", "title": "Malformed input and rollback/versioning", "evidencePath": "docs/research/language-neutral-frontends.md", "evidenceHeading": "Compatibility matrix", "positiveCase": "versioned profile can be selected explicitly", "negativeCase": "malformed record fails closed" },
+    { "id": "F06", "title": "Producer comparison", "evidencePath": "docs/research/language-neutral-frontends.md", "evidenceHeading": "Producer comparison", "positiveCase": "producer is assessed against primary source", "negativeCase": "syntax support is not reported as semantic resolution" },
+    { "id": "F07", "title": "Demand-gated pilot", "evidencePath": "docs/research/language-neutral-frontends.md", "evidenceHeading": "Decision and bounded pilot", "positiveCase": "pilot starts with recorded demand", "negativeCase": "no demand does not choose a language" },
+    { "id": "D01", "title": "Discovery ownership patterns", "evidencePath": "docs/research/language-neutral-frontends.md", "evidenceHeading": "Discovery alternatives", "positiveCase": "declared manifest has stable root", "negativeCase": "implicit host walk is not a manifest" },
+    { "id": "D02", "title": "Stable unit identity", "evidencePath": "schema/research/frontend-discovery.schema.json", "evidenceHeading": "unit identity", "positiveCase": "unit key is repository relative", "negativeCase": "absolute host path is rejected" },
+    { "id": "D03", "title": "Markers, precedence, ownership and references", "evidencePath": "docs/research/language-neutral-frontends-pseudocode.md", "evidenceHeading": "Precedence and ownership", "positiveCase": "nearest declared owner wins", "negativeCase": "conflicting ownership fails" },
+    { "id": "D04", "title": "Budgets and source categories", "evidencePath": "docs/research/language-neutral-frontends-pseudocode.md", "evidenceHeading": "Budgets and repository boundaries", "positiveCase": "within-budget inventory is ordered", "negativeCase": "budget exhaustion is explicit" },
+    { "id": "D05", "title": "Ambiguous and marker-free inputs", "evidencePath": "docs/research/language-neutral-frontends-pseudocode.md", "evidenceHeading": "Ambiguity and failure", "positiveCase": "explicit unit declaration resolves ambiguity", "negativeCase": "marker-free ambiguity cannot be successful empty" },
+    { "id": "D06", "title": "Sealed layout inventories", "evidencePath": "tests/fixtures/frontend-contracts/expected-inventories.json", "evidenceHeading": "root-project", "positiveCase": "fixture oracle reproduces expected inventory", "negativeCase": "overlap is deduplicated without dropping owner" },
+    { "id": "Q01", "title": "Deterministic output", "evidencePath": "tests/frontend-contracts.test.mjs", "evidenceHeading": "canonical", "positiveCase": "repeated canonical inventory bytes match", "negativeCase": "operational timestamps do not enter canonical bytes" },
+    { "id": "Q02", "title": "Future precision, recall, links and spans", "evidencePath": "docs/research/language-neutral-frontends.md", "evidenceHeading": "Qualification plan", "positiveCase": "future measures use independent gold inventory", "negativeCase": "static shape tests claim no semantic accuracy" },
+    { "id": "Q03", "title": "Negative discovery cases", "evidencePath": "tests/frontend-contracts.test.mjs", "evidenceHeading": "negative", "positiveCase": "declared valid case passes", "negativeCase": "traversal and symlink escape fail" },
+    { "id": "Q04", "title": "Safe execution and failure boundary", "evidencePath": "docs/research/language-neutral-frontends.md", "evidenceHeading": "Safety boundary", "positiveCase": "offline snapshot produces explicit result", "negativeCase": "no script, credential, network or escape is accepted" },
+    { "id": "G01", "title": "Existing contract and prior issue boundaries", "evidencePath": "docs/research/language-neutral-frontends.md", "evidenceHeading": "Exact-source observations", "positiveCase": "existing ce.v1 fact remains readable", "negativeCase": "new closed-vocabulary value is not backported to old consumer" },
+    { "id": "G02", "title": "Recommendation, dissent, unknowns and pilot", "evidencePath": "docs/research/language-neutral-frontends.md", "evidenceHeading": "Decision and bounded pilot", "positiveCase": "pilot requires demand and a stop rule", "negativeCase": "research completion does not imply implementation" }
+  ],
+  "constraints": [
+    "No parser adoption or new-language choice without recorded demand.",
+    "Do not modify schema/v1/record.schema.json or change the ce.v1 language vocabulary.",
+    "Do not implement production repository discovery or add runtime dependencies.",
+    "Do not execute analyzed repository build/package scripts or inherit credentials.",
+    "Do not use undeclared network access or traverse outside an immutable source snapshot.",
+    "Do not claim fixture conformance proves semantic resolution or all repository layouts.",
+    "Keep #33 exchange-envelope, #12 contract-document evidence, #6 resolution, #37/#48 frozen-source boundary and #23 corpus limitation distinct.",
+    "Issue 42 excludes DDD business-object, domain-event and integration-event grading."
+  ]
+}
