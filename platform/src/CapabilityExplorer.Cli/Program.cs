@@ -11,6 +11,7 @@ using CapabilityExplorer.Cli;
 // ce verify-evidence --repo <git dir> <artifact.jsonl...>
 // ce migrate [--connection <npgsql connection string>]
 // ce import  [--connection <npgsql connection string>] [--bindings <bindings.json>] <artifact.jsonl...>
+// ce reconcile-publication --run <id> --attempt <id> [--connection <npgsql connection string>]
 // ce embed  [--connection <npgsql connection string>] [--settings <model.json>]
 // ce evaluate --expected <dir> --actual <dir> [--config <evaluation.json>] [--repos <dir>] [--repository <id[,id]>] [--language <csharp,typescript,...>] [--json <report.json>]
 // ce export --capability <id> [--capabilities capabilities.json] [--workspace .sandbox-cache/sources] --out <dir>
@@ -26,6 +27,7 @@ const string Usage = """
       ce migrate [--connection <connection string>]
       ce import [--connection <connection string>] [--bindings <bindings.json>] <artifact.jsonl...>  (--bindings also saves the bound edges)
       ce publish [--scope <capability-id|*>] [--view <repo:full-sha,...>] [--bindings <bindings.json>] [--expected-generation <n>] <artifact.jsonl...>
+      ce reconcile-publication --run <id> --attempt <id> [--connection <connection string>]  (read-only; never authorizes recovery)
       ce embed [--connection <connection string>] [--settings <model.json>]  (model from CE_MODEL_ENDPOINT + CE_EMBEDDING_MODEL, else the saved settings: make ollama / explorer Settings)
       ce export (disabled: use the exclusive host analysis worker)
       ce evaluate --expected <dir> --actual <dir> [--config <evaluation.json>] [--repos <dir>] [--repository <id[,id]>] [--language <csharp,typescript,...>] [--json <report.json>] [--max-findings <n>]
@@ -67,6 +69,8 @@ switch (command)
     case "analysis-run":
     case "analysis-all":
         return await AnalysisWorkerCommand.RunAsync(command, options);
+    case "reconcile-publication":
+        return await PublicationReconciliationCommand.RunAsync(options);
 
     case "validate":
     {

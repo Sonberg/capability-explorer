@@ -46,6 +46,10 @@ analysis state. A worker already running for Explorer also excludes direct
 A second worker refuses before recovery changes live records.
 Direct `ce export` is disabled; it cannot bypass this owner.
 
+For an existing run, `ce reconcile-publication --run <run-id> --attempt
+<attempt-id>` reports PostgreSQL attempt evidence and the matching host journal.
+It is a read-only report, not a recovery command.
+
 Full analysis requires the qualified Docker host profile. Explicit Podman full
 analysis, running ownership inside an extraction container and runtime image
 overrides are refused. This does not broaden the separately qualified direct
@@ -189,6 +193,27 @@ publication permission. Local files may already be visible if PostgreSQL later
 fails. Pending/confirmed effect entries retain this coverage; unknown is not a
 claim that every destination failed or succeeded.
 
+Before attempting the snapshot compare-and-swap, the host records the exact
+run/attempt, frozen input hashes, scope, expected generation, selected artifact
+hashes and candidate identity in PostgreSQL. Each successful import outcome is
+recorded alongside its immutable artifact transaction. Destination bytes remain
+bound to their original resolved hashes after local moves; imports verify the
+actual streamed bytes and analysis identity against that durable selection
+before any permanent import commit. A successful pointer
+update and its run/attempt-specific publication result commit in the same
+PostgreSQL transaction. A stale-generation rejection is durably recorded
+without moving the pointer. A lost commit response is not converted into
+failure: the exact attempt result determines whether this attempt committed;
+no result remains unresolved.
+
+The report distinguishes three separate facts: whether this exact attempt
+committed or was durably rejected; whether its immutable candidate has ever
+been published; and which snapshot/generation is current now. Thus a historical
+published candidate remains evidence after another writer advances the pointer,
+while a matching content hash or current pointer alone never attributes a
+publication to this run. Database publication and host-journal confirmation are
+also separate: reconciliation never repairs a missing host confirmation.
+
 Embeddings run after confirmed core publication. Their separate
 `EnrichmentOutcome` is done, failed or not-configured. A model failure preserves
 core done; the existing `ce embed` command can retry enrichment independently.
@@ -225,7 +250,46 @@ These are reconciliation requirements, not an automatic proof procedure.
 Changing the coordination marker, deleting running evidence or editing unknown
 to stopped merely to unblock work bypasses the protocol.
 
+`ce reconcile-publication` reads the attempt, per-artifact outcomes, candidate
+history and current pointer in one PostgreSQL `REPEATABLE READ`, read-only
+transaction. It does not run migrations, import artifacts, normalize search
+data, write a receipt, update the host journal, publish, retry, archive or clear
+markers. Imported, reused, conflicting, missing, invalid and uncertain artifact
+outcomes retain their exact analysis/content identities. Pending evidence,
+missing attempt/candidate receipts, conflicting values, an unavailable database
+or a contradictory host receipt are reported as unresolved. Candidate identity
+and artifact membership must agree with the durable attempt; reconciliation
+never repairs a mismatch. Artifact rows include extractor/version,
+configuration and original byte hashes as well as repository/revision/content.
+A missing or pending host confirmation remains a separate axis and cannot
+negate an exact committed database result. A local directory
+move is not evidence that PostgreSQL succeeded, and a different current pointer
+does not prove an attempt never published.
+
+Read-only report outcomes are `confirmed-published`, `confirmed-not-published`
+or `unresolved`. The first requires the matching attempt-specific committed
+result; the second requires a durable terminal rejection for that exact
+attempt. Absence of a receipt, a candidate still marked `candidate`, process
+exit status, cancellation, local effect confirmation or current-generation
+comparison cannot establish nonpublication. The report conveys no permission
+to retry, reset, repair, archive or clear unknown evidence. Preserve it and
+follow the operator procedure above.
+
 ## Bounds and limits
+
+Reconciliation reports at most **1,000 artifacts**, with a **256 KiB** database
+identity-data budget and **1 MiB** encoded JSON output ceiling. Over-budget
+selections, corrupt oversized query results or escaped output fail explicitly
+as `unresolved` with `report-budget-exceeded`, without partial report success,
+repair or retry authority. This report limit does not reduce the import limit.
+Core publication confirmation uses a separate internal read-only profile bounded
+by the exact in-memory selection (up to the existing 100,000-artifact publication
+maximum), not the operator report row/data budget. It verifies the same durable
+identity, artifact membership and attempt evidence without serializing an
+operator report; a valid large commit therefore does not lose host confirmation
+merely because its diagnostic report would exceed the operator ceiling.
+Malformed host receipts fail as unreadable/conflicting; failed terminal-receipt
+recording emits a bounded diagnostic rather than silently implying certainty.
 
 The default store retains at most **1,000 run records**. At the ceiling it
 refuses new admission; it never automatically deletes history, active work or

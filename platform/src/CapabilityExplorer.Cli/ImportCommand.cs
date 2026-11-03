@@ -7,15 +7,36 @@ using Npgsql;
 
 namespace CapabilityExplorer.Cli;
 
+internal sealed record AnalysisPublicationContext(string RunId, string AttemptId,
+    string AcceptedInputsHash, string ManifestHash,
+    IReadOnlyList<PublicationArtifactExpectation> Artifacts);
+
 /// <summary>Trusted handoff import. The published pointer moves only after every input succeeds.</summary>
 internal static class ImportCommand
 {
     public static async Task<int> RunAsync(NpgsqlDataSource database, IReadOnlyList<string> files,
         IReadOnlyDictionary<string, string> options, bool publish, CancellationToken cancellationToken = default)
+        => await RunCoreAsync(database, files, options, publish, null, cancellationToken);
+
+    internal static Task<int> RunAnalysisAsync(NpgsqlDataSource database, IReadOnlyList<string> files,
+        IReadOnlyDictionary<string, string> options, string runId, string attemptId,
+        string acceptedInputsHash, string manifestHash,
+        IReadOnlyList<PublicationArtifactExpectation> expectedArtifacts,
+        CancellationToken cancellationToken = default) =>
+        RunCoreAsync(database, files, options, true,
+            new AnalysisPublicationContext(runId, attemptId, acceptedInputsHash, manifestHash, expectedArtifacts),
+            cancellationToken);
+
+    private static async Task<int> RunCoreAsync(NpgsqlDataSource database, IReadOnlyList<string> files,
+        IReadOnlyDictionary<string, string> options, bool publish, AnalysisPublicationContext? publicationAttempt,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(database);
         ArgumentNullException.ThrowIfNull(files);
         ArgumentNullException.ThrowIfNull(options);
+        var publishStarted = false;
+        Guid? candidateId = null;
+        SnapshotStore? snapshots = null;
         if (files.Count is < 1 or > SnapshotStore.MaximumArtifacts)
         {
             Console.Error.WriteLine("import requires 1 to 100000 artifact files"); return 2;
@@ -41,32 +62,62 @@ internal static class ImportCommand
                 var sha = part[(colon + 1)..];
                 if (sha.Length != 40 || !sha.All(char.IsAsciiHexDigit)) throw new FormatException("default revision requires a full SHA");
             }
-            var snapshots = new SnapshotStore(database);
+            snapshots = new SnapshotStore(database);
             var expected = publish ? (await snapshots.GetPublishedAsync(scope, cancellationToken))?.Generation ?? 0 : 0;
             if (options.TryGetValue("expected-generation", out var supplied))
             {
                 if (!publish || !long.TryParse(supplied, NumberStyles.None, CultureInfo.InvariantCulture, out expected))
                     throw new FormatException("expected generation must be a nonnegative integer on publish");
             }
+            if (publicationAttempt is not null)
+            {
+                if (!publish || scope != options.GetValueOrDefault("scope") || publicationAttempt.Artifacts.Count != files.Count)
+                    throw new InvalidOperationException("analysis publication identity differs from the selected import");
+                await snapshots.BeginPublicationAttemptAsync(new PublicationAttemptDescriptor(
+                    publicationAttempt.RunId, publicationAttempt.AttemptId, scope,
+                    publicationAttempt.AcceptedInputsHash, publicationAttempt.ManifestHash, expected,
+                    publicationAttempt.Artifacts), cancellationToken);
+            }
             var importer = new ArtifactImporter(database);
             var stored = new HashSet<long>();
             var failed = false;
-            foreach (var file in files)
+            for (var index = 0; index < files.Count; index++)
             {
+                var file = files[index];
                 try
                 {
                     await using var stream = File.OpenRead(file);
-                    var result = await importer.ImportAsync(stream, cancellationToken);
+                    var context = publicationAttempt is null ? null :
+                        new PublicationArtifactImport(publicationAttempt.RunId, publicationAttempt.AttemptId,
+                            index, publicationAttempt.Artifacts[index].SourceSha256);
+                    var result = context is null
+                        ? await importer.ImportAsync(stream, cancellationToken)
+                        : await importer.ImportForPublicationAsync(stream, context, cancellationToken);
                     stored.Add(result.ArtifactId);
-                    Console.WriteLine($"{(result.Outcome == ImportOutcome.Imported ? "imported " : "unchanged")} {file} (artifact {result.ArtifactId})");
+                    Console.WriteLine($"{(result.Outcome == ImportOutcome.Imported ? "imported " : "unchanged ")}{file} (artifact {result.ArtifactId})");
                 }
                 catch (Exception e) when (e is InvalidArtifactException or ArtifactConflictException or IOException)
                 {
                     failed = true;
-                    Console.Error.WriteLine($"FAIL      {file}: import failed ({e.GetType().Name}); publication unchanged");
+                    if (publicationAttempt is not null && e is not ArtifactConflictException)
+                    {
+                        var state = e is FileNotFoundException or DirectoryNotFoundException ? "missing" : "invalid";
+                        await snapshots.RecordPublicationArtifactAsync(publicationAttempt.RunId,
+                            publicationAttempt.AttemptId, index, state, cancellationToken: cancellationToken);
+                    }
+                    Console.Error.WriteLine($"FAIL      {file}: import failed ({e.GetType().Name});");
                 }
             }
-            if (failed) return 1;
+            if (failed)
+            {
+                if (publicationAttempt is not null)
+                {
+                    await snapshots.RecordPrepublicationFailureAsync(publicationAttempt.RunId, publicationAttempt.AttemptId,
+                        null, cancellationToken);
+                    Console.Error.WriteLine("publication attempt confirmed not published; global pointer is not asserted unchanged");
+                }
+                return 1;
+            }
             var ids = stored.Order().ToArray();
             BindingSaveResult? bound = null;
             if (bindings is not null)
@@ -80,28 +131,73 @@ internal static class ImportCommand
             {
                 var identity = await Identity(database, ids, bound?.SnapshotId ?? "no-bindings", defaults, cancellationToken);
                 var candidate = await snapshots.CreateAsync(scope, identity, ids, defaults, cancellationToken);
+                candidateId = candidate.Id;
                 if (bound is not null)
                 {
                     await using var link = database.CreateCommand("insert into analysis_snapshot_binding(snapshot_id,binding_snapshot_id) values($1,$2) on conflict do nothing");
                     link.Parameters.AddWithValue(candidate.Id); link.Parameters.AddWithValue(bound.SnapshotId);
                     await link.ExecuteNonQueryAsync(cancellationToken);
                 }
-                var result = await snapshots.PublishAsync(candidate.Id, expected, cancellationToken);
-                Console.WriteLine($"published snapshot {result.Id} scope {scope} generation {result.Generation}");
+                if (publicationAttempt is not null)
+                {
+                    await snapshots.BindPublicationCandidateAsync(publicationAttempt.RunId,
+                        publicationAttempt.AttemptId, candidate.Id, identity, cancellationToken);
+                    publishStarted = true;
+                    var result = await snapshots.PublishAttemptAsync(publicationAttempt.RunId,
+                        publicationAttempt.AttemptId, cancellationToken);
+                    if (!result.Published)
+                    {
+                        Console.Error.WriteLine(result.Reason == "stale_generation"
+                            ? $"publication attempt confirmed not published ({result.Reason}); current generation observed {result.ObservedGeneration}"
+                            : "candidate publication was observed without run-attempt attribution; outcome unresolved, do not retry before read-only reconciliation");
+                        return 2;
+                    }
+                    Console.WriteLine($"published snapshot {result.SnapshotId} scope {scope} generation {result.Generation}");
+                }
+                else
+                {
+                    var result = await snapshots.PublishAsync(candidate.Id, expected, cancellationToken);
+                    Console.WriteLine($"published snapshot {result.Id} scope {scope} generation {result.Generation}");
+                }
             }
             return 0;
         }
         catch (Exception e) when (e is FormatException or IOException or ArgumentException or SnapshotConflictException)
         {
-            Console.Error.WriteLine($"import: {e.Message}; publication unchanged"); return 2;
+            if (publicationAttempt is not null && !publishStarted)
+                await TryRecordPrepublicationFailure(snapshots, publicationAttempt, candidateId, cancellationToken);
+            Console.Error.WriteLine($"import: {e.Message}; publication was not confirmed"); return 2;
         }
-        catch (NpgsqlException)
+        catch (NpgsqlException e)
         {
-            Console.Error.WriteLine("import: database operation failed; publication unchanged"); return 1;
+            if (publicationAttempt is not null && !publishStarted)
+                await TryRecordPrepublicationFailure(snapshots, publicationAttempt, candidateId, cancellationToken);
+            Console.Error.WriteLine(publicationAttempt is not null && publishStarted
+                ? "import: database response was lost or failed; publication outcome unresolved, do not retry before read-only reconciliation"
+                : $"import: database operation failed ({e.GetType().Name}); publication outcome was not confirmed");
+            return 1;
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException e)
         {
-            Console.Error.WriteLine("import: search projection is incomplete or exceeds its normalization budget; publication unchanged"); return 1;
+            if (publicationAttempt is not null && !publishStarted)
+                await TryRecordPrepublicationFailure(snapshots, publicationAttempt, candidateId, cancellationToken);
+            Console.Error.WriteLine($"import: operation incomplete ({e.GetType().Name}); publication was not confirmed");
+            return 1;
+        }
+    }
+
+    private static async Task TryRecordPrepublicationFailure(SnapshotStore? snapshots,
+        AnalysisPublicationContext attempt, Guid? candidateId, CancellationToken cancellationToken)
+    {
+        if (snapshots is null)
+        {
+            Console.Error.WriteLine("import: terminal receipt recording unavailable; publication outcome unresolved");
+            return;
+        }
+        try { await snapshots.RecordPrepublicationFailureAsync(attempt.RunId, attempt.AttemptId, candidateId, cancellationToken); }
+        catch (Exception error) when (error is NpgsqlException or InvalidOperationException or OperationCanceledException)
+        {
+            Console.Error.WriteLine($"import: terminal receipt recording failed ({error.GetType().Name}); publication outcome unresolved");
         }
     }
 

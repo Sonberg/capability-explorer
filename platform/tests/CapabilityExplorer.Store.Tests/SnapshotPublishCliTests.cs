@@ -74,7 +74,8 @@ public sealed class SnapshotPublishCliTests(PostgresFixture db)
         }
         var failed=await Ce(db.ConnectionString,"publish","--scope",scope,valid,bad);
         Assert.Equal(1,failed.Exit);
-        Assert.Contains("publication unchanged",failed.Output,StringComparison.Ordinal);
+        Assert.Contains("FAIL",failed.Output,StringComparison.Ordinal);
+        Assert.DoesNotContain("publication unchanged",failed.Output,StringComparison.Ordinal);
         Assert.Equal(old,await Current(scope));
     }
 

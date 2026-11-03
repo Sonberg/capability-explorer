@@ -14,7 +14,18 @@ public sealed partial class ArtifactImporter
 
     /// <summary>Streams a complete artifact through transaction-local staging. Caller owns the stream.
     /// Memory is bounded by one record plus PostgreSQL's COPY buffers. No facts become visible until validation succeeds.</summary>
-    public async Task<ImportResult> ImportAsync(Stream utf8Jsonl, CancellationToken cancellationToken = default)
+    public Task<ImportResult> ImportAsync(Stream utf8Jsonl, CancellationToken cancellationToken = default) =>
+        ImportCoreAsync(utf8Jsonl, null, cancellationToken);
+
+    public Task<ImportResult> ImportForPublicationAsync(Stream utf8Jsonl,
+        PublicationArtifactImport publicationAttempt, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(publicationAttempt);
+        return ImportCoreAsync(utf8Jsonl, publicationAttempt, cancellationToken);
+    }
+
+    private async Task<ImportResult> ImportCoreAsync(Stream utf8Jsonl,
+        PublicationArtifactImport? publicationAttempt, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(utf8Jsonl);
         NodeSearchNormalization.CheckRuntime();
@@ -82,7 +93,9 @@ public sealed partial class ArtifactImporter
         if (complete is null) throw Invalid(line, "last record must be 'complete' (artifact is truncated or unfinished)");
         await ValidateStagedAsync(connection, tx, complete, line, cancellationToken);
         var sha = Convert.ToHexStringLower(hash.GetHashAndReset());
-        return await CommitStagedAsync(connection, tx, header, complete, sha, cancellationToken);
+        if (publicationAttempt is not null)
+            await ValidateAttemptStreamAsync(connection, tx, publicationAttempt, header, sha, cancellationToken);
+        return await CommitStagedAsync(connection, tx, header, complete, sha, cancellationToken, publicationAttempt);
     }
 
     private static InvalidArtifactException Invalid(int line, string message) => new([new Problem(line, message)]);
