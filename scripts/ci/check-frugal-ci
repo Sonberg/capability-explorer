@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# -eq 0 ]] || { echo 'usage: scripts/ci/check-frugal-ci' >&2; exit 2; }
+cd "$(dirname "$0")/../.."
+mkdir -p .sandbox-cache/ci
+plan="$(mktemp .sandbox-cache/ci/plan.XXXXXX)"
+trap 'rm -f "$plan"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+# Literal make, not $(MAKE): dry runs must print this recipe, not recurse into it.
+MAKEFLAGS= MFLAGS= GNUMAKEFLAGS= MAKEOVERRIDES= make --no-print-directory --dry-run --always-make EXECUTION=sandbox ci > "$plan"
+scripts/sandbox --offline node node scripts/ci/check-frugal-ci.mjs --plan "$plan"
