@@ -1,0 +1,200 @@
+{
+  "version": 1,
+  "purpose": "Sealed synthetic assessment inputs; not source-extractor output or real review evidence.",
+  "contextIds": ["fulfilment", "orders", "billing", "identity", "inventory", "customer", "reservation", "payments"],
+  "contextAssignments": {
+    "public-projection": "fulfilment",
+    "orm-exposure": "orders",
+    "ambiguous-shared-word-two-contexts": null,
+    "benign-envelope-field": "inventory",
+    "sensitive-nested-field": "customer",
+    "intentional-event-carried-state": "reservation",
+    "command-as-event": "payments",
+    "domain-to-integration-projection": "billing",
+    "unsupported-dynamic-recursion": null
+  },
+  "cases": [
+    {
+      "id": "public-projection",
+      "evidenceIds": ["context-evidence-public", "exposure-evidence-public", "reviewed-map-1", "classification-evidence-public", "glossary-evidence-public"],
+      "reviewIds": ["classification-review-public", "context-review-public", "glossary-review-public", "exposure-review-public", "projection-review-public"],
+      "sourceFields": { "Shipment": ["id"] },
+      "profile": "integration-event",
+      "classification": "integration-event",
+      "subject": "ShipmentReady",
+      "context": "fulfilment",
+      "sourceShape": "supported",
+      "audience": "public-api",
+      "exposure": "approved",
+      "fields": [
+        { "path": "shipmentId", "shape": "supported", "purpose": "recipient lookup", "audience": "public-api" },
+        { "path": "readyAt", "shape": "supported", "purpose": "dispatch timing", "audience": "public-api" }
+      ],
+      "relations": [
+        { "kind": "explicit-projection", "from": "Shipment", "to": "ShipmentReady", "evidence": "reviewed-map-1", "mappingReview": "projection-review-public", "mapping": [{ "from": "id", "to": "shipmentId", "transform": "direct" }] }
+      ],
+      "criteria": { "event-vs-command-classification": "pass", "shape-supported": "pass", "producer-boundary-evidence": "pass", "limitations-visible": "pass", "business-occurrence-reviewed": "pass", "audience-and-purpose-reviewed": "pass", "public-vs-internal-payload-explicit": "pass", "field-exposure-review": "pass", "current-context-language-review": "pass", "versioned-contract-evidence": "pass", "applicable-compatibility-tests": "pass", "delivery-guarantee-evidence": "pass" },
+      "glossary": { "status": "current-reviewed", "context": "fulfilment", "version": "g-7" },
+      "versions": { "glossary": "g-7", "contextMap": "ctx-4", "policy": "exp-3", "rubric": "r-1" }
+    },
+    {
+      "id": "orm-exposure",
+      "evidenceIds": ["context-evidence-orm", "exposure-evidence-orm", "serialization-review-1", "classification-evidence-orm"],
+      "reviewIds": ["classification-review-orm", "context-review-orm", "exposure-review-orm"],
+      "profile": "integration-event",
+      "classification": "integration-event",
+      "subject": "OrderRow",
+      "context": "orders",
+      "sourceShape": "supported",
+      "audience": "partner",
+      "exposure": "policy-violation",
+      "fields": [
+        { "path": "id", "shape": "supported", "purpose": "identity", "audience": "partner" },
+        { "path": "customer.paymentToken", "shape": "supported", "purpose": "unknown", "audience": "partner" },
+        { "path": "customer.orders[*]", "shape": "supported", "purpose": "unknown", "audience": "partner" }
+      ],
+      "relations": [{ "kind": "direct-entity-serialization", "from": "OrderRow", "to": "OrderWire", "evidence": "serialization-review-1" }],
+      "criteria": { "event-vs-command-classification": "pass", "shape-supported": "pass", "producer-boundary-evidence": "pass", "limitations-visible": "pass" },
+      "glossary": { "status": "unknown", "context": "orders", "version": "g-7" },
+      "versions": { "glossary": "g-7", "contextMap": "ctx-4", "policy": "exp-3", "rubric": "r-1" }
+    },
+    {
+      "id": "ambiguous-shared-word-two-contexts",
+      "evidenceIds": [],
+      "reviewIds": [],
+      "profile": "business-object",
+      "classification": "unknown",
+      "subject": "Account",
+      "context": "ambiguous",
+      "sourceShape": "supported",
+      "audience": "internal",
+      "exposure": "unknown",
+      "fields": [{ "path": "id", "shape": "supported", "purpose": "unknown", "audience": "internal" }],
+      "relations": [],
+      "subjects": [
+        { "name": "Account", "context": "billing", "definition": "receivable ledger party" },
+        { "name": "Account", "context": "identity", "definition": "authenticated principal" }
+      ],
+      "criteria": { "shape-supported": "pass", "identity-evidence": "pass", "context-ownership-evidence": "unknown", "limitations-visible": "pass" },
+      "glossary": { "status": "ambiguous", "context": "ambiguous", "version": "g-7" },
+      "versions": { "glossary": "g-7", "contextMap": "ctx-4", "policy": "exp-3", "rubric": "r-1" }
+    },
+    {
+      "id": "benign-envelope-field",
+      "evidenceIds": ["context-evidence-envelope", "exposure-evidence-envelope", "classification-evidence-envelope", "glossary-evidence-envelope"],
+      "reviewIds": ["classification-review-envelope", "context-review-envelope", "glossary-review-envelope", "exposure-review-envelope"],
+      "profile": "integration-event",
+      "classification": "integration-event",
+      "subject": "InventoryAdjusted",
+      "context": "inventory",
+      "sourceShape": "supported",
+      "audience": "warehouse",
+      "exposure": "approved",
+      "fields": [
+        { "path": "data.quantityDelta", "shape": "supported", "purpose": "stock reconciliation", "audience": "warehouse" },
+        { "path": "ce.correlationid", "shape": "supported", "purpose": "request correlation", "audience": "warehouse", "envelope": true }
+      ],
+      "relations": [],
+      "criteria": { "event-vs-command-classification": "pass", "shape-supported": "pass", "producer-boundary-evidence": "pass", "limitations-visible": "pass", "business-occurrence-reviewed": "pass", "audience-and-purpose-reviewed": "pass", "public-vs-internal-payload-explicit": "pass", "field-exposure-review": "pass" },
+      "glossary": { "status": "current-reviewed", "context": "inventory", "version": "g-7" },
+      "versions": { "glossary": "g-7", "contextMap": "ctx-4", "policy": "exp-3", "rubric": "r-1" }
+    },
+    {
+      "id": "sensitive-nested-field",
+      "evidenceIds": ["context-evidence-sensitive", "exposure-evidence-sensitive", "classification-evidence-sensitive", "glossary-evidence-sensitive"],
+      "reviewIds": ["classification-review-sensitive", "context-review-sensitive", "glossary-review-sensitive", "exposure-review-sensitive"],
+      "profile": "integration-event",
+      "classification": "integration-event",
+      "subject": "CustomerUpdated",
+      "context": "customer",
+      "sourceShape": "supported",
+      "audience": "vendor",
+      "exposure": "needs-review",
+      "fields": [
+        { "path": "customer.address.postalCode", "shape": "supported", "purpose": "unknown", "audience": "vendor", "sensitivity": "personal" }
+      ],
+      "relations": [],
+      "criteria": { "event-vs-command-classification": "pass", "shape-supported": "pass", "producer-boundary-evidence": "pass", "limitations-visible": "pass", "field-exposure-review": "unknown" },
+      "glossary": { "status": "current-reviewed", "context": "customer", "version": "g-7" },
+      "versions": { "glossary": "g-7", "contextMap": "ctx-4", "policy": "exp-3", "rubric": "r-1" }
+    },
+    {
+      "id": "intentional-event-carried-state",
+      "evidenceIds": ["context-evidence-state", "exposure-evidence-state", "classification-evidence-state", "glossary-evidence-state"],
+      "reviewIds": ["classification-review-state", "context-review-state", "glossary-review-state", "exposure-review-state"],
+      "profile": "integration-event",
+      "classification": "integration-event",
+      "subject": "ReservationSnapshot",
+      "context": "reservation",
+      "sourceShape": "supported",
+      "audience": "booking",
+      "exposure": "approved",
+      "fields": [
+        { "path": "reservation.status", "shape": "supported", "purpose": "consumer projection state", "audience": "booking" },
+        { "path": "reservation.expiresAt", "shape": "supported", "purpose": "consumer decision window", "audience": "booking" }
+      ],
+      "relations": [],
+      "eventCarriedState": true,
+      "criteria": { "event-vs-command-classification": "pass", "shape-supported": "pass", "producer-boundary-evidence": "pass", "limitations-visible": "pass", "business-occurrence-reviewed": "pass", "audience-and-purpose-reviewed": "pass", "public-vs-internal-payload-explicit": "pass", "field-exposure-review": "pass" },
+      "glossary": { "status": "current-reviewed", "context": "reservation", "version": "g-7" },
+      "versions": { "glossary": "g-7", "contextMap": "ctx-4", "policy": "exp-3", "rubric": "r-1" }
+    },
+    {
+      "id": "command-as-event",
+      "evidenceIds": ["context-evidence-command", "classification-evidence-command"],
+      "reviewIds": ["classification-review-command", "context-review-command"],
+      "profile": "integration-event",
+      "classification": "command",
+      "subject": "CapturePayment",
+      "context": "payments",
+      "sourceShape": "supported",
+      "audience": "payment-service",
+      "exposure": "unknown",
+      "fields": [{ "path": "paymentId", "shape": "supported", "purpose": "identify requested work", "audience": "payment-service" }],
+      "relations": [],
+      "criteria": { "event-vs-command-classification": "fail", "shape-supported": "pass", "producer-boundary-evidence": "unknown", "limitations-visible": "pass" },
+      "glossary": { "status": "unknown", "context": "payments", "version": "g-7" },
+      "versions": { "glossary": "g-7", "contextMap": "ctx-4", "policy": "exp-3", "rubric": "r-1" }
+    },
+    {
+      "id": "domain-to-integration-projection",
+      "evidenceIds": ["context-evidence-projection", "exposure-evidence-projection", "reviewed-map-2", "classification-evidence-projection", "glossary-evidence-projection"],
+      "reviewIds": ["classification-review-projection", "context-review-projection", "glossary-review-projection", "exposure-review-projection", "projection-review-2"],
+      "sourceFields": { "InvoiceIssued": ["Invoice.totalCents"] },
+      "profile": "integration-event",
+      "classification": "integration-event",
+      "subject": "InvoiceIssuedPublic",
+      "context": "billing",
+      "sourceShape": "supported",
+      "audience": "ledger",
+      "exposure": "approved",
+      "fields": [{ "path": "invoice.total", "shape": "supported", "purpose": "settlement", "audience": "ledger" }],
+      "relations": [
+        { "kind": "explicit-projection", "from": "InvoiceIssued", "to": "InvoiceIssuedPublic", "evidence": "reviewed-map-2", "mappingReview": "projection-review-2", "mapping": [{ "from": "Invoice.totalCents", "to": "invoice.total", "transform": "divide-by-100" }] }
+      ],
+      "criteria": { "event-vs-command-classification": "pass", "shape-supported": "pass", "producer-boundary-evidence": "pass", "limitations-visible": "pass", "business-occurrence-reviewed": "pass", "audience-and-purpose-reviewed": "pass", "public-vs-internal-payload-explicit": "pass", "field-exposure-review": "pass" },
+      "glossary": { "status": "current-reviewed", "context": "billing", "version": "g-7" },
+      "versions": { "glossary": "g-7", "contextMap": "ctx-4", "policy": "exp-3", "rubric": "r-1" }
+    },
+    {
+      "id": "unsupported-dynamic-recursion",
+      "evidenceIds": [],
+      "reviewIds": [],
+      "profile": "integration-event",
+      "classification": "unknown",
+      "subject": "GeneratedEnvelope",
+      "context": "unknown",
+      "sourceShape": "unsupported",
+      "audience": "unknown",
+      "exposure": "unknown",
+      "fields": [
+        { "path": "payload", "shape": "dynamic", "purpose": "unknown", "audience": "unknown" },
+        { "path": "node.next", "shape": "recursive", "purpose": "unknown", "audience": "unknown" }
+      ],
+      "relations": [],
+      "criteria": { "event-vs-command-classification": "unknown", "shape-supported": "unknown", "producer-boundary-evidence": "unknown", "limitations-visible": "pass" },
+      "glossary": { "status": "unknown", "context": "unknown", "version": "g-7" },
+      "versions": { "glossary": "g-7", "contextMap": "ctx-4", "policy": "exp-3", "rubric": "r-1" }
+    }
+  ]
+}

@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sonberg.github.io/capability-explorer/schema/research/domain-object-assessment.v1.json",
+  "title": "Proposed source-bound domain-object/event assessment record",
+  "description": "Research draft only. The local checker implements only a declared subset and is not a general JSON Schema validator. Do not store source field values; use evidence pointers, shape facts, or a digest when a value fingerprint is necessary.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "assessmentId", "profile", "source", "versions", "subject", "evidence", "facts", "proposals", "reviews", "relations", "exposure", "criteria", "result"],
+  "properties": {
+    "schema": { "const": "domain-object-assessment.v1" },
+    "assessmentId": { "$ref": "#/$defs/nonEmpty" },
+    "profile": { "enum": ["business-object", "domain-event", "integration-event"] },
+    "source": { "$ref": "#/$defs/sourceIdentity" },
+    "versions": { "$ref": "#/$defs/versions" },
+    "subject": { "$ref": "#/$defs/subject" },
+    "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+    "facts": { "type": "array", "items": { "$ref": "#/$defs/fact" } },
+    "proposals": { "type": "array", "items": { "$ref": "#/$defs/proposal" } },
+    "reviews": { "type": "array", "items": { "$ref": "#/$defs/review" } },
+    "relations": { "type": "array", "items": { "$ref": "#/$defs/relation" } },
+    "exposure": { "$ref": "#/$defs/exposure" },
+    "criteria": { "type": "array", "items": { "$ref": "#/$defs/criterion" } },
+    "result": { "$ref": "#/$defs/result" }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startLine", "startColumn", "endLine", "endColumn"],
+      "properties": {
+        "startLine": { "type": "integer", "minimum": 1 },
+        "startColumn": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 },
+        "endColumn": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "sourceIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "pointer", "sha256"],
+      "properties": {
+        "kind": { "enum": ["repository-symbol", "repository-document", "synthetic-fixture"] },
+        "repository": { "type": "string", "minLength": 1 },
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "unit": { "type": "string", "minLength": 1 },
+        "symbol": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "pointer": { "type": "string", "minLength": 1 },
+        "span": { "$ref": "#/$defs/span" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmpty" },
+        "source": { "$ref": "#/$defs/sourceIdentity" }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "bindingVersion", "configHash", "ruleVersion"],
+      "properties": {
+        "name": { "$ref": "#/$defs/nonEmpty" },
+        "version": { "$ref": "#/$defs/nonEmpty" },
+        "bindingVersion": { "$ref": "#/$defs/nonEmpty" },
+        "configHash": { "$ref": "#/$defs/sha256" },
+        "ruleVersion": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["extractor", "rubric", "glossary", "contextMap", "exposurePolicy"],
+      "properties": {
+        "extractor": { "$ref": "#/$defs/tool" },
+        "rubric": { "$ref": "#/$defs/nonEmpty" },
+        "glossary": { "$ref": "#/$defs/nonEmpty" },
+        "contextMap": { "$ref": "#/$defs/nonEmpty" },
+        "exposurePolicy": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "type", "shape", "meaningStatus", "children"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmpty" },
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "type": { "$ref": "#/$defs/nonEmpty" },
+        "shape": { "enum": ["supported", "partial", "dynamic", "recursive", "external", "unknown"] },
+        "meaningStatus": { "enum": ["reviewed", "proposed", "ambiguous", "unknown"] },
+        "purpose": { "type": "string" },
+        "audience": { "type": "string" },
+        "sensitivity": { "enum": ["unknown", "public", "internal", "personal", "secret"] },
+        "envelope": { "type": "boolean" },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/field" } }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "name", "contextId", "contextStatus", "contextEvidence", "fields"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmpty" },
+        "kind": { "enum": ["business-object", "domain-event", "integration-event", "command", "response", "cdc", "technical-notification", "unknown"] },
+        "name": { "$ref": "#/$defs/nonEmpty" },
+        "contextId": { "type": ["string", "null"] },
+        "contextStatus": { "enum": ["reviewed", "proposed", "ambiguous", "unknown"] },
+        "contextEvidence": { "type": "array", "items": { "$ref": "#/$defs/nonEmpty" } },
+        "alternatives": { "type": "array", "items": { "enum": ["business-object", "domain-event", "integration-event", "command", "response", "cdc", "technical-notification", "unknown"] } },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/field" } }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "subjectId", "evidence"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmpty" },
+        "kind": { "enum": ["declaration", "shape", "call", "channel", "serialization", "contract", "diagnostic", "coverage"] },
+        "subjectId": { "$ref": "#/$defs/nonEmpty" },
+        "fieldPath": { "type": "string" },
+        "valueDigest": { "$ref": "#/$defs/sha256" },
+        "evidence": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmpty" } }
+      }
+    },
+    "proposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "subjectId", "claim", "method", "evidence"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmpty" },
+        "subjectId": { "$ref": "#/$defs/nonEmpty" },
+        "claim": { "$ref": "#/$defs/nonEmpty" },
+        "method": { "enum": ["deterministic-rule", "reviewed-mapping-candidate", "optional-model-suggestion"] },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/nonEmpty" } }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "subjectId", "decision", "status", "basis", "reviewer", "reviewedAt", "version", "evidence"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmpty" },
+        "subjectId": { "$ref": "#/$defs/nonEmpty" },
+        "decision": { "enum": ["classification", "context-ownership", "field-meaning", "projection", "glossary", "exposure", "applicability", "maturity"] },
+        "status": { "enum": ["current", "stale", "rejected", "synthetic-oracle"] },
+        "basis": { "enum": ["human-review", "synthetic-oracle"] },
+        "reviewer": { "$ref": "#/$defs/nonEmpty" },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "version": { "$ref": "#/$defs/nonEmpty" },
+        "contextId": { "type": "string" },
+        "evidence": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmpty" } }
+      }
+    },
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "from", "to", "evidence", "basis"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmpty" },
+        "kind": { "enum": ["explicit-projection", "same-concept", "handles", "publishes", "consumes", "direct-entity-serialization"] },
+        "from": { "$ref": "#/$defs/nonEmpty" },
+        "to": { "$ref": "#/$defs/nonEmpty" },
+        "evidence": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmpty" } },
+        "basis": { "enum": ["source-fact", "current-reviewed-assertion", "unreviewed-proposal"] },
+        "reviewId": { "type": "string" },
+        "fieldMap": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["fromPath", "toPath", "transform"],
+            "properties": {
+              "fromPath": { "$ref": "#/$defs/nonEmpty" },
+              "toPath": { "$ref": "#/$defs/nonEmpty" },
+              "transform": { "$ref": "#/$defs/nonEmpty" }
+            }
+          }
+        }
+      }
+    },
+    "exposure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "ruleId", "policyOwner", "audience", "evidence", "reviewId"],
+      "properties": {
+        "verdict": { "enum": ["approved", "needs-review", "policy-violation", "unknown"] },
+        "ruleId": { "$ref": "#/$defs/nonEmpty" },
+        "policyOwner": { "$ref": "#/$defs/nonEmpty" },
+        "audience": { "$ref": "#/$defs/nonEmpty" },
+        "evidence": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmpty" } },
+        "reviewId": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "criterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "applicability", "evidence"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmpty" },
+        "status": { "enum": ["pass", "fail", "unknown", "not-applicable"] },
+        "applicability": { "enum": ["applicable", "excluded"] },
+        "rationale": { "type": "string" },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/nonEmpty" } }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "grade", "hardCeilings", "identityDigest", "mode"],
+      "properties": {
+        "state": { "enum": ["graded", "unassessed", "insufficient-evidence", "blocked"] },
+        "grade": { "type": ["string", "null"], "enum": ["bronze", "silver", "gold", "platinum", null] },
+        "hardCeilings": { "type": "array", "items": { "$ref": "#/$defs/nonEmpty" } },
+        "identityDigest": { "$ref": "#/$defs/sha256" },
+        "mode": { "enum": ["fixture-reference-only", "owner-reviewed-assessment"] }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "source": { "properties": { "kind": { "const": "repository-symbol" } } } } },
+      "then": { "properties": { "source": { "required": ["repository", "commit", "unit", "symbol"] } } }
+    },
+    {
+      "if": { "properties": { "source": { "properties": { "kind": { "const": "repository-document" } } } } },
+      "then": { "properties": { "source": { "required": ["repository", "commit", "span"] } } }
+    }
+  ]
+}
