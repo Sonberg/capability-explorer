@@ -51,8 +51,6 @@ public sealed record ArtifactSummary(
 
 public static class Queries
 {
-    private static readonly string[] IntegrationRelations = ["REQUESTS", "PUBLISHES", "CONSUMES", "READS", "WRITES", "MAPS_TO"];
-
     public static IReadOnlyList<SearchHit> Search(ViewIndex view, string? query, string? kind, string? repository, int limit = 100)
     {
         var q = (query ?? "").Trim();
@@ -186,77 +184,15 @@ public static class Queries
     /// </summary>
     public static Integrations Integrations(ViewIndex view, IReadOnlyList<MarkDto>? marks = null)
     {
-        var endpoints = view.Nodes.Values.Select(l => l[0]).Where(o => o.Record.NodeKind == "Endpoint").ToList();
-        var services = view.Nodes.Values.Select(l => l[0]).Where(o => o.Record.NodeKind == "Service").Select(s =>
-        {
-            var exposed = view.Outgoing[s.Record.SymbolKey].Where(e => e.Record.Relation == "EXPOSES" && e.Record.To is not null)
-                .Select(e => view.Node(e.Record.To!)).OfType<Occurrence<NodeRecord>>()
-                .Select(ep => new EndpointDto(Map.Node(ep), view.Incoming[ep.Record.SymbolKey].Where(h => h.Record.Relation == "HANDLES").Select(h => Map.Ref(view, h.Record.From)).ToList()))
-                .OrderBy(ep => ep.Endpoint.Name, StringComparer.Ordinal)
-                .ToList();
-            return new ServiceDto(Map.Node(s), exposed);
-        }).OrderBy(s => s.Service.RepositoryId, StringComparer.Ordinal).ToList();
-
-        static string Route(string key) => key[(key.LastIndexOf('|') + 1)..];
-        var http = view.Edges.Where(e => e.Record.Relation == "REQUESTS").Select(e =>
+        var edges = view.Edges.Select(e =>
         {
             var dto = Map.Edge(view, e);
-            if (e.Record.To is null)
-            {
-                return new HttpLink(dto, [], "dynamic", "target not statically known");
-            }
-
-            if (view.BoundFor(e) is { } bound)
-            {
-                var hint = bound.Binding.Hint["@unbound:".Length..];
-                var why = $"service map: {hint} → {bound.Binding.Target}{(bound.Binding.Note is null ? "" : $" ({bound.Binding.Note})")}";
-                return bound.Status == CapabilityExplorer.Binding.BindingStatus.Bound
-                    ? new HttpLink(dto, [Map.Ref(view, bound.Edge.To!)], "binding", why)
-                    : new HttpLink(dto, [Map.Ref(view, bound.Edge.To!)], "broken", $"{why}; the bound endpoint is not declared in the selected revision");
-            }
-
-            if (view.Node(e.Record.To) is not null)
-            {
-                return new HttpLink(dto, [Map.Ref(view, e.Record.To)], "bound", "client key equals endpoint key");
-            }
-
-            var candidates = endpoints.Where(ep => Route(ep.Record.SymbolKey) == Route(e.Record.To)).Select(ep => Map.Ref(view, ep.Record.SymbolKey)).ToList();
-            return candidates.Count > 0
-                ? new HttpLink(dto, candidates, "route", "same method and normalised route; base URL is unbound, so the service is a candidate")
-                : new HttpLink(dto, [], "none", "no endpoint with this method and route in the selected revisions");
-        })
-        .Select(l =>
-        {
-            var to = l.Request.To?.Key;
-            return l with
-            {
-                Base = to is null ? "dynamic" : Architecture.BaseOf(to),
-                Group = to is null ? "Dynamic" : Vendor(to, l.Request.From.Key),
-                SourcePath = SourcePathResolver.ForRequest(view, l.Request.From.Key, l.Request.Evidence.Select(e => e.Path)),
-            };
-        })
-        .OrderBy(l => l.Group, StringComparer.OrdinalIgnoreCase).ThenBy(l => l.SourcePath, StringComparer.Ordinal).ThenBy(l => l.Base, StringComparer.OrdinalIgnoreCase)
-        .ThenBy(l => l.Request.RepositoryId, StringComparer.Ordinal).ThenBy(l => l.Request.From.Name, StringComparer.Ordinal).ToList();
-
-        var channelKeys = view.Edges.Where(e => e.Record.To?.StartsWith("chan|", StringComparison.Ordinal) == true).Select(e => e.Record.To!)
-            .Concat(view.Nodes.Keys.Where(k => k.StartsWith("chan|", StringComparison.Ordinal))).Distinct(StringComparer.Ordinal);
-        var channels = channelKeys.GroupBy(k => EntityName(Route(k)), StringComparer.Ordinal).Select(g => new ResourceGroup(
-            g.Key,
-            "channel",
-            g.Select(k => Resource(view, k)).ToList(),
-            g.Count() > 1 ? "Same name, different keys: not proven to be the same channel (namespace or entity type differs, or is unbound)." : null)).ToList();
-
-        var dataKeys = view.Edges.Where(e => e.Record.To?.StartsWith("sql|", StringComparison.Ordinal) == true && IntegrationRelations.Contains(e.Record.Relation)).Select(e => e.Record.To!)
-            .Concat(view.Nodes.Values.Select(l => l[0]).Where(o => o.Record.NodeKind is "Table" or "Routine").Select(o => o.Record.SymbolKey))
-            .Select(TableKey).Distinct(StringComparer.Ordinal);
-        var data = dataKeys.GroupBy(k => Route(k), StringComparer.Ordinal).Select(g => new ResourceGroup(
-            g.Key,
-            "data",
-            g.Select(k => Resource(view, k, includeColumns: true)).ToList(),
-            g.Count() > 1 ? "Same object name under different store bindings: the same table only once a binding says so." : null))
-            .OrderBy(g => g.Name, StringComparer.Ordinal).ToList();
-
-        return new Integrations(services, http, channels, data, marks ?? []);
+            var bound = view.BoundFor(e);
+            var binding = bound is null ? null : new IntegrationBinding(bound.Edge.To!, bound.Binding.Hint,
+                bound.Binding.Target, bound.Binding.Note, bound.Status == CapabilityExplorer.Binding.BindingStatus.Bound);
+            return new IntegrationEdge(dto, binding, SourcePathResolver.ForRequest(view, dto.From.Key, dto.Evidence.Select(x => x.Path)));
+        }).ToList();
+        return IntegrationGraph.Build(view.Nodes.Values.Select(l => Map.Node(l[0])).ToList(), edges, marks ?? []);
     }
 
     private static string KeyTail(string key) => key[(key.LastIndexOf('|') + 1)..];
@@ -291,22 +227,6 @@ public static class Queries
     private static string EntityName(string entity) => entity.Contains('/', StringComparison.Ordinal) ? entity[(entity.IndexOf('/', StringComparison.Ordinal) + 1)..] : entity;
 
     private static string TableKey(string key) => key.Contains('#', StringComparison.Ordinal) ? key[..key.IndexOf('#', StringComparison.Ordinal)] : key;
-
-    private static ResourceKey Resource(ViewIndex view, string key, bool includeColumns = false)
-    {
-        var edges = view.Incoming[key].Where(e => e.Record.Relation != "DECLARES").ToList();
-        if (includeColumns)
-        {
-            edges.AddRange(view.Edges.Where(e => e.Record.To?.StartsWith(key + "#", StringComparison.Ordinal) == true && e.Record.Relation != "DECLARES"));
-        }
-
-        var declaration = view.Node(key);
-        return new ResourceKey(
-            key,
-            !key.Contains("@unbound:", StringComparison.Ordinal),
-            edges.Select(e => Map.Edge(view, e)).OrderBy(e => e.Relation, StringComparer.Ordinal).ToList(),
-            declaration is null ? null : Map.Node(declaration));
-    }
 
     public static IReadOnlyList<ArtifactSummary> Artifacts(ExplorerIndex index) => index.Artifacts.Select(a =>
     {

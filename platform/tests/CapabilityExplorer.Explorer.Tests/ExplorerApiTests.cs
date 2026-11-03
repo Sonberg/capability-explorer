@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using CapabilityExplorer.Explorer;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
@@ -33,6 +34,20 @@ public sealed class ExplorerApiTests(ExplorerFactory factory) : IClassFixture<Ex
     }
 
     private static string Q(string s) => Uri.EscapeDataString(s);
+    private static JsonElement Integrations(string? view = null) => JsonSerializer.SerializeToElement(
+        Queries.Integrations(ExplorerIndex.Load([Fixtures.ExpectedDirectory], new GitSource(Fixtures.RepoDirectory)).View(view)),
+        JsonSerializerOptions.Web);
+
+    [Fact]
+    public async Task Legacy_file_mode_reports_database_required_instead_of_falling_back_for_integrations_and_marks()
+    {
+        foreach (var endpoint in new[] { "integrations", "deprecations" })
+        {
+            using var response = await _client.GetAsync(new Uri($"/api/{endpoint}", UriKind.Relative));
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+            Assert.Contains("database", await response.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+        }
+    }
 
     [Fact]
     public async Task Meta_lists_every_revision_with_its_tag_and_defaults_to_the_newest()
@@ -89,25 +104,25 @@ public sealed class ExplorerApiTests(ExplorerFactory factory) : IClassFixture<Ex
     }
 
     [Fact]
-    public async Task Http_links_follow_the_selected_revisions()
+    public void Integration_projection_links_follow_the_selected_revisions()
     {
         static string? Match(JsonElement integrations, string client) => integrations.GetProperty("http").EnumerateArray()
             .Single(l => l.GetProperty("request").GetProperty("from").GetProperty("name").GetString() == client).GetProperty("match").GetString();
 
         // forecast-cs v2-contract moved its routes: pricing-node's call has no endpoint.
-        Assert.Equal("none", Match(await Get("/api/integrations"), "getForecast"));
+        Assert.Equal("none", Match(Integrations(), "getForecast"));
         // With forecast-cs v1-base selected, the same call has a route candidate.
-        Assert.Equal("route", Match(await Get($"/api/integrations?view={Q("forecast-cs:v1-base")}"), "getForecast"));
-        Assert.Equal("route", Match(await Get("/api/integrations"), "fetchWeeklySales"));
-        var integrations = await Get("/api/integrations");
+        Assert.Equal("route", Match(Integrations("forecast-cs:v1-base"), "getForecast"));
+        Assert.Equal("route", Match(Integrations(), "fetchWeeklySales"));
+        var integrations = Integrations();
         var weeklySales = integrations.GetProperty("http").EnumerateArray().Single(l => l.GetProperty("request").GetProperty("from").GetProperty("name").GetString() == "fetchWeeklySales");
         Assert.Equal("src/api/salesClient.ts", weeklySales.GetProperty("sourcePath").GetString());
     }
 
     [Fact]
-    public async Task Same_named_channels_are_grouped_but_kept_apart()
+    public void Integration_projection_groups_same_named_channels_but_keeps_them_apart()
     {
-        var channel = (await Get("/api/integrations")).GetProperty("channels").EnumerateArray().Single(g => g.GetProperty("name").GetString() == "article-stats-updated");
+        var channel = Integrations().GetProperty("channels").EnumerateArray().Single(g => g.GetProperty("name").GetString() == "article-stats-updated");
         var keys = channel.GetProperty("keys").EnumerateArray().ToList();
         Assert.Equal(3, keys.Count);
         Assert.Single(keys, k => k.GetProperty("bound").GetBoolean());

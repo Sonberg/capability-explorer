@@ -40,6 +40,31 @@ public sealed class SnapshotPublishCliTests(PostgresFixture db)
     }
 
     [Fact]
+    public async Task Explicit_legacy_mark_import_is_idempotent_and_does_not_change_capability_configuration()
+    {
+        using var input=new InputFiles();
+        var path=Path.Combine(input.Directory,"deprecations.json");
+        var capabilities=Path.Combine(input.Directory,"capabilities.json");
+        const string definition="{\"capabilities\":[]}";
+        await File.WriteAllTextAsync(capabilities,definition);
+        var key="cli-mark|"+Guid.NewGuid().ToString("N");
+        await File.WriteAllTextAsync(path,$$"""[{"key":"{{key}}","status":"deprecated","note":"retained","markedAt":"2024-01-02T03:04:05.1234567Z"}]""");
+        var first=await Ce(db.ConnectionString,"import-deprecations","--file",path);
+        Assert.True(first.Exit==0,first.Output);
+        Assert.Contains("\"imported\":1",first.Output,StringComparison.Ordinal);
+        var again=await Ce(db.ConnectionString,"import-deprecations","--file",path);
+        Assert.True(again.Exit==0,again.Output);
+        Assert.Contains("\"unchanged\":1",again.Output,StringComparison.Ordinal);
+        Assert.Equal(definition,await File.ReadAllTextAsync(capabilities));
+        await File.WriteAllTextAsync(path,$$"""[{"key":"{{key}}","status":"obsolete","note":"conflict","markedAt":"2024-01-02T03:04:05Z"}]""");
+        var conflict=await Ce(db.ConnectionString,"import-deprecations","--file",path);
+        Assert.Equal(1,conflict.Exit);
+        Assert.Contains("\"issues\":[{",conflict.Output,StringComparison.Ordinal);
+        var persisted=Assert.Single(await new PostgresDeprecationRepository(db.DataSource).ListAsync(),m=>m.Key==key);
+        Assert.Equal(DeprecationStatus.Deprecated,persisted.Status);
+    }
+
+    [Fact]
     public async Task Publish_imports_streamed_artifacts_and_retries_identically_without_advancing_generation()
     {
         using var input=new InputFiles();

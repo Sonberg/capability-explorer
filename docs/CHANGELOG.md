@@ -11,6 +11,11 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- PostgreSQL-backed global deprecation marks with optimistic version tokens and explicit,
+  idempotent legacy import. Integrations now use one pinned database snapshot/revision selection
+  with global marks and bounded projections; database outages never return stale JSON marks.
+  This endpoint requires PostgreSQL even when other Explorer views use file mode.
+
 - Portable, source-bound decision-ledger schema, configured canonical-source
   adapters, proposed topic facets and typed relationships with deterministic
   generated navigation and offline checks (MADR-0028). No full ontology

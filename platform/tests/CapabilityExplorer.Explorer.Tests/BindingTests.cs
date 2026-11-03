@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using CapabilityExplorer.Binding;
 using CapabilityExplorer.Contracts;
+using CapabilityExplorer.Explorer;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
@@ -90,17 +91,21 @@ public sealed class BinderTests
     public void Rejects_malformed_binding_files(string json) => Assert.Throws<FormatException>(() => BindingFile.Parse(json));
 }
 
-public sealed class BindingApiTests(BoundExplorerFactory bound, ExplorerFactory plain) : IClassFixture<BoundExplorerFactory>, IClassFixture<ExplorerFactory>
+public sealed class BindingApiTests(BoundExplorerFactory bound) : IClassFixture<BoundExplorerFactory>
 {
     private static async Task<JsonElement> Get(HttpClient c, string path) => await c.GetFromJsonAsync<JsonElement>(path);
+    private static JsonElement Integrations(string view, bool bindings = true) => JsonSerializer.SerializeToElement(
+        Queries.Integrations(ExplorerIndex.Load([Fixtures.ExpectedDirectory], new GitSource(Fixtures.RepoDirectory),
+            bindings ? BindingFile.Load(Path.Combine(Fixtures.RepositoryRoot, "bindings.json")) : null).View(view)),
+        JsonSerializerOptions.Web);
 
     private static JsonElement Link(JsonElement integrations) => integrations.GetProperty("http").EnumerateArray()
         .Single(l => l.GetProperty("request").GetProperty("from").GetProperty("name").GetString() == "getForecast");
 
     [Fact]
-    public async Task Without_a_bindings_file_nothing_is_bound()
+    public void Without_a_bindings_file_nothing_is_bound()
     {
-        var link = Link(await Get(plain.CreateClient(), "/api/integrations?view=forecast-cs:v1-base,pricing-node:v1-base"));
+        var link = Link(Integrations("forecast-cs:v1-base,pricing-node:v1-base", false));
         Assert.Equal("route", link.GetProperty("match").GetString());
     }
 
@@ -108,7 +113,7 @@ public sealed class BindingApiTests(BoundExplorerFactory bound, ExplorerFactory 
     public async Task Cross_repo_link_is_bound_to_the_forecast_endpoint()
     {
         var c = bound.CreateClient();
-        var link = Link(await Get(c, "/api/integrations?view=forecast-cs:v1-base,pricing-node:v1-base"));
+        var link = Link(Integrations("forecast-cs:v1-base,pricing-node:v1-base"));
         Assert.Equal("binding", link.GetProperty("match").GetString());
         Assert.Equal("http|forecast-cs/Forecast.Api|GET /api/forecasts/{}", link.GetProperty("candidates")[0].GetProperty("key").GetString());
         Assert.Contains("FORECAST_API_URL", link.GetProperty("note").GetString());
@@ -126,7 +131,7 @@ public sealed class BindingApiTests(BoundExplorerFactory bound, ExplorerFactory 
     {
         var c = bound.CreateClient();
         var view = "forecast-cs:v2-contract,pricing-node:v1-base";
-        var link = Link(await Get(c, $"/api/integrations?view={Uri.EscapeDataString(view)}"));
+        var link = Link(Integrations(view));
         Assert.Equal("broken", link.GetProperty("match").GetString());
 
         var g = await Get(c, $"/api/architecture?level=system&view={Uri.EscapeDataString(view)}");

@@ -57,6 +57,55 @@ public sealed class PostgresExplorerQueryTests(PostgresFixture db)
     }
 
     [Fact]
+    public async Task PinnedIntegrationProjectionPreservesGoldenServicesRequestsAndResources()
+    {
+        var context = await Snapshot();
+        var index = ExplorerIndex.Load([Fixtures.ExpectedDirectory], null);
+        var view = index.View(string.Join(',', context.Selection.Select(x => x.Key + ":" + x.Value)),
+            new ViewScope(context.Capability, context.Selection.Keys.ToHashSet(StringComparer.Ordinal), context.Selection));
+        var expected = Queries.Integrations(view);
+        var actual = await _queries.IntegrationsAsync(context, []);
+        Assert.NotEmpty(actual.Services);
+        Assert.Equal(expected.Services.Select(s => s.Service.Key).Order(StringComparer.Ordinal),
+            actual.Services.Select(s => s.Service.Key).Order(StringComparer.Ordinal));
+        Assert.Equal(expected.Services.SelectMany(s => s.Endpoints).Select(ep => ep.Endpoint.Key).Order(StringComparer.Ordinal),
+            actual.Services.SelectMany(s => s.Endpoints).Select(ep => ep.Endpoint.Key).Order(StringComparer.Ordinal));
+        static string Request(HttpLink link) => $"{link.Request.RepositoryId}:{link.Request.From.Key}:{link.Request.To?.Key}:{link.Match}:{link.Base}:{link.Group}:" +
+            string.Join(',', link.Candidates.Select(c => c.Key).Order(StringComparer.Ordinal));
+        Assert.Equal(expected.Http.Select(Request).Order(StringComparer.Ordinal), actual.Http.Select(Request).Order(StringComparer.Ordinal));
+        Assert.Equal(expected.Channels.SelectMany(g => g.Keys).Select(k => k.Key).Order(StringComparer.Ordinal),
+            actual.Channels.SelectMany(g => g.Keys).Select(k => k.Key).Order(StringComparer.Ordinal));
+        Assert.Equal(expected.Data.SelectMany(g => g.Keys).Select(k => k.Key).Order(StringComparer.Ordinal),
+            actual.Data.SelectMany(g => g.Keys).Select(k => k.Key).Order(StringComparer.Ordinal));
+        var newer = await Snapshot(context.Capability, 2);
+        Assert.NotEqual(context.SnapshotId, newer.SnapshotId);
+        Assert.Equal(actual.Services.Select(s => s.Service.Key), (await _queries.IntegrationsAsync(context, [])).Services.Select(s => s.Service.Key));
+    }
+
+    [Fact]
+    public async Task Integration_projection_rejects_oversized_rows_and_excess_edges_without_partial_success()
+    {
+        var oversized = await Snapshot(mutate: rows =>
+        {
+            var from = (string?)rows.First(r => (string?)r["relation"] == "REQUESTS")["from"];
+            rows.First(r => (string?)r["kind"] == "node" && (string?)r["symbolKey"] == from)["name"] = new string('x', 8193);
+        });
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _queries.IntegrationsAsync(oversized, []));
+        var excess = await Snapshot(mutate: _ => { });
+        await using var insert = db.DataSource.CreateCommand("""
+            insert into edge(artifact_id,local_id,from_key,relation,to_key,derivation,resolution,unresolved_reason,rule,props,evidence)
+            select e.artifact_id,'integration-budget-'||n::text,e.from_key,e.relation,e.to_key,e.derivation,e.resolution,
+              e.unresolved_reason,e.rule,e.props,e.evidence
+            from (select e.* from edge e join analysis_snapshot_artifact a on a.artifact_id=e.artifact_id
+              where a.snapshot_id=$1 and a.repository_id='web-ts' and e.relation='REQUESTS' order by e.artifact_id,e.local_id limit 1) e
+            cross join generate_series(1,1001) n
+            """);
+        insert.Parameters.AddWithValue(excess.SnapshotId);
+        await insert.ExecuteNonQueryAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _queries.IntegrationsAsync(excess, []));
+    }
+
+    [Fact]
     public async Task SearchPagesAreStableUniqueBoundedAndRetainRank()
     {
         var context = await Snapshot();

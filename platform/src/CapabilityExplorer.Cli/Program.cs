@@ -25,6 +25,7 @@ const string Usage = """
       ce validate <artifact.jsonl...>
       ce verify-evidence --repo <git dir> <artifact.jsonl...>
       ce migrate [--connection <connection string>]
+      ce import-deprecations --file <legacy-deprecations.json> [--connection <connection string>]
       ce import [--connection <connection string>] [--bindings <bindings.json>] <artifact.jsonl...>  (--bindings also saves the bound edges)
       ce publish [--scope <capability-id|*>] [--view <repo:full-sha,...>] [--bindings <bindings.json>] [--expected-generation <n>] <artifact.jsonl...>
       ce reconcile-publication --run <id> --attempt <id> [--connection <connection string>]  (read-only; never authorizes recovery)
@@ -110,6 +111,31 @@ switch (command)
         var applied = await Migrator.MigrateAsync(db);
         Console.WriteLine(applied.Count == 0 ? "database is up to date" : $"applied: {string.Join(", ", applied)}");
         return 0;
+    }
+
+    case "import-deprecations":
+    {
+        if (!options.TryGetValue("file", out var path) || files.Count != 0 ||
+            options.Keys.Any(key => key is not ("file" or "connection")))
+        {
+            Console.Error.WriteLine(Usage);
+            return 2;
+        }
+        try
+        {
+            await using var db = OpenDatabase();
+            await using var input = File.OpenRead(Path.GetFullPath(path));
+            var report = await new PostgresDeprecationRepository(db).ImportLegacyAsync(input);
+            Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(report,
+                new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
+            return report.Issues.Count == 0 ? 0 : 1;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or
+            DeprecationValidationException or System.Text.Json.JsonException or NpgsqlException or InvalidOperationException)
+        {
+            Console.Error.WriteLine($"import-deprecations: import failed ({error.GetType().Name}); verify the file and migrated database");
+            return 1;
+        }
     }
 
     case "import":

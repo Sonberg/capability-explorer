@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -22,7 +23,11 @@ public sealed class PostgresExplorerApiTests(PostgresFixture db)
         var rows=Fixtures.Golden("web-ts/v1-base/_fixture_web.jsonl").TrimEnd('\n').Split('\n').Select(s=>JsonNode.Parse(s)!.AsObject()).ToArray();
         // A random identity, rather than a per-test fixed analysis key, keeps parallel-safe fixture imports independent.
         rows[0]["configHash"]=Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Guid.NewGuid().ToByteArray()));
-        if(newName is not null) rows.First(r=>(string?)r["kind"]=="node")["name"]=newName;
+        if(newName is not null)
+        {
+            var caller=(string?)rows.First(r=>(string?)r["kind"]=="edge" && (string?)r["relation"]=="REQUESTS")["from"];
+            rows.First(r=>(string?)r["kind"]=="node" && (string?)r["symbolKey"]==caller)["name"]=newName;
+        }
         using var stream=new MemoryStream(Encoding.UTF8.GetBytes(string.Join('\n',rows.Select(r=>r.ToJsonString()))+"\n"));
         var imported=await new ArtifactImporter(db.DataSource).ImportAsync(stream);
         var store=new SnapshotStore(db.DataSource);
@@ -37,6 +42,77 @@ public sealed class PostgresExplorerApiTests(PostgresFixture db)
         Assert.True(bytes.Length<=1024*1024);
         using var json=JsonDocument.Parse(bytes);
         return json.RootElement.Clone();
+    }
+
+    [Fact]
+    public async Task Given_global_database_marks_when_writers_race_then_stale_updates_and_deletes_are_rejected()
+    {
+        var scope=Scope();
+        using var factory=new DatabaseApiFactory(db.ConnectionString,scope);
+        var before=File.ReadAllBytes(factory.CapabilitiesPath);
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(factory.CapabilitiesPath)!,"deprecations.json"),"legacy file must never be read");
+        using var client=factory.CreateClient();
+        var key="http|"+scope+"|GET /orders";
+        using var created=await client.PutAsJsonAsync(new Uri("/api/deprecations",UriKind.Relative),new{key,status="deprecated",note="first"});
+        Assert.Equal(HttpStatusCode.OK,created.StatusCode);
+        var mark=await created.Content.ReadFromJsonAsync<JsonElement>();
+        var version=mark.GetProperty("version").GetInt64();
+        Assert.True(version>0);
+        var listed=await Get(client,"/api/deprecations");
+        Assert.Contains(listed.EnumerateArray(),m=>m.GetProperty("key").GetString()==key);
+        using var updated=await client.PutAsJsonAsync(new Uri("/api/deprecations",UriKind.Relative),new{key,status="obsolete",note="second",expectedVersion=version});
+        Assert.Equal(HttpStatusCode.OK,updated.StatusCode);
+        var newer=(await updated.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("version").GetInt64();
+        Assert.True(newer>version);
+        using var stale=await client.PutAsJsonAsync(new Uri("/api/deprecations",UriKind.Relative),new{key,status="deprecated",note="lost update",expectedVersion=version});
+        Assert.Equal(HttpStatusCode.Conflict,stale.StatusCode);
+        using var duplicate=await client.PutAsJsonAsync(new Uri("/api/deprecations",UriKind.Relative),new{key,status="deprecated",note="duplicate create"});
+        Assert.Equal(HttpStatusCode.Conflict,duplicate.StatusCode);
+        using var staleDelete=await client.DeleteAsync(new Uri($"/api/deprecations?key={Q(key)}&expectedVersion={version}",UriKind.Relative));
+        Assert.Equal(HttpStatusCode.Conflict,staleDelete.StatusCode);
+        using var invalid=await client.PutAsJsonAsync(new Uri("/api/deprecations",UriKind.Relative),new{key,status="invalid",note="invalid",expectedVersion=newer});
+        Assert.Equal(HttpStatusCode.BadRequest,invalid.StatusCode);
+        using var deleted=await client.DeleteAsync(new Uri($"/api/deprecations?key={Q(key)}&expectedVersion={newer}",UriKind.Relative));
+        Assert.Equal(HttpStatusCode.OK,deleted.StatusCode);
+        Assert.DoesNotContain((await Get(client,"/api/deprecations")).EnumerateArray(),m=>m.GetProperty("key").GetString()==key);
+        Assert.Equal(before,File.ReadAllBytes(factory.CapabilitiesPath));
+    }
+
+    [Fact]
+    public async Task Given_a_pinned_snapshot_when_publication_advances_then_integrations_keep_the_original_selection()
+    {
+        var scope=Scope();
+        var old=await Publish(scope,"integrations-old");
+        using var factory=new DatabaseApiFactory(db.ConnectionString,scope);
+        using var client=factory.CreateClient();
+        var key="http|"+scope+"|GET /global";
+        using var created=await client.PutAsJsonAsync(new Uri("/api/deprecations",UriKind.Relative),new{key,status="deprecated",note="global"});
+        Assert.Equal(HttpStatusCode.OK,created.StatusCode);
+        var first=await Get(client,$"/api/integrations?cap={scope}&snapshot={old.Id}");
+        Assert.Equal(old.Id,first.GetProperty("snapshotId").GetGuid());
+        Assert.NotEmpty(first.GetProperty("http").EnumerateArray());
+        await Publish(scope,"integrations-new","changed integration",1);
+        var retained=await Get(client,$"/api/integrations?cap={scope}&snapshot={old.Id}");
+        foreach(var field in new[]{"services","http","channels","data","selection"})
+            Assert.Equal(first.GetProperty(field).GetRawText(),retained.GetProperty(field).GetRawText());
+        Assert.Equal(old.Id,retained.GetProperty("snapshotId").GetGuid());
+        Assert.Contains(retained.GetProperty("marks").EnumerateArray(),m=>m.GetProperty("key").GetString()==key);
+        var current=await Get(client,$"/api/integrations?cap={scope}");
+        Assert.NotEqual(old.Id,current.GetProperty("snapshotId").GetGuid());
+        Assert.Equal(2,current.GetProperty("generation").GetInt64());
+        Assert.NotEqual(first.GetProperty("http").GetRawText(),current.GetProperty("http").GetRawText());
+        Assert.Contains(current.GetProperty("marks").EnumerateArray(),m=>m.GetProperty("key").GetString()==key);
+    }
+
+    [Fact]
+    public async Task Given_an_unavailable_database_when_reading_marks_then_no_legacy_file_success_is_returned()
+    {
+        using var factory=new DatabaseApiFactory("Host=127.0.0.1;Port=1;Database=unavailable;Username=test;Timeout=1;Pooling=false",Scope());
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(factory.CapabilitiesPath)!,"deprecations.json"),"{\"marks\":[]}");
+        using var client=factory.CreateClient();
+        using var response=await client.GetAsync(new Uri("/api/deprecations",UriKind.Relative));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable,response.StatusCode);
+        Assert.Contains("database",await response.Content.ReadAsStringAsync(),StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -191,7 +267,7 @@ public sealed class PostgresExplorerApiTests(PostgresFixture db)
         using var client=factory.CreateClient();
         using var meta=await client.GetAsync(new Uri($"/api/meta?cap={scope}",UriKind.Relative));
         Assert.Equal(HttpStatusCode.ServiceUnavailable,meta.StatusCode);
-        foreach(var endpoint in new[]{"architecture","integrations","changes","glossary"})
+        foreach(var endpoint in new[]{"architecture","changes","glossary"})
         {
             using var response=await client.GetAsync(new Uri($"/api/{endpoint}?cap={scope}",UriKind.Relative));
             Assert.Equal(HttpStatusCode.NotImplemented,response.StatusCode);

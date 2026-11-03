@@ -30,6 +30,8 @@ public interface IExplorerQueries
     Task<ExplorerQueryContext?> ResolveAsync(string capability, IReadOnlyDictionary<string, string>? selection = null,
         Guid? snapshotId = null, CancellationToken cancellationToken = default);
     Task<ExplorerDatabaseMetadata> MetadataAsync(ExplorerQueryContext context, CancellationToken cancellationToken = default);
+    Task<Integrations> IntegrationsAsync(ExplorerQueryContext context, IReadOnlyList<MarkDto> marks,
+        CancellationToken cancellationToken = default);
     Task<ExplorerPage<ExplorerRevisionRow>> RevisionsAsync(ExplorerQueryContext context, ExplorerPageRequest page,
         CancellationToken cancellationToken = default);
     Task<ExplorerPage<ExplorerArtifactRow>> ArtifactsAsync(ExplorerQueryContext context, ExplorerPageRequest page,

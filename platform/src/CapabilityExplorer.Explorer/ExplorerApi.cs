@@ -29,8 +29,6 @@ public sealed record ExplorerOptions(
             configuration["requests"] ?? ".sandbox-cache/requests");
     }
 
-    public DeprecationStore Deprecations => new(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(CapabilitiesFile))!, "deprecations.json"));
-
     /// <summary>Builds the index, resolving repository sources through capabilities first, then the repos directory.</summary>
     public (ExplorerIndex Index, CapabilityService Capabilities) Build()
     {
@@ -58,7 +56,7 @@ public sealed record ExplorerOptions(
     }
 }
 
-public sealed record MarkRequest(string Key, string Status, string? Note);
+public sealed record MarkRequest(string Key, string Status, string? Note, long? ExpectedVersion = null);
 
 public static class ExplorerApi
 {
@@ -234,27 +232,6 @@ public static class ExplorerApi
         {
             var capability = string.IsNullOrEmpty(cap) ? null : caps.Get(cap);
             return Architecture.Build(index.View(view, caps.Scope(cap)), level ?? (capability is null ? "landscape" : "system"), focus, index.View(view), caps.List(), capability);
-        });
-
-        api.MapGet("/integrations", (ExplorerIndex index, CapabilityService caps, ExplorerOptions options, string? view, string? cap) =>
-            Queries.Integrations(index.View(view, caps.Scope(cap)), options.Deprecations.WithRemovals(index)));
-
-        // Deprecation marks on whole integrations ("group|http|Klarna") or single elements; removal commits are derived on read.
-        api.MapPut("/deprecations", (ExplorerOptions options, MarkRequest request) =>
-        {
-            if (string.IsNullOrWhiteSpace(request.Key) || !DeprecationStore.Statuses.Contains(request.Status))
-            {
-                return Results.BadRequest(new { error = "key and a status of deprecated or obsolete are required" });
-            }
-
-            options.Deprecations.Upsert(request.Key, request.Status, request.Note ?? "");
-            return Results.NoContent();
-        });
-
-        api.MapDelete("/deprecations", (ExplorerOptions options, string key) =>
-        {
-            options.Deprecations.Delete(key);
-            return Results.NoContent();
         });
 
         api.MapGet("/changes", (ExplorerIndex index, string repo, string from, string to) =>
