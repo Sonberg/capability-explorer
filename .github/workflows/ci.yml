@@ -8,13 +8,17 @@ on:
 
 permissions:
   contents: read
+  actions: read
+  pull-requests: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body) && 'metadata' || 'source' }}
   cancel-in-progress: true
 
 jobs:
   ci:
+    # Metadata checks must not replace the required full-ci result or cancel its run.
+    name: ${{ github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body) && 'PR target' || 'ci' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -28,9 +32,24 @@ jobs:
             exit 1
           }
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test merge-evidence policy
+        run: PYTHONDONTWRITEBYTECODE=1 python3 tests/merge-proof.test.py
+      - name: Select complete CI or verified post-merge check
+        id: proof
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/merge-proof.py select
+      - name: Require current main in the PR head
+        if: ${{ !env.ACT && github.event_name == 'pull_request' && steps.proof.outputs.mode == 'full' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/merge-proof.py aligned
       # Builds and tests run inside scripts/sandbox containers; the runner only needs Docker.
       - name: Cache sandbox packages
-        if: ${{ !env.ACT }}
+        if: ${{ !env.ACT && steps.proof.outputs.mode == 'full' }}
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
@@ -41,11 +60,12 @@ jobs:
             .sandbox-cache/tools
           key: sandbox-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('config/runtime/images.env', 'scripts/sandbox', 'config/build/sandbox.mk', 'platform/**/packages.lock.json', 'platform/**/*.csproj', 'platform/**/*.props', 'platform/**/NuGet.Config', 'extractors/ts/package.json', 'extractors/ts/package-lock.json', 'platform/src/CapabilityExplorer.Explorer/client/package.json', 'platform/src/CapabilityExplorer.Explorer/client/package-lock.json', 'spikes/likec4/package.json', 'spikes/likec4/package-lock.json', 'fixtures/src/**/*.csproj', 'fixtures/src/**/package.json', 'fixtures/src/**/package-lock.json') }}
       - name: Audit action dependencies
-        if: ${{ !env.ACT }}
+        if: ${{ !env.ACT && steps.proof.outputs.mode == 'full' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: scripts/actions-audit audit
       - name: Pull sandbox images
+        if: ${{ steps.proof.outputs.mode == 'full' }}
         run: |
           source config/runtime/images.env
           for image in "$DOTNET_IMAGE" "$NODE_IMAGE" "$PG_IMAGE"; do
@@ -54,3 +74,17 @@ jobs:
             fi
           done
       - run: make EXECUTION=sandbox ci
+        if: ${{ steps.proof.outputs.mode == 'full' }}
+      - name: Record exact tested merge tree
+        if: ${{ !env.ACT && github.event_name == 'pull_request' && steps.proof.outputs.mode == 'full' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/merge-proof.py emit "${RUNNER_TEMP}/merge-proof.json"
+      - name: Retain pre-merge evidence
+        if: ${{ !env.ACT && github.event_name == 'pull_request' && steps.proof.outputs.mode == 'full' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/merge-proof.json
+          if-no-files-found: error
+          retention-days: 7

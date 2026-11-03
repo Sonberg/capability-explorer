@@ -75,6 +75,65 @@ act retains local package caches and audits actions on the host; hosted
 Actions restores the declared package cache and uses its job audit step.
 Semantic plan parity is required, not identical elapsed times.
 
+## Source-bound pre-merge and post-merge execution
+
+The operator additionally authorizes this bounded refinement: run one complete
+hosted pre-merge gate per current source/base, and reduce a main push to
+verification only when it demonstrably matches that successful tested tree.
+This is not a cache of local/pre-push success and does not narrow the canonical
+Make plan. All local act runs still execute the entire gate.
+
+PR opened, synchronized, reopened and base-retargeting events require full CI.
+Before full PR CI, verify the event base is current main and the PR head contains
+it. This workflow check is not server-side merge enforcement: the owner must
+enable strict required `ci` checks and admin enforcement, or separately qualify
+a merge queue and its `merge_group` events. Queue support is not implemented
+by the initial strict-check adapter.
+
+For title/body-only edits, run target validation under the distinct `PR target`
+check name and metadata concurrency group. Do not cancel the full source run,
+publish a replacement successful `ci` check, or turn a previous failed `ci`
+result into a green no-op. Unknown edits and retargeting take the full path.
+This is a scoped amendment to MADR-0003's metadata-edit policy; it retains that
+record's prohibition on skipping/replacing the required full check.
+
+After successful full PR execution, retain a small seven-day receipt artifact
+bound to repository, PR, workflow run/attempt, tested merge commit/tree, base,
+head and workflow blob. Mark it reusable only when strict required `ci`,
+admin enforcement and no listed PR-review bypass are observable. The artifact
+is evidence from the GitHub run, not an installed-output cache or release token.
+
+On a main push, `scripts/ci/merge-proof.py` defaults to full CI. Lightweight
+verification requires all of the following:
+
+1. Current strict/admin merge protection is readable and satisfies the policy.
+2. The pushed commit is the associated PR's actual merged commit, with same-
+   repository head and main target. The push's previous main equals the tested
+   base; multi-merge pushes therefore conservatively fall back.
+3. A completed successful `ci.yml` PR run for that exact head completed before
+   merge. Its unique, unexpired receipt matches run/attempt, PR, repository,
+   base/head, current tree and workflow. The actual tested Git commit's tree
+   and ordered merge parents must corroborate the receipt.
+4. The workflow blob equals both the tested and previous-main workflow.
+   Workflow changes bootstrap through full main CI.
+
+Unavailable/403/404 APIs, missing/expired/corrupt artifacts, forks, stale base,
+failed/incomplete runs, direct pushes and mismatched evidence retain full CI,
+with an explicit reason. Evidence search is bounded; failure to find proof is
+not proof that testing never occurred. The initial adapter intentionally
+supports strict branch protection, not every ruleset/merge-queue configuration.
+
+This is same-tree evidence reuse on GitHub only, not a distributed attestation,
+malicious-code-resistant test oracle or proof that mutable security feeds and
+external dependencies remain identical. It must not be used to authorize a
+release or waive artifact-specific security requirements.
+
+Activation is blocked until the owner resolves [issue #69](https://github.com/Sonberg/capability-explorer/issues/69),
+assigned to Per: the current account lacks admin permission and the private
+repository's rules API reports an upgrade prerequisite. Do not change visibility,
+billing or protection without authorization. Until qualified protection and a
+matching receipt exist, main continues running the full suite.
+
 ## Maintenance rule and validation
 
 The integration owner must review **every** plan/input change when workflow,
@@ -85,12 +144,14 @@ resource ownership changes. Run:
 node scripts/ci/check-frugal-ci.mjs
 node --test tests/frugal-ci.test.mjs tests/fixture-concurrency.test.mjs
 bash tests/local-ci.test.sh
+PYTHONDONTWRITEBYTECODE=1 python3 tests/merge-proof.test.py
 ```
 
 For intentional changes, `node scripts/ci/check-frugal-ci.mjs --record`
 creates a candidate snapshot. Review its diff against the prior required
 coverage before committing; never regenerate it blindly to make CI green.
-The standard full local pre-push gate and exact-head hosted CI remain required.
+The standard full local pre-push gate and exact-head hosted pre-merge CI remain
+required; the bounded post-merge verifier above is the only reuse exception.
 Update this record, the navigation index/diagram and portable source receipts
 together when changing the policy, according to MADR-0028.
 

@@ -15,7 +15,7 @@ No existing status was changed to produce this index.
 | Red | D: draft | Not yet ready for decision review; not a severity rating. |
 | Gray | H: historical | Rejected, deprecated or superseded; retain the decision and replacement links. |
 
-There are **30 local records: 1 scoped accepted, 29 proposed, 0 draft,
+There are **32 local records: 1 scoped accepted, 31 proposed, 0 draft,
 0 historical**. MADR-0016 is accepted for the **operator workflow only**.
 Both `0005` paths are distinct records, named `0005-G` and `0005-PR` below solely
 for navigation. No `0015` exists; this is a numbering gap, not a missing file
@@ -53,6 +53,8 @@ invented by the index. MADR-0025 landed in owner-merged #55 and remains proposed
 | 0028 | [Portable, source-bound decision navigation](0028-portable-decision-ledger.md) | P: bounded portable contract; no ontology reasoning or adoption |
 | 0029 | [Frugal CI with executable local and hosted parity](0029-frugal-ci-and-executable-parity.md) | P: proposed; full gates retained, measured optimization required |
 | 0030 | [Govern dependency caches across framework and toolchain upgrades](0030-dependency-cache-lifecycle.md) | P: proposed; scoped cleanup and retention policy, not implemented automation |
+| 0031 | [Convert maintained JavaScript to TypeScript 7 when modified](0031-typescript7-on-touch.md) | P: repository-wide adoption proposed; operator-directed workstream rule, no compiler upgrade yet |
+| 0032 | [Drive implementation with behavior scenarios and red-green-refactor tests](0032-tdd-bdd-delivery.md) | P: repository-wide adoption proposed; operator-directed TDD/BDD workflow, no new framework mandated |
 
 ## Relationship map
 
@@ -82,6 +84,8 @@ flowchart LR
     a26["0026 Decision council [P]"]:::proposed
     a29["0029 Frugal CI [P]"]:::proposed
     a30["0030 Cache lifecycle [P]"]:::proposed
+    a31["0031 TypeScript 7 on touch [P]"]:::proposed
+    a32["0032 TDD and BDD [P]"]:::proposed
   end
   subgraph Evidence_and_language
     a02["0002 Ubiquitous language [P]"]:::proposed
@@ -143,6 +147,11 @@ flowchart LR
   a30 -.-> a03
   a30 -.-> a28
   a30 -.-> a29
+  a31 -.-> a19
+  a31 -.-> a29
+  a31 -.-> a30
+  a32 -.-> a29
+  a32 -.-> a31
   classDef accepted fill:#dcfce7,stroke:#166534,color:#14532d
   classDef proposed fill:#fef9c3,stroke:#854d0e,color:#713f12
   classDef draft fill:#fee2e2,stroke:#991b1b,color:#7f1d1d
@@ -184,6 +193,8 @@ referencing/extending/overriding record to its target.
 | 0028 | 0026, 0014 | Related metadata in the [record](0028-portable-decision-ledger.md); no acceptance inferred. |
 | 0029 | 0003, 0011, 0028 | Related metadata in the [record](0029-frugal-ci-and-executable-parity.md); retains full-gate and ledger rules, no acceptance inferred. |
 | 0030 | 0003, 0028, 0029 | Related metadata in the [record](0030-dependency-cache-lifecycle.md); upgrade housekeeping proposal, not cleanup authorization. |
+| 0031 | 0019, 0029, 0030 | Related metadata in the [record](0031-typescript7-on-touch.md); incremental migration rule, not completed compiler adoption. |
+| 0032 | 0029, 0031 | Related metadata in the [record](0032-tdd-bdd-delivery.md); behavior-driven test-first delivery, not existing feature-test evidence. |
 
 ## Updating the ledger
 

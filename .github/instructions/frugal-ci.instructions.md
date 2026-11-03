@@ -10,6 +10,15 @@ installed outputs. Make stays serial; only disjoint fixture cases have a bounded
 two-worker pool. No blind `make -j` or additional hosted matrices for wall-time
 claims without work/cost evidence.
 
+The only hosted post-merge exception is MADR-0029's exact-tree proof adapter:
+strict enforced merge checks plus matching successful run/attempt/artifact,
+base/head/tree/workflow and actual tested merge commit. Missing or unknown
+evidence/protection defaults to full CI, explicitly logged. Local act/pre-push
+always stays full. Metadata-only PR checks must have a distinct name/concurrency
+group, preserve the prior full `ci` result and retain main-target validation.
+Retargeting/unknown edits require full CI. Run the Python merge-proof tests when
+changing this policy. Do not claim activation while owner issue #69 is blocked.
+
 Run `node scripts/ci/check-frugal-ci.mjs` and the focused drift/concurrency tests
 before the mandatory full local workflow. For intentional CI changes, regenerate
 the candidate with `--record`, review every required-plan diff for preserved
