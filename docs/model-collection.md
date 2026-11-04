@@ -77,6 +77,11 @@ dogfood generator, not the synthetic command examples as production enrollment.
 Output contains `collection.json`, bounded `artifacts/` and separate attempt
 metadata. Both consumers independently verify manifest identity and actual
 artifact bytes. Export stages and validates before an atomic directory rename.
+The aggregate artifact read budget is 128 MiB, including unsuccessful
+size/hash checks. Later inputs that cannot fit are not opened; optional ones
+remain partial and required ones prevent completion. Per-file reads are also
+capped by the remaining budget, with at most one overflow sentinel byte before
+an error aborts the operation. Staged verification has its own bounded pass.
 An identical, byte-verified target is reused; a conflicting or corrupted target
 is not replaced. Required failures do not produce a completed collection.
 Optional failures remain explicit partial dispositions. Attempt observation

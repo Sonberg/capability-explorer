@@ -34,7 +34,12 @@ Canonical hash input is bounded after escaping.
 
 Plans use literal relative input paths, exact repository/commit/tree identity,
 declared lengths and SHA-256 digests, explicit required/optional disposition,
-and producer/profile identity. Reads, counts and bytes are bounded. URI
+and producer/profile identity. The aggregate artifact read budget is 128 MiB,
+including failed size/hash checks; an input whose declaration cannot fit is
+not opened. Optional inputs retain explicit failure dispositions; required
+ones prevent completion. Reads are capped at the remaining budget with at
+most one sentinel byte before a size-change failure aborts the operation.
+Reads, counts and bytes are bounded. URI
 retrieval, traversal and symlinks are not accepted. The independent TypeScript
 validator recomputes bundle and artifact digests and can be run with
 `node src/collection/cli.ts validate <directory>` from `extractors/ts`.

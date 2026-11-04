@@ -233,13 +233,21 @@ public static class CollectionExporter
                 continue;
             }
 
+            var remainingBytes = CollectionRules.MaxTotalBytes - totalBytes;
+            if (remainingBytes <= 0 || input.ByteLength > remainingBytes)
+            {
+                HandleInputFailure(input, "aggregate read budget exhausted", descriptors, problems);
+                continue;
+            }
+
             if (!TryResolveInput(inputRoot, input.Path, out var sourcePath))
             {
                 HandleInputFailure(input, "input path is unsafe or missing", descriptors, problems);
                 continue;
             }
 
-            var bytes = await CollectionRules.ReadBoundedAsync(sourcePath, CollectionRules.MaxInputBytes, cancellationToken)
+            var bytes = await CollectionRules.ReadBoundedAsync(sourcePath,
+                Math.Min(CollectionRules.MaxInputBytes, remainingBytes), cancellationToken)
                 .ConfigureAwait(false);
             totalBytes += bytes.LongLength;
             if (bytes.LongLength != input.ByteLength || bytes.LongLength > CollectionRules.MaxInputBytes ||

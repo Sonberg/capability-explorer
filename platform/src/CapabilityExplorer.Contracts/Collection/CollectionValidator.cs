@@ -68,6 +68,13 @@ internal static class CollectionValidator
                     continue;
                 }
 
+                var remainingBytes = CollectionRules.MaxTotalBytes - totalBytes;
+                if (remainingBytes <= 0 || input.ByteLength > remainingBytes)
+                {
+                    problems.Add("aggregate read budget exhausted");
+                    continue;
+                }
+
                 var repo = repositories[input.RepositoryId];
                 var artifactPath = ResolveArtifact(root, input.ArtifactPath!);
                 if (artifactPath is null || !File.Exists(artifactPath) ||
@@ -77,7 +84,8 @@ internal static class CollectionValidator
                     continue;
                 }
 
-                var bytes = await CollectionRules.ReadBoundedAsync(artifactPath, CollectionRules.MaxInputBytes,
+                var bytes = await CollectionRules.ReadBoundedAsync(artifactPath,
+                    Math.Min(CollectionRules.MaxInputBytes, remainingBytes),
                     cancellationToken).ConfigureAwait(false);
                 totalBytes += bytes.LongLength;
                 if (bytes.LongLength != input.ByteLength || bytes.LongLength > CollectionRules.MaxInputBytes ||

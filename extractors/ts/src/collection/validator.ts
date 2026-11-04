@@ -101,6 +101,11 @@ export async function validateCollectionBundle(bundleDirectory: string): Promise
     let totalBytes = 0;
     for (const [index, input] of envelope.content.inputs.entries()) {
       if (input.status === "optional-failed") continue;
+      const remainingBytes = maxTotalBytes - totalBytes;
+      if (remainingBytes <= 0 || input.byteLength > remainingBytes) {
+        problems.push({ message: "aggregate read budget exhausted" });
+        continue;
+      }
       const repo = repositories.get(input.repositoryId)!;
       const artifactPath = input.artifactPath!;
       const file = resolveArtifact(root, artifactPath);
@@ -115,7 +120,7 @@ export async function validateCollectionBundle(bundleDirectory: string): Promise
         continue;
       }
 
-      const bytes = await readBounded(file, maxArtifactBytes);
+      const bytes = await readBounded(file, Math.min(maxArtifactBytes, remainingBytes));
       totalBytes += bytes.byteLength;
       if (bytes.byteLength !== input.byteLength || totalBytes > maxTotalBytes ||
           sha256(bytes) !== input.sha256) {

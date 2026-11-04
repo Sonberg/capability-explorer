@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -90,6 +90,7 @@ for (const mutation of ["invalid-element", "no-permission", "wrong-permission", 
         input.contentProfile = permission;
         envelope.content.repositories[0]!.permittedContentProfiles = permission ? [permission] : [];
       }
+
       envelope.contentSha256 = createHash("sha256").update(canonicalContentBytes(envelope.content)).digest("hex");
       const encoded = JSON.stringify(envelope);
       await writeFile(manifestPath, mutation === "duplicate-member"
@@ -102,6 +103,42 @@ for (const mutation of ["invalid-element", "no-permission", "wrong-permission", 
       assert.ok(result.problems.some(({ message }) =>
         message.includes(mutation === "invalid-element" ? "schema"
           : mutation === "duplicate-member" ? "JSON" : "contentProfile")));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const tailMiB of [8, 16]) {
+  test(`stops aggregate reads before opening later artifacts with ${tailMiB} MiB tail`, async () => {
+    const root = await mkdtemp(join(tmpdir(), "ce-collection-budget-"));
+    try {
+      await cp(fixture, root, { recursive: true });
+      const path = join(root, "collection.json");
+      const envelope = JSON.parse(await readFile(path, "utf8")) as {
+        contentSha256: string;
+        content: { inputs: Array<{ artifactPath: string; unitPath: string; sha256: string; byteLength: number }> };
+      };
+      const template = envelope.content.inputs[0]!;
+      envelope.content.inputs = [];
+      for (let index = 0; index < 9; index++) {
+        const artifactPath = `artifacts/repo-a/ce.models.v1/${index.toString().padStart(4, "0")}.json`;
+        const byteLength = (index === 7 ? tailMiB : 16) * 1_048_576;
+        envelope.content.inputs.push({ ...template, artifactPath, byteLength,
+          unitPath: `${index.toString().padStart(2, "0")}.json`, sha256: "a".repeat(64) });
+        if (index === 8) continue;
+        await mkdir(dirname(join(root, artifactPath)), { recursive: true });
+        const file = await open(join(root, artifactPath), "w");
+        try { await file.truncate(byteLength); } finally { await file.close(); }
+      }
+      envelope.contentSha256 = createHash("sha256").update(canonicalContentBytes(envelope.content)).digest("hex");
+      await writeFile(path, JSON.stringify(envelope));
+
+      const result = await validateCollectionBundle(root);
+
+      assert.equal(result.ok, false);
+      assert.ok(result.problems.some(({ message }) => message.includes("aggregate read budget")));
+      assert.ok(!result.problems.some(({ message }) => message.includes("referenced artifact is missing")));
     } finally {
       await rm(root, { recursive: true, force: true });
     }
