@@ -276,10 +276,20 @@ public static class ExplorerApi
             GlossaryConcepts.Build(index.View(view, caps.Scope(cap)), Membership(caps)));
 
         // Layered architecture canvas: level = landscape | system | repository | component. The landscape ignores cap.
-        api.MapGet("/architecture", (ExplorerIndex index, CapabilityService caps, string? level, string? focus, string? view, string? cap, int? nodeBudget) =>
+        api.MapGet("/architecture", (HttpRequest request, ExplorerIndex index, CapabilityService caps, string? level, string? focus, string? view, string? cap) =>
         {
+            if (!ArchitectureBudgeting.TryParse(request.Query, out var options, out var error))
+                return Results.BadRequest(new { error });
             var capability = string.IsNullOrEmpty(cap) ? null : caps.Get(cap);
-            return Architecture.Build(index.View(view, caps.Scope(cap)), level ?? (capability is null ? "landscape" : "system"), focus, index.View(view), caps.List(), capability, nodeBudget);
+            try
+            {
+                return Results.Ok(Architecture.Build(index.View(view, caps.Scope(cap)), level ?? (capability is null ? "landscape" : "system"), focus, index.View(view), caps.List(), capability,
+                    options.NodeBudget, options.EdgeBudget, options.HideKinds, options.Query, options.Include));
+            }
+            catch (ArgumentException e)
+            {
+                return Results.BadRequest(new { error = e.Message });
+            }
         });
 
         api.MapGet("/changes", (ExplorerIndex index, string repo, string from, string to) =>
