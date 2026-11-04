@@ -13,7 +13,7 @@ public sealed record CollectionInputVector(
 
 public sealed record CollectionFreshnessResult(string Status, IReadOnlyList<string> Reasons, string? InputVectorSha256);
 
-public static class CollectionFreshness
+public static partial class CollectionFreshness
 {
     public static CollectionFreshnessResult Evaluate(CollectionInputVector previous, CollectionInputVector observed)
     {
