@@ -30,7 +30,7 @@ public sealed class AnalysisCapabilityConcurrencyTests : IDisposable
     }
 
     [Fact]
-    public async Task Isolated_extractions_overlap_and_one_uncertain_failure_preserves_sibling_outputs()
+    public async Task First_serial_extraction_failure_remains_unknown_without_merging_or_changing_queued_capabilities()
     {
         if (OperatingSystem.IsWindows()) return;
         var scripts = Path.Combine(_root, "scripts");
@@ -48,6 +48,7 @@ public sealed class AnalysisCapabilityConcurrencyTests : IDisposable
             while [ "$#" -gt 0 ]; do case "$1" in --repository) shift; repo="$1";; --out) shift; output="$1";; esac; shift; done
             case "$output" in /work/*) output="$PWD/${output#/work/}";; esac
             safe=${SANDBOX_LABEL#ce-analyze=}
+            printf '%s\n' "$safe-$kind-$repo" >> started
             touch "active/$safe-$kind-$repo"
             while [ ! -f release ]; do sleep .01; done
             if [ -f fail ] && [ "$(cat fail)" = "$SANDBOX_LABEL" ]; then exit 9; fi
@@ -57,8 +58,11 @@ public sealed class AnalysisCapabilityConcurrencyTests : IDisposable
             """ + "\n");
         File.SetUnixFileMode(sandbox, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 
-        using var release = new ManualResetEventSlim();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var watcher = new FileSystemWatcher(active);
+        watcher.Created += (_, _) => started.TrySetResult();
+        watcher.EnableRaisingEvents = true;
         var activeAttempts = new ConcurrentDictionary<string, AnalysisRun>(StringComparer.Ordinal);
         var execution = AnalysisCapabilityScheduler.RunAdmitted(_store, _owner, _runs, 2, async run =>
         {
@@ -103,44 +107,33 @@ public sealed class AnalysisCapabilityConcurrencyTests : IDisposable
             }
         }, timeout.Token);
 
-        var wait = Stopwatch.StartNew();
-        while (Directory.GetFiles(active).Length < 4)
-        {
-            if (execution.IsCompleted) await execution;
-            if (wait.Elapsed > TimeSpan.FromSeconds(10)) throw new TimeoutException("two capability extractions did not overlap");
-            await Task.Delay(10, timeout.Token);
-        }
-        Assert.Equal(4, Directory.GetFiles(active).Length);
-        Assert.Equal(2, activeAttempts.Count);
+        await started.Task.WaitAsync(timeout.Token);
+        Assert.Single(Directory.GetFiles(active));
+        Assert.Single(activeAttempts);
         var first = activeAttempts.Values.Single(run => run.CapabilityId == "sales");
-        var second = activeAttempts.Values.Single(run => run.CapabilityId == "other");
         var firstLabel = "ce-analyze=" + AnalysisWorkerCommand.HashText(_root)[..16] + "-" + first.RunId + "-" + first.AttemptId;
         File.WriteAllText(Path.Combine(_root, "fail"), firstLabel);
         File.WriteAllText(Path.Combine(_root, "release"), "");
 
         Assert.Equal(1, await execution.WaitAsync(timeout.Token));
         Assert.Equal("unknown", _store.ReadRun(first.RunId).State);
-        Assert.Equal("done", _store.ReadRun(second.RunId).State);
-        Assert.False(_store.ReadRun(second.RunId).CancellationRequested);
-        Assert.NotEqual(first.AttemptId, second.AttemptId);
-        Assert.NotEqual(_store.AttemptDirectory(new(first.RunId, first.AttemptId!)),
-            _store.AttemptDirectory(new(second.RunId, second.AttemptId!)));
-        Assert.NotEqual(_store.LogPath(first.RunId), _store.LogPath(second.RunId));
+        Assert.False(_store.ReadRun(first.RunId).CancellationRequested);
+        Assert.Single(activeAttempts);
+        Assert.Single(File.ReadAllLines(Path.Combine(_root, "started")));
         Assert.True(File.Exists(_store.LogPath(first.RunId)));
-        Assert.True(File.Exists(_store.LogPath(second.RunId)));
-        Assert.Equal("queued", _store.ReadRun(_runs[2].RunId).State);
+        AssertQueuedUnchanged(_runs.Skip(1));
         Assert.NotNull(_store.ReadBlockReason());
-        var siblingAttempt = _store.AttemptDirectory(new(second.RunId, second.AttemptId!));
-        Assert.Equal(3, AnalysisPreparation.CheckedFiles(Path.Combine(siblingAttempt, "out", "repo-other",
-            new string('c', 40))).Count());
+        var firstAttempt = _store.AttemptDirectory(new(first.RunId, first.AttemptId!));
+        Assert.Empty(AnalysisPreparation.CheckedFiles(Path.Combine(firstAttempt, "out", "repo-sales",
+            new string('a', 40))));
+        Assert.Empty(AnalysisPreparation.CheckedFiles(Path.Combine(firstAttempt, "out", "tasks")));
     }
 
     [Fact]
-    public async Task Capability_runs_overlap_up_to_ceiling_then_dispatch_queued_run()
+    public async Task Serial_capability_runs_complete_monotonically_with_unique_attempts_and_isolated_outputs()
     {
-        using var release = new ManualResetEventSlim();
-        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var startCount = 0;
+        using var permits = new SemaphoreSlim(0);
+        using var started = new SemaphoreSlim(0);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var active = 0;
         var peak = 0;
@@ -151,10 +144,12 @@ public sealed class AnalysisCapabilityConcurrencyTests : IDisposable
             Assert.True(attempts.TryAdd(run.RunId, run.AttemptId!));
             var current = Interlocked.Increment(ref active);
             UpdateMaximum(ref peak, current);
-            if (Interlocked.Increment(ref startCount) == 2) started.TrySetResult();
+            started.Release();
             try
             {
-                await Task.Run(() => release.Wait(timeout.Token), timeout.Token);
+                await permits.WaitAsync(timeout.Token);
+                var output = Path.Combine(_store.AttemptDirectory(new(run.RunId, run.AttemptId!)), "output.txt");
+                File.WriteAllText(output, run.CapabilityId);
                 Complete(run);
                 return 0;
             }
@@ -166,25 +161,35 @@ public sealed class AnalysisCapabilityConcurrencyTests : IDisposable
             finally { Interlocked.Decrement(ref active); }
         }, timeout.Token);
 
-        await started.Task.WaitAsync(timeout.Token);
-        Assert.Equal(2, Volatile.Read(ref active));
-        Assert.Equal(2, attempts.Count);
-        Assert.Equal("queued", _store.ReadRun(_runs[2].RunId).State);
-        Assert.Equal(2, attempts.Values.Distinct(StringComparer.Ordinal).Count());
-        Assert.Equal(2, attempts.Keys.Select(runId => _store.AttemptDirectory(
-            new(runId, attempts[runId]))).Distinct(StringComparer.Ordinal).Count());
-
-        release.Set();
+        for (var index = 0; index < _runs.Length; index++)
+        {
+            await started.WaitAsync(timeout.Token);
+            Assert.Equal(1, Volatile.Read(ref active));
+            Assert.Equal(index + 1, attempts.Count);
+            Assert.Equal("running", _store.ReadRun(_runs[index].RunId).State);
+            Assert.All(_runs.Take(index), run => Assert.Equal("done", _store.ReadRun(run.RunId).State));
+            AssertQueuedUnchanged(_runs.Skip(index + 1));
+            permits.Release();
+        }
         var result = await execution.WaitAsync(timeout.Token);
         Assert.Empty(errors);
         Assert.Equal(0, result);
-        Assert.Equal(2, peak);
+        Assert.Equal(1, peak);
+        Assert.Equal(_runs.Length, attempts.Values.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(_runs.Length, attempts.Keys.Select(runId => _store.AttemptDirectory(
+            new(runId, attempts[runId]))).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(_runs.Length, _runs.Select(run => _store.LogPath(run.RunId)).Distinct(StringComparer.Ordinal).Count());
         Assert.All(_runs, run => Assert.Equal("done", _store.ReadRun(run.RunId).State));
+        Assert.All(_runs, run => Assert.Equal(run.CapabilityId, File.ReadAllText(Path.Combine(
+            _store.AttemptDirectory(new(run.RunId, attempts[run.RunId])), "output.txt"))));
         Assert.Equal(0, Volatile.Read(ref active));
     }
 
-    [Fact]
-    public async Task Background_scheduler_honors_each_queued_runs_frozen_worker_ceiling()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(4)]
+    public async Task Background_scheduler_runs_serially_even_for_older_parallel_worker_settings(int requestedWorkers)
     {
         var root = Path.Combine(_root, "frozen-worker-ceiling");
         Directory.CreateDirectory(root);
@@ -196,7 +201,7 @@ public sealed class AnalysisCapabilityConcurrencyTests : IDisposable
         }));
         var store = new FileRunStore(Path.Combine(root, ".sandbox-cache/requests"));
         var runs = ids.Select(id => store.Admit(id, configuration, null,
-            new(Packages: false, CapabilityWorkers: 1)).Run).ToArray();
+            new(Packages: false, CapabilityWorkers: requestedWorkers)).Run).ToArray();
         using var owner = store.AcquireWorker();
         using var permits = new SemaphoreSlim(0);
         using var started = new SemaphoreSlim(0);
@@ -234,17 +239,16 @@ public sealed class AnalysisCapabilityConcurrencyTests : IDisposable
     }
 
     [Fact]
-    public async Task One_failed_capability_does_not_cancel_sibling_and_scheduler_drains_started_tasks()
+    public async Task First_failed_serial_capability_completes_without_starting_or_changing_later_queued_work()
     {
-        using var release = new ManualResetEventSlim();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var startCount = 0;
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var completedTasks = new ConcurrentBag<string>();
         var execution = AnalysisCapabilityScheduler.RunAdmitted(_store, _owner, _runs, 2, async run =>
         {
-            if (Interlocked.Increment(ref startCount) == 2) started.TrySetResult();
-            await Task.Run(() => release.Wait(timeout.Token), timeout.Token);
+            started.TrySetResult();
+            await release.Task.WaitAsync(timeout.Token);
             try
             {
                 if (run.CapabilityId == "sales")
@@ -259,27 +263,26 @@ public sealed class AnalysisCapabilityConcurrencyTests : IDisposable
         }, timeout.Token);
 
         await started.Task.WaitAsync(timeout.Token);
-        release.Set();
+        Assert.Equal("running", _store.ReadRun(_runs[0].RunId).State);
+        AssertQueuedUnchanged(_runs.Skip(1));
+        release.SetResult();
         Assert.Equal(1, await execution.WaitAsync(timeout.Token));
-        Assert.Equal(2, completedTasks.Count);
+        Assert.Equal(new[] { "sales" }, completedTasks.ToArray());
         Assert.Equal("failed", _store.ReadRun(_runs[0].RunId).State);
-        Assert.Equal("done", _store.ReadRun(_runs[1].RunId).State);
-        Assert.False(_store.ReadRun(_runs[1].RunId).CancellationRequested);
-        Assert.Equal("queued", _store.ReadRun(_runs[2].RunId).State);
+        AssertQueuedUnchanged(_runs.Skip(1));
     }
 
     [Fact]
-    public async Task Cancelling_one_capability_preserves_and_drains_its_started_sibling()
+    public async Task Cancelling_first_serial_capability_completes_without_starting_or_changing_later_queued_work()
     {
-        using var release = new ManualResetEventSlim();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var startCount = 0;
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var completedTasks = new ConcurrentBag<string>();
         var execution = AnalysisCapabilityScheduler.RunAdmitted(_store, _owner, _runs, 2, async run =>
         {
-            if (Interlocked.Increment(ref startCount) == 2) started.TrySetResult();
-            await Task.Run(() => release.Wait(timeout.Token), timeout.Token);
+            started.TrySetResult();
+            await release.Task.WaitAsync(timeout.Token);
             try
             {
                 if (_store.ReadRun(run.RunId).CancellationRequested)
@@ -294,15 +297,29 @@ public sealed class AnalysisCapabilityConcurrencyTests : IDisposable
         }, timeout.Token);
 
         await started.Task.WaitAsync(timeout.Token);
+        AssertQueuedUnchanged(_runs.Skip(1));
         Assert.Equal("accepted", _store.Cancel(_runs[0].RunId).Outcome);
-        release.Set();
+        Assert.Equal("cancelling", _store.ReadRun(_runs[0].RunId).State);
+        release.SetResult();
 
         Assert.Equal(1, await execution.WaitAsync(timeout.Token));
-        Assert.Equal(2, completedTasks.Count);
+        Assert.Equal(new[] { "sales" }, completedTasks.ToArray());
         Assert.Equal("cancelled", _store.ReadRun(_runs[0].RunId).State);
-        Assert.Equal("done", _store.ReadRun(_runs[1].RunId).State);
-        Assert.False(_store.ReadRun(_runs[1].RunId).CancellationRequested);
-        Assert.Equal("queued", _store.ReadRun(_runs[2].RunId).State);
+        Assert.True(_store.ReadRun(_runs[0].RunId).CancellationRequested);
+        AssertQueuedUnchanged(_runs.Skip(1));
+    }
+
+    private void AssertQueuedUnchanged(IEnumerable<AnalysisRun> runs)
+    {
+        Assert.All(runs, run =>
+        {
+            var current = _store.ReadRun(run.RunId);
+            Assert.Equal("queued", current.State);
+            Assert.False(current.CancellationRequested);
+            Assert.Null(current.AttemptId);
+            Assert.Equal(JsonSerializer.Serialize(run), JsonSerializer.Serialize(current));
+            Assert.False(File.Exists(_store.LogPath(run.RunId)));
+        });
     }
 
     private void Complete(AnalysisRun run)

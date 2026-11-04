@@ -40,7 +40,7 @@ internal static class AnalysisPreparation
 
     internal static string RuntimeIdentity(string root)
     {
-        var files = new[] { "config/runtime/images.env", "scripts/sandbox", "scripts/github-token", "scripts/lib/container-engine.sh", "scripts/fetch-npm-packages.mjs", Cli, CSharp, TypeScript, "extractors/ts/package-lock.json" };
+        var files = new[] { "config/runtime/images.env", "scripts/sandbox", "scripts/github-token", "scripts/container-engine", "scripts/lib/container-engine.sh", "scripts/lib/analysis-runtime.ts", "scripts/fetch-npm-packages.mjs", Cli, CSharp, TypeScript, "extractors/ts/package-lock.json" };
         var inputs = files.Select(p => { RejectLinks(Path.Combine(root,p)); return p + ":" + AnalysisWorkerCommand.HashFile(Path.Combine(root, p)); });
         // Transitive managed binaries affect parser semantics as well as the entry assembly.
         var parserInputs = CheckedFiles(Path.Combine(root,"extractors/ts/src")).Order(StringComparer.Ordinal)

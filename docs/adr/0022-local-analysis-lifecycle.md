@@ -26,19 +26,16 @@ before recovery, admission from direct commands, preparation or shared writes.
 The host CLI owns publication; extraction sandboxes produce attempt staging.
 The `analyze`, `analyze-worker` and `analyze-all` scripts delegate to that CLI.
 
-The exclusive owner may dispatch independent capability attempts concurrently.
-It tracks the exact attempts it claimed in process memory; a second claim is
-allowed only while every other started nonterminal run is owned by that same
-coordinator. `Recover` clears this liveness set and records prior started work as
-unknown, so process loss still blocks execution globally. The host scheduler
-defaults to two capability tasks (configurable from one to four with
-`ANALYZE_WORKERS`). Per-run extraction is independently bounded from one to four
-jobs (`ANALYZE_JOBS` or `--extraction-jobs`), with a configured product ceiling
-of sixteen. Aggregate and background commands use this same scheduler.
-Publication is serialized by the owner; failure stops new dispatch but does not
-cancel siblings already started, and the command waits for them to drain.
-Shared source acquisition and package-fetch cache writes are serialized, while
-attempt workspaces, locks, package outputs and logs remain distinct.
+The owner authorized removing concurrency when needed for runtime reliability.
+The exclusive owner now executes one capability and one extractor at a time on
+both Docker and Podman. Aggregate and background commands use this same serial
+scheduler, including for old frozen worker/job settings of 2 or 4. Newly admitted
+settings are 1; legacy `ANALYZE_WORKERS`, `ANALYZE_JOBS` and direct worker/extraction
+options validate values in 1-4 but cap effective execution at 1, without rewriting
+accepted records. `Recover` records prior started work as unknown, so process loss
+still blocks execution globally. Publication, shared source acquisition and
+package-fetch cache writes remain serialized; attempt workspaces, locks, package
+outputs and logs remain distinct.
 
 Persistent lock files use `FileStream` with `FileShare.None`; never unlink or
 replace them. Independent .NET process tests exercised exclusion and owner
@@ -78,7 +75,7 @@ successful execution, matching immutable inputs and no cancellation intent.
 
 The current host adapter treats cancellation of a live child and nonzero sandbox
 exit as unknown even after exact-label cleanup. It cannot prove that no late
-Docker request or escaped descendant exists. This intentionally blocks new work
+engine request or escaped descendant exists. This intentionally blocks new work
 until offline reconciliation or the narrowly owner-approved retry exception
 below; ordinary live Stop does not provide a retry-ready terminal state.
 Queued and pre-spawn cancellation can be confirmed.
@@ -145,7 +142,29 @@ work. Explorer freezes those non-secret settings into admission, preserving
 package/auth/private-feed policy without receiving credential values. A missing
 profile uses standard defaults; a stale profile is only last configured policy,
 never liveness or execution authority. Already admitted settings remain immutable.
-Podman full analysis remains unqualified and is explicitly refused.
+Native `make dev` starts the same host worker for either engine, with unchanged
+commands and UI. The analysis scripts accept `CE_CONTAINER_ENGINE=auto|docker|podman`;
+auto chooses by executable availability, Docker first, and never falls back after
+selection failure. Native analysis supports local Unix Docker, rootless Linux
+Podman and one explicit qualified loopback macOS Podman machine. The frozen JSON
+from `scripts/container-engine --analysis-snapshot` binds backend, executable,
+argument prefix and fingerprint through host-only `CE_ANALYSIS_RUNTIME`; every
+sandbox/cleanup invocation validates and reprobes it. Offline sources/runtime trees
+are read-only, the private journal is explicitly mounted, and Podman `keep-id`
+uses explicit UID/GID. No aliases or Docker-compatibility symlinks are introduced.
+Full sandbox `--docker`/Testcontainers and canonical full CI/security-collect
+remain Docker-only, not transparently interchangeable profiles.
+
+Isolated macOS Podman 6.0.2 client / 6.1.2 server single and aggregate probes passed
+with valid artifacts after serialization. Concurrent probe failures remain retained
+isolated unknowns; no production queue was consumed or old queued run qualified.
+Package fetching, private feeds, database import and model effects were not
+live-qualified. Docker fixture tests passed, but an absent Docker daemon prevents
+live Docker/full CI claims. The integration owner will rerun final gates and the
+new source-hash-qualified `tests/native-analysis-runtime.live.ts --live` harness,
+which preserves probe directories and writes
+`.sandbox-cache/runtime-analysis-podman.json`. These observations do not relax the
+unknown-state or operator retry/release policy above.
 
 At this decision's original implementation, issue #37 A9's literal broader prohibition on Explorer credentials was not met:
 the existing private-source Check workflow still uses an Explorer GitHub token,
@@ -175,7 +194,7 @@ the implementation handoff.
 Atomic replacement and file flushing do not establish power-loss durability or
 an atomic global filesystem/database commit. No distributed fencing, automatic
 rollback, multiple coordinator processes or distributed worker throughput is
-claimed. The bounded scheduler is one host process only.
+claimed. The serial scheduler is one host process only.
 
 ## Implementation and operating guidance
 

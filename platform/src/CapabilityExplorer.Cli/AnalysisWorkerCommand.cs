@@ -19,13 +19,14 @@ internal static class AnalysisWorkerCommand
             foreach (var key in options.Keys)
                 if (key is not ("capability" or "capabilities" or "bindings" or "include-tests" or "packages" or "locked" or "github-auth" or "extraction-jobs"))
                     throw new ArgumentException("unsupported analysis option");
-            if (command != "analysis-worker" && ResolveEngine() != "docker")
-                throw new InvalidOperationException("analysis requires the qualified Docker host profile");
+            _ = ResolveEngine();
             var root = Path.GetFullPath(Environment.CurrentDirectory);
             if (!File.Exists(Path.Combine(root, "scripts/sandbox")) || !File.Exists(Path.Combine(root, "config/runtime/images.env")))
                 throw new InvalidOperationException("analysis must run in the project root on the trusted .NET host");
             if (File.Exists("/.dockerenv") || Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true")
                 throw new InvalidOperationException("analysis ownership must run on the host, outside an extraction container");
+            var runtime = new AnalysisEngineRuntime(root);
+            await runtime.EnsureFrozen();
             var store = new FileRunStore(Path.Combine(root, ".sandbox-cache/requests"));
             using var owner = store.AcquireWorker(); // precedes recovery, admission and every shared write
             if (store.Recover(owner).Blocked) throw new InvalidOperationException("unreconciled execution/publication blocks analysis; inspect run history");
@@ -44,8 +45,8 @@ internal static class AnalysisWorkerCommand
                         GitHubAuth:Environment.GetEnvironmentVariable("GITHUB_AUTH") is { Length: > 0 } auth ? auth : "auto",
                         NugetPassEnv:Environment.GetEnvironmentVariable("NUGET_PASS_ENV") ?? "",
                         NugetAllowedOrigins:Environment.GetEnvironmentVariable("CE_NUGET_ALLOWED_ORIGINS"),
-                        ExtractionJobs: ParseJobs(Environment.GetEnvironmentVariable("ANALYZE_JOBS")),
-                        CapabilityWorkers: ParseWorkers(Environment.GetEnvironmentVariable("ANALYZE_WORKERS")));
+                        ExtractionJobs: Math.Min(1,ParseJobs(Environment.GetEnvironmentVariable("ANALYZE_JOBS"))),
+                        CapabilityWorkers: Math.Min(1,ParseWorkers(Environment.GetEnvironmentVariable("ANALYZE_WORKERS"))));
                     AnalysisPreparation.ValidateSettings(hostDefaults);
                     store.PublishWorkerDefaults(owner,hostDefaults,includeTestsOverride);
 
@@ -59,7 +60,7 @@ internal static class AnalysisWorkerCommand
                             continue;
                         }
                         var result = await AnalysisCapabilityScheduler.RunPending(store, owner, hostDefaults.CapabilityWorkers,
-                            run => Execute(root, store, owner, run, stop.Token), stop.Token);
+                            run => Execute(root, store, owner, run, runtime, stop.Token), stop.Token);
                         if (result != 0) return result;
                         await Task.Delay(300, stop.Token);
                     }
@@ -82,8 +83,8 @@ internal static class AnalysisWorkerCommand
                         GitHubAuth: options.GetValueOrDefault("github-auth") ?? Environment.GetEnvironmentVariable("GITHUB_AUTH") ?? "auto",
                         NugetPassEnv: Environment.GetEnvironmentVariable("NUGET_PASS_ENV") ?? "",
                         NugetAllowedOrigins: Environment.GetEnvironmentVariable("CE_NUGET_ALLOWED_ORIGINS"),
-                        ExtractionJobs: ParseJobs(options.GetValueOrDefault("extraction-jobs") ?? Environment.GetEnvironmentVariable("ANALYZE_JOBS")),
-                        CapabilityWorkers: ParseWorkers(Environment.GetEnvironmentVariable("ANALYZE_WORKERS")));
+                        ExtractionJobs: Math.Min(1,ParseJobs(options.GetValueOrDefault("extraction-jobs") ?? Environment.GetEnvironmentVariable("ANALYZE_JOBS"))),
+                        CapabilityWorkers: Math.Min(1,ParseWorkers(Environment.GetEnvironmentVariable("ANALYZE_WORKERS"))));
                     AnalysisPreparation.ValidateSettings(settings);
                     var admitted = store.Admit(id, configuration, bindings, settings);
                     if (!admitted.Accepted) throw new InvalidOperationException("capability has unresolved run " + admitted.Run.RunId);
@@ -93,7 +94,7 @@ internal static class AnalysisWorkerCommand
                 var executionResult = await AnalysisCapabilityScheduler.RunAdmitted(store, owner, acceptedRuns,
                     acceptedRuns[0].Settings.CapabilityWorkers, async run =>
                     {
-                        var result = await Execute(root, store, owner, run, stop.Token);
+                        var result = await Execute(root, store, owner, run, runtime, stop.Token);
                         if (result == 0) completedRuns.Add(run.RunId);
                         return result;
                     }, stop.Token);
@@ -118,13 +119,12 @@ internal static class AnalysisWorkerCommand
         { Console.Error.WriteLine("analysis: host operation failed (" + e.GetType().Name + ")"); return 2; }
     }
 
-    private static async Task<int> Execute(string root, FileRunStore store, WorkerOwnership owner, AnalysisRun run, CancellationToken stop)
+    private static async Task<int> Execute(string root, FileRunStore store, WorkerOwnership owner, AnalysisRun run, IAnalysisContainerRuntime runtime, CancellationToken stop)
     {
         var attempt = new AttemptIdentity(run.RunId, run.AttemptId!);
-        using var process = new AnalysisProcess(root, store, run, stop);
+        using var process = new AnalysisProcess(root, store, run, stop, runtime);
         try
         {
-            if (ResolveEngine() != "docker") throw new InvalidOperationException("analysis requires the qualified Docker host profile");
             var prepared = await AnalysisPreparation.Prepare(root, store, run, process, stop);
             process.CheckCancellation();
             var manifest = store.BindResolved(owner, attempt, new ResolvedManifest(run.AcceptedInputsHash, prepared.Inputs));

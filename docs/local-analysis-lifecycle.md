@@ -46,26 +46,35 @@ analysis state. A worker already running for Explorer also excludes direct
 A second worker refuses before recovery changes live records.
 Direct `ce export` is disabled; it cannot bypass this owner.
 
-The one owner may execute independent capability runs concurrently. The default
-capability-worker ceiling is **2**; set host `ANALYZE_WORKERS` to **1–4** to
-choose a different bound. `ANALYZE_JOBS` (or `--extraction-jobs` for direct
-commands) bounds extraction tasks within each run to **1–4**. Their configured
-product must not exceed **16**. `analysis-all` uses the same bounded scheduler
-as the background worker; it is not a fan-out of independent CLI owners.
-Per-capability admission remains unique. A failed task stops further dispatch
-but does not cancel its siblings; every started task drains before the command
-returns. Publication is serialized by the host. A source acquisition or package
-fetch gate protects shared Git and package-fetch caches; exported sources,
-package outputs, attempts and logs use run/attempt-private paths.
+The one owner executes **one capability and one extractor at a time on both
+engines**. This also applies to old frozen worker/job settings of 2 or 4; those
+records are not rewritten to enforce serialization. Newly admitted settings are
+1. Legacy `ANALYZE_WORKERS`, `ANALYZE_JOBS` and direct worker/extraction options
+still validate values in 1-4 but cap effective execution at 1. `analysis-all`
+uses the same serial scheduler as the background worker, not independent CLI
+owners. Per-capability admission remains unique. Publication, source acquisition
+and package fetching remain serialized; exported sources, package outputs,
+attempts and logs use run/attempt-private paths.
 
 For an existing run, `ce reconcile-publication --run <run-id> --attempt
 <attempt-id>` reports PostgreSQL attempt evidence and the matching host journal.
 It is a read-only report, not a recovery command.
 
-Full analysis requires the qualified Docker host profile. Explicit Podman full
-analysis, running ownership inside an extraction container and runtime image
-overrides are refused. This does not broaden the separately qualified direct
-Podman sandbox profile.
+Native `make dev` starts the same host worker with Docker or Podman; commands and
+the UI Analyse action are unchanged. All three scripts accept
+`CE_CONTAINER_ENGINE=auto|docker|podman`. Auto selects by executable availability
+(Docker first), with no fallback after selection failure. The supported profiles
+are local Unix Docker, rootless Linux Podman and one explicitly selected qualified
+loopback macOS Podman machine. No aliases or Docker-compatibility symlinks are used.
+
+`scripts/container-engine --analysis-snapshot` freezes backend, executable,
+argument prefix and fingerprint as JSON. Host-only `CE_ANALYSIS_RUNTIME` carries
+it; each sandbox/cleanup invocation validates and reprobes that context. Offline
+source exports and runtime trees are read-only, the private journal is explicitly
+mounted, and Podman uses `keep-id` with explicit UID/GID. Running ownership inside
+an extraction container and runtime image overrides remain refused.
+`EXECUTION=sandbox`, sandbox `--docker`/Testcontainers and canonical full
+CI/security-collect remain Docker-only; this is not a transparent full sandbox profile.
 
 ## Qualified coordination domains
 
@@ -183,12 +192,12 @@ they are not silently skipped or converted to success.
 ## Stop and publication ordering
 
 Stopping queued work withdraws it atomically. Stopping executing work persists
-cancellation intent separately from termination. A killed Docker client or
+cancellation intent separately from termination. A killed engine client or
 controller does not prove that its descendants or containers ended.
 
 Currently, Stop during a live child and an ordinary nonzero sandbox exit both
 leave the run `unknown`, even when exact-label container cleanup reports no
-running container. A late Docker request or escaped descendant is still
+running container. A late engine request or escaped descendant is still
 uncertain. This blocks all subsequent analysis until offline reconciliation;
 the only supported exception is the explicitly acknowledged **Retry interrupted
 run** action described below. There is no automatic reset or stop-and-retry.
@@ -365,8 +374,21 @@ scope and store-level validation evidence.
 
 ## Host-specific qualification
 
-Missing Docker still blocks full qualification; owner-approved retry does not
-resolve that gap or establish termination at the original engine endpoint.
+An isolated macOS probe using Podman 6.0.2 client / 6.1.2 server passed single and
+aggregate analysis with valid artifacts after serialization. Concurrent probes
+failed; their isolated unknowns were retained without consuming the production
+queue. No old queued run's execution or completion is established by these probes.
+Package fetching, private feeds, database import and model effects remain outside
+live qualification. Docker fixture tests passed, but no Docker daemon was
+available: live Docker and full CI remain unqualified. Owner-approved retry does
+not resolve those gaps or prove termination at an original engine endpoint.
+
+The new [`tests/native-analysis-runtime.live.ts`](../tests/native-analysis-runtime.live.ts)
+harness requires `--live`, preserves isolated probe directories and writes
+`.sandbox-cache/runtime-analysis-podman.json`. The integration owner will rerun
+final gates and this source-hash-qualified probe; prior success does not qualify
+later source changes. See the [Podman profile](podman-core.md) for invocation and
+the locked TypeScript 7.0.2 core-test migration/cache scope.
 
 The native store test suite includes the real Docker CLI cleanup probe. The
 pinned SDK image deliberately contains no Docker CLI, so sandbox CI excludes

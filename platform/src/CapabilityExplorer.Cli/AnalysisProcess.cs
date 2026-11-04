@@ -7,7 +7,7 @@ namespace CapabilityExplorer.Cli;
 
 internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisRun run, CancellationToken stop, IAnalysisContainerRuntime? containerRuntime = null) : IDisposable
 {
-    private readonly IAnalysisContainerRuntime _runtime = containerRuntime ?? new AnalysisDockerRuntime();
+    private readonly IAnalysisContainerRuntime _runtime = containerRuntime ?? new AnalysisEngineRuntime(root);
     private readonly SemaphoreSlim _runtimeGate = new(1,1);
     private readonly object _logGate = new();
     private readonly CancellationTokenSource _abort = new();
@@ -62,6 +62,7 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
     {
         if (captureLimit is < 1 or > 1048576) throw new ArgumentOutOfRangeException(nameof(captureLimit));
         CheckCancellation();
+        var argumentList = arguments.ToArray();
         var sandbox = executable == "scripts/sandbox";
         if (sandbox)
         {
@@ -71,13 +72,24 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
         var resolvedExecutable = executable.Contains(Path.DirectorySeparatorChar) ? Path.GetFullPath(Path.Combine(root,executable)) : executable;
         var start = new ProcessStartInfo(resolvedExecutable) { WorkingDirectory = root, UseShellExecute = false,
             RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true };
-        foreach (var argument in arguments) start.ArgumentList.Add(argument);
+        foreach (var argument in argumentList) start.ArgumentList.Add(argument);
         start.Environment.Clear();
         foreach (var name in new[] { "PATH", "HOME", "TMPDIR", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "SANDBOX_EXTRA_CA_FILE", "SANDBOX_NETWORK" })
             if (Environment.GetEnvironmentVariable(name) is { } value) start.Environment[name] = value;
-        start.Environment["CE_CONTAINER_ENGINE"] = "docker";
+        start.Environment["CE_CONTAINER_ENGINE"] = Environment.GetEnvironmentVariable("CE_CONTAINER_ENGINE") ?? "auto";
         start.Environment["SANDBOX_PASS_ENV"] = "";
         start.Environment["SANDBOX_SOURCES"] = "";
+        var sourceIndex = Array.IndexOf(argumentList,"--source");
+        if (sandbox && argumentList.Contains("--offline",StringComparer.Ordinal) && sourceIndex >= 0 && sourceIndex + 1 < argumentList.Length &&
+            argumentList[sourceIndex + 1].StartsWith("/work/",StringComparison.Ordinal))
+        {
+            var source = Path.GetFullPath(Path.Combine(root,argumentList[sourceIndex + 1][6..]));
+            var relative = Path.GetRelativePath(root,source);
+            if (Path.IsPathRooted(relative) || relative == ".." || relative.StartsWith("../",StringComparison.Ordinal))
+                throw new IOException("offline source escapes workspace");
+            AnalysisPreparation.RejectLinks(source);
+            start.Environment["SANDBOX_SOURCES"] = source;
+        }
         start.Environment["SANDBOX_LABEL"] = Label;
         if (environment is not null) foreach (var pair in environment) start.Environment[pair.Key] = pair.Value;
         if (sandbox) _runtime.ApplyEnvironment(start);

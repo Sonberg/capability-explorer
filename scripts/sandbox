@@ -70,6 +70,8 @@ esac
 image="$(ce_image_ref "$image")"
 
 cache="$root/.sandbox-cache"
+[[ ! -L "$cache" && ! -L "$cache/requests" ]] || { echo 'analysis journal must not be a symbolic link' >&2; exit 2; }
+[[ ! -e "$cache/requests" || -d "$cache/requests" ]] || { echo 'analysis journal must be a directory' >&2; exit 2; }
 mkdir -p "$cache/nuget" "$cache/nuget-http" "$cache/npm" "$cache/package-feeds"
 
 args=(
@@ -100,7 +102,8 @@ args=(
   # Repository is mounted from the host; owner may differ from the container user.
   -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*'
 )
-[[ "$CE_ENGINE" != podman ]] || args+=(--userns keep-id)
+[[ "$CE_ENGINE" != podman ]] || args+=(--userns "keep-id:uid=$(id -u),gid=$(id -g)")
+[[ ! -d "$cache/requests" ]] || args+=(-v "$cache/requests:/work/.sandbox-cache/requests")
 args+=(--tmpfs /work/.sandbox-cache/package-feeds:rw,noexec,nosuid,size=1m)
 if [[ $feed_catalog -eq 1 ]]; then
   [[ ! -L "$cache/package-feed-catalog" ]] || { echo "feed catalogue directory must not be a symbolic link" >&2; exit 2; }
@@ -134,6 +137,19 @@ if [[ -n "${SANDBOX_SOURCES:-}" ]]; then
     [[ "$src" == /* && -d "$src" ]] || { echo "SANDBOX_SOURCES: '$src' must be an existing absolute directory" >&2; exit 2; }
     mounted+="$src,"
     args+=(-v "$src:$src:ro")
+    if [[ -n "${CE_ANALYSIS_RUNTIME:-}" && $offline -eq 1 && "$src" == "$root/"* ]]; then
+      [[ "$src" != *'/../'* && "$src" != *'/./'* && "$src" != *':'* && "$src" != *$'\n'* ]] || {
+        ce_runtime_fail 'offline source mount must be a canonical workspace path'; exit 2;
+      }
+      args+=(-v "$src:/work/${src#"$root/"}:ro")
+    fi
+  done
+fi
+
+if [[ -n "${CE_ANALYSIS_RUNTIME:-}" && $offline -eq 1 ]]; then
+  for tree in extractors/ts platform/src/CapabilityExplorer.Extractors.CSharp/bin platform/src/CapabilityExplorer.Cli/bin; do
+    [[ ! -L "$root/$tree" ]] || { ce_runtime_fail 'analysis runtime tree must not be a symbolic link'; exit 2; }
+    [[ ! -d "$root/$tree" ]] || args+=(-v "$root/$tree:/work/$tree:ro")
   done
 fi
 
@@ -141,6 +157,7 @@ if [[ -n "${SANDBOX_PASS_ENV:-}" && $offline -eq 0 ]]; then
   IFS=',' read -ra pass <<<"$SANDBOX_PASS_ENV"
   for name in "${pass[@]}"; do
     [[ "$name" =~ ^[A-Z_][A-Z0-9_]*$ ]] || { echo "SANDBOX_PASS_ENV: invalid variable name '$name'" >&2; exit 2; }
+    [[ "$name" != CE_ANALYSIS_RUNTIME ]] || { echo 'CE_ANALYSIS_RUNTIME is host-only' >&2; exit 2; }
     [[ -n "${!name:-}" ]] && args+=(-e "$name")
   done
 fi

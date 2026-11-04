@@ -27,10 +27,11 @@ internal static class AnalysisParallelExtraction
         var jobs = languages.SelectMany(language => repositories.Select(repo => new Job(repo,language,
             Path.Combine(work,"out/tasks",language,repo.Id,repo.Sha)))).ToArray();
         var started = Stopwatch.StartNew();
-        Console.WriteLine("-- extraction concurrency: " + run.Settings.ExtractionJobs);
-        using var pool = new SemaphoreSlim(run.Settings.ExtractionJobs);
-        var tasks = jobs.Select(Execute).ToArray();
-        try { await Task.WhenAll(tasks); }
+        Console.WriteLine("-- extraction concurrency: 1");
+        try
+        {
+            foreach (var job in jobs) await Execute(job);
+        }
         catch
         {
             process.Abort();
@@ -57,7 +58,6 @@ internal static class AnalysisParallelExtraction
 
         async Task Execute(Job job)
         {
-            await pool.WaitAsync();
             try
             {
                 process.CheckCancellation();
@@ -79,7 +79,6 @@ internal static class AnalysisParallelExtraction
                 Console.WriteLine($"-- timing: {job.Repository.Id} {job.Language} {timer.Elapsed.TotalSeconds:F1}s");
             }
             catch { process.Abort(); throw; }
-            finally { pool.Release(); }
         }
         string InContainer(string path)
         {
