@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { readFile, unlink } from "node:fs/promises";
-import { execFileSync } from "node:child_process";
+import { mkdtemp, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { extractModelXml } from "../../src/models/extract.ts";
@@ -117,6 +119,53 @@ test("Given vendor extension content, extraction retains an opaque disposition a
   assert.equal(evidence.coverage.status, "partial");
   assert.ok(evidence.diagnostics.some(({ code }) => code === "opaque-extension-content"));
   assert.ok(evidence.elements.some(({ kind, namespace, content }) => kind === "opaqueExtension" && namespace === "urn:vendor" && content?.text === "opaque"));
+});
+
+test("Given vendor names that resemble core constructs, opaque evidence stays valid without invented flow facts", async () => {
+  const xml = '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:v="urn:vendor"><bpmn:process id="p"><bpmn:task id="a"/><bpmn:task id="b"/><bpmn:extensionElements><v:text>opaque</v:text><v:sequenceFlow id="vendor-flow" sourceRef="a" targetRef="b"/></bpmn:extensionElements></bpmn:process></bpmn:definitions>';
+  const evidence = await extractModelXml(xml, options("vendor.bpmn", "model-content"));
+  const schema = JSON.parse(await readFile(fixture("../../schema/models/v1.schema.json"), "utf8"));
+  const validate = new Ajv2020().compile(schema);
+  assert.equal(validate(evidence), true, JSON.stringify(validate.errors));
+  assert.equal(evidence.relationships.length, 0);
+  assert.ok(evidence.elements.some(element => element.kind === "opaqueExtension" && element.type === "text"));
+  assert.equal(evidence.coverage.status, "partial");
+});
+
+test("Given missing flow endpoints, extraction never silently claims complete mapping", async () => {
+  const incomplete = '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"><bpmn:process id="p"><bpmn:task id="a"/><bpmn:sequenceFlow id="f" sourceRef="a"/></bpmn:process></bpmn:definitions>';
+  await assert.rejects(extractModelXml(incomplete, options("incomplete.bpmn")), /Flow requires sourceRef and targetRef/);
+});
+
+test("Given external decision references, coverage explicitly reports unresolved external content", async () => {
+  const external = '<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="d" namespace="urn:test"><decision id="local"><informationRequirement><requiredDecision href="https://example.invalid/decision#remote"/></informationRequirement></decision></definitions>';
+  const evidence = await extractModelXml(external, options("external.dmn", "model-content"));
+  assert.equal(evidence.coverage.status, "partial");
+  assert.ok(evidence.diagnostics.some(item => item.code === "external-model-reference"));
+});
+
+test("Given XML and claimed original bytes that differ, source evidence cannot bind to the wrong content", async () => {
+  const xml = await readFile(fixture("order.bpmn"), "utf8");
+  await assert.rejects(extractModelXml(xml, options("mismatch.bpmn"), Buffer.from("different input")),
+    /XML does not match the supplied source bytes/);
+});
+
+test("Given an output symlink to the input, the standalone command preserves original model bytes", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ce-model-source-"));
+  try {
+    const source = join(directory, "source.bpmn"), output = join(directory, "output.json");
+    const bytes = await readFile(fixture("order.bpmn"));
+    await writeFile(source, bytes);
+    await symlink(source, output);
+    const result = spawnSync(process.execPath, [
+      fileURLToPath(new URL("../../src/models/cli.ts", import.meta.url)), "--source", source,
+      "--repository", "local:orders", "--commit", "a".repeat(40), "--out", output
+    ], { encoding: "utf8", timeout: 15_000 });
+    assert.ifError(result.error);
+    assert.equal(createHash("sha256").update(await readFile(source)).digest("hex"),
+      createHash("sha256").update(bytes).digest("hex"));
+    assert.equal(result.status, 1, result.stderr);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
 test("Given a real fixture and schema, the standalone command emits valid JSON evidence", async () => {

@@ -43,14 +43,11 @@ function hash(value: string): string {
 }
 
 function attribute(node: XmlNode, localName: string): string | undefined {
-  for (const [key, value] of Object.entries(node.attributes)) {
-    if (key.split(":").at(-1) === localName) return value;
-  }
-  return undefined;
+  return node.attributes[localName];
 }
 
 function nodeContent(node: XmlNode): string {
-  const text = node.children.find((child) => child.localName === "text");
+  const text = node.children.find((child) => child.namespace === node.namespace && child.localName === "text");
   return text?.text ?? node.text;
 }
 
@@ -113,16 +110,34 @@ interface ModelWorkerResult {
   message?: string;
 }
 
+function originalBytes(xml: string, supplied?: Uint8Array): Uint8Array {
+  if (Buffer.byteLength(xml, "utf8") > DEFAULT_XML_LIMITS.maxBytes ||
+      (supplied && supplied.byteLength > DEFAULT_XML_LIMITS.maxBytes)) {
+    throw new ModelXmlError("xml-byte-limit", "XML byte limit exceeded");
+  }
+  const bytes = supplied ?? Buffer.from(xml, "utf8");
+  let decoded: string;
+  try { decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+  catch { throw new ModelXmlError("invalid-source-bytes", "Source bytes must be UTF-8"); }
+  if (decoded !== xml.replace(/^\uFEFF/, "")) {
+    throw new ModelXmlError("source-byte-mismatch", "XML does not match the supplied source bytes");
+  }
+  return bytes;
+}
+
 export async function extractModelXml(
   xml: string,
   options: ModelExtractionOptions,
-  sourceBytes: Uint8Array = Buffer.from(xml, "utf8"),
+  sourceBytes?: Uint8Array,
 ): Promise<ModelEvidence> {
+  validateOptions(options);
+  const bytes = originalBytes(xml, sourceBytes);
   return new Promise((resolve, reject) => {
     let settled = false;
     const worker = new Worker(new URL("./worker.ts", import.meta.url), {
-      workerData: { xml, options, sourceBytes: Buffer.from(sourceBytes) },
+      workerData: { xml, options, sourceBytes: Buffer.from(bytes) },
       execArgv: [],
+      resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 32, stackSizeMb: 4 },
     });
     const timer = setTimeout(() => {
       settled = true;
@@ -154,10 +169,11 @@ export async function extractModelXml(
 export async function extractModelXmlInProcess(
   xml: string,
   options: ModelExtractionOptions,
-  sourceBytes: Uint8Array = Buffer.from(xml, "utf8"),
+  sourceBytes?: Uint8Array,
 ): Promise<ModelEvidence> {
   const started = performance.now();
   validateOptions(options);
+  const bytes = originalBytes(xml, sourceBytes);
   const root = parseXml(xml);
   const kind: ModelKind | undefined = root.namespace === BPMN_NAMESPACE
     ? "bpmn"
@@ -209,7 +225,7 @@ export async function extractModelXmlInProcess(
   const elements: ModelElement[] = [];
   const relationships: ModelRelationship[] = [];
   for (const node of nodes) {
-    if (node.localName === "text") continue;
+    if (node.namespace === expectedNamespace && node.localName === "text") continue;
     const nodeKind = node.namespace === expectedNamespace
       ? supportedTypes.has(node.localName) ? kind : "unsupported"
       : "opaqueExtension";
@@ -231,22 +247,22 @@ export async function extractModelXmlInProcess(
       id,
       type: node.localName,
       order: node.parent
-        ? node.parent.children.filter((child) => child.namespace === expectedNamespace && child.localName === node.localName).indexOf(node)
+        ? node.parent.children.filter((child) => child.namespace === node.namespace && child.localName === node.localName).indexOf(node)
         : 0,
       attributes: node.attributes,
       source: { artifact: options.unitPath, element: id },
     };
     if (node.parent) element.parent = elementIdentities.get(node.parent);
 
-    if (kind === "dmn" && node.localName === "decisionTable") {
+    if (node.namespace === expectedNamespace && kind === "dmn" && node.localName === "decisionTable") {
       const hitPolicy = attribute(node, "hitPolicy");
       const aggregation = attribute(node, "aggregation");
       if (hitPolicy) element.hitPolicy = hitPolicy;
       if (aggregation) element.aggregation = aggregation;
     }
-    if (kind === "dmn" && node.localName === "rule") {
+    if (node.namespace === expectedNamespace && kind === "dmn" && node.localName === "rule") {
       element.cells = node.children
-        .filter((child) => child.localName === "inputEntry" || child.localName === "outputEntry")
+        .filter((child) => child.namespace === expectedNamespace && (child.localName === "inputEntry" || child.localName === "outputEntry"))
         .map((cell, index) => {
           const text = nodeContent(cell);
           const language = attribute(cell, "expressionLanguage");
@@ -259,7 +275,7 @@ export async function extractModelXmlInProcess(
         });
     }
     const textContent = nodeContent(node);
-    const capturesText = node.children.some((child) => child.localName === "text") || Boolean(node.text.trim());
+    const capturesText = node.children.some((child) => child.namespace === node.namespace && child.localName === "text") || Boolean(node.text.trim());
     if (capturesText && textContent.trim()) {
       if (contentProfile === "model-content") {
         const language = attribute(node, "language");
@@ -275,16 +291,19 @@ export async function extractModelXmlInProcess(
     }
     elements.push(element);
 
-    const relationKind = RELATIONSHIP_TYPES.get(node.localName);
+    const relationKind = kind === "bpmn" && node.namespace === BPMN_NAMESPACE ? RELATIONSHIP_TYPES.get(node.localName) : undefined;
     const sourceRef = attribute(node, "sourceRef");
     const targetRef = attribute(node, "targetRef");
-    if (relationKind && sourceRef && targetRef) {
+    if (relationKind) {
+      if (!sourceRef || !targetRef) {
+        throw new ModelXmlError("incomplete-model-reference", "Flow requires sourceRef and targetRef");
+      }
       const sourceNode = idNodes.get(sourceRef);
       const targetNode = idNodes.get(targetRef);
       if (!sourceNode || !targetNode) {
         throw new ModelXmlError("dangling-model-reference", `Dangling ${node.localName} reference`);
       }
-      const condition = node.children.find((child) => child.localName === "conditionExpression");
+      const condition = node.children.find((child) => child.namespace === BPMN_NAMESPACE && child.localName === "conditionExpression");
       relationships.push({
         identity: `relationship:${hash(`${options.repositoryId}\0${options.unitPath}\0${id}`)}`,
         kind: relationKind,
@@ -300,16 +319,21 @@ export async function extractModelXmlInProcess(
       });
     }
 
-    const processRef = kind === "bpmn" && node.localName === "participant" ? attribute(node, "processRef") : undefined;
+    const processRef = kind === "bpmn" && node.namespace === BPMN_NAMESPACE && node.localName === "participant" ? attribute(node, "processRef") : undefined;
     if (processRef) addReference(node, processRef, id, idNodes, elementIdentities, relationships, options);
-    if (kind === "bpmn" && node.localName === "lane") {
-      for (const reference of node.children.filter((child) => child.localName === "flowNodeRef")) {
+    if (kind === "bpmn" && node.namespace === BPMN_NAMESPACE && node.localName === "lane") {
+      for (const reference of node.children.filter((child) => child.namespace === BPMN_NAMESPACE && child.localName === "flowNodeRef")) {
         addReference(node, reference.text.trim(), `${id}:${reference.text.trim()}`, idNodes, elementIdentities, relationships, options);
       }
     }
-    if (kind === "dmn" && ["requiredInput", "requiredDecision", "requiredKnowledge"].includes(node.localName)) {
+    if (kind === "dmn" && node.namespace === DMN_13_NAMESPACE && ["requiredInput", "requiredDecision", "requiredKnowledge"].includes(node.localName)) {
       const href = attribute(node, "href");
-      if (href?.startsWith("#")) addReference(node.parent ?? node, href.slice(1), id, idNodes, elementIdentities, relationships, options);
+      if (!href) throw new ModelXmlError("incomplete-model-reference", "Missing model reference href");
+      if (href.startsWith("#")) addReference(node.parent ?? node, href.slice(1), id, idNodes, elementIdentities, relationships, options);
+      else diagnostics.push({
+        code: "external-model-reference", message: "External model reference retained but not resolved or retrieved",
+        disposition: "partial", source: { artifact: options.unitPath, element: id },
+      });
     }
   }
 
@@ -319,7 +343,7 @@ export async function extractModelXmlInProcess(
     repositoryId: options.repositoryId,
     commitSha: options.commitSha.toLowerCase(),
     unitPath: options.unitPath,
-    sourceSha256: createHash("sha256").update(sourceBytes).digest("hex"),
+    sourceSha256: createHash("sha256").update(bytes).digest("hex"),
     contentProfile,
     coverage: {
       status: diagnostics.length === 0 ? "full" : "partial",
