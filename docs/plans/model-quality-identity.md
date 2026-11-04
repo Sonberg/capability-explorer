@@ -143,6 +143,30 @@ passing TypeScript tests and clean solution build. New behavior, GUI forwarding,
 private-corpus recovery and SLO compliance are not tested by this gate.
 Brain pass clean: `sparc/capability-cards.md#sparc`.
 
+## Completion gate
+
+The complete canonical pre-push workflow passed for
+`6be9a793e95cbdd809e4fa0d0d06dc242d2ebcfb` against main
+`734ba5fe0bc06b9122ff23e597dc38c3b5cdc679`.
+`scripts/pr-check` verified that exact source and base immediately before
+creating [PR #85](https://github.com/Sonberg/capability-explorer/pull/85).
+Hosted [CI run 41914717688](https://github.com/Sonberg/capability-explorer/actions/runs/41914717688)
+then passed in 7m09s for that head. The criterion-to-test mapping and real
+application smoke evidence are recorded above; architecture, model semantics
+and the OKF article match the implementation.
+
+Completion grade: **97/100**, one iteration. The three-point deduction retains
+the explicitly untested private-corpus/recovery, GUI/environment and controlled
+visual-comparison limits above. These do not imply release, SLO qualification,
+business acceptance or closure of #54. No merge or release was performed.
+This documentation-only completion record creates a new source commit: its
+ordinary push and hosted checks must pass again before final handoff.
+
+Brain pass: `sparc/docs/tutorial.md` reinforces observable acceptance and
+traceable evidence; it does not prove a deployed capability. No new runtime or
+stack dependency is justified. No paid external model calls were added; native
+agent spend is unavailable, so no monetary savings are claimed.
+
 ## Refinement gate
 
 | Criterion | Passing proof |
