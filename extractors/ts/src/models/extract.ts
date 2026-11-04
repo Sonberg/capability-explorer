@@ -164,7 +164,7 @@ export async function extractModelXml(
       if (settled) return;
       settled = true;
       const timeoutError = new ModelXmlError("xml-time-limit", `XML extraction exceeded ${boundedWorkerTimeoutMs}ms`);
-      void worker.terminate().then(() => reject(timeoutError), () => reject(timeoutError));
+      void worker.terminate().then(() => reject(timeoutError), reject);
     }, boundedWorkerTimeoutMs);
     worker.once("message", (result: ModelWorkerResult) => {
       if (settled) return;

@@ -68,7 +68,7 @@
     "scripts/sandbox --offline node node scripts/check-platform-contract-plan.mjs foundation",
     "scripts/sandbox --offline node node scripts/research/check-frontend-contracts.mjs all",
     "scripts/sandbox --offline node node scripts/research/check-domain-object-contracts.mjs all",
-    "scripts/collection-dogfood \"b39a5b5b5cbbbed53cee7fa19edc1f22d9c0e9562adfc4057c58e5b43b0aa9d2:3026509166c625e2dba579c68b84004cd38dc56ebb70824e6f113dde0770a297:\"",
+    "scripts/collection-dogfood \"b39a5b5b5cbbbed53cee7fa19edc1f22d9c0e9562adfc4057c58e5b43b0aa9d2:c38ee039a6b3cd72ba562137ff523a256cf52bb7f7a5b71db068bfb754e71b6a:\"",
     "scripts/sandbox --offline node node scripts/decisions/check.mjs all"
   ]
 }

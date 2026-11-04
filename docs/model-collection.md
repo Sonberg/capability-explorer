@@ -58,12 +58,36 @@ The machine-readable construct census is `schema/models/support.json`; rich
 fixtures qualify lanes, nested processes/local calls and DMN input/BKM/
 knowledge dependencies, types, expression language and aggregation.
 
+Selected installed parser review confirmed `saxen@11.2.0`,
+`bpmn-moddle@10.3.1` and `dmn-moddle@12.2.1` against locked versions/integrity
+and their shipped MIT license files. Shipped descriptor comparison identifies
+38 of 120 concrete BPMN types and 11 of 38 concrete DMN types as explicitly
+semantic-supported by the census; other types remain opaque/partial, not
+silently full support. This is a selected-package review, not a full transitive
+legal audit. The locked install verifies archive integrity; installed-file and
+descriptor hashes are retained in the qualification evidence.
+
+Focused XML cases cover malformed/truncated input and exact accepted/one-over
+byte, depth, element, attribute-count, UTF-8 attribute-byte and text-byte limits.
+The real `.bpmn20.xml` CLI path preserves BOM-inclusive source bytes. The worker
+deadline defaults to five seconds; a caller may only shorten it, not raise the
+cap. Timeout rejection awaits actual worker termination; termination failures
+remain explicit. This is worker/resource bounding, not OS isolation.
+
 Code candidates use the bounded synchronous, single-file intra-method recipe
 and reviewed scalar/orchestration fixtures in `fixtures/candidates`. Unsupported
 methods and other executable declarations make coverage partial. The scalar
 decision recipe is deliberately restricted to qualified integer/boolean
 predicates and literal results; this is not arbitrary C# or business-process
 equivalence. Candidate predicates/source locations are content-bearing.
+
+Current independent inspection found no semantic mismatch in the synthetic
+recipe. Follow-on tests cover exact length-10/11 boundaries, validation before
+eligibility, and retained exception constructor arguments. This is present-day
+qualification: the historical claim that expected outcomes were reviewed before
+extraction is unproven. Issue #75 remains open without evidence or an explicit
+acceptance-owner disposition; neither a commit message nor the oracle's status
+string independently proves that chronology.
 
 ## Seal and consume a snapshot
 
@@ -139,6 +163,13 @@ shipped model, code-candidate and collection CLIs in separate offline pinned
 Node/.NET containers. It checks both consumers, repeat identity, a committed
 source mutation, denied content, tampered bytes, last-good preservation,
 policy expiry/last-successful references and freshness/argument failures.
+Candidate checks compare exact committed `git show` bytes, BOM-inclusive digest,
+revision/path and nested UTF-16 spans/predicates, before sealing and after
+collection. The denial case removes only `candidate-content`, keeping
+`model-content` permitted. Additional native transport probes test resealed
+permission/profile/revision/path/byte failures through both consumers.
+These are synthetic source-binding proofs, not a guarantee that arbitrary
+caller-declared commits belong to a trusted remote repository.
 It does not need a database, Explorer, Docker
 socket inside analysis containers or a central service. It runs in the existing
 canonical CI graph, not an additional hosted job. Its source hashes are part of
