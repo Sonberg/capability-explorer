@@ -264,6 +264,29 @@ try {
   await page.waitForFunction(() => window.location.hash.includes("element=rel-flow-start-review"));
   assert(await page.getByText("One opaque extension was retained.").isVisible());
   assert(await page.getByText(/element source locator not supplied/).isVisible());
+  const relationshipProvenance = page.getByRole("complementary", { name: "Model provenance" }).getByLabel("Selected relationship provenance");
+  const relationshipOverflow = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    document: document.documentElement.scrollWidth,
+    provenanceRight: document.querySelector('[aria-label="Selected relationship provenance"]')?.getBoundingClientRect().right,
+    provenanceClientWidth: document.querySelector('[aria-label="Selected relationship provenance"]')?.clientWidth,
+    provenanceScrollWidth: document.querySelector('[aria-label="Selected relationship provenance"]')?.scrollWidth
+  }));
+  if ((relationshipOverflow.provenanceRight ?? 0) > relationshipOverflow.viewport ||
+      relationshipOverflow.document > relationshipOverflow.viewport ||
+      (relationshipOverflow.provenanceScrollWidth ?? 0) > (relationshipOverflow.provenanceClientWidth ?? 0)) {
+    await page.screenshot({ path: resolve(artifacts, "issue78-ui-relationship-overflow-failed.png"), fullPage: true });
+    await writeFile(resolve(artifacts, "issue78-ui-relationship-overflow-failed.json"), `${JSON.stringify(relationshipOverflow, null, 2)}\n`);
+  }
+  assert(relationshipOverflow.provenanceRight !== undefined &&
+    relationshipOverflow.provenanceRight <= relationshipOverflow.viewport &&
+    relationshipOverflow.document <= relationshipOverflow.viewport &&
+    relationshipOverflow.provenanceScrollWidth === relationshipOverflow.provenanceClientWidth,
+  `Selected relationship provenance overflows the desktop viewport: ${JSON.stringify(relationshipOverflow)}`);
+  const relationshipProvenanceText = await relationshipProvenance.innerText();
+  assert.match(relationshipProvenanceText, /Application received/);
+  assert.match(relationshipProvenanceText, /Start_Application/);
+  assert.match(relationshipProvenanceText, /Task_Review/);
   assert.equal(await page.locator('img[src*="example.invalid"]').count(), 0);
   assert.equal(await page.evaluate(() => (window as Window & { pwned?: boolean }).pwned), undefined);
   await page.screenshot({ path: resolve(artifacts, "issue78-ui-production-bpmn.png"), fullPage: true });

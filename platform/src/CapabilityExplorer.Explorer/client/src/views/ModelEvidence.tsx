@@ -189,6 +189,8 @@ export function Provenance({ summary, evidence, snapshot, selectedElement, sourc
   const candidate = evidence?.schema === "ce.candidates.v1" ? evidence as CandidateArtifact : undefined;
   const selectedEvidenceElement = authored?.elements.find((element) => element.id === selectedElement);
   const selectedRelationship = authored?.relationships.find((relationship) => relationship.identity === selectedElement);
+  const relationshipSource = authored?.elements.find((element) => element.identity === selectedRelationship?.source);
+  const relationshipTarget = authored?.elements.find((element) => element.identity === selectedRelationship?.target);
   const sourceStatus = summary.kind === "candidate" ? "Candidate · not approved / not executable" :
     sourceVerified ? renderStatus.startsWith("Rendered") ? "Authored evidence · original source verified · viewer projection rendered" :
       `Authored evidence · original source verified · viewer projection unavailable (${renderStatus || "not rendered"})` :
@@ -212,10 +214,18 @@ export function Provenance({ summary, evidence, snapshot, selectedElement, sourc
       <p className="break-all font-mono text-xs">{selectedEvidenceElement.id} · {selectedEvidenceElement.type}</p>
       <p className="break-all text-xs text-zinc-500">Namespace: {selectedEvidenceElement.namespace} · artifact: {selectedEvidenceElement.source.artifact} · element: {selectedEvidenceElement.source.element ?? "not supplied"}</p>
     </section>}
-    {selectedRelationship && <section className="mt-3 border-t border-zinc-200 pt-2 dark:border-zinc-800" aria-label="Selected relationship provenance">
+    {selectedRelationship && <section className="mt-3 min-w-0 max-w-full border-t border-zinc-200 pt-2 dark:border-zinc-800" aria-label="Selected relationship provenance">
       <h3 className="font-semibold">Selected {selectedRelationship.kind}</h3>
-      <p className="break-all font-mono text-xs">{selectedRelationship.identity}</p>
-      <p className="text-xs">From {selectedRelationship.source} to {selectedRelationship.target} · evidence order {selectedRelationship.order} · element source locator not supplied.</p>
+      <p className="max-w-full break-all font-mono text-xs">{selectedRelationship.identity}</p>
+      <p className="min-w-0 max-w-full break-words text-xs">
+        From {relationshipSource?.attributes.name || relationshipSource?.id || selectedRelationship.source}
+        {relationshipSource?.id ? ` (${relationshipSource.id})` : ""}
+        {" to "}
+        {relationshipTarget?.attributes.name || relationshipTarget?.id || selectedRelationship.target}
+        {relationshipTarget?.id ? ` (${relationshipTarget.id})` : ""}
+        {" · evidence order "}{selectedRelationship.order} · element source locator not supplied.
+      </p>
+      <p className="max-w-full break-all text-[10px] text-zinc-500">Source element identity: {selectedRelationship.source} · target element identity: {selectedRelationship.target}</p>
     </section>}
     {summary.kind === "authored" && summary.source.status !== "available" && <p className="mt-3 text-sm text-amber-800 dark:text-amber-200">{summary.source.status === "denied" ? "Source access denied; no fallback is attempted." : "Source is missing from this snapshot. Evidence-only view remains available."}</p>}
   </aside>;
