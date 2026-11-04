@@ -62,11 +62,15 @@ function validateOptions(options: ModelExtractionOptions): void {
   }
 }
 
-async function parserWarnings(kind: ModelKind, xml: string): Promise<Error[]> {
+async function parserWarnings(kind: ModelKind, xml: string, validatedFlowQNames = new Set<string>()): Promise<Error[]> {
   const parser: ModelParser = kind === "bpmn" ? new BpmnModdle() : new DmnModdle();
   try {
     const parsed = await parser.fromXML(xml, { lax: true });
-    return parsed.warnings;
+    // The pinned moddle parser treats prefixed QName text as an unresolved literal ID.
+    return parsed.warnings.filter(warning => {
+      const unresolved = /^unresolved reference <([^<>]+)>$/.exec(warning.message);
+      return !(unresolved && validatedFlowQNames.has(unresolved[1]!));
+    });
   } catch {
     throw new ModelXmlError("model-parse-failed", "Moddle parser rejected the XML document");
   }
@@ -182,12 +186,6 @@ export async function extractModelXmlInProcess(
     throw new ModelXmlError("unsupported-model-namespace", `Unsupported authored model namespace or root: ${root.namespace || "(none)"}/${root.localName}`);
   }
 
-  const warnings = await parserWarnings(kind, xml);
-  if (performance.now() - started > DEFAULT_XML_LIMITS.maxParseMilliseconds) {
-    throw new ModelXmlError("xml-time-limit", `XML extraction budget exceeded (${DEFAULT_XML_LIMITS.maxParseMilliseconds}ms)`);
-  }
-  const expectedNamespace = kind === "bpmn" ? BPMN_NAMESPACE : DMN_13_NAMESPACE;
-  const contentProfile = options.contentProfile ?? "structural";
   const nodes = collectNodes(root);
   const idNodes = new Map<string, XmlNode>();
   const assignedIds = new Map<XmlNode, string>();
@@ -212,7 +210,13 @@ export async function extractModelXmlInProcess(
     elementIdentities.set(node, identity);
   }
 
-  validateFlowDirectionDeclarations(nodes, idNodes);
+  const validatedFlowQNames = kind === "bpmn" ? validateFlowDirectionDeclarations(nodes, idNodes) : new Set<string>();
+  const warnings = await parserWarnings(kind, xml, validatedFlowQNames);
+  if (performance.now() - started > DEFAULT_XML_LIMITS.maxParseMilliseconds) {
+    throw new ModelXmlError("xml-time-limit", `XML extraction budget exceeded (${DEFAULT_XML_LIMITS.maxParseMilliseconds}ms)`);
+  }
+  const expectedNamespace = kind === "bpmn" ? BPMN_NAMESPACE : DMN_13_NAMESPACE;
+  const contentProfile = options.contentProfile ?? "structural";
 
   for (const warning of warnings) {
     diagnostics.push({

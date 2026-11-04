@@ -409,6 +409,24 @@ test("Given BPMN incoming and outgoing declarations, references are optional but
   await rejects(xml.replace("<bpmn:outgoing>Flow_Start_Review</bpmn:outgoing>", "<bpmn:outgoing>Flow_Review_Check</bpmn:outgoing>"), "inconsistent-flow-direction-reference");
 });
 
+test("Given QName BPMN flow directions, only in-scope target-namespace prefixes resolve locally", async () => {
+  const local = '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:local="urn:test" targetNamespace="urn:test"><bpmn:process id="p"><bpmn:task id="a"><bpmn:outgoing>local:f</bpmn:outgoing></bpmn:task><bpmn:task id="b"><bpmn:incoming>local:f</bpmn:incoming></bpmn:task><bpmn:sequenceFlow id="f" sourceRef="a" targetRef="b"/></bpmn:process></bpmn:definitions>';
+  const evidence = await extractModelXml(local, options("prefixed-direction.bpmn"));
+  assert.equal(evidence.coverage.status, "full");
+  assert.equal(evidence.elements.find(element => element.type === "incoming")?.content?.text, "local:f");
+  assert.equal(evidence.elements.find(element => element.type === "outgoing")?.content?.text, "local:f");
+  assert.equal(evidence.relationships.filter(relation => relation.kind === "sequenceFlow").length, 1);
+
+  const rejects = async (xml: string, code: string) => assert.rejects(
+    extractModelXml(xml, options("invalid-qname.bpmn")),
+    (error: unknown) => error instanceof ModelXmlError && error.code === code,
+  );
+  await rejects(local.replace("local:f", "missing:f"), "undeclared-flow-direction-prefix");
+  await rejects(local.replace('xmlns:local="urn:test"', 'xmlns:local="urn:foreign"'), "foreign-flow-direction-prefix");
+  await rejects(local.replace("local:f", "bad:name:parts"), "invalid-flow-direction-qname");
+  await rejects(local.replace('targetRef="b"', 'targetRef="a"'), "inconsistent-flow-direction-reference");
+});
+
 test("Given DMN allowed-values clauses, extraction retains ordered literal source text only with model-content consent", async () => {
   const xml = await readFile(fileURLToPath(new URL("../../../../tests/fixtures/issue78/dmn-representative.xml", import.meta.url)), "utf8");
   const structural = await extractModelXml(xml, options("issue78.dmn"));
