@@ -57,6 +57,35 @@ public sealed class AnalysisRunTests : IDisposable
         Assert.Equal("unknown", _store.ReadRun(accepted.RunId).State);
         Assert.Throws<InvalidOperationException>(() => _store.ClaimNext(replacement));
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Given_an_interrupted_attempt_when_recovery_is_required_then_the_blocker_identifies_the_exact_run_and_boundary(bool publication)
+    {
+        Admit();
+        using var owner = _store.AcquireWorker();
+        var run = _store.ClaimNext(owner)!;
+        if (publication)
+        {
+            var manifest = Resolve(owner,run);
+            using var permit = _store.BeginPublication(owner,Identity(run),manifest);
+            permit.Intent("filesystem","sales/sha");
+        }
+        else _store.FinishExecution(owner,Identity(run),1,false);
+
+        var reason = _store.ReadBlockReason();
+
+        Assert.NotNull(reason);
+        Assert.Contains(run.RunId,reason,StringComparison.Ordinal);
+        Assert.Contains("sales",reason,StringComparison.Ordinal);
+        Assert.Contains(publication ? "publication" : "execution",reason,StringComparison.Ordinal);
+        Assert.DoesNotContain("unreconciled execution or publication blocks analysis",reason,StringComparison.Ordinal);
+        Assert.DoesNotContain(_directory,reason,StringComparison.Ordinal);
+        Assert.Equal("unknown",_store.ReadRun(run.RunId).State);
+        Assert.Throws<InvalidOperationException>(() => _store.ClaimNext(owner));
+    }
+
     [Fact]
     public void One_coordinator_can_claim_distinct_capabilities_but_recovery_still_blocks_globally()
     {

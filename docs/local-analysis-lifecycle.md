@@ -190,7 +190,9 @@ Currently, Stop during a live child and an ordinary nonzero sandbox exit both
 leave the run `unknown`, even when exact-label container cleanup reports no
 running container. A late Docker request or escaped descendant is still
 uncertain. This blocks all subsequent analysis until offline reconciliation;
-there is no automatic reset or stop-and-retry command. Confirmed cancellation
+the only supported exception is the explicitly acknowledged **Retry interrupted
+run** action described below. There is no automatic reset or stop-and-retry.
+Confirmed cancellation
 is available for queued work or cancellation detected before any child starts.
 Stop after confirmed core publication remains too late.
 
@@ -245,9 +247,9 @@ queued. Ownership loss, PID absence and a stale timestamp cannot authorize
 reuse. There is no automatic retry, resume or success reconstruction from shell
 exit codes.
 
-There is currently no automated reconcile, reset or archive command. Operator
-reconciliation must establish the following before authorizing conflicting
-execution again:
+There is no general automated reconcile, reset or archive command. Except for
+the owner-approved retry exception below, operator reconciliation must establish
+the following before authorizing conflicting execution again:
 
 1. Stop new admission/controllers and preserve the complete journal, logs,
    resolved inputs, attempt staging, prior artifact directories and database
@@ -265,6 +267,39 @@ execution again:
 These are reconciliation requirements, not an automatic proof procedure.
 Changing the coordination marker, deleting running evidence or editing unknown
 to stopped merely to unblock work bypasses the protocol.
+
+### Owner-approved retry exception
+
+The owner explicitly approved "Yes, recover ASQ and queue a fresh run" after a
+clear warning that termination and the original engine endpoint were unproven.
+The supported UI action **Retry interrupted run** requires acknowledgement of
+that uncertainty and calls POST `/api/capabilities/{id}/retry` with:
+
+```json
+{"runId":"<run-id>","attemptId":"<attempt-id>","acknowledgeUnverifiedExecution":true}
+```
+
+`FileRunStore.RetireCancelledExecution` acquires exclusive worker and metadata
+locks; a live worker prevents the operation. Only the exact cancelled
+`unknown`/`interrupted` attempt is eligible, strictly before publication:
+`ExecutionCompleted` must be false, with no `ManifestHash`, `Effects` or
+`resolved.json`. `VerifyAccepted` validates the accepted inputs. Publication
+uncertainty, partial publication, malformed or tampered evidence and foreign
+attempts are refused.
+
+The original run moves unchanged to `reconciled/<run>/evidence`.
+`reconciled/<run>/decision.json` records `operator-released-for-retry`,
+`terminationVerified: false`, capability/run/attempt IDs, the accepted hash and
+timestamp. An existing matching pending decision can resume the evidence move.
+This is an explicit owner-approved exception to offline-only archival, not
+automatic reconciliation, proof of no late work, or a claim that the old run
+succeeded or stopped. The global execution block remains for all other cases.
+
+After retirement, the API queues a fresh run with a new run ID using current
+accepted configuration/settings, not the archived run's frozen inputs.
+Retirement and fresh admission are separate operations, not an atomic
+transaction. If admission fails after retirement, the old evidence remains
+archived; correct the input and retry ordinary Analyze.
 
 `ce reconcile-publication` reads the attempt, per-artifact outcomes, candidate
 history and current pointer in one PostgreSQL `REPEATABLE READ`, read-only
@@ -329,6 +364,9 @@ last-good policy. See [MADR-0022](adr/0022-local-analysis-lifecycle.md) for the
 scope and store-level validation evidence.
 
 ## Host-specific qualification
+
+Missing Docker still blocks full qualification; owner-approved retry does not
+resolve that gap or establish termination at the original engine endpoint.
 
 The native store test suite includes the real Docker CLI cleanup probe. The
 pinned SDK image deliberately contains no Docker CLI, so sandbox CI excludes

@@ -2,6 +2,8 @@ using CapabilityExplorer.Capabilities.Analysis;
 
 namespace CapabilityExplorer.Explorer;
 
+public sealed record RetryAnalysisRequest(string RunId, string AttemptId, bool AcknowledgeUnverifiedExecution);
+
 /// <summary>Public compatibility projection of the host-local run journal. No engine access belongs here.</summary>
 public sealed record AnalysisJob(string State, DateTimeOffset? Since, string? Log,
     string? RunId = null, string? AttemptId = null, string? Stage = null,
@@ -19,12 +21,27 @@ public sealed record AnalysisJob(string State, DateTimeOffset? Since, string? Lo
         }
         if (run is not null && run.CapabilityId != capabilityId)
             throw new KeyNotFoundException("No analysis run for this capability.");
-        return Project(store, run);
+        return Project(store, run, reason, null);
     }
 
-    public static AnalysisJob Project(FileRunStore store, AnalysisRun? run, string? outcome = null)
+    public static IReadOnlyDictionary<string, AnalysisJob> ReadAll(FileRunStore store, IEnumerable<string> capabilityIds)
     {
         var reason = store.ReadBlockReason();
+        IReadOnlyDictionary<string, AnalysisRun> latest;
+        try { latest = store.ReadLatestRuns(); }
+        catch (Exception error) when (reason is not null &&
+            error is IOException or KeyNotFoundException or System.Text.Json.JsonException or ArgumentException)
+        {
+            return capabilityIds.ToDictionary(id => id, _ => new AnalysisJob("unknown", null, null, Blocked: true, BlockReason: reason), StringComparer.Ordinal);
+        }
+        return capabilityIds.ToDictionary(id => id, id => Project(store, latest.GetValueOrDefault(id), reason, null), StringComparer.Ordinal);
+    }
+
+    public static AnalysisJob Project(FileRunStore store, AnalysisRun? run, string? outcome = null) =>
+        Project(store, run, store.ReadBlockReason(), outcome);
+
+    private static AnalysisJob Project(FileRunStore store, AnalysisRun? run, string? reason, string? outcome)
+    {
         if (run is null) return new(reason is null ? "idle" : "unknown", null, null,
             Blocked: reason is not null, BlockReason: reason);
         var state = run.State switch { "cancelled" => "stopped", "cancelling" => "stopping", _ => run.State };

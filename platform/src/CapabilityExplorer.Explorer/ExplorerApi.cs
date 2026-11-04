@@ -448,6 +448,32 @@ public static class ExplorerApi
                     : Results.Conflict(new { error = "An unresolved analysis already exists for this capability.", job });
             }));
 
+        api.MapPost("/capabilities/{id}/retry", (CapabilityService caps, ExplorerOptions options, string id, RetryAnalysisRequest request) =>
+            AnalysisJob.Respond(() =>
+            {
+                if (!request.AcknowledgeUnverifiedExecution)
+                    return Results.BadRequest(new { error = "Explicit acknowledgement of unverified execution is required before retrying." });
+                var definition = caps.Store.Find(id);
+                if (definition is null) return Results.NotFound(new { error = $"no capability '{id}'" });
+                var store = new CapabilityExplorer.Capabilities.Analysis.FileRunStore(options.RequestsDirectory);
+                using var owner = store.AcquireWorker();
+                var profile = store.ReadWorkerDefaults();
+                var settings = (profile?.Settings ?? new CapabilityExplorer.Capabilities.Analysis.AnalysisSettings()) with
+                {
+                    IncludeTests = profile?.IncludeTestsOverride ?? definition.IncludeTests,
+                };
+                try { store.RetireCancelledExecution(owner,id,new(request.RunId,request.AttemptId)); }
+                catch (InvalidOperationException)
+                {
+                    return Results.Conflict(new { error = "Retry requires the exact cancelled, interrupted run with no publication evidence. Refresh status before retrying; publication recovery needs host review." });
+                }
+                var admitted = store.Admit(id,options.CapabilitiesFile,options.BindingsFile,settings);
+                var job = AnalysisJob.Project(store,admitted.Run);
+                return admitted.Accepted
+                    ? Results.Accepted($"/api/capabilities/{id}/analyze?runId={admitted.Run.RunId}",job)
+                    : Results.Conflict(new { error = "An analysis run is already queued for this capability. Refresh status to follow it.", job });
+            }));
+
         // Omitting runId retains the legacy latest-capability target. New clients always send the observed run ID.
         api.MapDelete("/capabilities/{id}/analyze", (CapabilityService caps, ExplorerOptions options, string id, string? runId) =>
             AnalysisJob.Respond(() =>
@@ -466,6 +492,10 @@ public static class ExplorerApi
             AnalysisJob.Respond(() => caps.Store.Find(id) is null
                 ? Results.NotFound(new { error = $"no capability '{id}'" })
                 : Results.Ok(AnalysisJob.Read(new CapabilityExplorer.Capabilities.Analysis.FileRunStore(options.RequestsDirectory), id, runId))));
+
+        api.MapGet("/analysis-status", (CapabilityService caps, ExplorerOptions options) =>
+            AnalysisJob.Respond(() => Results.Ok(AnalysisJob.ReadAll(
+                new CapabilityExplorer.Capabilities.Analysis.FileRunStore(options.RequestsDirectory), caps.Store.Capabilities.Select(capability => capability.Id)))));
 
         api.MapDelete("/capabilities/{id}", async (CapabilityService caps, string id, CancellationToken ct) =>
             await caps.Store.RemoveAsync(id, ct) ? Results.NoContent() : Results.NotFound(new { error = $"no capability '{id}'" }));

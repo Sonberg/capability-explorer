@@ -70,7 +70,13 @@ security-check:
 ci:
 	$(MAKE) EXECUTION=sandbox ci
 
-test: test-local-ci test-package-feeds golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
+test: test-local-ci test-package-feeds golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store test-capability-ingestion-browser
+
+.PHONY: test-capability-ingestion-browser
+test-capability-ingestion-browser: restore-ui
+	node spikes/likec4/node_modules/typescript/bin/tsc --noEmit -p platform/src/CapabilityExplorer.Explorer/client/tsconfig.json --types vite/client
+	node spikes/likec4/node_modules/typescript/bin/tsc --noEmit --ignoreConfig --strict --target ES2022 --module ESNext --moduleResolution Bundler --esModuleInterop --allowImportingTsExtensions --skipLibCheck --types node --typeRoots spikes/likec4/node_modules/@types tests/capability-ingestion.browser.ts
+	node --experimental-strip-types --test tests/capability-ingestion.browser.ts
 
 test-package-feeds:
 	node --test tests/package-feeds.test.mjs tests/explorer-environment.test.mjs

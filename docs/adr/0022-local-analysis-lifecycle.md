@@ -79,8 +79,9 @@ successful execution, matching immutable inputs and no cancellation intent.
 The current host adapter treats cancellation of a live child and nonzero sandbox
 exit as unknown even after exact-label cleanup. It cannot prove that no late
 Docker request or escaped descendant exists. This intentionally blocks new work
-until offline reconciliation; ordinary live Stop does not provide a retry-ready
-terminal state. Queued and pre-spawn cancellation can be confirmed.
+until offline reconciliation or the narrowly owner-approved retry exception
+below; ordinary live Stop does not provide a retry-ready terminal state.
+Queued and pre-spawn cancellation can be confirmed.
 `BeginPublication` durably records publishing under the metadata lock and holds
 that lock through publication effects and completion. Cancellation accepted
 before this boundary prevents publication. Once publishing is observed,
@@ -98,7 +99,32 @@ Recovery preserves legacy markers, cancellation intent and all started attempt
 evidence. Unresolved started attempts become unknown and globally block further
 execution. There is no automatic retry, PID-based takeover or claim of confirmed
 stop from killing a controller. Reconciliation is evidence-preserving operator
-work; no recovery/reset command currently automates it.
+work; no general recovery/reset command currently automates it.
+
+The owner explicitly approved the ASQ exception, "Yes, recover ASQ and queue a
+fresh run", after warning that termination and the original engine endpoint
+were unproven. The supported UI action **Retry interrupted run** uses POST
+`/api/capabilities/{id}/retry` with `runId`, `attemptId` and
+`acknowledgeUnverifiedExecution: true`. This is an explicit owner-approved
+exception to offline-only archival, not automatic reconciliation or proof that
+no late work can occur.
+
+`FileRunStore.RetireCancelledExecution` holds exclusive worker and metadata
+locks and permits only the exact cancelled `unknown`/`interrupted` attempt
+before publication: `ExecutionCompleted` must be false, with no `ManifestHash`,
+`Effects` or `resolved.json`, and `VerifyAccepted` must validate accepted inputs.
+Live workers, publication uncertainty/partial publication, malformed or tampered
+evidence and foreign attempts are refused. The original run moves unchanged to
+`reconciled/<run>/evidence`; `decision.json` records
+`operator-released-for-retry`, `terminationVerified: false`, capability/run/attempt
+IDs, the accepted hash and timestamp. An existing matching pending decision can
+resume the move. This never marks the old run successful or confirmed stopped.
+
+The API then admits a fresh run with a new run ID using current accepted
+configuration/settings. Retirement and admission are not one atomic transaction:
+if fresh admission fails, old evidence stays archived; after correcting input,
+ordinary Analyze can be retried. All other unresolved cases retain the global
+execution block.
 
 ## Alternatives
 

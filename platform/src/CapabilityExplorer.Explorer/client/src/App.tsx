@@ -235,9 +235,9 @@ function ScopeBar() {
       {Object.keys(view)
         .sort()
         .map((repo) => (
-          <label key={repo} className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white py-0.5 pl-2.5 pr-1 dark:border-zinc-700 dark:bg-zinc-900">
-            <span>{repo}</span>
-            <select aria-label={`Revision of ${repo}`} value={view[repo]} onChange={(e) => setRevision(repo, e.target.value)} className="cursor-pointer bg-transparent px-1 py-0.5 font-medium">
+          <label key={repo} className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-full border border-zinc-200 bg-white py-0.5 pl-2.5 pr-1 dark:border-zinc-700 dark:bg-zinc-900">
+            <span className="min-w-0 break-all">{repo}</span>
+            <select aria-label={`Revision of ${repo}`} value={view[repo]} onChange={(e) => setRevision(repo, e.target.value)} className="max-w-full cursor-pointer bg-transparent px-1 py-0.5 font-medium">
               {meta.revisions
                 .filter((r) => r.repositoryId === repo)
                 .map((r) => (

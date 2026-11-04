@@ -1,4 +1,5 @@
 extern alias analysiscli;
+using System.Diagnostics;
 using CapabilityExplorer.Capabilities.Analysis;
 using analysiscli::CapabilityExplorer.Cli;
 using Xunit;
@@ -80,11 +81,54 @@ public sealed class AnalysisParallelTests
     public void Invalid_job_limits_refuse_before_any_child(int jobs) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => AnalysisPreparation.ValidateSettings(new(ExtractionJobs:jobs)));
 
-    private sealed class Runtime : IAnalysisContainerRuntime
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task Given_failed_sandbox_execution_when_only_label_cleanup_is_available_then_execution_remains_unknown(bool cleanupConfirmed, bool independentUncertainty)
+    {
+        using var fixture = new ParallelFixture(1);
+        File.WriteAllText(Path.Combine(fixture.Root,"fail"),"");
+        File.WriteAllText(Path.Combine(fixture.Root,"release"),"");
+        using var process = new AnalysisProcess(fixture.Root,fixture.Store,fixture.Run,CancellationToken.None,new Runtime(cleanupConfirmed));
+        if (independentUncertainty) process.MarkUncertainAcquisition();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => process.Run("scripts/sandbox",
+            ["ce-cs.dll","--repository","repo-0","--out",fixture.Repositories[0].Staging]));
+
+        Assert.False(process.TerminationConfirmed);
+        var completed = fixture.Store.FinishExecution(fixture.Owner,new(fixture.Run.RunId,fixture.Run.AttemptId!),1,process.TerminationConfirmed);
+        Assert.Equal("unknown",completed.State);
+        Assert.All(fixture.Repositories,repository => Assert.Empty(Directory.GetFiles(repository.Staging)));
+    }
+
+    [Fact]
+    public async Task Given_a_detached_host_descendant_when_its_parent_fails_then_termination_remains_unconfirmed()
+    {
+        using var fixture = new ParallelFixture(1);
+        using var process = new AnalysisProcess(fixture.Root,fixture.Store,fixture.Run,CancellationToken.None,new Runtime());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => process.Run("/bin/sh",
+            ["-c","/bin/sleep 30 </dev/null >/dev/null 2>&1 & printf '%s' \"$!\" > child.pid; exit 9"]));
+        using var survivor = Process.GetProcessById(int.Parse(File.ReadAllText(Path.Combine(fixture.Root,"child.pid"))));
+        try
+        {
+            Assert.False(survivor.HasExited);
+            Assert.False(process.TerminationConfirmed);
+            Assert.Equal("unknown",fixture.Store.FinishExecution(fixture.Owner,new(fixture.Run.RunId,fixture.Run.AttemptId!),1,process.TerminationConfirmed).State);
+        }
+        finally
+        {
+            if (!survivor.HasExited) survivor.Kill(entireProcessTree:true);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await survivor.WaitForExitAsync(timeout.Token);
+        }
+    }
+
+    private sealed class Runtime(bool cleanupConfirmed = true) : IAnalysisContainerRuntime
     {
         public Task EnsureFrozen() => Task.CompletedTask;
         public void ApplyEnvironment(System.Diagnostics.ProcessStartInfo start) { }
-        public Task<bool> CleanupOwned(string label) => Task.FromResult(true);
+        public Task<bool> CleanupOwned(string label) => Task.FromResult(cleanupConfirmed);
     }
 
     private sealed class ParallelFixture : IDisposable
