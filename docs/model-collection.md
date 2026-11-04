@@ -44,8 +44,9 @@ noncanonical base64 and mismatched or missing companions are rejected.
 No generated layout replaces the original. Older evidence does not gain
 original-source availability merely because it contains a source hash.
 The model CLI accepts BPMN/XML and DMN files, rejects unsafe XML and bounds
-bytes, structure and worker time/memory. Default structural output omits model
-text, but attributes may still contain source content; it is **not** an
+bytes, structure and worker time/memory. Default structural output omits
+free-form model/expression text but retains supported identifier references.
+Attributes may still contain source content; it is **not** an
 automatically safe external-export format.
 
 The qualified model profile is BPMN 2.0.2 plus fixture-qualified DMN 1.3, not all
@@ -58,12 +59,32 @@ The machine-readable construct census is `schema/models/support.json`; rich
 fixtures qualify lanes, nested processes/local calls and DMN input/BKM/
 knowledge dependencies, types, expression language and aggregation.
 
+Standard BPMNDI/DMNDI/DC/DI namespaces are distinguished from vendor extensions.
+The explicitly censused diagram, shape, bounds, edge and waypoint constructs
+are structurally retained, not diagram-conformance or layout-semantics
+validation. Other elements in those namespaces remain unsupported rather
+than mislabeled vendor extensions; unknown namespaces remain opaque/partial.
+Optional BPMN incoming/outgoing declarations are checked against local
+sequence-flow endpoints and never create flows. Dangling, contradictory and
+misplaced declarations reject the input rather than inventing relationships.
+DMN input/output allowed-value declarations retain raw text only with
+`model-content`; no FEEL expression is executed.
+
+The table view associates those declarations with their input/output columns.
+Missing declarations differ from present declarations with empty/uncaptured
+text; absent text does not establish a reason or an unrestricted business
+domain. Diagnostics group code, disposition and identified construct, show
+total occurrences and expose each original message/locator through native
+keyboard-accessible disclosures. A smaller diagnostic count is not evidence
+of business completeness. See the [current artifact flow](architecture/current.md)
+and [wiki synopsis](wiki/model-quality.md).
+
 Selected installed parser review confirmed `saxen@11.2.0`,
 `bpmn-moddle@10.3.1` and `dmn-moddle@12.2.1` against locked versions/integrity
 and their shipped MIT license files. Shipped descriptor comparison identifies
-38 of 120 concrete BPMN types and 11 of 38 concrete DMN types as explicitly
-semantic-supported by the census; other types remain opaque/partial, not
-silently full support. This is a selected-package review, not a full transitive
+the explicitly supported subset in the census, not full standard coverage;
+the subsequently qualified layout and declaration constructs above do not
+establish support for other types. This is a selected-package review, not a full transitive
 legal audit. The locked install verifies archive integrity; installed-file and
 descriptor hashes are retained in the qualification evidence.
 
@@ -96,6 +117,10 @@ references, exact commit/tree, recipe/configuration/policy hashes and literal
 relative input paths with expected hashes, byte lengths and required/optional
 dispositions. Do not put credentials, personal Git author data or raw model XML
 into it. Paths resolve against the plan directory, not an arbitrary remote URI.
+Extraction changes require a fresh recipe/configuration digest; do not reuse an
+old immutable identity for different bytes. The executable dogfood recipe binds
+model/collection source, the support census, lockfile, image inputs and built
+producer/consumer assemblies; production callers own their exact input binding.
 
 ```sh
 scripts/sandbox --offline dotnet dotnet \

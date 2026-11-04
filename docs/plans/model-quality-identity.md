@@ -142,3 +142,27 @@ still pending, not proof by pseudocode. Baseline instruments remain the 204
 passing TypeScript tests and clean solution build. New behavior, GUI forwarding,
 private-corpus recovery and SLO compliance are not tested by this gate.
 Brain pass clean: `sparc/capability-cards.md#sparc`.
+
+## Architecture gate
+
+The existing ce.v1 and model/collection record shapes remain unchanged. The
+C# extractor's existing deterministic assembly fingerprint changes its config
+hash for this build; no old immutable analysis key is reused. Collection callers
+must bind fresh producer/configuration inputs; dogfood now includes the census.
+No new package, engine, service or paid model was adopted.
+
+Independent review found local QName lookup incorrectly treated `prefix:id`
+as a literal ID. The follow-up resolves in-scope namespaces against the model
+target namespace, retaining endpoint checks and rejecting foreign/undeclared
+prefixes. The reviewer confirmed the fix; RED/GREEN regression is retained.
+
+Architecture grade: **97/100**, two iterations. The integrated sandbox build,
+contract tests, TypeScript (208) and extractor tests (221) pass. All 71 engine
+profile tests pass. Actual containers.dev CLI 0.90.0 launched the image non-root;
+native `make build` passed with zero warnings/errors. The running Explorer
+returned real HTML and `/api/meta` JSON at loopback port 5187. The owned container
+was stopped and removed. The three-point deduction is untested VS Code GUI
+extension/forwarding and broader host configurations, not evidence of a current
+architecture flaw. CLI control-manifest retrieval warned about the local TLS
+issuer; image build/startup completed without disabling TLS.
+Brain pass clean: `sparc/capability-cards.md#sparc`.

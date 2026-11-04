@@ -141,6 +141,7 @@ function sourceRecipe(): string {
   visit(join(root, "extractors/ts/src/models"));
   visit(join(root, "extractors/ts/src/collection"));
   files.push(join(root, "extractors/ts/package-lock.json"), join(root, "config/runtime/images.env"),
+    join(root, "schema/models/support.json"),
     join(root, "platform/src/CapabilityExplorer.Extractors.CSharp/bin/Debug/net10.0/ce-cs.dll"),
     join(root, "platform/src/CapabilityExplorer.Contracts/bin/Debug/net10.0/CapabilityExplorer.Contracts.dll"));
   return hash(JSON.stringify(files.sort().map(file => [relative(root, file), hash(readFileSync(file))])));
