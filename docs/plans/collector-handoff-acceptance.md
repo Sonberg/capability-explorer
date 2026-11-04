@@ -57,3 +57,37 @@ production release, enterprise aggregation or downstream business approval.
 Cheap-routing/checkpoint scripts are absent; session tracking is used instead.
 No paid external calls were added; native agent spend is not exposed and no
 monetary savings are claimed.
+
+## Pseudocode gate
+
+```text
+map criterion to current producer/consumer assertion:
+  passing assertion -> retain and cite it, do not implement a second consumer
+  missing proof -> add a focused assertion using real canonical bundle bytes
+  reproduced defect -> preserve failing test, apply the narrow fix, rerun it
+
+consumer acceptance examples:
+  same content, different valid attempt metadata -> same content identity
+  missing optional artifact -> explicit partial disposition, never full success
+  required invalid input or cancellation -> no completed export
+  conflicting/corrupt target -> reject, preserve prior immutable content
+
+issue acceptance:
+  measurable operational behavior -> scoped SLO or matching policy link
+  pure correctness/research -> explicit functional gate, no invented latency
+  unavailable baseline/workload -> proposed/unmeasured, not compliance
+```
+
+Producer publication remains staged and validated before rename. Pre-cancelled
+export is not proof of arbitrary mid-export interruption/crash recovery; the
+final evidence matrix must preserve that distinction. No change to source
+acquisition, authority, canonicalization, identity or schema is planned.
+Acceptance uses the current linear artifact scan within existing byte/count
+budgets; this test-only slice adds no new runtime complexity.
+
+Pseudocode grade: **96/100**, one iteration. The four-point deduction is remaining
+integration/negative-path qualification, not an unexplained error path.
+Baseline `test-ts` (208) and `test-contracts` (244) remain green; no source code
+has changed in the integration checkout. New worker assertions still need
+validation before Refinement. Brain pass clean:
+`sparc/capability-cards.md#sparc`; no new stack primitive is justified.
