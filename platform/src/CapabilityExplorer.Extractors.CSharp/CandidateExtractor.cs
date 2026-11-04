@@ -74,20 +74,27 @@ public static class CandidateExtractor
         if (tree.GetDiagnostics().Any(d => d.Severity == DiagnosticSeverity.Error))
             diagnostics.Add(new("invalid-syntax", "Source contains syntax errors."));
         if (methods.Length == 0) diagnostics.Add(new("no-supported-methods", "No method bodies in this file."));
-        if (root.DescendantNodes().Any(n => n is GlobalStatementSyntax or AccessorDeclarationSyntax or
-            ConstructorDeclarationSyntax or DestructorDeclarationSyntax or
-            PropertyDeclarationSyntax { ExpressionBody: not null } or IndexerDeclarationSyntax { ExpressionBody: not null } or
-            OperatorDeclarationSyntax { Body: not null } or OperatorDeclarationSyntax { ExpressionBody: not null } or
-            ConversionOperatorDeclarationSyntax { Body: not null } or ConversionOperatorDeclarationSyntax { ExpressionBody: not null }))
+        if (nodes.Any(OutsideMethodExecution))
             diagnostics.Add(new("outside-method-scope", "Executable declarations outside method bodies are not covered."));
-        if (root.DescendantNodes().OfType<EqualsValueClauseSyntax>().Any(n => n.Parent is
-            VariableDeclaratorSyntax { Parent.Parent: FieldDeclarationSyntax or EventFieldDeclarationSyntax } or PropertyDeclarationSyntax))
-            diagnostics.Add(new("outside-method-scope", "Type and property initialization is outside intra-method coverage."));
         if (root.DescendantTrivia(descendIntoTrivia: true).Any(t => t.GetStructure() is ConditionalDirectiveTriviaSyntax or ElseDirectiveTriviaSyntax or ElifDirectiveTriviaSyntax))
             diagnostics.Add(new("conditional-compilation", "Conditional source is not fully covered by this single-file recipe."));
         return new("ce.candidates.v1", repositoryId, revision, unit, hash,
             new(diagnostics.Count == 0 ? "full" : "partial", candidates.Count, methods.Length - candidates.Count),
             diagnostics, candidates);
+    }
+
+    private static bool OutsideMethodExecution(SyntaxNode node)
+    {
+        if (node is not (BlockSyntax or ArrowExpressionClauseSyntax or EqualsValueClauseSyntax or
+            ConstructorInitializerSyntax or PrimaryConstructorBaseTypeSyntax or GlobalStatementSyntax))
+            return false;
+        if (node.Ancestors().Any(n => n is MethodDeclarationSyntax))
+            return false;
+        // These are compile-time declaration inputs, not unmodeled executable regions.
+        if (node.Ancestors().Any(n => n is AttributeSyntax or EnumMemberDeclarationSyntax or ParameterSyntax ||
+            n is FieldDeclarationSyntax field && field.Modifiers.Any(SyntaxKind.ConstKeyword)))
+            return false;
+        return true;
     }
 
     private static void CheckLexicalLimits(string text)

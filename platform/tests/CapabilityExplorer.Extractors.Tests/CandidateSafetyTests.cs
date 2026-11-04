@@ -76,6 +76,43 @@ public sealed class CandidateSafetyTests : IDisposable
         Assert.Equal(0, result.Coverage.UnsupportedMethods);
         Assert.Equal("partial", result.Coverage.Status);
         Assert.Contains(result.Diagnostics, d => d.Code == "outside-method-scope");
+        Assert.Equal(result.ToJson(), CandidateExtractor.Extract(Path.Combine(scratch, "input.cs"), "synthetic", Sha).ToJson());
+    }
+
+    [Fact]
+    public void Given_primary_constructor_base_effect_then_partial_without_changing_classifier()
+    {
+        var result = Extract("""
+            public class Base(int value);
+            public class C(int value) : Base(Effect(value)) {
+                public static extern int Effect(int value);
+                public static string Classify(int amount) { if(amount < 0) return "Invalid"; return "None"; }
+            }
+            """);
+        Assert.Single(result.Candidates);
+        Assert.Equal(1, result.Coverage.SupportedMethods);
+        Assert.Equal(0, result.Coverage.UnsupportedMethods);
+        Assert.Equal("partial", result.Coverage.Status);
+        Assert.Contains(result.Diagnostics, d => d.Code == "outside-method-scope");
+        Assert.Equal(result.ToJson(), CandidateExtractor.Extract(Path.Combine(scratch, "input.cs"), "synthetic", Sha).ToJson());
+    }
+
+    [Fact]
+    public void Given_compile_time_only_declarations_then_full_and_repeat_identity_remain()
+    {
+        var result = Extract("""
+            [System.Obsolete("compile-time")]
+            public class C {
+                public const int Limit = 100;
+                public enum Category { Invalid = -1, None = 0, Gold = Limit }
+                public static extern void Declaration(int amount = Limit);
+                public static string Classify(int amount) { if(amount < 0) return "Invalid"; return "None"; }
+            }
+            """);
+        Assert.Single(result.Candidates);
+        Assert.Equal("full", result.Coverage.Status);
+        Assert.Empty(result.Diagnostics);
+        Assert.Equal(result.ToJson(), CandidateExtractor.Extract(Path.Combine(scratch, "input.cs"), "synthetic", Sha).ToJson());
     }
 
     [Fact]
