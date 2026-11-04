@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { request } from "./api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ApiError, request } from "./api";
 import { useApi } from "./state";
 
 export interface DatabaseMeta {
@@ -63,6 +63,109 @@ export function useDatabasePage<T>(base: string) {
     setRequested({ ...current, attempt: current.attempt + 1 });
   };
   return { ...shown, next, previous, retry, number: shown.position.number, hasPrevious: shown.position.back.length > 0 };
+}
+
+type InfiniteDatabaseState<T> = {
+  base: string;
+  data?: DatabasePage<T>;
+  loading: boolean;
+  loadingMore: boolean;
+  error?: string;
+  errorStatus?: number;
+  failedCursor?: string | null;
+};
+
+/** Appends cursor pages on one immutable database snapshot without limiting the result count. */
+export function useDatabaseInfinitePage<T>(base: string) {
+  const [state, setState] = useState<InfiniteDatabaseState<T>>({ base: "", loading: true, loadingMore: false });
+  const generation = useRef(0);
+  const inFlight = useRef<{ controller: AbortController; token: number; cursor: string | null } | null>(null);
+  const active = state.base === base ? state : { base, loading: true, loadingMore: false } as InfiniteDatabaseState<T>;
+
+  const fetchPage = useCallback(async (cursor: string | null, token: number) => {
+    if (token !== generation.current || inFlight.current) return;
+    const controller = new AbortController();
+    inFlight.current = { controller, token, cursor };
+    setState((previous) => ({
+      ...previous,
+      base,
+      loading: cursor === null,
+      loadingMore: cursor !== null,
+      error: undefined,
+      errorStatus: undefined,
+    }));
+    const query = new URL(base, window.location.origin);
+    query.searchParams.set("limit", "50");
+    if (cursor) query.searchParams.set("cursor", cursor);
+    try {
+      const data = await request<DatabasePage<T>>(query.pathname + query.search, { signal: controller.signal });
+      if (token !== generation.current) return;
+      const expectedSnapshot = new URLSearchParams(query.search).get("snapshot");
+      if (expectedSnapshot && data.snapshotId !== expectedSnapshot) {
+        throw new ApiError("The database snapshot changed. Restart the search to continue.", 409, data);
+      }
+      setState((previous) => {
+        const current = previous.base === base ? previous.data : undefined;
+        const nextData = cursor === null || !current
+          ? data
+          : { ...data, items: [...current.items, ...data.items] };
+        return { base, data: nextData, loading: false, loadingMore: false };
+      });
+    } catch (error) {
+      if (controller.signal.aborted || token !== generation.current) return;
+      const failure = error as Error;
+      setState((previous) => ({
+        ...(previous.base === base ? previous : { base, loading: false, loadingMore: false }),
+        loading: false,
+        loadingMore: false,
+        error: failure.message,
+        errorStatus: failure instanceof ApiError ? failure.status : undefined,
+        failedCursor: cursor,
+      }));
+    } finally {
+      if (inFlight.current?.controller === controller) inFlight.current = null;
+    }
+  }, [base]);
+
+  useEffect(() => {
+    const token = ++generation.current;
+    inFlight.current?.controller.abort();
+    inFlight.current = null;
+    setState({ base, loading: true, loadingMore: false });
+    void fetchPage(null, token);
+    return () => {
+      if (generation.current === token) {
+        generation.current++;
+        if (inFlight.current?.token === token) {
+          inFlight.current.controller.abort();
+          inFlight.current = null;
+        }
+      }
+    };
+  }, [base, fetchPage]);
+
+  const loadMore = useCallback(() => {
+    if (!active.data?.nextCursor || active.loading || active.loadingMore || active.error || inFlight.current) return;
+    void fetchPage(active.data.nextCursor, generation.current);
+  }, [active, fetchPage]);
+
+  const retry = useCallback(() => {
+    if (!active.error || active.loading || active.loadingMore || inFlight.current) return;
+    if (active.errorStatus === 400 || active.errorStatus === 409) {
+      const token = ++generation.current;
+      setState({ base, loading: true, loadingMore: false });
+      void fetchPage(null, token);
+      return;
+    }
+    void fetchPage(active.failedCursor ?? null, generation.current);
+  }, [active, base, fetchPage]);
+
+  return {
+    ...active,
+    loadMore,
+    retry,
+    hasMore: active.data?.nextCursor !== null && active.data?.nextCursor !== undefined,
+  };
 }
 
 export function useDebouncedText(value: string) {

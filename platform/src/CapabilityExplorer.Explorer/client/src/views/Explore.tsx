@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { request, shortSha, type Calculation, type Edge, type SearchHit, type SimilarHit, type SymbolDetail } from "../api";
+import { ApiError, request, shortSha, type Calculation, type Edge, type SearchHit, type SimilarHit, type SymbolDetail } from "../api";
 import { Formula, shortTarget } from "../components/formula";
 import { EvidenceLinks, SourceView } from "../components/source";
 import { KindPill, ResolutionPill, SymbolLink } from "../components/symbols";
@@ -12,7 +12,7 @@ export const ATTRIBUTES = ["aggregation", "timeBucket", "period", "denominatorSo
 let lastSearch = { q: "", kind: "", repo: "" };
 
 export function Explore({ params }: { params: URLSearchParams }) {
-  const { meta, scope, view } = useSelection();
+  const { meta, scope, view, reloadMeta } = useSelection();
   const key = params.get("key");
   const [q, setQ] = useState(lastSearch.q);
   const [kind, setKind] = useState(lastSearch.kind);
@@ -27,7 +27,7 @@ export function Explore({ params }: { params: URLSearchParams }) {
     lastSearch = { q, kind, repo };
   }, [q, kind, repo]);
 
-  const hits = useSearchHits(debounced, kind, repo, scope);
+  const hits = useSearchHits(debounced, kind, repo, scope, meta.snapshotId, meta.generation, reloadMeta);
   const repos = Object.keys(view).sort();
   const listRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -45,7 +45,7 @@ export function Explore({ params }: { params: URLSearchParams }) {
 
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
-      <aside className="flex flex-col gap-2 lg:sticky lg:top-[120px] lg:max-h-[calc(100vh-140px)]">
+      <aside className="flex min-h-0 flex-col gap-2 lg:sticky lg:top-[120px] lg:h-[calc(100dvh-140px)]">
         <input type="search" aria-label="Search symbols" placeholder="Search symbols, e.g. average, Forecast, dbo.Sales" value={q} onChange={(e) => setQ(e.target.value)} className={inputClass} autoFocus={!key} />
         <div className="flex gap-2">
           <select aria-label="Kind" value={kind} onChange={(e) => setKind(e.target.value)} className={inputClass}>
@@ -61,33 +61,37 @@ export function Explore({ params }: { params: URLSearchParams }) {
             ))}
           </select>
         </div>
-        <div ref={listRef} className="max-h-[360px] overflow-y-auto rounded-lg border border-zinc-200 bg-white lg:max-h-none dark:border-zinc-800 dark:bg-zinc-900">
-          {hits.error && hits.items.length === 0 && <div className="p-3 text-red-600">{hits.error}</div>}
-          {!hits.loading && !hits.error && hits.items.length === 0 && <div className="p-6 text-center text-zinc-500">No symbols match.</div>}
-          {hits.items.map((h) => (
-            <a
-              key={h.key}
-              href={symbolHref(h.key)}
-              className={`block border-b border-zinc-100 px-3 py-2 last:border-b-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/60 ${h.key === key ? "bg-blue-50 dark:bg-blue-950/50" : ""}`}
-            >
-              <div className="font-semibold">{h.name}</div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
-                <KindPill kind={h.kind} />
-                {h.repositoryId}
-                {h.hasCalculation && <Pill tone="info">calculation</Pill>}
-                {h.generated && <Pill tone="warn">generated</Pill>}
-              </div>
-            </a>
-          ))}
-          {hits.loading && <div className="p-3 text-xs text-zinc-500">Loading symbols…</div>}
-          {hits.loadingMore && <div className="p-3 text-xs text-zinc-500">Loading more…</div>}
-          {hits.error && hits.items.length > 0 && (
-            <div className="flex items-center justify-between gap-2 p-3 text-xs text-red-600">
-              <span>{hits.error}</span>
+        <div ref={listRef} role="region" aria-label="Symbol results" tabIndex={0} data-testid="symbol-results" className="h-[360px] min-h-0 min-w-0 flex-shrink-0 overflow-y-auto rounded-lg border border-zinc-200 bg-white lg:h-auto lg:min-h-[240px] lg:flex-1 lg:flex-shrink dark:border-zinc-800 dark:bg-zinc-900">
+          <div role="list" aria-busy={hits.loading || hits.loadingMore}>
+            {hits.items.map((h) => (
+              <a
+                key={h.key}
+                role="listitem"
+                data-symbol-key={h.key}
+                href={symbolHref(h.key)}
+                className={`block border-b border-zinc-100 px-3 py-2 last:border-b-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/60 ${h.key === key ? "bg-blue-50 dark:bg-blue-950/50" : ""}`}
+              >
+                <div className="font-semibold">{h.name}</div>
+                <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
+                  <KindPill kind={h.kind} />
+                  {h.repositoryId}
+                  {h.hasCalculation && <Pill tone="info">calculation</Pill>}
+                  {h.generated && <Pill tone="warn">generated</Pill>}
+                </div>
+              </a>
+            ))}
+          </div>
+          {hits.loading && hits.items.length === 0 && <div role="status" className="p-3 text-xs text-zinc-500">Loading symbols…</div>}
+          {hits.error && (
+            <div role="alert" className="flex items-center justify-between gap-2 p-3 text-xs text-red-600">
+              <span><strong>{hits.items.length === 0 ? "Could not load symbols." : "Could not load more symbols."}</strong> {hits.error}</span>
               <button type="button" className="rounded border border-red-300 px-2 py-1 text-[11px] font-semibold hover:bg-red-50 dark:border-red-700 dark:hover:bg-red-950/40" onClick={hits.retry}>Retry</button>
             </div>
           )}
-          {!hits.hasMore && hits.items.length > 0 && <div className="p-3 text-xs text-zinc-500">{typeof hits.total === "number" ? `Loaded ${hits.items.length} of ${hits.total} symbols.` : `Loaded ${hits.items.length} symbols.`}</div>}
+          {!hits.loading && !hits.error && hits.items.length === 0 && <div className="p-6 text-center text-zinc-500">No symbols match.</div>}
+          {hits.loadingMore && <div role="status" className="p-3 text-xs text-zinc-500">Loading more…</div>}
+          {hits.hasMore && !hits.loadingMore && !hits.error && <div className="p-2 text-center"><button type="button" className="rounded border border-zinc-300 px-3 py-1.5 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800" onClick={hits.loadMore}>Load more symbols</button></div>}
+          {!hits.hasMore && !hits.loading && !hits.error && hits.items.length > 0 && <div className="p-3 text-xs text-zinc-500">{typeof hits.total === "number" ? `Loaded ${hits.items.length} of ${hits.total} symbols.` : `Loaded ${hits.items.length} symbols.`}</div>}
           <div ref={sentinelRef} aria-hidden="true" className="h-px" />
         </div>
       </aside>
@@ -96,88 +100,126 @@ export function Explore({ params }: { params: URLSearchParams }) {
   );
 }
 
-type SearchPageResponse = SearchHit[] | { items: SearchHit[]; nextCursor?: string | null; total?: number; snapshotId?: string };
+type SearchPageResponse = SearchHit[] | { items: SearchHit[]; nextCursor?: string | null; total?: number; snapshotId?: string; generation?: number };
+type SearchState = {
+  identity: string;
+  items: SearchHit[];
+  nextCursor: string | null;
+  total?: number;
+  loading: boolean;
+  loadingMore: boolean;
+  error?: string;
+  errorStatus?: number;
+  failedCursor?: string | null;
+};
 
-function useSearchHits(query: string, kind: string, repo: string, scope: string) {
-  const [items, setItems] = useState<SearchHit[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [total, setTotal] = useState<number | undefined>(undefined);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | undefined>(undefined);
-  const requestId = useRef(0);
-  const inFlight = useRef<AbortController | null>(null);
-  const snapshotId = useRef<string | null>(null);
+function useSearchHits(query: string, kind: string, repo: string, scope: string, snapshotId: string, generation: number, reloadMeta: () => void) {
+  const identity = JSON.stringify([query, kind, repo, scope, snapshotId, generation]);
+  const [state, setState] = useState<SearchState>({ identity: "", items: [], nextCursor: null, loading: true, loadingMore: false });
+  const generationRef = useRef(0);
+  const inFlight = useRef<{ controller: AbortController; token: number; cursor: string | null } | null>(null);
+  const snapshotRef = useRef(snapshotId);
+  const active = state.identity === identity ? state : { identity, items: [], nextCursor: null, loading: true, loadingMore: false };
 
-  const fetchPage = useCallback(async (cursor: string | null, append: boolean) => {
-    const current = ++requestId.current;
-    inFlight.current?.abort();
+  const fetchPage = useCallback(async (cursor: string | null, token: number) => {
+    if (token !== generationRef.current || inFlight.current) return;
     const controller = new AbortController();
-    inFlight.current = controller;
-    if (append) setLoadingMore(true); else setLoading(true);
-    setError(undefined);
+    inFlight.current = { controller, token, cursor };
+    setState((previous) => ({
+      ...previous,
+      identity,
+      loading: cursor === null,
+      loadingMore: cursor !== null,
+      error: undefined,
+      errorStatus: undefined,
+    }));
     const params = new URLSearchParams(scope);
     params.set("q", query);
     params.set("kind", kind);
     params.set("repo", repo);
     params.set("limit", "50");
+    params.set("snapshot", cursor === null ? snapshotId : snapshotRef.current);
     if (cursor) params.set("cursor", cursor);
-    if (cursor && snapshotId.current) params.set("snapshot", snapshotId.current);
     try {
       const response = await request<SearchPageResponse>(`/api/search?${params.toString()}`, { signal: controller.signal });
-      if (requestId.current !== current) return;
+      if (token !== generationRef.current) return;
       const page = Array.isArray(response)
-        ? { items: response, nextCursor: null as string | null, total: response.length as number | undefined, snapshotId: null as string | null }
-        : { items: response.items, nextCursor: response.nextCursor ?? null, total: response.total, snapshotId: response.snapshotId ?? null };
-      setTotal(page.total);
-      snapshotId.current = page.snapshotId ?? snapshotId.current;
-      setNextCursor(page.nextCursor);
-      setItems((previous) => {
-        if (!append) return page.items;
-        const seen = new Set(previous.map((item) => item.key));
-        const merged = [...previous];
-        for (const item of page.items) {
-          if (!seen.has(item.key)) {
-            seen.add(item.key);
-            merged.push(item);
-          }
-        }
-        return merged;
-      });
-    } catch (e) {
-      if (controller.signal.aborted) return;
-      if (requestId.current === current) setError((e as Error).message);
-    } finally {
-      if (requestId.current === current) {
-        inFlight.current = null;
-        setLoading(false);
-        setLoadingMore(false);
+        ? { items: response, nextCursor: null as string | null, total: response.length, snapshotId }
+        : { items: response.items, nextCursor: response.nextCursor ?? null, total: response.total, snapshotId: response.snapshotId ?? snapshotRef.current };
+      if (!Array.isArray(response) && response.snapshotId && response.snapshotId !== snapshotRef.current) {
+        throw new ApiError("The search snapshot changed. Restart the search to continue.", 409, response);
       }
+      if (!Array.isArray(response) && response.generation !== undefined && response.generation !== generation) {
+        throw new ApiError("The search generation changed. Restart the search to continue.", 409, response);
+      }
+      snapshotRef.current = page.snapshotId;
+      setState((previous) => {
+        const current = previous.identity === identity ? previous : { identity, items: [], nextCursor: null, loading: true, loadingMore: false };
+        return {
+          ...current,
+          items: cursor === null ? page.items : [...current.items, ...page.items],
+          nextCursor: page.nextCursor,
+          total: page.total,
+          loading: false,
+          loadingMore: false,
+          error: undefined,
+          errorStatus: undefined,
+          failedCursor: undefined,
+        };
+      });
+    } catch (error) {
+      if (controller.signal.aborted || token !== generationRef.current) return;
+      const failure = error as Error;
+      setState((previous) => ({
+        ...(previous.identity === identity ? previous : { identity, items: [], nextCursor: null, loading: false, loadingMore: false }),
+        loading: false,
+        loadingMore: false,
+        error: failure.message,
+        errorStatus: failure instanceof ApiError ? failure.status : undefined,
+        failedCursor: cursor,
+      }));
+    } finally {
+      if (inFlight.current?.controller === controller) inFlight.current = null;
     }
-  }, [kind, query, repo, scope]);
+  }, [generation, identity, kind, query, repo, scope, snapshotId]);
 
   useEffect(() => {
-    setItems([]);
-    setTotal(undefined);
-    snapshotId.current = null;
-    setNextCursor(null);
-    void fetchPage(null, false);
-  }, [fetchPage]);
-
-  useEffect(() => () => {
-    inFlight.current?.abort();
-  }, []);
+    const token = ++generationRef.current;
+    inFlight.current?.controller.abort();
+    inFlight.current = null;
+    snapshotRef.current = snapshotId;
+    setState({ identity, items: [], nextCursor: null, loading: true, loadingMore: false });
+    void fetchPage(null, token);
+    return () => {
+      if (generationRef.current === token) {
+        generationRef.current++;
+        if (inFlight.current?.token === token) {
+          inFlight.current.controller.abort();
+          inFlight.current = null;
+        }
+      }
+    };
+  }, [fetchPage, identity, snapshotId]);
 
   const loadMore = useCallback(() => {
-    if (!nextCursor || loading || loadingMore || !!error) return;
-    void fetchPage(nextCursor, true);
-  }, [error, fetchPage, loading, loadingMore, nextCursor]);
+    if (!active.nextCursor || active.loading || active.loadingMore || active.error || inFlight.current) return;
+    void fetchPage(active.nextCursor, generationRef.current);
+  }, [active, fetchPage]);
 
   const retry = useCallback(() => {
-    void fetchPage(nextCursor, items.length > 0);
-  }, [fetchPage, items.length, nextCursor]);
+    if (!active.error || active.loading || active.loadingMore || inFlight.current) return;
+    if (active.errorStatus === 400 || active.errorStatus === 409) {
+      reloadMeta();
+      const token = ++generationRef.current;
+      snapshotRef.current = snapshotId;
+      setState({ identity, items: [], nextCursor: null, loading: true, loadingMore: false });
+      void fetchPage(null, token);
+      return;
+    }
+    void fetchPage(active.failedCursor ?? null, generationRef.current);
+  }, [active, fetchPage, identity, reloadMeta, snapshotId]);
 
-  return { items, total, loading, loadingMore, error, hasMore: nextCursor !== null, loadMore, retry };
+  return { ...active, hasMore: active.nextCursor !== null, loadMore, retry };
 }
 
 function Welcome({ onPick }: { onPick: (s: { q: string; kind: string }) => void }) {
