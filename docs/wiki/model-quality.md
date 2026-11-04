@@ -11,6 +11,8 @@ sources:
     resource: ../architecture/current.md
   - id: contract
     resource: https://github.com/Sonberg/capability-explorer/issues/33
+  - id: handoff
+    resource: ../plans/collector-handoff-acceptance.md
 ---
 # Three different claims
 
@@ -34,6 +36,15 @@ The collector supplies source-bound evidence suitable for downstream aligned
 architecture/business views. Accepted rules, ownership, abstraction levels and
 organizational aggregation are downstream decisions, not facts inferred here.[^contract]
 
+# Consumer handoff is not publication authority
+
+Collection content identity excludes attempt metadata. An independent consumer
+can validate the same evidence under a different valid attempt receipt without
+changing the content hash. Optional omissions stay explicit and partial; required
+failures do not become completed bundles. These are bounded contract claims,
+not proof of arbitrary crash recovery or downstream business acceptance.[^handoff]
+
 [^implementation]: Current bounded extraction and UI behavior, limitations and validation commands.
 [^architecture]: Current source-observed component and artifact flow.
 [^contract]: Collector handoff boundary and future aligned-viewpoint note.
+[^handoff]: Existing producer proof and focused independent-consumer acceptance mapping.

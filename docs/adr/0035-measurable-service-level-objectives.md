@@ -104,3 +104,9 @@ declared measurement commands at the named source state and inspect failures
 as well as percentiles. Keep the decision index and generated ledger consistent.
 Repository-wide acceptance requires owner review; this record does not change
 the status of any other MADR.
+
+## References
+
+* [Google SRE: Service Level Objectives](https://sre.google/sre-book/service-level-objectives/)
+  defines SLIs as quantitative indicators and SLOs as target values or ranges.
+  Its examples inform terminology, not this repository's numeric targets.

@@ -112,3 +112,90 @@ decision-ledger checks (29) pass; new assertions must pass at integration.
 `git diff --check` passes. No full enterprise/SLO/release claim is made.
 Brain pass clean: `sparc/capability-cards.md#sparc`; native workers plus the
 already-enabled Ruflo bookkeeping are sufficient.
+
+## Contract reconciliation
+
+| #33 obligation | Current bounded evidence / remaining authority |
+|---|---|
+| Architecture, terminology and contract catalogue | Existing MADR-0033, model/collection guide and design-only OpenAPI profiles; central ownership/acceptance is unresolved, not a missing second collector. |
+| Two-cluster central conformance, products and viewpoints | Not implemented by this slice. Offline two-repository dogfood is not central intake or viewpoint conformance. |
+| Frozen collector subset and native compatibility | Existing `CollectionExporter`/`CollectionValidator`; no profile or ce.v1 shape change. |
+| Identity/revisions/digests/paths/permissions/coverage | Existing .NET collection and transport tests; new TS consumer cases explicitly validate changed attempts and optional omissions. |
+| Independent immutable offline consumption | Actual two-repository CLI dogfood and independent .NET/TS consumers pass; prior file/PostgreSQL/browser proof is retained rather than reimplemented. |
+| Required failure / optional partial / reuse | Existing producer tests plus stronger staging-cleanup assertion; explicit optional disposition and byte-verified reuse/tamper cases. |
+| Cancellation/interruption | Pre-cancelled export is tested. Mid-export cancellation and arbitrary crash recovery remain unproven; there is no deterministic public progress/stream seam. |
+| Stale/out-of-order publication and enrollment | Offline freshness/rights/profile checks exist; authenticated central enrollment, read authorization and replay ordering are downstream, not delivered here. |
+| Privacy, original content and source binding | Existing permission/profile denial and exact-source transport dogfood; no new arbitrary-URI acquisition or private-source publication. |
+| Architecture/wiki handoff and release obligations | Current diagram, OKF article and this mapping are updated; #24/#54/#75 and operational SLO qualification remain separate. |
+
+Focused source anchors: `extractors/ts/test/collection/validator.test.ts`
+(attempt/content identity and optional omission), and
+`platform/tests/CapabilityExplorer.Contracts.Tests/CollectionTests.cs`
+(required failures, immutable reuse, optional input, permissions, pre-cancel).
+Production cancellation checks occur during reads and immediately before the
+atomic directory move; cancellation concurrent with the commit boundary is
+cooperative cancellation, not a separately tested linearizable abort guarantee.
+Avoid flaky timers/watchers or new production injection hooks merely to claim
+that broader property.
+
+## SLO applicability
+
+The independent worker read back each persisted disposition:
+
+| Issue | Disposition |
+|---|---|
+| #81 | Semantic/research quality: deterministic mapping and revision-bound preview gates, not an arbitrary operational latency SLO. |
+| #82 | Provisional, unmeasured renderer p95 1.5 s / p99 3 s, with explicit resource/sampling/failure rules; bounded fixture and numeric node cap remain prerequisites for qualification. |
+| #83 | Reuse #63's applicable endpoint policy; exact list-family mapping still required before qualification. |
+| #84 | Reuse #43's sealed workload/resource/scenario policy; no competing target or compliance claim. |
+
+MADR-0035 requires that applicable future issues include the complete measurement
+contract or link a genuinely matching one. New objectives stay proposed/
+unmeasured until accepted and exercised; correctness/security/completeness gates
+are independent. It does not impose an SLO on semantic taste or authorize
+an unrelated backlog rewrite.
+
+## Retention design addition
+
+The operator additionally requested MADR-0036 for interface-configurable
+retention: enforced minimum, recommended default, separate local/central
+custody, and progressively coarser historical resolution ending in monthly or
+quarterly points where appropriate. This is documentation only, not a new
+retention executor or UI. Concrete durations need policy-owner and workload/
+legal requirements; none were supplied or invented. Archive/restore, expiry,
+holds, shared dependencies and explicit loss-of-detail behavior are requirements,
+not tested implementations. The source-bound decision ledger includes this
+record with proposed status.
+
+## Refinement gate
+
+New acceptance commits `c41ef9f` and `f25e72f` add two independent TS cases,
+explicit cleanup assertions and a deterministic .NET valid-first/required-missing
+case that reaches partial staging before failure. The target and staging
+directory are absent after failure. No runtime, schema, dependency or evaluator
+change was needed; the inspection found existing behavior, not a reproduced
+production defect.
+
+`make EXECUTION=sandbox test-ts test-contracts test-collection-dogfood` passed:
+210 TS tests, 244 contract tests and the real offline CLI dogfood. The final
+partial-staging addition then passed all 17 focused .NET collection tests with
+an actual build in the sandbox. `make test-decision-ledger` passed all 29 tests
+after both MADRs and their exact source receipts were generated. Build output
+reports zero warnings/errors; existing frontend chunk-size advisories remain.
+`git diff --check` passes.
+
+Refinement grade: **97/100**, two iterations. The second iteration replaces a
+weak missing-first cleanup assertion with explicit valid-first partial-staging
+proof. The three-point deduction retains untested mid-export cancellation/
+crash behavior and external consumer authority, not a known runtime defect.
+Real file/PostgreSQL/browser consumption was qualified in #85; no UI behavior
+changed here and that prior evidence is not relabeled as a new browser run.
+Complete canonical local/hosted publication gates remain required.
+
+What was not tested: arbitrary interruption, real central custody/authorization,
+retention UI or deletion/archive execution, lawful numeric retention periods,
+private corpus/recovery, SLO performance/capacity or a production release.
+No new paid external service/model call or daemon was used. Native agent
+metering is unavailable; no savings or distributed-consensus claim is made.
+Brain pass clean: `sparc/capability-cards.md#sparc`; no extra runtime primitive
+is justified by these test and policy changes.
