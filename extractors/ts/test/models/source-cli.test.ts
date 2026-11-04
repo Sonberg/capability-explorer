@@ -35,3 +35,35 @@ test("the actual model CLI attaches exact BOM source only under explicit content
     assert.deepEqual(Buffer.from(JSON.parse(await readFile(attachment, "utf8")).sourceBytesBase64, "base64"), original);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test("the actual CLI extracts .bpmn20.xml and attaches its exact original bytes", async () => {
+  const root = resolve(".sandbox-cache", "model-bpmn20-cli", randomUUID());
+  await mkdir(root, { recursive: true });
+  try {
+    const source = resolve(root, "workflow.bpmn20.xml");
+    const model = resolve(root, "evidence.json");
+    const attachment = resolve(root, "source.json");
+    const original = Buffer.concat([
+      Buffer.from([0xef, 0xbb, 0xbf]),
+      await readFile(new URL("../../../../fixtures/models/order.bpmn", import.meta.url)),
+    ]);
+    await writeFile(source, original);
+    const cli = new URL("../../src/models/cli.ts", import.meta.url).pathname;
+
+    await run(process.execPath, [
+      cli, "--source", source, "--repository", "repo", "--commit", "a".repeat(40),
+      "--out", model, "--content-profile", "model-content", "--source-out", attachment,
+    ]);
+
+    const modelBytes = await readFile(model);
+    const evidence = JSON.parse(modelBytes.toString("utf8"));
+    const envelope = JSON.parse(await readFile(attachment, "utf8"));
+    assert.equal(evidence.schema, "ce.models.v1");
+    assert.equal(evidence.unitPath, "workflow.bpmn20.xml");
+    assert.equal(evidence.sourceSha256, digest(original));
+    assert.equal(envelope.sourceFormat, "bpmn+xml");
+    assert.equal(envelope.modelArtifactSha256, digest(modelBytes));
+    assert.equal(envelope.sourceSha256, digest(original));
+    assert.deepEqual(Buffer.from(envelope.sourceBytesBase64, "base64"), original);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
