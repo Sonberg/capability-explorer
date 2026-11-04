@@ -93,6 +93,8 @@ test("Given unsafe XML and namespace constructs, extraction rejects without fetc
   await reject('<definitions>&external;</definitions>', "xml-entity-disabled");
   await reject('<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"><script>run()</script></definitions>', "xml-script-disabled");
   await reject('<definitions xmlns="https://www.omg.org/spec/DMN/20230324/MODEL/"/>', "unsupported-model-namespace");
+  await reject('<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"><bpmn:process>', "xml-malformed");
+  await reject('<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"></bpmn:process>', "xml-malformed");
   assert.throws(() => parseXml("<a><b><c/></b></a>", { ...DEFAULT_XML_LIMITS, maxDepth: 2 }), (error: unknown) =>
     error instanceof ModelXmlError && error.code === "xml-depth-limit");
   assert.throws(() => parseXml("<a>long</a>", { ...DEFAULT_XML_LIMITS, maxTextBytes: 2 }), (error: unknown) =>
@@ -101,6 +103,44 @@ test("Given unsafe XML and namespace constructs, extraction rejects without fetc
     error instanceof ModelXmlError && error.code === "xml-attribute-limit");
   assert.throws(() => parseXml("<a/>", { ...DEFAULT_XML_LIMITS, maxParseMilliseconds: 0 }), (error: unknown) =>
     error instanceof ModelXmlError && error.code === "xml-time-limit");
+});
+
+test("Given exact XML byte, depth, count and attribute byte budgets, only one-over inputs fail", () => {
+  const parse = (xml: string, limits: Partial<typeof DEFAULT_XML_LIMITS>) =>
+    parseXml(xml, { ...DEFAULT_XML_LIMITS, ...limits });
+  const overLimit = (xml: string, limits: Partial<typeof DEFAULT_XML_LIMITS>, code: string) =>
+    assert.throws(() => parse(xml, limits), (error: unknown) =>
+      error instanceof ModelXmlError && error.code === code);
+
+  assert.equal(parse("<a/>", { maxBytes: 4 }).localName, "a");
+  overLimit("<a />", { maxBytes: 4 }, "xml-byte-limit");
+  assert.equal(parse("<a><b/></a>", { maxDepth: 2 }).children.length, 1);
+  overLimit("<a><b/></a>", { maxDepth: 1 }, "xml-depth-limit");
+  assert.equal(parse("<a><b/></a>", { maxElements: 2 }).children.length, 1);
+  overLimit("<a><b/></a>", { maxElements: 1 }, "xml-element-limit");
+  assert.equal(parse('<a x="é"/>', { maxAttributesPerElement: 1, maxAttributeBytes: 3 }).attributes.x, "é");
+  overLimit('<a x="é"/>', { maxAttributeBytes: 2 }, "xml-attribute-byte-limit");
+  assert.equal(parse("<a>é</a>", { maxTextBytes: 2 }).text, "é");
+  overLimit("<a>é</a>", { maxTextBytes: 1 }, "xml-text-limit");
+  overLimit('<a x="é" y="z"/>', { maxAttributesPerElement: 1 }, "xml-attribute-limit");
+});
+
+test("Given a positive worker deadline, timed-out extraction awaits actual worker termination", async () => {
+  const tasks = Array.from({ length: 20_000 }, (_, index) => `<bpmn:task id="t${index}"/>`).join("");
+  const xml = `<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"><bpmn:process id="p">${tasks}</bpmn:process></bpmn:definitions>`;
+  const started = performance.now();
+  const messagePortsBefore = process.getActiveResourcesInfo().filter((resource) => resource === "MessagePort").length;
+
+  await assert.rejects(
+    extractModelXml(xml, options("timeout.bpmn"), undefined, 50),
+    (error: unknown) => error instanceof ModelXmlError && error.code === "xml-time-limit",
+  );
+  assert.ok(performance.now() - started < 2_000, "worker timeout must be bounded");
+  assert.equal(
+    process.getActiveResourcesInfo().filter((resource) => resource === "MessagePort").length,
+    messagePortsBefore,
+    "timed-out worker must not leave a message port active",
+  );
 });
 
 test("Given duplicate or dangling BPMN ids, extraction fails rather than asserting complete evidence", async () => {

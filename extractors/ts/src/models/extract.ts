@@ -145,9 +145,14 @@ export async function extractModelXml(
   xml: string,
   options: ModelExtractionOptions,
   sourceBytes?: Uint8Array,
+  workerTimeoutMs = DEFAULT_XML_LIMITS.maxParseMilliseconds,
 ): Promise<ModelEvidence> {
   validateOptions(options);
   const bytes = originalBytes(xml, sourceBytes);
+  if (!Number.isFinite(workerTimeoutMs) || workerTimeoutMs <= 0) {
+    throw new ModelXmlError("invalid-time-limit", "Worker timeout must be a positive finite number");
+  }
+  const boundedWorkerTimeoutMs = Math.min(workerTimeoutMs, DEFAULT_XML_LIMITS.maxParseMilliseconds);
   return new Promise((resolve, reject) => {
     let settled = false;
     const worker = new Worker(new URL("./worker.ts", import.meta.url), {
@@ -156,10 +161,11 @@ export async function extractModelXml(
       resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 32, stackSizeMb: 4 },
     });
     const timer = setTimeout(() => {
+      if (settled) return;
       settled = true;
-      void worker.terminate();
-      reject(new ModelXmlError("xml-time-limit", `XML extraction exceeded ${DEFAULT_XML_LIMITS.maxParseMilliseconds}ms`));
-    }, DEFAULT_XML_LIMITS.maxParseMilliseconds);
+      const timeoutError = new ModelXmlError("xml-time-limit", `XML extraction exceeded ${boundedWorkerTimeoutMs}ms`);
+      void worker.terminate().then(() => reject(timeoutError), reject);
+    }, boundedWorkerTimeoutMs);
     worker.once("message", (result: ModelWorkerResult) => {
       if (settled) return;
       settled = true;
