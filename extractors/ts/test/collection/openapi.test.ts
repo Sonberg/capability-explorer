@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +16,7 @@ const repositoryRoot = resolve(testDirectory, "../../../../");
 const openApiRoot = resolve(repositoryRoot, "schema/openapi");
 const platformRoot = resolve(repositoryRoot, "schema/platform");
 const vendorRoot = resolve(openApiRoot, "vendor");
+const pinnedOasSchemaSha256 = "6d1eb9fe8993d218ac034908ebf9a24ba1e4c3be62bd4d7c7a0d1a56778f5a61";
 
 async function json(path: string): Promise<JsonObject> {
   return JSON.parse(await readFile(path, "utf8")) as JsonObject;
@@ -35,32 +37,55 @@ function createAjv(): Ajv2020 {
 }
 
 async function compileOasValidator(): Promise<{ ajv: Ajv2020; validate: ValidateFunction }> {
-  const files = [
+  const supportFiles = [
     "oas-3.2-meta-2026-02-26.json",
     "oas-3.2-dialect-2026-02-26.json",
-    "oas-3.2-schema-2026-08-30.json",
-    "oas-3.2-schema-base-2026-08-30.json",
   ];
   const ajv = createAjv();
-  for (const file of files) ajv.addSchema(await json(resolve(vendorRoot, file)));
-  const oasSchema = await json(resolve(vendorRoot, files[2]!));
+  for (const file of supportFiles) ajv.addSchema(await json(resolve(vendorRoot, file)));
+
+  const oasSchemaPath = resolve(vendorRoot, "oas-3.2-schema-2026-08-30.json");
+  const oasSchemaBytes = await readFile(oasSchemaPath);
+  assert.equal(
+    createHash("sha256").update(oasSchemaBytes).digest("hex"),
+    pinnedOasSchemaSha256,
+    "the guarded AJV equivalence rewrite is allowed only for the reviewed pinned source",
+  );
+  const oasSchema = JSON.parse(oasSchemaBytes.toString("utf8")) as JsonObject;
+  assertAjvRewriteInvariants(oasSchema);
+  const rewrittenSchema = rewriteDynamicReferences(oasSchema);
+  ajv.addSchema(rewrittenSchema);
+  ajv.addSchema(await json(resolve(vendorRoot, "oas-3.2-schema-base-2026-08-30.json")));
   const validate = ajv.getSchema(String(oasSchema.$id));
   assert.ok(validate, "pinned official OpenAPI 3.2 structural schema must be compiled from local schemas");
   return { ajv, validate };
 }
 
-test("records the AJV 8.20 incompatibility with the pinned official OpenAPI 3.2 structural schema", async () => {
+test("validates design documents with the guarded pinned OpenAPI 3.2 structural schema", async () => {
   const { validate } = await compileOasValidator();
   for (const file of ["central-intake.openapi.json", "process-decisions.openapi.json"]) {
     const document = await json(resolve(openApiRoot, file));
     assert.equal(document.openapi, "3.2.1");
-    assert.equal(document["x-design-only"], true);
-    assert.ok(Array.isArray(document["x-deployment-blockers"]));
-    assert.equal(Object.hasOwn(document, "servers"), false);
-    assert.equal(Object.hasOwn(document, "security"), false);
-    assert.equal(validate(document), false);
-    assert.ok(validate.errors?.length, "the validator must report its unsupported OAS 3.2 schema-object validation");
+    assert.equal(validate(document), true, JSON.stringify(validate.errors?.slice(0, 5)));
+    assert.deepEqual(validate.errors, null);
+    assertDesignOnlyBoundary(document);
   }
+});
+
+test("rejects missing parameter name and in with the structural schema", async () => {
+  const { validate } = await compileOasValidator();
+  const original = await json(resolve(openApiRoot, "central-intake.openapi.json"));
+  const path = "/v1/collection-submissions/{attemptId}";
+
+  const missingName = structuredClone(original);
+  const nameParameters = (((missingName.paths as JsonObject)[path] as JsonObject).get as JsonObject).parameters as JsonObject[];
+  delete nameParameters[0]!.name;
+  assert.equal(validate(missingName), false);
+
+  const missingLocation = structuredClone(original);
+  const locationParameters = (((missingLocation.paths as JsonObject)[path] as JsonObject).get as JsonObject).parameters as JsonObject[];
+  delete locationParameters[0]!.in;
+  assert.equal(validate(missingLocation), false);
 });
 
 test("rejects an OAS version change instead of accepting a 3.1 fallback", async () => {
@@ -68,6 +93,18 @@ test("rejects an OAS version change instead of accepting a 3.1 fallback", async 
   const document = await json(resolve(openApiRoot, "central-intake.openapi.json"));
   const modified = { ...document, openapi: "3.1.0" };
   assert.equal(validate(modified), false);
+});
+
+test("design boundary rejects otherwise-valid servers or security declarations", async () => {
+  const { validate } = await compileOasValidator();
+  const document = await json(resolve(openApiRoot, "central-intake.openapi.json"));
+  const withServer = { ...document, servers: [{ url: "https://example.invalid" }] };
+  assert.equal(validate(withServer), true, JSON.stringify(validate.errors?.slice(0, 5)));
+  assert.throws(() => assertDesignOnlyBoundary(withServer), /servers are prohibited/);
+
+  const withSecurity = { ...document, security: [] };
+  assert.equal(validate(withSecurity), true, JSON.stringify(validate.errors?.slice(0, 5)));
+  assert.throws(() => assertDesignOnlyBoundary(withSecurity), /security declarations are prohibited/);
 });
 
 test("all API references and examples resolve to local files without a remote loader", async () => {
@@ -113,6 +150,9 @@ test("all API references and examples resolve to local files without a remote lo
     $ref: "#/$defs/components/schemas/Submission",
   });
   assert.equal(submissionValidator(submission), true, JSON.stringify(submissionValidator.errors?.slice(0, 5)));
+  const invalidSubmission = structuredClone(submission) as JsonObject;
+  invalidSubmission.unexpected = true;
+  assert.equal(submissionValidator(invalidSubmission), false);
 
   const process = docs.get(resolve(openApiRoot, "process-decisions.openapi.json"))!;
   const schemas = (process.components as JsonObject).schemas as JsonObject;
@@ -131,6 +171,73 @@ test("all API references and examples resolve to local files without a remote lo
     assert.equal(validator(value), true, JSON.stringify(validator.errors?.slice(0, 5)));
   }
 });
+
+test("rejects a broken local reference", async () => {
+  const path = resolve(openApiRoot, "central-intake.openapi.json");
+  const document = await json(path);
+  const responseSchema = (((document.paths as JsonObject)["/v1/collection-submissions"] as JsonObject).post as JsonObject)
+    .responses as JsonObject;
+  const successSchema = ((((responseSchema["202"] as JsonObject).content as JsonObject)["application/json"] as JsonObject)
+    .schema as JsonObject);
+  successSchema.$ref = "#/components/schemas/MissingReceipt";
+  await assert.rejects(collectReferences(document, path, new Set()), /unresolved local reference/);
+});
+
+function assertAjvRewriteInvariants(schema: JsonObject): void {
+  const entries = walk(schema);
+  const anchors = entries.filter(({ value }) => isObject(value) && value.$dynamicAnchor === "meta");
+  assert.deepEqual(anchors.map(({ path }) => path), ["$defs.schema"]);
+  const dynamicRefs = entries.flatMap(({ value }) =>
+    isObject(value) && typeof value.$dynamicRef === "string" ? [value.$dynamicRef] : []);
+  assert.equal(dynamicRefs.length, 5);
+  assert.ok(dynamicRefs.every((reference) => reference === "#meta"));
+
+  const refs = entries.flatMap(({ value }) =>
+    isObject(value) && typeof value.$ref === "string" ? [value.$ref] : []);
+  assert.ok(refs.length > 0);
+  for (const reference of refs) {
+    assert.ok(reference.startsWith("#/"), `non-local OAS schema reference is prohibited: ${reference}`);
+    assert.notEqual(pointer(schema, reference.slice(1)), undefined, `unresolved OAS schema reference ${reference}`);
+  }
+}
+
+function rewriteDynamicReferences(value: unknown): JsonObject {
+  if (!isObject(value)) throw new Error("pinned OpenAPI structural schema root must be an object");
+  const rewritten = rewrite(value) as JsonObject;
+  assert.equal(countDynamicReferences(rewritten), 0);
+  return rewritten;
+}
+
+function rewrite(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(rewrite);
+  if (!isObject(value)) return value;
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [
+    key === "$dynamicRef" ? "$ref" : key,
+    key === "$dynamicRef" ? "#/$defs/schema" : rewrite(child),
+  ]));
+}
+
+function countDynamicReferences(value: unknown): number {
+  return walk(value).filter(({ value: node }) => isObject(node) && "$dynamicRef" in node).length;
+}
+
+function walk(value: unknown, path = ""): Array<{ value: unknown; path: string }> {
+  const result = [{ value, path }];
+  if (Array.isArray(value)) {
+    value.forEach((child, index) => result.push(...walk(child, `${path}/${index}`)));
+  } else if (isObject(value)) {
+    for (const [key, child] of Object.entries(value)) result.push(...walk(child, path ? `${path}.${key}` : key));
+  }
+  return result;
+}
+
+function assertDesignOnlyBoundary(document: JsonObject): void {
+  assert.equal(document.openapi, "3.2.1");
+  assert.equal(document["x-design-only"], true);
+  assert.ok(Array.isArray(document["x-deployment-blockers"]));
+  assert.equal(Object.hasOwn(document, "servers"), false, "servers are prohibited by this design-only boundary");
+  assert.equal(Object.hasOwn(document, "security"), false, "security declarations are prohibited by this design-only boundary");
+}
 
 function rewriteSelfReferences(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(rewriteSelfReferences);

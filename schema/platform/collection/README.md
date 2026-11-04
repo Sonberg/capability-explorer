@@ -56,15 +56,25 @@ remain unresolved blockers; absent OpenAPI security is not permission for
 anonymous access.
 
 The repository pins local official OpenAPI 3.2 schema assets to avoid remote
-resolution. The available AJV 8.20 validator compiles these assets, but its
-dynamic-reference handling does not validate the full documents' Schema
-Objects. Focused tests preserve this incompatibility as an explicit limitation
-and separately check local references and representative API payload examples.
-A probe with the existing JsonSchema.Net registry also failed while registering
-the official repeated dynamic anchor. Neither result certifies these documents
-against the complete OpenAPI 3.2.1 contract. No 3.1 fallback or custom subset
-is presented as full conformance; deployment requires a compatible validator
-and a passing full-document check.
+resolution. The focused AJV 8.20 test validates each complete document against
+the official OpenAPI 3.2 structural schema after a guarded in-memory
+equivalence rewrite: for the exact SHA-256-pinned schema asset, it verifies
+that the only `meta` dynamic anchor is `#/$defs/schema`, all five dynamic
+references are `#meta`, and every string `$ref` is local and resolves. It then
+rewrites those references to `#/$defs/schema` on a cloned schema only. The
+vendored asset and OpenAPI documents are never modified. The test also rejects
+an OAS 3.1 version, malformed required parameter fields, and broken local
+document references; it separately rejects `servers` and `security` as
+design-boundary violations (those fields are not claimed to be invalid OAS).
+
+This qualifies full-document structural validation of these documents with
+that precisely guarded workaround. It does **not** qualify AJV as an engine
+for the OpenAPI 3.2 `schema-base` / Schema Object dialect. Component schemas
+are separately compiled as Draft 2020-12 with local references and validated
+against representative payloads. Do not treat those checks as complete
+Schema Object-dialect qualification. No 3.1 fallback or custom subset is used;
+deployment still requires resolved ownership, security, and authorization
+decisions.
 
 ## Decision record
 
@@ -76,10 +86,10 @@ and a passing full-document check.
   paths, and protects the last-good output on required-input failure.
 - **Interoperability:** Canonical content identity is independent of attempt
   time, with cross-runtime tests covering Unicode, `<`, and `+`.
-- **Unresolved validation:** Current AJV and JsonSchema.Net probes do not
-  establish complete OAS 3.2.1 conformance. The documents remain design-only
-  until an independently compatible validator and deployment authority are
-  available.
+- **Validator qualification:** Complete-document OAS 3.2 structural
+  validation uses the hash- and structure-guarded AJV rewrite described above.
+  The `schema-base` Schema Object dialect remains unqualified. The APIs remain
+  design-only pending deployment authority and security decisions.
 
 These are implementation decisions supported by the tests and validator
 probes, not independent council votes.
