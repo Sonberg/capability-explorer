@@ -3,7 +3,6 @@ import { mkdtemp, readFile, rm, symlink, unlink, writeFile } from "node:fs/promi
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { Ajv2020 } from "ajv/dist/2020.js";
@@ -18,7 +17,7 @@ const options = (unitPath: string, contentProfile?: "structural" | "model-conten
   contentProfile,
 });
 
-test("Given BPMN 2.0.2, extraction preserves nested typed elements and flow conditions", async () => {
+test("Given the BPMN model namespace, extraction preserves nested typed elements and flow conditions", async () => {
   const xml = await readFile(fixture("order.bpmn"), "utf8");
   const evidence = await extractModelXml(xml, options("models/order.bpmn", "model-content"));
 
@@ -107,8 +106,10 @@ test("Given unsafe XML and namespace constructs, extraction rejects without fetc
 test("Given duplicate or dangling BPMN ids, extraction fails rather than asserting complete evidence", async () => {
   const duplicate = '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"><bpmn:process id="p"><bpmn:task id="x"/><bpmn:task id="x"/></bpmn:process></bpmn:definitions>';
   const dangling = '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"><bpmn:process id="p"><bpmn:sequenceFlow id="f" sourceRef="missing" targetRef="also-missing"/></bpmn:process></bpmn:definitions>';
+  const wrongType = '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"><bpmn:process id="p"><bpmn:task id="a"/><bpmn:sequenceFlow id="f" sourceRef="p" targetRef="a"/></bpmn:process></bpmn:definitions>';
   await assert.rejects(extractModelXml(duplicate, options("duplicate.bpmn")), /Duplicate explicit model id/);
   await assert.rejects(extractModelXml(dangling, options("dangling.bpmn")), /Dangling sequenceFlow reference/);
+  await assert.rejects(extractModelXml(wrongType, options("wrong-type.bpmn")), /Invalid sequenceFlow reference target type/);
   await assert.rejects(extractModelXml('<definitions/>', options("../outside.bpmn")), /repository-relative path/);
 });
 
@@ -151,7 +152,7 @@ test("Given XML and claimed original bytes that differ, source evidence cannot b
 });
 
 test("Given an output symlink to the input, the standalone command preserves original model bytes", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "ce-model-source-"));
+  const directory = await mkdtemp(join(fileURLToPath(new URL("../../", import.meta.url)), ".model-source-"));
   try {
     const source = join(directory, "source.bpmn"), output = join(directory, "output.json");
     const bytes = await readFile(fixture("order.bpmn"));
@@ -166,6 +167,111 @@ test("Given an output symlink to the input, the standalone command preserves ori
       createHash("sha256").update(bytes).digest("hex"));
     assert.equal(result.status, 1, result.stderr);
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("Given the bounded BPMN profile, extraction relates lanes, nested subprocesses, local calls and flow kinds", async () => {
+  const xml = await readFile(fixture("workflow.bpmn"), "utf8");
+  const support = JSON.parse(await readFile(fixture("../../schema/models/support.json"), "utf8"));
+  const evidence = await extractModelXml(xml, options("models/workflow.bpmn", "model-content"));
+  const byId = new Map(evidence.elements.map(element => [element.id, element]));
+  const endpoints = evidence.relationships.map(relation => [
+    relation.kind,
+    [...byId.values()].find(element => element.identity === relation.source)?.id,
+    [...byId.values()].find(element => element.identity === relation.target)?.id,
+  ]);
+  const reviewRouteIndex = endpoints.findIndex(([kind, source, target]) =>
+    kind === "sequenceFlow" && source === "review-task" && target === "route-gateway");
+  const reviewRoute = evidence.relationships[reviewRouteIndex];
+  const expectedSupported = support.constructs.filter((item: { family: string; status: string; elements: string[] }) =>
+    item.family === "bpmn" && item.status === "semantic-evidence-supported"
+    && item.elements.some((type: string) => evidence.elements.some(element => element.type === type)))
+    .map((item: { id: string }) => item.id);
+
+  assert.ok(byId.get("nested-task")?.parent === byId.get("nested-work")?.identity);
+  assert.ok(endpoints.some(([kind, source, target]) => kind === "reference" && source === "review-lane" && target === "start"));
+  assert.ok(endpoints.some(([kind, source, target]) => kind === "reference" && source === "call-child" && target === "child-process"));
+  assert.ok(endpoints.some(([kind, source, target]) => kind === "sequenceFlow" && source === "review-task" && target === "route-gateway"));
+  assert.ok(endpoints.some(([kind, source, target]) => kind === "messageFlow" && source === "order-participant" && target === "child-participant"));
+  assert.ok(endpoints.some(([kind, source, target]) => kind === "reference" && source === "review-record-ref" && target === "review-record"));
+  assert.deepEqual(reviewRoute?.condition, {
+    text: "approved = true", language: "text/feel",
+  });
+  assert.equal(evidence.coverage.status, "full");
+  assert.deepEqual([...new Set(evidence.coverage.supported)].sort(), [...new Set(expectedSupported)].sort());
+});
+
+test("Given the bounded DMN profile, extraction retains typed dependencies, policy and ordered raw cells", async () => {
+  const xml = await readFile(fixture("decision-rich.dmn"), "utf8");
+  const evidence = await extractModelXml(xml, options("models/decision-rich.dmn", "model-content"));
+  const byId = new Map(evidence.elements.map(element => [element.id, element]));
+  const referenceTargets = evidence.relationships
+    .map(relation => [...byId.values()].find(element => element.identity === relation.target)?.id);
+  const decisionTable = byId.get("order-table");
+  const ruleRows = evidence.elements.filter(element => element.type === "rule" && element.parent === decisionTable?.identity);
+  const support = JSON.parse(await readFile(fixture("../../schema/models/support.json"), "utf8"));
+  const expectedSupported = support.constructs.filter((item: { family: string; status: string; elements: string[] }) =>
+    item.family === "dmn" && item.status === "semantic-evidence-supported"
+    && item.elements.some((type: string) => evidence.elements.some(element => element.type === type)))
+    .map((item: { id: string }) => item.id);
+
+  assert.ok(byId.has("age-data"));
+  assert.ok(byId.has("threshold-policy"));
+  assert.ok(byId.has("threshold-logic"));
+  assert.ok(byId.has("threshold-parameter"));
+  assert.deepEqual(referenceTargets, ["age-data", "base-decision", "threshold-policy", "approval-policy"]);
+  assert.ok(evidence.relationships.every(relation =>
+    [...byId.values()].find(element => element.identity === relation.source)?.id === "order-decision"));
+  assert.equal(byId.get("age-variable")?.attributes.typeRef, "age-type");
+  assert.equal(decisionTable?.hitPolicy, "COLLECT");
+  assert.equal(decisionTable?.aggregation, "SUM");
+  assert.deepEqual(ruleRows.map(rule => rule.id), ["adult-rule", "minor-rule"]);
+  assert.deepEqual(ruleRows.map(rule => rule.order), [0, 1]);
+  assert.deepEqual(ruleRows[0]?.cells?.map(cell => [cell.kind, cell.order, cell.text]), [
+    ["input", 0, ">= 18"],
+    ["output", 1, "2"],
+  ]);
+  assert.equal(byId.get("threshold-expression")?.content?.language, "https://www.omg.org/spec/FEEL/");
+  assert.equal(byId.get("threshold-expression")?.content?.text, "age >= 18");
+  assert.deepEqual([...new Set(evidence.coverage.supported)].sort(), [...new Set(expectedSupported)].sort());
+  assert.equal(evidence.coverage.status, "full");
+});
+
+test("Given an imported callActivity target, extraction retains the call with explicit partial coverage", async () => {
+  const xml = '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"><bpmn:process id="local"><bpmn:callActivity id="call" calledElement="external:process"/></bpmn:process></bpmn:definitions>';
+  const evidence = await extractModelXml(xml, options("imported-call.bpmn"));
+  assert.equal(evidence.coverage.status, "partial");
+  assert.ok(evidence.diagnostics.some(item => item.code === "external-called-element"));
+  const unresolved = xml.replace("external:process", "missing-process");
+  const unresolvedEvidence = await extractModelXml(unresolved, options("unresolved-call.bpmn"));
+  assert.equal(unresolvedEvidence.coverage.status, "partial");
+  assert.ok(unresolvedEvidence.diagnostics.some(item => item.code === "unresolved-called-element"));
+});
+
+test("Given the machine-readable census, each encountered core construct is supported or diagnosed", async () => {
+  const support = JSON.parse(await readFile(fixture("../../schema/models/support.json"), "utf8"));
+  const cases = [
+    ["bpmn", "workflow.bpmn", "http://www.omg.org/spec/BPMN/20100524/MODEL"],
+    ["dmn", "decision-rich.dmn", "https://www.omg.org/spec/DMN/20191111/MODEL/"],
+  ] as const;
+  for (const [family, file, namespace] of cases) {
+    const xml = await readFile(fixture(file), "utf8");
+    const evidence = await extractModelXml(xml, options(`models/${file}`, "model-content"));
+    for (const element of evidence.elements.filter(item => item.namespace === namespace)) {
+      const entries = support.constructs.filter((item: { family: string; namespace: string; elements: string[] }) =>
+        item.family === family && item.namespace === namespace && item.elements.includes(element.type));
+      const supportedEntries = entries.filter((item: { status: string }) => item.status === "semantic-evidence-supported");
+      if (supportedEntries.length) {
+        for (const item of supportedEntries) assert.ok(evidence.coverage.supported.includes(item.id));
+      } else {
+        assert.ok(evidence.diagnostics.some(item => item.source?.element === element.id),
+          `Missing census disposition for ${family}:${element.type}/${element.id}`);
+      }
+    }
+  }
+  const unknown = '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"><bpmn:unlistedThing id="future"/></bpmn:definitions>';
+  const partial = await extractModelXml(unknown, options("unlisted.bpmn"));
+  assert.equal(partial.coverage.status, "partial");
+  assert.ok(partial.diagnostics.some(item => item.code === "unsupported-model-element" && item.source?.element === "future"));
 });
 
 test("Given a real fixture and schema, the standalone command emits valid JSON evidence", async () => {

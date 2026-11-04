@@ -2,40 +2,35 @@ import { createHash } from "node:crypto";
 import { Worker } from "node:worker_threads";
 import { BpmnModdle } from "bpmn-moddle";
 import { DmnModdle } from "dmn-moddle";
+import modelSupport from "../../../../schema/models/support.json" with { type: "json" };
 import { BPMN_NAMESPACE, DEFAULT_XML_LIMITS, DMN_13_NAMESPACE, ModelXmlError, parseXml, type XmlNode } from "./xml.ts";
 import type { ModelDiagnostic, ModelElement, ModelEvidence, ModelExtractionOptions, ModelRelationship } from "./profile.ts";
 
 type ModelKind = "bpmn" | "dmn";
 type ModelParser = { fromXML(xml: string, options?: { lax?: boolean }): Promise<{ warnings: Error[] }> };
+type ConstructStatus = "semantic-evidence-supported" | "opaque-partial" | "rejected";
+interface SupportConstruct {
+  id: string;
+  family: ModelKind;
+  namespace: string;
+  elements: string[];
+  status: ConstructStatus;
+  capturesText?: boolean;
+  matchesUnlisted?: boolean;
+}
 
-const BPMN_TYPES = new Set([
-  "definitions", "process", "collaboration", "participant", "laneSet", "lane", "sequenceFlow", "messageFlow",
-  "association", "startEvent", "endEvent", "intermediateCatchEvent", "intermediateThrowEvent", "boundaryEvent",
-  "task", "userTask", "serviceTask", "scriptTask", "manualTask", "businessRuleTask", "sendTask", "receiveTask",
-  "exclusiveGateway", "inclusiveGateway", "parallelGateway", "eventBasedGateway", "complexGateway", "subProcess",
-  "transaction", "callActivity", "adHocSubProcess", "dataObject", "dataObjectReference", "dataStoreReference",
-  "dataInput", "dataOutput", "property", "textAnnotation", "group", "category", "categoryValue",
-  "error", "escalation", "signal", "message", "itemDefinition", "resource", "resourceRole", "resourceParameter",
-  "extensionElements", "conditionExpression", "formalExpression", "documentation", "ioSpecification", "dataInputAssociation",
-  "dataOutputAssociation", "inputSet", "outputSet", "potentialOwner", "humanPerformer", "performer", "loopCharacteristics",
-  "multiInstanceLoopCharacteristics", "standardLoopCharacteristics", "timerEventDefinition", "messageEventDefinition",
-  "signalEventDefinition", "errorEventDefinition", "escalationEventDefinition", "terminateEventDefinition",
-  "cancelEventDefinition", "compensateEventDefinition", "conditionalEventDefinition", "linkEventDefinition",
-  "eventDefinition", "operation", "interface", "inputOutputSpecification", "inputSet", "outputSet",
-]);
-
-const DMN_TYPES = new Set([
-  "definitions", "decision", "decisionTable", "input", "inputExpression", "output", "rule", "inputEntry", "outputEntry",
-  "literalExpression", "informationRequirement", "knowledgeRequirement", "authorityRequirement", "requiredInput",
-  "requiredDecision", "requiredKnowledge", "knowledgeSource", "businessKnowledgeModel", "invocation", "binding",
-  "context", "contextEntry", "itemDefinition", "itemComponent", "variable", "allowedValues", "functionDefinition",
-  "relation", "list", "extensionElements", "decisionService", "encapsulatedDecision", "outputDecision",
-]);
+const SUPPORT_CONSTRUCTS = (modelSupport as { constructs: SupportConstruct[] }).constructs;
 
 const RELATIONSHIP_TYPES = new Map<string, ModelRelationship["kind"]>([
   ["sequenceFlow", "sequenceFlow"],
   ["messageFlow", "messageFlow"],
   ["association", "association"],
+]);
+const FLOW_NODE_TYPES = new Set([
+  "task", "userTask", "serviceTask", "scriptTask", "manualTask", "businessRuleTask", "sendTask", "receiveTask",
+  "startEvent", "endEvent", "intermediateCatchEvent", "intermediateThrowEvent", "boundaryEvent", "exclusiveGateway",
+  "inclusiveGateway", "parallelGateway", "eventBasedGateway", "complexGateway", "subProcess", "transaction",
+  "adHocSubProcess", "callActivity",
 ]);
 
 function hash(value: string): string {
@@ -101,6 +96,27 @@ function collectNodes(root: XmlNode): XmlNode[] {
   };
   visit(root);
   return result;
+}
+
+function constructsFor(kind: ModelKind, namespace: string, element: string): SupportConstruct[] {
+  const rows = SUPPORT_CONSTRUCTS.filter(item => item.family === kind && (item.namespace === namespace || item.namespace === "*"));
+  const exact = rows.filter(item => item.elements.includes(element));
+  return exact.length ? exact : rows.filter(item => item.matchesUnlisted || item.namespace === "*");
+}
+
+function addPartialDiagnostic(
+  diagnostics: ModelDiagnostic[],
+  code: string,
+  message: string,
+  unitPath: string,
+  element?: string,
+): void {
+  diagnostics.push({
+    code,
+    message,
+    disposition: "partial",
+    source: { artifact: unitPath, ...(element ? { element } : {}) },
+  });
 }
 
 interface ModelWorkerResult {
@@ -187,7 +203,6 @@ export async function extractModelXmlInProcess(
     throw new ModelXmlError("xml-time-limit", `XML extraction budget exceeded (${DEFAULT_XML_LIMITS.maxParseMilliseconds}ms)`);
   }
   const expectedNamespace = kind === "bpmn" ? BPMN_NAMESPACE : DMN_13_NAMESPACE;
-  const supportedTypes = kind === "bpmn" ? BPMN_TYPES : DMN_TYPES;
   const contentProfile = options.contentProfile ?? "structural";
   const nodes = collectNodes(root);
   const idNodes = new Map<string, XmlNode>();
@@ -197,7 +212,7 @@ export async function extractModelXmlInProcess(
   const generatedIds = new Set<string>();
 
   for (const node of nodes) {
-    if (node.localName.toLowerCase() === "script") {
+    if (node.namespace === BPMN_NAMESPACE && node.localName === "script") {
       throw new ModelXmlError("xml-script-disabled", "Executable script elements are not supported or evaluated");
     }
     const explicitId = attribute(node, "id");
@@ -226,9 +241,17 @@ export async function extractModelXmlInProcess(
   const relationships: ModelRelationship[] = [];
   for (const node of nodes) {
     if (node.namespace === expectedNamespace && node.localName === "text") continue;
-    const nodeKind = node.namespace === expectedNamespace
-      ? supportedTypes.has(node.localName) ? kind : "unsupported"
-      : "opaqueExtension";
+    const constructRows = constructsFor(kind, node.namespace, node.localName);
+    const status = constructRows.some(item => item.status === "rejected")
+      ? "rejected"
+      : constructRows.some(item => item.status === "semantic-evidence-supported")
+        ? "semantic-evidence-supported" : "opaque-partial";
+    if (status === "rejected") {
+      throw new ModelXmlError("unsupported-rejected-construct", "Encountered a construct excluded from authored-model extraction");
+    }
+    const nodeKind = node.namespace !== expectedNamespace
+      ? "opaqueExtension"
+      : status === "semantic-evidence-supported" ? kind : "unsupported";
     if (nodeKind === "unsupported" || nodeKind === "opaqueExtension") {
       diagnostics.push({
         code: nodeKind === "unsupported" ? "unsupported-model-element" : "opaque-extension-content",
@@ -275,10 +298,10 @@ export async function extractModelXmlInProcess(
         });
     }
     const textContent = nodeContent(node);
-    const capturesText = node.children.some((child) => child.namespace === node.namespace && child.localName === "text") || Boolean(node.text.trim());
+    const capturesText = node.namespace !== expectedNamespace || constructRows.some(item => item.capturesText);
     if (capturesText && textContent.trim()) {
       if (contentProfile === "model-content") {
-        const language = attribute(node, "language");
+        const language = attribute(node, "expressionLanguage") ?? attribute(node, "language");
         element.content = { text: textContent, ...(language ? { language } : {}) };
       } else {
         diagnostics.push({
@@ -291,18 +314,18 @@ export async function extractModelXmlInProcess(
     }
     elements.push(element);
 
-    const relationKind = kind === "bpmn" && node.namespace === BPMN_NAMESPACE ? RELATIONSHIP_TYPES.get(node.localName) : undefined;
+    const relationKind = node.namespace === BPMN_NAMESPACE ? RELATIONSHIP_TYPES.get(node.localName) : undefined;
     const sourceRef = attribute(node, "sourceRef");
     const targetRef = attribute(node, "targetRef");
     if (relationKind) {
       if (!sourceRef || !targetRef) {
         throw new ModelXmlError("incomplete-model-reference", "Flow requires sourceRef and targetRef");
       }
-      const sourceNode = idNodes.get(sourceRef);
-      const targetNode = idNodes.get(targetRef);
-      if (!sourceNode || !targetNode) {
-        throw new ModelXmlError("dangling-model-reference", `Dangling ${node.localName} reference`);
-      }
+      const expectedTypes = node.localName === "sequenceFlow"
+        ? [...FLOW_NODE_TYPES]
+        : node.localName === "messageFlow" ? [...FLOW_NODE_TYPES, "participant"] : [];
+      const sourceNode = requireReferenceTarget(sourceRef, idNodes, BPMN_NAMESPACE, expectedTypes, node.localName);
+      const targetNode = requireReferenceTarget(targetRef, idNodes, BPMN_NAMESPACE, expectedTypes, node.localName);
       const condition = node.children.find((child) => child.namespace === BPMN_NAMESPACE && child.localName === "conditionExpression");
       relationships.push({
         identity: `relationship:${hash(`${options.repositoryId}\0${options.unitPath}\0${id}`)}`,
@@ -319,25 +342,75 @@ export async function extractModelXmlInProcess(
       });
     }
 
-    const processRef = kind === "bpmn" && node.namespace === BPMN_NAMESPACE && node.localName === "participant" ? attribute(node, "processRef") : undefined;
-    if (processRef) addReference(node, processRef, id, idNodes, elementIdentities, relationships, options);
+    const processRef = node.namespace === BPMN_NAMESPACE && node.localName === "participant" ? attribute(node, "processRef") : undefined;
+    if (processRef) {
+      addReference(node, processRef, id, idNodes, elementIdentities, relationships, options, BPMN_NAMESPACE, ["process"]);
+    }
+    if (node.namespace === BPMN_NAMESPACE && node.localName === "dataObjectReference") {
+      const reference = attribute(node, "dataObjectRef");
+      if (reference) addReference(node, reference, id, idNodes, elementIdentities, relationships, options, BPMN_NAMESPACE, ["dataObject"]);
+    }
+    if (node.namespace === BPMN_NAMESPACE && node.localName === "dataStoreReference") {
+      const reference = attribute(node, "dataStoreRef");
+      if (reference) addReference(node, reference, id, idNodes, elementIdentities, relationships, options, BPMN_NAMESPACE, ["dataStore"]);
+    }
     if (kind === "bpmn" && node.namespace === BPMN_NAMESPACE && node.localName === "lane") {
       for (const reference of node.children.filter((child) => child.namespace === BPMN_NAMESPACE && child.localName === "flowNodeRef")) {
-        addReference(node, reference.text.trim(), `${id}:${reference.text.trim()}`, idNodes, elementIdentities, relationships, options);
+        addReference(node, reference.text.trim(), `${id}:${reference.text.trim()}`, idNodes, elementIdentities, relationships, options, BPMN_NAMESPACE, [...FLOW_NODE_TYPES]);
       }
     }
-    if (kind === "dmn" && node.namespace === DMN_13_NAMESPACE && ["requiredInput", "requiredDecision", "requiredKnowledge"].includes(node.localName)) {
+    if (node.namespace === BPMN_NAMESPACE && node.localName === "callActivity") {
+      const calledElement = attribute(node, "calledElement");
+      if (calledElement) {
+        const targetId = calledElement.startsWith("#") ? calledElement.slice(1) : calledElement;
+        const target = !calledElement.includes(":") && !calledElement.includes("/") ? idNodes.get(targetId) : undefined;
+        if (target?.namespace === BPMN_NAMESPACE && target.localName === "process") {
+          addReference(node, targetId, id, idNodes, elementIdentities, relationships, options, BPMN_NAMESPACE, ["process"]);
+        } else {
+          const external = calledElement.includes(":") || calledElement.includes("/")
+            || (calledElement.includes("#") && !calledElement.startsWith("#"));
+          addPartialDiagnostic(
+            diagnostics,
+            external ? "external-called-element" : "unresolved-called-element",
+            "Called process is not resolved within this document and is not imported",
+            options.unitPath,
+            id,
+          );
+        }
+      }
+    }
+    if (kind === "dmn" && node.namespace === DMN_13_NAMESPACE
+      && ["requiredInput", "requiredDecision", "requiredKnowledge", "requiredAuthority"].includes(node.localName)) {
       const href = attribute(node, "href");
       if (!href) throw new ModelXmlError("incomplete-model-reference", "Missing model reference href");
-      if (href.startsWith("#")) addReference(node.parent ?? node, href.slice(1), id, idNodes, elementIdentities, relationships, options);
-      else diagnostics.push({
-        code: "external-model-reference", message: "External model reference retained but not resolved or retrieved",
-        disposition: "partial", source: { artifact: options.unitPath, element: id },
-      });
+      if (href.startsWith("#")) {
+        const targetTypes: Record<string, string[]> = {
+          requiredInput: ["inputData"],
+          requiredDecision: ["decision"],
+          requiredKnowledge: ["businessKnowledgeModel"],
+          requiredAuthority: ["knowledgeSource"],
+        };
+        let owner = node.parent ?? node;
+        while (owner.parent && owner.localName !== "decision" && owner.localName !== "businessKnowledgeModel") {
+          owner = owner.parent;
+        }
+        addReference(owner, href.slice(1), id, idNodes, elementIdentities, relationships, options, DMN_13_NAMESPACE, targetTypes[node.localName] ?? []);
+      } else {
+        addPartialDiagnostic(
+          diagnostics, "external-model-reference",
+          "External model reference retained but not resolved or retrieved",
+          options.unitPath, id,
+        );
+      }
     }
   }
 
   const limitations = [...new Set(diagnostics.map(({ code }) => code))].sort();
+  const supported = [...new Set(SUPPORT_CONSTRUCTS.filter(item =>
+    item.family === kind
+    && item.status === "semantic-evidence-supported"
+    && nodes.some(node => node.namespace === item.namespace && item.elements.includes(node.localName)))
+    .map(item => item.id))].sort();
   return {
     schema: "ce.models.v1",
     repositoryId: options.repositoryId,
@@ -347,9 +420,7 @@ export async function extractModelXmlInProcess(
     contentProfile,
     coverage: {
       status: diagnostics.length === 0 ? "full" : "partial",
-      supported: kind === "bpmn"
-        ? ["BPMN definitions, participants, process structure, flow nodes, sequence/message flows, references, conditions"]
-        : ["DMN 1.3 definitions, decisions, decision tables, inputs, outputs, ordered rules and cells"],
+      supported,
       limitations,
     },
     diagnostics,
@@ -366,9 +437,10 @@ function addReference(
   elementIdentities: Map<XmlNode, string>,
   relationships: ModelRelationship[],
   options: ModelExtractionOptions,
+  expectedNamespace: string,
+  expectedTypes: string[],
 ): void {
-  const targetNode = idNodes.get(reference);
-  if (!targetNode) throw new ModelXmlError("dangling-model-reference", "Dangling model reference");
+  const targetNode = requireReferenceTarget(reference, idNodes, expectedNamespace, expectedTypes);
   relationships.push({
     identity: `relationship:${hash(`${options.repositoryId}\0${options.unitPath}\0${identityPart}\0${reference}`)}`,
     kind: "reference",
@@ -376,4 +448,19 @@ function addReference(
     target: elementIdentities.get(targetNode)!,
     order: relationships.length,
   });
+}
+
+function requireReferenceTarget(
+  reference: string,
+  idNodes: Map<string, XmlNode>,
+  expectedNamespace: string,
+  expectedTypes: string[],
+  relationKind = "model",
+): XmlNode {
+  const target = idNodes.get(reference);
+  if (!target) throw new ModelXmlError("dangling-model-reference", `Dangling ${relationKind} reference`);
+  if (target.namespace !== expectedNamespace || (expectedTypes.length > 0 && !expectedTypes.includes(target.localName))) {
+    throw new ModelXmlError("invalid-model-reference-target", `Invalid ${relationKind} reference target type`);
+  }
+  return target;
 }

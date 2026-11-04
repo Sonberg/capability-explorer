@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="workflow-definitions" targetNamespace="urn:example:workflow">
+  <bpmn:process id="order-process" isExecutable="false">
+    <bpmn:laneSet id="order-lanes">
+      <bpmn:lane id="review-lane" name="Review">
+        <bpmn:flowNodeRef>start</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>review-task</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>route-gateway</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>call-child</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>finish</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="start"/>
+    <bpmn:userTask id="review-task"/>
+    <bpmn:exclusiveGateway id="route-gateway"/>
+    <bpmn:subProcess id="nested-work">
+      <bpmn:task id="nested-task"/>
+    </bpmn:subProcess>
+    <bpmn:callActivity id="call-child" calledElement="child-process"/>
+    <bpmn:endEvent id="finish"/>
+    <bpmn:sequenceFlow id="start-review" sourceRef="start" targetRef="review-task"/>
+    <bpmn:sequenceFlow id="review-route" sourceRef="review-task" targetRef="route-gateway">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="text/feel">approved = true</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="route-call" sourceRef="route-gateway" targetRef="call-child"/>
+    <bpmn:sequenceFlow id="call-finish" sourceRef="call-child" targetRef="finish"/>
+    <bpmn:dataObject id="review-record"/>
+    <bpmn:dataObjectReference id="review-record-ref" dataObjectRef="review-record"/>
+  </bpmn:process>
+  <bpmn:process id="child-process">
+    <bpmn:task id="child-task"/>
+  </bpmn:process>
+  <bpmn:collaboration id="order-collaboration">
+    <bpmn:participant id="order-participant" processRef="order-process"/>
+    <bpmn:participant id="child-participant" processRef="child-process"/>
+    <bpmn:messageFlow id="review-message" sourceRef="order-participant" targetRef="child-participant"/>
+  </bpmn:collaboration>
+</bpmn:definitions>

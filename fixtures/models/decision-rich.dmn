@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dmn:definitions xmlns:dmn="https://www.omg.org/spec/DMN/20191111/MODEL/" id="decision-definitions" name="Order Decision" namespace="urn:example:decision">
+  <dmn:itemDefinition id="age-type" name="Age" typeRef="number"/>
+  <dmn:inputData id="age-data" name="Age">
+    <dmn:variable id="age-variable" name="age" typeRef="age-type"/>
+  </dmn:inputData>
+  <dmn:businessKnowledgeModel id="threshold-policy" name="Threshold policy">
+    <dmn:variable id="threshold-variable" name="threshold" typeRef="number"/>
+    <dmn:encapsulatedLogic id="threshold-logic" kind="FEEL">
+      <dmn:formalParameter id="threshold-parameter" name="age" typeRef="age-type"/>
+      <dmn:literalExpression id="threshold-expression" typeRef="boolean" expressionLanguage="https://www.omg.org/spec/FEEL/">
+        <dmn:text>age &gt;= 18</dmn:text>
+      </dmn:literalExpression>
+    </dmn:encapsulatedLogic>
+  </dmn:businessKnowledgeModel>
+  <dmn:knowledgeSource id="approval-policy" name="Approval policy"/>
+  <dmn:decision id="base-decision" name="Base decision">
+    <dmn:variable id="base-variable" name="base" typeRef="number"/>
+    <dmn:decisionTable id="base-table">
+      <dmn:input id="base-input" label="Age">
+        <dmn:inputExpression id="base-input-expression" typeRef="age-type">
+          <dmn:text>age</dmn:text>
+        </dmn:inputExpression>
+      </dmn:input>
+      <dmn:output id="base-output" name="baseResult" typeRef="number"/>
+      <dmn:rule id="base-rule">
+        <dmn:inputEntry id="base-test"><dmn:text>&gt;= 18</dmn:text></dmn:inputEntry>
+        <dmn:outputEntry id="base-result"><dmn:text>1</dmn:text></dmn:outputEntry>
+      </dmn:rule>
+    </dmn:decisionTable>
+  </dmn:decision>
+  <dmn:decision id="order-decision" name="Order decision">
+    <dmn:variable id="order-variable" name="order" typeRef="number"/>
+    <dmn:informationRequirement id="age-requirement">
+      <dmn:requiredInput href="#age-data"/>
+    </dmn:informationRequirement>
+    <dmn:informationRequirement id="base-requirement">
+      <dmn:requiredDecision href="#base-decision"/>
+    </dmn:informationRequirement>
+    <dmn:knowledgeRequirement id="policy-requirement">
+      <dmn:requiredKnowledge href="#threshold-policy"/>
+    </dmn:knowledgeRequirement>
+    <dmn:authorityRequirement id="authority-requirement">
+      <dmn:requiredAuthority href="#approval-policy"/>
+    </dmn:authorityRequirement>
+    <dmn:decisionTable id="order-table" hitPolicy="COLLECT" aggregation="SUM">
+      <dmn:input id="order-age-input" label="Age">
+        <dmn:inputExpression id="order-age-expression" typeRef="age-type" expressionLanguage="https://www.omg.org/spec/FEEL/">
+          <dmn:text>age</dmn:text>
+        </dmn:inputExpression>
+      </dmn:input>
+      <dmn:output id="order-output" name="amount" typeRef="number"/>
+      <dmn:rule id="adult-rule">
+        <dmn:inputEntry id="adult-test"><dmn:text>&gt;= 18</dmn:text></dmn:inputEntry>
+        <dmn:outputEntry id="adult-result"><dmn:text>2</dmn:text></dmn:outputEntry>
+      </dmn:rule>
+      <dmn:rule id="minor-rule">
+        <dmn:inputEntry id="minor-test"><dmn:text>&lt; 18</dmn:text></dmn:inputEntry>
+        <dmn:outputEntry id="minor-result"><dmn:text>0</dmn:text></dmn:outputEntry>
+      </dmn:rule>
+    </dmn:decisionTable>
+  </dmn:decision>
+</dmn:definitions>
