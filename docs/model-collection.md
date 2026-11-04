@@ -152,6 +152,11 @@ An identical, byte-verified target is reused; a conflicting or corrupted target
 is not replaced. Required failures do not produce a completed collection.
 Optional failures remain explicit partial dispositions. Attempt observation
 time/identity is not the immutable content hash, and validation is not publication.
+Focused TypeScript consumer cases validate changed attempt metadata against an
+unchanged content hash and explicit optional-failure dispositions. Existing .NET
+producer tests cover required-input failure, staging cleanup and pre-cancelled
+export. Pre-cancellation does not establish mid-export cancellation or arbitrary
+crash recovery; see the [acceptance mapping](plans/collector-handoff-acceptance.md).
 The manifest declares its profile-specific canonicalization recipe. Both
 consumers use ordinal keys and fully escaped UTF-16 code units, without Unicode
 normalization; artifact bytes remain unchanged. This is not an RFC 8785 claim.

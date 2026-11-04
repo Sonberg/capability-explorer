@@ -11,6 +11,21 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Proposed MADR-0036 describes interface-configurable evidence retention with
+  policy minimums/defaults, verified central custody, age-based historical
+  resolution and explicit archival/deletion safeguards. Numeric durations and
+  enforcement remain unimplemented pending policy-owner decisions.
+
+- Focused independent TypeScript collection-consumer acceptance for attempt
+  metadata versus immutable content identity and explicit optional partial
+  results. Existing producer failure/cleanup proof is mapped separately from
+  unproven mid-export cancellation and crash recovery.
+
+- Proposed MADR-0035 requires scoped quantitative SLOs for performance and
+  measurable operational-quality issues, with reproducible workloads, resource
+  envelopes, failure accounting and an optimization stop rule. Functional
+  correctness gates remain mandatory; policy is not measured compliance.
+
 - Pinned, non-root Node/.NET development container without a default engine
   socket, credential mounts or automatic service provisioning. Trusted native
   build/restore/frontend/backend goals work without an installed container

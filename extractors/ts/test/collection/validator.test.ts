@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { cp, mkdir, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -9,6 +9,13 @@ import { validateCollectionBundle } from "../../src/collection/validator.ts";
 import { canonicalContentBytes } from "../../src/collection/canonicalContent.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/valid", import.meta.url));
+const projectRoot = fileURLToPath(new URL("../../../../", import.meta.url));
+
+async function createWorkspace(): Promise<string> {
+  const root = join(projectRoot, ".sandbox-cache", `collection-validator-${randomUUID()}`);
+  await mkdir(root, { recursive: true });
+  return root;
+}
 
 test("independently validates a sealed two-repository collection", async () => {
   const result = await validateCollectionBundle(fixture);
@@ -20,6 +27,64 @@ test("recomputes cross-runtime identity for Unicode and JSON metacharacters", as
   const result = await validateCollectionBundle(fileURLToPath(new URL("./fixtures/unicode", import.meta.url)));
   assert.equal(result.ok, true, result.problems.map((problem) => problem.message).join("; "));
   assert.equal(result.contentSha256, "01ec741e70af99231a58b85d9f241b0bee4bb158573697df39f20d5ba8f79044");
+});
+
+test("attempt metadata changes do not change collection content identity", async () => {
+  const root = await createWorkspace();
+  try {
+    await cp(fixture, root, { recursive: true });
+    const original = await validateCollectionBundle(root);
+    const attemptPath = join(root, "attempt.json");
+    const attempt = JSON.parse(await readFile(attemptPath, "utf8")) as {
+      attemptId: string;
+      observedAt: string;
+    };
+    attempt.attemptId = "f".repeat(32);
+    attempt.observedAt = "2026-11-05T00:00:00Z";
+    await writeFile(attemptPath, JSON.stringify(attempt));
+
+    const retried = await validateCollectionBundle(root);
+
+    assert.equal(original.ok, true, original.problems.map((problem) => problem.message).join("; "));
+    assert.equal(retried.ok, true, retried.problems.map((problem) => problem.message).join("; "));
+    assert.equal(retried.contentSha256, original.contentSha256);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("accepts an explicitly partial optional failure without its artifact", async () => {
+  const root = await createWorkspace();
+  try {
+    await cp(fixture, root, { recursive: true });
+    const manifestPath = join(root, "collection.json");
+    const envelope = JSON.parse(await readFile(manifestPath, "utf8")) as {
+      contentSha256: string;
+      content: {
+        inputs: Array<{
+          required: boolean;
+          status: string;
+          artifactPath: string | null;
+        }>;
+      };
+    };
+    const failed = envelope.content.inputs[0]!;
+    assert.ok(failed.artifactPath);
+    await rm(join(root, failed.artifactPath), { force: true });
+    failed.required = false;
+    failed.status = "optional-failed";
+    failed.artifactPath = null;
+    envelope.contentSha256 = createHash("sha256")
+      .update(canonicalContentBytes(envelope.content)).digest("hex");
+    await writeFile(manifestPath, JSON.stringify(envelope));
+
+    const result = await validateCollectionBundle(root);
+
+    assert.equal(result.ok, true, result.problems.map((problem) => problem.message).join("; "));
+    assert.equal(result.contentSha256, envelope.contentSha256);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("rejects artifact bytes altered after the descriptor was sealed", async () => {
