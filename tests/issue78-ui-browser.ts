@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { access, readFile, readdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { gzipSync } from "node:zlib";
@@ -8,7 +8,8 @@ import { build, preview } from "../platform/src/CapabilityExplorer.Explorer/clie
 
 const root = resolve(import.meta.dirname, "..");
 const client = resolve(root, "platform/src/CapabilityExplorer.Explorer/client");
-const artifacts = resolve(root, "../issue78-execution");
+const artifacts = resolve(root, ".sandbox-cache/issue78-evidence");
+await mkdir(artifacts, { recursive: true });
 const output = resolve(artifacts, "issue78-ui-implementation-browser");
 const fixture = resolve(root, "tests/fixtures/issue78");
 let playwrightModule: string | undefined;

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { access, readFile, readdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -10,7 +10,8 @@ import { buildModelFrame } from '../platform/src/CapabilityExplorer.Explorer/cli
 
 const root = resolve(import.meta.dirname, '..');
 const client = resolve(root, 'platform/src/CapabilityExplorer.Explorer/client');
-const artifacts = resolve(root, '../issue78-execution');
+const artifacts = resolve(root, '.sandbox-cache/issue78-evidence');
+await mkdir(artifacts, { recursive: true });
 const fixtureDirectory = resolve(root, 'tests/fixtures/issue78');
 const staticOutput = resolve(artifacts, 'issue78-ui-production-browser');
 const browserModuleCandidates = [
