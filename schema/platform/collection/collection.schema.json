@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://capability-explorer/schema/platform/collection/collection.schema.json",
+  "title": "ce.collection.v1 local bundle",
+  "description": "Closed local collector profile. Shape and digest validation do not authenticate central authority or prove enrollment rights.",
+  "$ref": "#/$defs/envelope",
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "commit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$" },
+    "repositoryId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$" },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*[/]$)[^\\\\:\\u0000-\\u001f\\u007f]+$"
+    },
+    "envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "contentSha256", "content"],
+      "properties": {
+        "schema": { "const": "ce.collection.v1" },
+        "contentSha256": { "$ref": "#/$defs/sha256" },
+        "content": { "$ref": "#/$defs/content" }
+      }
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "recipeSha256", "configSha256", "policySha256", "repositories", "inputs"],
+      "properties": {
+        "schema": { "const": "ce.collection.v1" },
+        "recipeSha256": { "$ref": "#/$defs/sha256" },
+        "configSha256": { "$ref": "#/$defs/sha256" },
+        "policySha256": { "$ref": "#/$defs/sha256" },
+        "repositories": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/repository" }
+        },
+        "inputs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": { "$ref": "#/$defs/input" }
+        }
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repositoryId", "providerId", "producerId", "tenantRef", "rightsRef", "commitSha", "treeSha", "permittedContentProfiles"],
+      "properties": {
+        "repositoryId": { "$ref": "#/$defs/repositoryId" },
+        "providerId": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$" },
+        "producerId": { "$ref": "#/$defs/id" },
+        "tenantRef": { "$ref": "#/$defs/id" },
+        "rightsRef": { "$ref": "#/$defs/id" },
+        "commitSha": { "$ref": "#/$defs/commit" },
+        "treeSha": { "$ref": "#/$defs/commit" },
+        "permittedContentProfiles": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repositoryId", "profile", "unitPath", "required", "status", "artifactPath", "sha256", "byteLength", "contentProfile"],
+      "properties": {
+        "repositoryId": { "$ref": "#/$defs/repositoryId" },
+        "profile": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "unitPath": { "$ref": "#/$defs/path" },
+        "required": { "type": "boolean" },
+        "status": { "enum": ["included", "optional-failed"] },
+        "artifactPath": { "type": ["string", "null"], "maxLength": 1024 },
+        "sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "byteLength": { "type": "integer", "minimum": 1, "maximum": 16777216 },
+        "contentProfile": { "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "included" } }, "required": ["status"] },
+          "then": {
+            "properties": { "artifactPath": { "type": "string", "pattern": "^artifacts/" }, "sha256": { "$ref": "#/$defs/sha256" } }
+          },
+          "else": {
+            "properties": { "required": { "const": false }, "artifactPath": { "type": "null" } }
+          }
+        }
+      ]
+    },
+    "attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attemptId", "observedAt"],
+      "properties": {
+        "attemptId": { "type": "string", "pattern": "^[a-f0-9]{32}$" },
+        "observedAt": { "type": "string", "format": "date-time" }
+      },
+      "description": "Attempt/time metadata is not part of content identity."
+    },
+    "problem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "$ref": "#/$defs/id" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 512 }
+      }
+    },
+    "modelProfileCommon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "repositoryId", "commitSha", "unitPath", "sourceSha256", "contentProfile", "coverage", "diagnostics", "elements", "relationships"],
+      "properties": {
+        "schema": { "const": "ce.models.v1" },
+        "repositoryId": { "$ref": "#/$defs/repositoryId" },
+        "commitSha": { "$ref": "#/$defs/commit" },
+        "unitPath": { "$ref": "#/$defs/path" },
+        "sourceSha256": { "$ref": "#/$defs/sha256" },
+        "contentProfile": { "enum": ["structural", "model-content"] },
+        "coverage": { "$ref": "#/$defs/coverage" },
+        "diagnostics": { "type": "array", "maxItems": 8192 },
+        "elements": { "type": "array", "maxItems": 65536 },
+        "relationships": { "type": "array", "maxItems": 131072 }
+      }
+    },
+    "candidateProfileCommon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "recipe", "repositoryId", "commitSha", "unitPath", "sourceSha256", "coverage", "diagnostics", "candidates"],
+      "properties": {
+        "schema": { "const": "ce.candidates.v1" },
+        "recipe": { "const": "roslyn.scalar-guards.v1" },
+        "repositoryId": { "$ref": "#/$defs/repositoryId" },
+        "commitSha": { "$ref": "#/$defs/commit" },
+        "unitPath": { "$ref": "#/$defs/path" },
+        "sourceSha256": { "$ref": "#/$defs/sha256" },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "scope", "supportedMethods", "unsupportedMethods"],
+          "properties": {
+            "status": { "enum": ["full", "partial"] },
+            "scope": { "const": "single-file-intra-method" },
+            "supportedMethods": { "type": "array" },
+            "unsupportedMethods": { "type": "array" }
+          }
+        },
+        "diagnostics": { "type": "array", "maxItems": 8192 },
+        "candidates": { "type": "array", "maxItems": 8192 }
+      },
+      "description": "Common identity only. This profile requires integration with schema/candidates/artifact.schema.json before strict candidate payload conformance."
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "supported", "limitations"],
+      "properties": {
+        "status": { "enum": ["full", "partial"] },
+        "supported": { "type": "array" },
+        "limitations": { "type": "array" }
+      }
+    }
+  }
+}
