@@ -401,6 +401,24 @@ test('Make auto-selection fails clearly when neither engine is installed', t => 
   refused(r, /found neither Docker nor Podman/); assert.equal(f.calls().length, 0);
 });
 
+test('native development works without an engine while sandbox build still refuses', t => {
+  const f = fixture(t, []);
+  writeFileSync(join(f.root, 'engine-free-goals.mk'), [
+    'include config/build/container-engine.mk',
+    '.PHONY: build frontend backend restore restore-dotnet restore-ts restore-ui ui',
+    'build frontend backend restore restore-dotnet restore-ts restore-ui ui:',
+    '\t@true',
+    ''
+  ].join('\n'));
+  for (const goal of ['build', 'frontend', 'backend', 'restore', 'restore-dotnet', 'restore-ts', 'restore-ui', 'ui']) {
+    passed(spawnSync(make, ['-f', 'engine-free-goals.mk', '-n', 'EXECUTION=native', goal], {
+      cwd: f.root, env: f.env, encoding: 'utf8', timeout: 5000 }));
+  }
+  refused(spawnSync(make, ['-f', 'engine-free-goals.mk', 'EXECUTION=sandbox', 'build'], {
+    cwd: f.root, env: f.env, encoding: 'utf8', timeout: 5000 }), /found neither Docker nor Podman/);
+  assert.equal(f.calls().length, 0);
+});
+
 test('bare Make dry-run selects help without doctor or engine commands', t => {
   const f = fixture(t), r = spawnSync(make, ['-n'], {
     cwd: f.root, env: { ...f.env, CE_CONTAINER_ENGINE: 'podman' }, encoding: 'utf8', timeout: 5000 });

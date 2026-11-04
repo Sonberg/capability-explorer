@@ -16,3 +16,18 @@ TestResults/
 
 # Explorer UI build output (built from platform/src/CapabilityExplorer.Explorer/client by `make ui`)
 platform/src/CapabilityExplorer.Explorer/wwwroot/
+
+# Local credentials, agent configuration and coordination runtime state
+.env
+.env.local
+.env.*.local
+/.mcp.json*
+.codex/
+.claude-flow/data/
+.claude-flow/logs/
+.claude-flow/sessions/
+.swarm/
+agentdb.rvf
+agentdb.rvf.*
+ruvector.db
+ruvector.db-*
