@@ -8,7 +8,7 @@
     "config/build/platform.mk": "624eaac4c6f9093035dc59c82510b9ae3f450ecd4a9bc86a70bd15df7d50baad",
     "config/build/container-engine.mk": "abeeaa4526a0d14a9f3e3d3afc1e7f7ca39b9603d72bb6e1ef6a1c8576481d13",
     "config/runtime/images.env": "1128bce98fa3305188df4d75809c643c75ae72a85b518dc8bbcdd4b3cb4af4cd",
-    ".github/workflows/ci.yml": "b78100bfc761086dbc4821598b1cf0e7cf4bc55082ebca8e922f5bfb3736ba9a",
+    ".github/workflows/ci.yml": "3005f8ef13f6af049650f7815af9ef82194f4ed16aab743349c671df163f4bc0",
     "scripts/local-check": "3c14bf537b6515524a91377f99935ec0f4a9ea75e6b9c9f7fed7e3d12264ffe7",
     "scripts/sandbox": "75e51a89d0e52b37daa8bf6bbf7373078cec0904da893d881ff7f0ef6c9e730b",
     "scripts/security-check": "cf188b4c9db3af854a018595bcbb77965c9ad4818f3af6b9d495b995b1f805ef",
