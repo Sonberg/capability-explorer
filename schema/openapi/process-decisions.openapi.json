@@ -1,0 +1,301 @@
+{
+  "openapi": "3.2.1",
+  "jsonSchemaDialect": "https://spec.openapis.org/oas/3.2/dialect/2026-02-26",
+  "info": {
+    "title": "Capability Explorer process and decision reads",
+    "version": "0.1.0-design",
+    "description": "Design-only immutable product read surface. Authored models, unreviewed candidates, evidence, coverage, diagnostics, and freshness are presented without asserting business truth or publishing a service."
+  },
+  "x-design-only": true,
+  "x-deployment-blockers": [
+    "Product API owner, snapshot lifecycle, and stable public identifiers are unresolved.",
+    "Authentication, repository-level authorization, tenant scope, and response-count side-channel policy are unresolved.",
+    "A missing OpenAPI security requirement is not approval for anonymous exposure; deployment remains blocked."
+  ],
+  "x-product-semantics": "Each result is pinned to an immutable snapshot and retains a separate revision for every repository. No aggregate/global Git commit is invented. Candidate records remain unreviewed and non-executable; names, similarity, and viewpoint filters do not establish authorization, DDD ownership, or accepted business meaning.",
+  "paths": {
+    "/v1/processes": {
+      "get": {
+        "operationId": "listProcesses",
+        "summary": "List process views from an immutable snapshot",
+        "parameters": [
+          { "$ref": "#/components/parameters/SnapshotId" },
+          { "$ref": "#/components/parameters/Limit" },
+          { "$ref": "#/components/parameters/Cursor" },
+          {
+            "name": "repositoryId",
+            "in": "query",
+            "description": "Optional authorized repository filter; it is not an authorization grant.",
+            "schema": { "$ref": "#/components/schemas/RepositoryId" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stable bounded page from the selected snapshot.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProcessPage" },
+                "examples": {
+                  "synthetic": { "$ref": "#/components/examples/ProcessPage" }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Snapshot or process is not visible in the caller's authorized scope.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Problem" } } }
+          }
+        }
+      }
+    },
+    "/v1/processes/{processId}": {
+      "get": {
+        "operationId": "getProcess",
+        "summary": "Read one process view from an immutable snapshot",
+        "parameters": [
+          { "$ref": "#/components/parameters/ProcessId" },
+          { "$ref": "#/components/parameters/SnapshotId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authored process intent, separate unreviewed candidates, source evidence, coverage, diagnostics, and freshness.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProcessResource" },
+                "examples": { "synthetic": { "$ref": "#/components/examples/ProcessResource" } }
+              }
+            }
+          },
+          "404": { "description": "Not found in the caller's authorized snapshot.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Problem" } } } }
+        }
+      }
+    },
+    "/v1/decisions": {
+      "get": {
+        "operationId": "listDecisions",
+        "summary": "List decision views from an immutable snapshot",
+        "parameters": [
+          { "$ref": "#/components/parameters/SnapshotId" },
+          { "$ref": "#/components/parameters/Limit" },
+          { "$ref": "#/components/parameters/Cursor" },
+          {
+            "name": "repositoryId",
+            "in": "query",
+            "description": "Optional authorized repository filter; it is not an authorization grant.",
+            "schema": { "$ref": "#/components/schemas/RepositoryId" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stable bounded page from the selected snapshot.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DecisionPage" },
+                "examples": { "synthetic": { "$ref": "#/components/examples/DecisionPage" } }
+              }
+            }
+          },
+          "404": {
+            "description": "Snapshot is not visible in the caller's authorized scope.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Problem" } } }
+          }
+        }
+      }
+    },
+    "/v1/decisions/{decisionId}": {
+      "get": {
+        "operationId": "getDecision",
+        "summary": "Read one decision view from an immutable snapshot",
+        "parameters": [
+          { "$ref": "#/components/parameters/DecisionId" },
+          { "$ref": "#/components/parameters/SnapshotId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authored decision intent, separate unreviewed candidates, source evidence, coverage, diagnostics, and freshness.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DecisionResource" },
+                "examples": { "synthetic": { "$ref": "#/components/examples/DecisionResource" } }
+              }
+            }
+          },
+          "404": { "description": "Not found in the caller's authorized snapshot.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Problem" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "SnapshotId": {
+        "name": "snapshotId",
+        "in": "query",
+        "required": true,
+        "description": "Immutable product snapshot selection; each source repository revision remains explicit in the response.",
+        "schema": { "$ref": "#/components/schemas/Identifier" }
+      },
+      "ProcessId": {
+        "name": "processId",
+        "in": "path",
+        "required": true,
+        "schema": { "$ref": "#/components/schemas/Identifier" }
+      },
+      "DecisionId": {
+        "name": "decisionId",
+        "in": "path",
+        "required": true,
+        "schema": { "$ref": "#/components/schemas/Identifier" }
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 }
+      },
+      "Cursor": {
+        "name": "cursor",
+        "in": "query",
+        "required": false,
+        "description": "Opaque stable pagination cursor; not an authorization token.",
+        "schema": { "type": "string", "maxLength": 512 }
+      }
+    },
+    "schemas": {
+      "Identifier": { "$ref": "../platform/collection/collection.schema.json#/$defs/id" },
+      "RepositoryId": { "$ref": "../platform/collection/collection.schema.json#/$defs/repositoryId" },
+      "Problem": { "$ref": "../platform/collection/collection.schema.json#/$defs/problem" },
+      "SourceRevision": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["repositoryId", "commitSha", "treeSha"],
+        "properties": {
+          "repositoryId": { "$ref": "#/components/schemas/RepositoryId" },
+          "commitSha": { "$ref": "../platform/collection/collection.schema.json#/$defs/commit" },
+          "treeSha": { "$ref": "../platform/collection/collection.schema.json#/$defs/commit" }
+        }
+      },
+      "Freshness": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Caller-observed freshness, not remote HEAD or continuing authorization. Providers must evaluate the half-open policy window using asOf; sourceEffectiveAt is informational. Local CLI current maps to this design contract's fresh.",
+        "required": ["status", "reason", "asOf", "observedAt", "collectedAt", "attemptId", "sourceEffectiveAt", "publishedAt", "policyId", "policySha256", "maxAgeSeconds", "validUntil", "lastSuccessful", "lastSuccessfulAt", "inputRevisionVectorHash"],
+        "properties": {
+          "status": { "enum": ["fresh", "stale", "unknown"] },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "observedAt": { "type": "string", "format": "date-time" },
+          "asOf": { "type": "string", "format": "date-time" },
+          "collectedAt": { "type": "string", "format": "date-time" },
+          "attemptId": { "$ref": "#/components/schemas/Identifier" },
+          "sourceEffectiveAt": { "type": ["string", "null"], "format": "date-time" },
+          "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+          "policyId": { "type": ["string", "null"], "maxLength": 128 },
+          "policySha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+          "maxAgeSeconds": { "type": ["integer", "null"], "minimum": 1 },
+          "validUntil": { "type": ["string", "null"], "format": "date-time" },
+          "lastSuccessful": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/LastSuccessful" },
+              { "type": "null" }
+            ]
+          },
+          "lastSuccessfulAt": { "type": ["string", "null"], "format": "date-time" },
+          "inputRevisionVectorHash": { "$ref": "../platform/collection/collection.schema.json#/$defs/sha256" }
+        },
+        "allOf": [{
+          "if": { "properties": { "status": { "const": "fresh" } }, "required": ["status"] },
+          "then": { "properties": {
+            "validUntil": { "type": "string" },
+            "policyId": { "type": "string", "minLength": 1 },
+            "policySha256": { "type": "string" },
+            "maxAgeSeconds": { "type": "integer" }
+          } }
+        }]
+      },
+      "LastSuccessful": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["attemptId", "collectedAt", "inputVectorSha256", "bundleSha256"],
+        "properties": {
+          "attemptId": { "$ref": "#/components/schemas/Identifier" },
+          "collectedAt": { "type": "string", "format": "date-time" },
+          "inputVectorSha256": { "$ref": "../platform/collection/collection.schema.json#/$defs/sha256" },
+          "bundleSha256": { "$ref": "../platform/collection/collection.schema.json#/$defs/sha256" }
+        }
+      },
+      "ProcessResource": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["processId", "snapshotId", "revisions", "authoredModel", "candidateProfiles", "evidence", "freshness"],
+        "properties": {
+          "processId": { "$ref": "#/components/schemas/Identifier" },
+          "snapshotId": { "$ref": "#/components/schemas/Identifier" },
+          "revisions": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/SourceRevision" } },
+          "authoredModel": { "$ref": "../platform/collection/collection.schema.json#/$defs/modelProfileCommon" },
+          "candidateProfiles": {
+            "type": "array",
+            "items": { "$ref": "../platform/collection/collection.schema.json#/$defs/candidateProfileCommon" },
+            "description": "Candidate evidence remains separate, unreviewed, and non-executable."
+          },
+          "evidence": { "type": "array", "items": { "$ref": "../v1/record.schema.json#/$defs/evidence" } },
+          "freshness": { "$ref": "#/components/schemas/Freshness" }
+        }
+      },
+      "DecisionResource": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["decisionId", "snapshotId", "revisions", "authoredModel", "candidateProfiles", "evidence", "freshness"],
+        "properties": {
+          "decisionId": { "$ref": "#/components/schemas/Identifier" },
+          "snapshotId": { "$ref": "#/components/schemas/Identifier" },
+          "revisions": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/SourceRevision" } },
+          "authoredModel": { "$ref": "../platform/collection/collection.schema.json#/$defs/modelProfileCommon" },
+          "candidateProfiles": {
+            "type": "array",
+            "items": { "$ref": "../platform/collection/collection.schema.json#/$defs/candidateProfileCommon" },
+            "description": "Candidate evidence remains separate, unreviewed, and non-executable."
+          },
+          "evidence": { "type": "array", "items": { "$ref": "../v1/record.schema.json#/$defs/evidence" } },
+          "freshness": { "$ref": "#/components/schemas/Freshness" }
+        }
+      },
+      "ProcessPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["snapshotId", "items", "nextCursor"],
+        "properties": {
+          "snapshotId": { "$ref": "#/components/schemas/Identifier" },
+          "items": { "type": "array", "maxItems": 100, "items": { "$ref": "#/components/schemas/ProcessResource" } },
+          "nextCursor": { "type": ["string", "null"], "maxLength": 512 }
+        }
+      },
+      "DecisionPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["snapshotId", "items", "nextCursor"],
+        "properties": {
+          "snapshotId": { "$ref": "#/components/schemas/Identifier" },
+          "items": { "type": "array", "maxItems": 100, "items": { "$ref": "#/components/schemas/DecisionResource" } },
+          "nextCursor": { "type": ["string", "null"], "maxLength": 512 }
+        }
+      }
+    },
+    "examples": {
+      "ProcessPage": {
+        "summary": "Synthetic process data",
+        "externalValue": "../platform/collection/examples/process-page.example.json"
+      },
+      "ProcessResource": {
+        "summary": "Synthetic process resource",
+        "externalValue": "../platform/collection/examples/process-page.example.json#/items/0"
+      },
+      "DecisionPage": {
+        "summary": "Synthetic decision data",
+        "externalValue": "../platform/collection/examples/decision-page.example.json"
+      },
+      "DecisionResource": {
+        "summary": "Synthetic decision resource",
+        "externalValue": "../platform/collection/examples/decision-page.example.json#/items/0"
+      }
+    }
+  }
+}

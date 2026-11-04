@@ -69,7 +69,7 @@ public sealed class ContractSchema
         return new ContractSchema(record, byKind, RelationCatalog.Parse(ReadResource("ce.v1.relations.json")));
     }
 
-    private static string ReadResource(string name)
+    internal static string ReadResource(string name)
     {
         using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(name)
             ?? throw new InvalidOperationException($"embedded resource {name} missing");

@@ -31,7 +31,7 @@ jobs:
             echo 'PRs must target main; other merge destinations are prohibited.' >&2
             exit 1
           }
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -50,7 +50,7 @@ jobs:
       # Builds and tests run inside scripts/sandbox containers; the runner only needs Docker.
       - name: Cache sandbox packages
         if: ${{ !env.ACT && steps.proof.outputs.mode == 'full' }}
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             .sandbox-cache/nuget
@@ -82,7 +82,7 @@ jobs:
         run: python3 scripts/ci/merge-proof.py emit "${RUNNER_TEMP}/merge-proof.json"
       - name: Retain pre-merge evidence
         if: ${{ !env.ACT && github.event_name == 'pull_request' && steps.proof.outputs.mode == 'full' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-proof-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/merge-proof.json

@@ -1,0 +1,164 @@
+{
+  "schema": "ce.models.support.v1",
+  "profile": "ce.models.v1",
+  "description": "Bounded syntax-evidence census for authored BPMN 2.0 model namespace and DMN 1.3. It does not claim semantic validation, runtime behavior, or expression evaluation.",
+  "statuses": [
+    "semantic-evidence-supported",
+    "opaque-partial",
+    "rejected"
+  ],
+  "constructs": [
+    {
+      "id": "bpmn.definitions",
+      "family": "bpmn",
+      "namespace": "http://www.omg.org/spec/BPMN/20100524/MODEL",
+      "elements": ["definitions", "process", "collaboration", "participant", "laneSet", "lane"],
+      "status": "semantic-evidence-supported",
+      "evidence": "Typed definitions, process and collaboration structure; participant processRef and lane containment."
+    },
+    {
+      "id": "bpmn.laneReferences",
+      "family": "bpmn",
+      "namespace": "http://www.omg.org/spec/BPMN/20100524/MODEL",
+      "elements": ["flowNodeRef"],
+      "status": "semantic-evidence-supported",
+      "evidence": "Lane flowNodeRef text values resolve to local flow-node relationship endpoints."
+    },
+    {
+      "id": "bpmn.flowNodes",
+      "family": "bpmn",
+      "namespace": "http://www.omg.org/spec/BPMN/20100524/MODEL",
+      "elements": ["task", "userTask", "serviceTask", "scriptTask", "manualTask", "businessRuleTask", "sendTask", "receiveTask", "startEvent", "endEvent", "intermediateCatchEvent", "intermediateThrowEvent", "boundaryEvent", "exclusiveGateway", "inclusiveGateway", "parallelGateway", "eventBasedGateway", "complexGateway", "subProcess", "transaction", "adHocSubProcess", "callActivity"],
+      "status": "semantic-evidence-supported",
+      "evidence": "Typed containment and attributes. Local callActivity.calledElement resolving to a BPMN process is linked; unresolved/imported targets are partial."
+    },
+    {
+      "id": "bpmn.flows",
+      "family": "bpmn",
+      "namespace": "http://www.omg.org/spec/BPMN/20100524/MODEL",
+      "elements": ["sequenceFlow", "messageFlow", "association"],
+      "status": "semantic-evidence-supported",
+      "evidence": "Distinct flow kind and endpoint identities; missing or dangling endpoints reject extraction."
+    },
+    {
+      "id": "bpmn.expressionsAndData",
+      "family": "bpmn",
+      "namespace": "http://www.omg.org/spec/BPMN/20100524/MODEL",
+      "elements": ["conditionExpression", "dataObject", "dataObjectReference", "dataStore", "dataStoreReference", "dataInput", "dataOutput"],
+      "status": "semantic-evidence-supported",
+      "capturesText": true,
+      "evidence": "Expression language and raw text only with explicit model-content profile; data constructs retain typed attributes and containment."
+    },
+    {
+      "id": "bpmn.extensions",
+      "family": "bpmn",
+      "namespace": "http://www.omg.org/spec/BPMN/20100524/MODEL",
+      "elements": ["extensionElements"],
+      "status": "semantic-evidence-supported",
+      "evidence": "The standard extension container is retained; extension payloads are opaque and partial."
+    },
+    {
+      "id": "bpmn.dataAssociations",
+      "family": "bpmn",
+      "namespace": "http://www.omg.org/spec/BPMN/20100524/MODEL",
+      "elements": ["dataInputAssociation", "dataOutputAssociation", "sourceRef", "targetRef"],
+      "status": "opaque-partial",
+      "evidence": "Association containment is retained, but child-element source/target semantics are not promoted to relationships."
+    },
+    {
+      "id": "bpmn.opaqueExtensions",
+      "family": "bpmn",
+      "namespace": "*",
+      "elements": ["vendor elements"],
+      "matchesUnlisted": true,
+      "status": "opaque-partial",
+      "capturesText": true,
+      "evidence": "Preserved as opaque typed XML evidence with a diagnostic; no vendor element can create core relationships."
+    },
+    {
+      "id": "bpmn.unlistedStandardElements",
+      "family": "bpmn",
+      "namespace": "http://www.omg.org/spec/BPMN/20100524/MODEL",
+      "elements": ["*"],
+      "matchesUnlisted": true,
+      "status": "opaque-partial",
+      "capturesText": true,
+      "evidence": "Unlisted core elements are retained as unsupported evidence with a diagnostic."
+    },
+    {
+      "id": "bpmn.externalCallActivity",
+      "family": "bpmn",
+      "namespace": "http://www.omg.org/spec/BPMN/20100524/MODEL",
+      "elements": ["callActivity.calledElement"],
+      "status": "opaque-partial",
+      "evidence": "Unresolved QName/import or external process target is diagnosed and never fetched."
+    },
+    {
+      "id": "bpmn.executableScripts",
+      "family": "bpmn",
+      "namespace": "http://www.omg.org/spec/BPMN/20100524/MODEL",
+      "elements": ["script"],
+      "status": "rejected",
+      "evidence": "Executable script content is never interpreted."
+    },
+    {
+      "id": "dmn.definitionsAndTypes",
+      "family": "dmn",
+      "namespace": "https://www.omg.org/spec/DMN/20191111/MODEL/",
+      "elements": ["definitions", "itemDefinition", "itemComponent", "variable", "inputData", "decision"],
+      "status": "semantic-evidence-supported",
+      "evidence": "Typed elements, containment and type/name attributes are retained."
+    },
+    {
+      "id": "dmn.knowledge",
+      "family": "dmn",
+      "namespace": "https://www.omg.org/spec/DMN/20191111/MODEL/",
+      "elements": ["businessKnowledgeModel", "knowledgeSource", "encapsulatedLogic", "formalParameter", "informationRequirement", "knowledgeRequirement", "authorityRequirement", "requiredInput", "requiredDecision", "requiredKnowledge", "requiredAuthority"],
+      "status": "semantic-evidence-supported",
+      "evidence": "Local fragment references become reference edges; external targets remain unresolved with partial coverage."
+    },
+    {
+      "id": "dmn.decisionTables",
+      "family": "dmn",
+      "namespace": "https://www.omg.org/spec/DMN/20191111/MODEL/",
+      "elements": ["decisionTable", "input", "inputExpression", "output", "rule", "inputEntry", "outputEntry"],
+      "status": "semantic-evidence-supported",
+      "evidence": "Rule and cell order, hit policy, aggregation and typeRef attributes are retained."
+    },
+    {
+      "id": "dmn.expressionContent",
+      "family": "dmn",
+      "namespace": "https://www.omg.org/spec/DMN/20191111/MODEL/",
+      "elements": ["literalExpression", "inputExpression", "inputEntry", "outputEntry"],
+      "status": "semantic-evidence-supported",
+      "capturesText": true,
+      "evidence": "Expression language and raw expression text require explicit model-content profile; evaluation is not performed."
+    },
+    {
+      "id": "dmn.externalReferences",
+      "family": "dmn",
+      "namespace": "https://www.omg.org/spec/DMN/20191111/MODEL/",
+      "elements": ["external href/import references", "unlisted DMN elements"],
+      "status": "opaque-partial",
+      "evidence": "External references are diagnosed without network/import resolution; unsupported elements produce diagnostics."
+    },
+    {
+      "id": "dmn.unlistedElements",
+      "family": "dmn",
+      "namespace": "https://www.omg.org/spec/DMN/20191111/MODEL/",
+      "elements": ["*"],
+      "matchesUnlisted": true,
+      "status": "opaque-partial",
+      "capturesText": true,
+      "evidence": "Unlisted DMN 1.3 elements are retained as unsupported evidence with a diagnostic."
+    },
+    {
+      "id": "dmn.expressionExecution",
+      "family": "dmn",
+      "namespace": "https://www.omg.org/spec/DMN/20191111/MODEL/",
+      "elements": ["FEEL execution", "decision execution", "business outcome"],
+      "status": "rejected",
+      "evidence": "The extractor records authored text only; it performs no evaluation or business-soundness claim."
+    }
+  ]
+}

@@ -15,7 +15,7 @@ No existing status was changed to produce this index.
 | Red | D: draft | Not yet ready for decision review; not a severity rating. |
 | Gray | H: historical | Rejected, deprecated or superseded; retain the decision and replacement links. |
 
-There are **32 local records: 1 scoped accepted, 31 proposed, 0 draft,
+There are **33 local records: 1 scoped accepted, 32 proposed, 0 draft,
 0 historical**. MADR-0016 is accepted for the **operator workflow only**.
 Both `0005` paths are distinct records, named `0005-G` and `0005-PR` below solely
 for navigation. No `0015` exists; this is a numbering gap, not a missing file
@@ -55,6 +55,7 @@ invented by the index. MADR-0025 landed in owner-merged #55 and remains proposed
 | 0030 | [Govern dependency caches across framework and toolchain upgrades](0030-dependency-cache-lifecycle.md) | P: proposed; scoped cleanup and retention policy, not implemented automation |
 | 0031 | [Convert maintained JavaScript to TypeScript 7 when modified](0031-typescript7-on-touch.md) | P: repository-wide adoption proposed; operator-directed workstream rule, no compiler upgrade yet |
 | 0032 | [Drive implementation with behavior scenarios and red-green-refactor tests](0032-tdd-bdd-delivery.md) | P: repository-wide adoption proposed; operator-directed TDD/BDD workflow, no new framework mandated |
+| 0033 | [Keep authored models, code candidates and collector authority separate](0033-bounded-model-and-collector-evidence.md) | P: bounded evidence and offline collection; no central deployment or business approval |
 
 ## Relationship map
 
@@ -107,6 +108,7 @@ flowchart LR
     a21["0021 Container profiles [P]"]:::proposed
     a22["0022 Analysis ownership [P]"]:::proposed
     a23["0023 Host acquisition [P]"]:::proposed
+    a33["0033 Models and collector [P]"]:::proposed
   end
   a05p -->|extends claims| a01
   a05p -->|extends validation| a03

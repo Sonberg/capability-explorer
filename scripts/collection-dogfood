@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+runner=extractors/ts/test/dogfood/collection-runner.ts
+source_id="$(shasum -a 256 scripts/collection-dogfood "$runner" | awk '{print $1}' | tr '\n' ':')"
+[[ $# -eq 1 && "$1" == "$source_id" ]] || {
+  echo 'dogfood: source identity must match the reviewed Make plan; use make EXECUTION=sandbox test-collection-dogfood' >&2
+  exit 2
+}
+mkdir -p .sandbox-cache/collection-dogfood
+run="$(mktemp -d .sandbox-cache/collection-dogfood/run.XXXXXXXX)"
+ce=platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll
+extractor=platform/src/CapabilityExplorer.Extractors.CSharp/bin/Debug/net10.0/ce-cs.dll
+node_phase() { scripts/sandbox --offline node node "$runner" "$1" "$run"; }
+ce_command() { scripts/sandbox --offline dotnet dotnet "$ce" "$@"; }
+expect_failure() {
+  local expected="$1" name="$2" actual=0
+  shift 2
+  "$@" > "$run/$name.stdout" 2> "$run/$name.stderr" || actual="$?"
+  if [[ "$actual" != "$expected" ]]; then
+    cat "$run/$name.stdout" "$run/$name.stderr" >&2
+    echo "dogfood: $name expected exit $expected, got $actual" >&2
+    return 1
+  fi
+}
+cleanup() {
+  local result="$?"
+  node_phase cleanup || result=1
+  exit "$result"
+}
+trap cleanup EXIT
+
+node_phase prepare
+sales="$(git -C "$run/sales" rev-parse HEAD)"
+scripts/sandbox --offline dotnet dotnet "$extractor" extract-candidates \
+  --source "/work/$run/sales/Orchestrator.cs" --repository sales --commit "$sales" \
+  --out "/work/$run/candidates.json"
+node_phase plan
+ce_command collect --plan "/work/$run/plan.json" --out "/work/$run/collection"
+ce_command validate-collection "/work/$run/collection"
+ce_command collect --plan "/work/$run/plan.json" --out "/work/$run/collection"
+ce_command collection-freshness --previous "/work/$run/vector.json" --current "/work/$run/vector.json" > "$run/current.stdout"
+node_phase observation-policy
+ce_command collection-freshness --previous "/work/$run/vector.json" --current "/work/$run/vector.json" \
+  --policy "/work/$run/observation-policy.json" --as-of "$(cat "$run/as-of-current")" > "$run/policy-current.stdout"
+expect_failure 1 policy-expired ce_command collection-freshness \
+  --previous "/work/$run/vector.json" --current "/work/$run/vector.json" \
+  --policy "/work/$run/observation-policy.json" --as-of "$(cat "$run/as-of-expired")"
+node_phase repeat-and-mutate
+ce_command collect --plan "/work/$run/changed-plan.json" --out "/work/$run/changed-collection"
+ce_command validate-collection "/work/$run/changed-collection"
+node_phase check-and-tamper
+expect_failure 1 tampered ce_command validate-collection "/work/$run/tampered"
+expect_failure 1 denied ce_command collect --plan "/work/$run/denied-plan.json" --out "/work/$run/denied"
+for change in source rights recipe incomplete; do
+  expect_failure 1 "freshness-$change" ce_command collection-freshness \
+    --previous "/work/$run/vector.json" --current "/work/$run/vector-$change.json"
+done
+expect_failure 2 duplicate-option ce_command collection-freshness \
+  --previous "/work/$run/vector.json" --previous "/work/$run/vector.json" --current "/work/$run/vector.json"
+node_phase final

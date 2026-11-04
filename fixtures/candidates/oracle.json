@@ -1,0 +1,24 @@
+{
+  "status": "frozen-before-implementation",
+  "basis": "issue75 approved S/P/A oracle contract; independently authored expected observations, not extractor output",
+  "process": [
+    { "input": null, "eligible": true, "member": true, "outcome": "ArgumentNullException", "reads": ["input"], "effects": [] },
+    { "input": "invalid-long", "eligible": true, "member": true, "outcome": "ArgumentException", "reads": ["input", "input"], "effects": [] },
+    { "input": "", "eligible": true, "member": true, "outcome": false, "reads": ["input", "input", "input"], "effects": [] },
+    { "input": "x", "eligible": false, "member": true, "outcome": false, "reads": ["input", "input", "input", "eligible"], "effects": [] },
+    { "input": "x", "eligible": true, "member": false, "outcome": false, "reads": ["input", "input", "input", "eligible", "member"], "effects": [] },
+    { "input": "x", "eligible": true, "member": true, "outcome": true, "reads": ["input", "input", "input", "eligible", "member", "input"], "effects": ["Record"] },
+    { "input": "x", "eligible": true, "member": true, "callFailure": true, "outcome": "external-call-failure", "reads": ["input", "input", "input", "eligible", "member", "input"], "effects": ["Record"] }
+  ],
+  "decision": [
+    { "amount": -1, "member": false, "outcome": "Invalid" },
+    { "amount": -1, "member": true, "outcome": "Invalid" },
+    { "amount": 0, "member": true, "outcome": "None" },
+    { "amount": 99, "member": true, "outcome": "None" },
+    { "amount": 100, "member": true, "outcome": "Gold" },
+    { "amount": 101, "member": true, "outcome": "Gold" },
+    { "amount": 100, "member": false, "outcome": "None" },
+    { "amount": 2147483647, "member": true, "outcome": "Gold" },
+    { "amount": -2147483648, "member": true, "outcome": "Invalid" }
+  ]
+}

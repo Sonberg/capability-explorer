@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="defs-order" targetNamespace="urn:example:orders">
+  <bpmn:process id="order-process" isExecutable="false">
+    <bpmn:startEvent id="start"/>
+    <bpmn:task id="review"/>
+    <bpmn:sequenceFlow id="flow-review" sourceRef="start" targetRef="review">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="text/plain">approved</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+  </bpmn:process>
+  <bpmn:collaboration id="order-collaboration">
+    <bpmn:participant id="order-participant" processRef="order-process"/>
+    <bpmn:messageFlow id="review-message" sourceRef="start" targetRef="review"/>
+  </bpmn:collaboration>
+</bpmn:definitions>

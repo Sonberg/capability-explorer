@@ -1,0 +1,38 @@
+{
+  "schema": "ce.collection.v1",
+  "contentSha256": "01ec741e70af99231a58b85d9f241b0bee4bb158573697df39f20d5ba8f79044",
+  "content": {
+    "schema": "ce.collection.v1",
+    "recipeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "configSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "policySha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "repositories": [
+      {
+        "repositoryId": "repo-a",
+        "providerId": "github:repo-a",
+        "producerId": "producer-1",
+        "tenantRef": "tenant-1",
+        "rightsRef": "rights-1",
+        "commitSha": "dddddddddddddddddddddddddddddddddddddddd",
+        "treeSha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "permittedContentProfiles": [
+          "model-content"
+        ]
+      }
+    ],
+    "inputs": [
+      {
+        "repositoryId": "repo-a",
+        "profile": "ce.models.v1",
+        "unitPath": "models/漢字+<workflow>.json",
+        "required": true,
+        "status": "included",
+        "artifactPath": "artifacts/repo-a/ce.models.v1/0000.json",
+        "sha256": "30c2703253bb4b6df46c2851f71a294593ebbd6c78e2b1ab24e1057ff88bb06e",
+        "byteLength": 370,
+        "contentProfile": "model-content"
+      }
+    ],
+    "canonicalization": "ce.collection.v1/utf16-escaped-json"
+  }
+}
