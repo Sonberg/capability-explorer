@@ -12,6 +12,27 @@ string? Arg(string name)
 
 bool Has(string name) => args.Contains($"--{name}", StringComparer.Ordinal);
 
+if (args.FirstOrDefault() == "extract-candidates")
+{
+    if (args.Length != 9 || Arg("source") is not { } candidateSource ||
+        Arg("repository") is not { } candidateRepo || Arg("commit") is not { } candidateCommit ||
+        Arg("out") is not { } candidateOutput)
+    {
+        Console.Error.WriteLine("usage: ce-cs extract-candidates --source <file.cs> --repository <id> --commit <40sha> --out <file>");
+        return 2;
+    }
+    try
+    {
+        CandidatePaths.Write(candidateSource, candidateOutput, CandidateExtractor.Extract(candidateSource, candidateRepo, candidateCommit).ToJson());
+        return 0;
+    }
+    catch (Exception error) when (error is ArgumentException or IOException or UnauthorizedAccessException)
+    {
+        Console.Error.WriteLine("candidate input or output rejected");
+        return 2;
+    }
+}
+
 if (args.FirstOrDefault() == "fetch-packages")
 {
     // Network step, run before the offline extract: pure downloads from the configured feeds, no restore, no MSBuild.

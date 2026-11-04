@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://capability-explorer/schema/candidates/artifact.schema.json",
+  "title": "ce.candidates.v1 bounded static observations",
+  "description": "Non-executable, UNREVIEWED intra-method candidates, not authored BPMN/DMN, FEEL equivalence, business approval or whole journeys. ALL candidate bodies, literals, symbols, parameter names and rawPredicate strings are content-bearing candidate-content; downstream export must explicitly authorize that profile, not just remove rawPredicate. Full coverage means this bounded single-file recipe only, not whole repository, external callees or runtime equivalence. Repository and commit are caller assertions; sourceSha256 binds original bytes, not a verified Git object.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "recipe", "repositoryId", "commitSha", "unitPath", "sourceSha256", "coverage", "diagnostics", "candidates"],
+  "properties": {
+    "schema": { "const": "ce.candidates.v1" },
+    "recipe": { "const": "roslyn.scalar-guards.v1" },
+    "repositoryId": { "type": "string", "maxLength": 128, "pattern": "^(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._-]*(?![\\s\\S])" },
+    "commitSha": { "$ref": "#/$defs/sha1" },
+    "unitPath": { "$ref": "#/$defs/unitPath" },
+    "sourceSha256": { "$ref": "#/$defs/sha256" },
+    "coverage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "scope", "supportedMethods", "unsupportedMethods"],
+      "properties": {
+        "status": { "enum": ["full", "partial"] },
+        "scope": { "const": "single-file-intra-method" },
+        "supportedMethods": { "type": "integer", "minimum": 0, "maximum": 64 },
+        "unsupportedMethods": { "type": "integer", "minimum": 0, "maximum": 64 }
+      }
+    },
+    "diagnostics": {
+      "type": "array", "maxItems": 130,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["code", "message"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "message": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "source": { "$ref": "#/$defs/source" }
+        }
+      }
+    },
+    "candidates": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/candidate" } }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "coverage": { "properties": { "status": { "const": "full" } } } } },
+      "then": {
+        "properties": {
+          "diagnostics": { "maxItems": 0 },
+          "coverage": { "properties": { "unsupportedMethods": { "const": 0 } } }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha1": { "type": "string", "pattern": "^[a-f0-9]{40}(?![\\s\\S])" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}(?![\\s\\S])" },
+    "unitPath": { "type": "string", "maxLength": 255, "pattern": "^[A-Za-z0-9._-]+\\.cs(?![\\s\\S])" },
+    "symbol": { "type": "string", "minLength": 1, "maxLength": 262144 },
+    "source": {
+      "description": "Half-open UTF-16 character span into original UTF-8 decoded bytes, including BOM; 1-based physical lines/columns, never #line remapped. Every locator is revision- and original-byte-digest-bound.",
+      "type": "object", "additionalProperties": false,
+      "required": ["unitPath", "commitSha", "sourceSha256", "start", "length", "startLine", "startColumn", "endLine", "endColumn"],
+      "properties": {
+        "unitPath": { "$ref": "#/$defs/unitPath" },
+        "commitSha": { "$ref": "#/$defs/sha1" },
+        "sourceSha256": { "$ref": "#/$defs/sha256" },
+        "start": { "type": "integer", "minimum": 0, "maximum": 262144 },
+        "length": { "type": "integer", "minimum": 1, "maximum": 262144 },
+        "startLine": { "type": "integer", "minimum": 1, "maximum": 262145 },
+        "startColumn": { "type": "integer", "minimum": 1, "maximum": 262145 },
+        "endLine": { "type": "integer", "minimum": 1, "maximum": 262145 },
+        "endColumn": { "type": "integer", "minimum": 1, "maximum": 262145 }
+      }
+    },
+    "candidate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "reviewStatus", "executable", "contentProfile", "source", "parameters", "inputsRead", "inputsWritten", "body"],
+      "properties": {
+        "id": { "$ref": "#/$defs/symbol" },
+        "kind": { "enum": ["process", "decision"] },
+        "reviewStatus": { "const": "UNREVIEWED" },
+        "executable": { "const": false },
+        "contentProfile": { "const": "candidate-content" },
+        "source": { "$ref": "#/$defs/source" },
+        "parameters": {
+          "type": "array", "maxItems": 3,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["name", "symbol", "type"],
+            "properties": {
+              "name": { "$ref": "#/$defs/symbol" },
+              "symbol": { "$ref": "#/$defs/symbol" },
+              "type": { "enum": ["int", "bool", "string"] }
+            }
+          }
+        },
+        "inputsRead": { "type": "array", "maxItems": 3, "uniqueItems": true, "items": { "$ref": "#/$defs/symbol" } },
+        "inputsWritten": { "type": "array", "maxItems": 0 },
+        "body": { "$ref": "#/$defs/node" }
+      }
+    },
+    "node": {
+      "description": "Children preserve Roslyn operation/evaluation order. block=ordered statements; if=predicate,then[,else]; binary=left,right; ConditionalAnd/Or short-circuit; call=positional arguments, opaque effect with propagating failures; throw=exception constructor arguments. Raw predicate is untrusted content, never FEEL or executable text.",
+      "type": "object", "additionalProperties": false, "required": ["kind", "source", "children"],
+      "properties": {
+        "kind": { "enum": ["block", "if", "return", "throw", "call", "constant", "parameter", "binary", "not", "length"] },
+        "source": { "$ref": "#/$defs/source" },
+        "children": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/node" } },
+        "operator": { "enum": ["ConditionalAnd", "ConditionalOr", "Equals", "NotEquals", "LessThan", "LessThanOrEqual", "GreaterThan", "GreaterThanOrEqual"] },
+        "value": { "type": "string", "maxLength": 262144 },
+        "type": { "enum": ["int", "bool", "string", "null", "System.ArgumentException", "System.ArgumentNullException"] },
+        "symbol": { "$ref": "#/$defs/symbol" },
+        "rawPredicate": { "type": "string", "maxLength": 262144 },
+        "failure": { "const": "propagate" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "enum": ["constant", "parameter"] } } },
+          "then": { "required": ["type"], "properties": { "children": { "maxItems": 0 } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "parameter" } } },
+          "then": { "required": ["symbol"], "properties": { "type": { "enum": ["int", "bool", "string"] } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "constant" } } },
+          "then": {
+            "properties": { "type": { "enum": ["int", "bool", "string", "null"] } },
+            "if": { "properties": { "type": { "const": "null" } } },
+            "then": { "not": { "required": ["value"] } },
+            "else": { "required": ["value"] }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "enum": ["return", "not", "length"] } } },
+          "then": { "properties": { "children": { "minItems": 1, "maxItems": 1 } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "if" } } },
+          "then": { "properties": { "children": { "minItems": 2, "maxItems": 3 } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "binary" } } },
+          "then": { "required": ["operator"], "properties": { "children": { "minItems": 2, "maxItems": 2 } } }
+        },
+        {
+          "if": { "properties": { "kind": { "enum": ["call", "throw", "length"] } } },
+          "then": { "required": ["symbol", "failure"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "throw" } } },
+          "then": { "required": ["type"], "properties": { "type": { "enum": ["System.ArgumentException", "System.ArgumentNullException"] } } }
+        }
+      ]
+    }
+  }
+}

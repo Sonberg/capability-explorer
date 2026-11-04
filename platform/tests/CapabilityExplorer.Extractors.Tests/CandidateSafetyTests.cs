@@ -1,0 +1,108 @@
+using System.Security.Cryptography;
+using System.Text;
+using CapabilityExplorer.Extractors.CSharp;
+using Xunit;
+
+namespace CapabilityExplorer.Extractors.Tests;
+
+public sealed class CandidateSafetyTests : IDisposable
+{
+    private const string Sha = "0123456789abcdef0123456789abcdef01234567";
+    private readonly string scratch;
+
+    public CandidateSafetyTests()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !Directory.Exists(Path.Combine(root.FullName, "fixtures/candidates"))) root = root.Parent;
+        scratch = Path.Combine(root!.FullName, "platform/tests/CapabilityExplorer.Extractors.Tests/Fixtures/CandidateScratch", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(scratch);
+    }
+
+    public void Dispose() => Directory.Delete(scratch, true);
+
+    [Theory]
+    [InlineData("if(input == null) throw new System.ArgumentNullException(paramName: input); Record(input, \"x\");")]
+    [InlineData("if(input == null) throw new System.ArgumentNullException(input); Record(second: \"x\", first: input);")]
+    public void Given_unmodeled_argument_binding_then_reject_instead_of_losing_parameter_mapping(string body)
+    {
+        var result = Extract("public static class C { public static extern void Record(string first, string second = \"x\"); public static bool M(string input) { " + body + " return true; } }");
+        Assert.Empty(result.Candidates);
+        Assert.Equal("partial", result.Coverage.Status);
+    }
+
+    [Fact]
+    public void Given_spoofed_framework_exception_then_no_approved_exception_semantics()
+    {
+        var result = Extract("""
+            namespace System { public class ArgumentException : Exception { public ArgumentException(string message) {} } }
+            public static class C {
+                public static extern void Record(string input);
+                public static bool M(string input) {
+                    if(input == null) throw new System.ArgumentException(input);
+                    Record(input); return true;
+                }
+            }
+            """);
+        Assert.Empty(result.Candidates);
+        Assert.Contains(result.Diagnostics, d => d.Code == "unsupported-exception");
+    }
+
+    [Theory]
+    [InlineData("#if UNKNOWN\n public static string Hidden(int x) { return \"hidden\"; }\n#endif")]
+    [InlineData("static int initialization = Bootstrap(); public static extern int Bootstrap();")]
+    public void Given_uncovered_executable_context_then_coverage_is_not_full(string declarations)
+    {
+        var result = Extract("public static class C {\n" + declarations + "\npublic static string M(int x) { if(x < 0) return \"Invalid\"; return \"None\"; } }");
+        Assert.Single(result.Candidates);
+        Assert.Equal("partial", result.Coverage.Status);
+        Assert.NotEmpty(result.Diagnostics);
+    }
+
+    [Fact]
+    public void Given_nullable_reference_annotation_then_scalar_type_remains_schema_compatible()
+    {
+        var result = Extract("""
+            #nullable enable
+            public static class C {
+                public static extern void Record(string input);
+                public static bool M(string? input) {
+                    if(input == null) throw new System.ArgumentNullException(nameof(input));
+                    Record(input); return true;
+                }
+            }
+            """);
+        var candidate = Assert.Single(result.Candidates);
+        Assert.Equal("string", Assert.Single(candidate.Parameters).Type);
+        Assert.All(CandidateRecipe.Walk(candidate.Body).Where(n => n.Kind == "parameter"),
+            node => Assert.Equal("string", node.Type));
+    }
+
+    [Fact]
+    public void Given_invalid_utf8_then_no_replacement_characters_or_false_identity()
+    {
+        var path = Path.Combine(scratch, "invalid.cs");
+        File.WriteAllBytes(path, [0xff, 0xfe, 0xff]);
+        Assert.Throws<ArgumentException>(() => CandidateExtractor.Extract(path, "synthetic", Sha));
+    }
+
+    [Fact]
+    public void Given_renamed_symbols_and_bom_then_semantics_and_original_byte_spans_survive()
+    {
+        const string text = "\uFEFFpublic static class Renamed { public static string NotBusinessNamed(int number, bool flag) { if(number < 0) return \"Invalid\"; if(flag && number >= 100) return \"Gold\"; return \"None\"; } }";
+        var result = Extract(text);
+        Assert.Equal("full", result.Coverage.Status);
+        var candidate = Assert.Single(result.Candidates);
+        Assert.Equal("decision", candidate.Kind);
+        Assert.Equal("Gold", new CandidateOracle(candidate, new() { ["number"] = 100, ["flag"] = true }, false).Run());
+        Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text))), result.SourceSha256);
+        var predicate = CandidateRecipe.Walk(candidate.Body).First(n => n.RawPredicate is not null);
+        Assert.Equal("number < 0", text.Substring(predicate.Source.Start, predicate.Source.Length));
+    }
+
+    private CandidateArtifact Extract(string source)
+    {
+        var path = Path.Combine(scratch, "input.cs");
+        File.WriteAllText(path, source, new UTF8Encoding(false));
+        return CandidateExtractor.Extract(path, "synthetic", Sha);
+    }
+}
