@@ -63,8 +63,11 @@ public sealed class CollectionTests
             var result = await InvokeAsync(ExporterType!, "ExportAsync", planPath, output);
 
             Assert.False(ReadProperty<bool>(result, "IsValid"));
+            Assert.Contains((IReadOnlyList<string>)ReadProperty<object>(result, "Problems"),
+                problem => problem.Contains("required", StringComparison.Ordinal));
             Assert.False(Directory.Exists(output));
             Assert.False(File.Exists(Path.Combine(output, "collection.json")));
+            Assert.Empty(Directory.GetDirectories(root, ".bundle.collection-stage-*"));
         }
         finally
         {
