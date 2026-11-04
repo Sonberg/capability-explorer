@@ -59,6 +59,7 @@ internal static class CollectionValidator
 
             var repositories = envelope.Content.Repositories.ToDictionary(r => r.RepositoryId, StringComparer.Ordinal);
             var referenced = new HashSet<string>(StringComparer.Ordinal);
+            var products = new Dictionary<string, byte[]>(StringComparer.Ordinal);
             long totalBytes = 0;
             foreach (var input in envelope.Content.Inputs)
             {
@@ -99,6 +100,21 @@ internal static class CollectionValidator
                     repo.CommitSha, input.UnitPath, input.ContentProfile, repo.PermittedContentProfiles);
                 problems.AddRange(profileProblems.Select(p => $"{input.Profile}: {p}"));
                 referenced.Add(input.ArtifactPath!);
+                products.Add($"{input.RepositoryId}\n{input.Profile}\n{input.UnitPath}", bytes);
+            }
+
+            foreach (var input in envelope.Content.Inputs.Where(i => i.Status == "included" && i.Profile == "ce.model-source.v1"))
+            {
+                if (!products.TryGetValue($"{input.RepositoryId}\nce.model-source.v1\n{input.UnitPath}", out var bytes) ||
+                    !products.TryGetValue($"{input.RepositoryId}\nce.models.v1\n{input.UnitPath}", out var companion))
+                { problems.Add("source companion missing"); continue; }
+                try
+                {
+                    using var document = JsonDocument.Parse(bytes);
+                    ModelSource.CheckCompanion(document.RootElement, companion);
+                }
+                catch (Exception e) when (e is FormatException or JsonException or KeyNotFoundException)
+                { problems.Add("source companion binding is invalid"); }
             }
 
             foreach (var file in EnumerateFiles(root))

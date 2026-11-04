@@ -16,6 +16,7 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 var options = ExplorerOptions.From(builder.Configuration);
 // The index and capabilities are reloaded when their files change (see ExplorerState); handlers get the current load.
 builder.Services.AddSingleton(options);
+builder.Services.AddSingleton<ExplorerQueryCursor>();
 var source = builder.Configuration["source"] ?? Environment.GetEnvironmentVariable("EXPLORER_SOURCE") ?? "files";
 if (source is not ("files" or "postgres")) throw new InvalidOperationException("source must be files or postgres");
 if (source == "files")
@@ -41,7 +42,6 @@ if (source == "postgres")
 if (dataSource is not null)
 {
     builder.Services.AddSingleton(dataSource);
-    builder.Services.AddSingleton<ExplorerQueryCursor>();
     builder.Services.AddSingleton<IExplorerQueries, PostgresExplorerQueries>();
     builder.Services.AddSingleton(new DatabaseExplorerConfiguration(options));
     builder.Services.AddSingleton<IDeprecationRepository, PostgresDeprecationRepository>();
@@ -82,6 +82,7 @@ app.UseResponseCompression();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapDeprecationsApi();
+app.MapModelApi(source);
 if (source == "postgres") app.MapPostgresExplorerApi();
 else
 {

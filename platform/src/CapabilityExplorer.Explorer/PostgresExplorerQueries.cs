@@ -47,8 +47,10 @@ public sealed partial class PostgresExplorerQueries(NpgsqlDataSource dataSource,
         }
         await using var revisions = Command($"""
             select {GuardedColumns("repository_id", "commit_sha::text")} from snapshot_revision r
-            where snapshot_id=@id and is_default and exists(select 1 from analysis_snapshot_artifact sa
+            where snapshot_id=@id and is_default and (exists(select 1 from analysis_snapshot_artifact sa
               where sa.snapshot_id=r.snapshot_id and sa.repository_id=r.repository_id and sa.commit_sha=r.commit_sha)
+              or exists(select 1 from analysis_snapshot_model sm join model_product m on m.id=sm.model_id
+                where sm.snapshot_id=r.snapshot_id and m.repository_id=r.repository_id and m.commit_sha=r.commit_sha))
             order by repository_id collate "C" limit 1001
             """);
         revisions.Parameters.AddWithValue("id", snapshot);
@@ -56,7 +58,12 @@ public sealed partial class PostgresExplorerQueries(NpgsqlDataSource dataSource,
         await using (var reader = await revisions.ExecuteReaderAsync(cancellationToken))
             while (await ReadProjectionAsync(reader, cancellationToken)) chosen.Add(reader.GetString(0), reader.GetString(1));
         if (chosen.Count > 1000) throw new InvalidOperationException("repository scope exceeds supported limit");
-        await using var validateDefaults = Command("select count(distinct repository_id) from analysis_snapshot_artifact where snapshot_id=@id");
+        await using var validateDefaults = Command("""
+            select count(distinct repository_id) from (
+              select repository_id from analysis_snapshot_artifact where snapshot_id=@id
+              union select m.repository_id from analysis_snapshot_model sm join model_product m on m.id=sm.model_id where sm.snapshot_id=@id
+            ) members
+            """);
         validateDefaults.Parameters.AddWithValue("id", snapshot);
         if ((long)(await validateDefaults.ExecuteScalarAsync(cancellationToken))! != chosen.Count)
             throw new InvalidOperationException("snapshot has no valid default revision for every repository");

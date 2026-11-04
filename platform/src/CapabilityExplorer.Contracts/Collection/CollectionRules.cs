@@ -17,7 +17,7 @@ internal static partial class CollectionRules
 
     private static readonly HashSet<string> Profiles = new(StringComparer.Ordinal)
     {
-        "ce.v1", "ce.models.v1", "ce.candidates.v1",
+        "ce.v1", "ce.models.v1", "ce.candidates.v1", "ce.model-source.v1",
     };
 
     private static readonly HashSet<string> ContentKeys = new(StringComparer.OrdinalIgnoreCase)
@@ -219,6 +219,7 @@ internal static partial class CollectionRules
         {
             "ce.v1" => "native-content",
             "ce.models.v1" => "model-content",
+            "ce.model-source.v1" => "model-content",
             "ce.candidates.v1" => "candidate-content",
             _ => null
         };
@@ -254,6 +255,12 @@ internal static partial class CollectionRules
             RequireString(root, "commitSha", commitSha, problems);
             RequireString(root, "unitPath", unitPath, problems);
             problems.AddRange(EvidenceProfileSchema.Validate(profile, root).Select(problem => $"profile schema: {problem}"));
+            if (profile == "ce.model-source.v1")
+            {
+                try { _ = ModelSource.Decode(root); }
+                catch (Exception e) when (e is FormatException or System.Xml.XmlException or DecoderFallbackException)
+                { problems.Add("source bytes, digest, XML or limits are invalid"); }
+            }
         }
         catch (JsonException)
         {

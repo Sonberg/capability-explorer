@@ -26,6 +26,23 @@ scripts/sandbox --offline dotnet dotnet \
 The SHA above is a synthetic example; real collection must use the exact source
 revision and matching enrollment/plan, not copy that value. These commands do
 not acquire or verify a remote repository's HEAD. Model input bytes remain local.
+To retain an original for read-only viewing, explicitly add
+`--source-out .sandbox-cache/order-source.json` together with
+`--content-profile model-content`. This produces the separate closed
+`ce.model-source.v1` attachment; it does not change `ce.models.v1`.
+List both artifacts in the collection plan under their own profiles and the
+same repository/revision/unit path, with exact byte lengths/hashes and
+`contentProfile: "model-content"`. The repository must explicitly permit that
+exact content profile. Older collection consumers refuse the unknown included
+source profile; evidence-only collections remain readable.
+
+The attachment retains canonical base64 of the original UTF-8 bytes, including
+a BOM, with a 1 MiB raw-source cap. It binds the exact companion artifact bytes
+and source digest; both consumers independently verify those hashes and the
+repository/revision/path crosslink. DTDs/entities, malformed XML/UTF-8,
+noncanonical base64 and mismatched or missing companions are rejected.
+No generated layout replaces the original. Older evidence does not gain
+original-source availability merely because it contains a source hash.
 The model CLI accepts BPMN/XML and DMN files, rejects unsafe XML and bounds
 bytes, structure and worker time/memory. Default structural output omits model
 text, but attributes may still contain source content; it is **not** an
@@ -141,6 +158,37 @@ operational freshness guarantees and deployment remain downstream decisions.
 No anonymous-provider access is authorized. `received`/`validated` are not
 `published`; publication needs explicit metadata and its own authority.
 Existing Explorer and PostgreSQL paths are retained.
+
+## Local Explorer model products
+
+Start file mode with explicit `--collections <sealed-directory>[,<directory>]`
+alongside the normal native `--artifacts` inputs. Collections are validated
+before the combined native/model/capability snapshot is published in memory.
+Model requests read only those immutable validated bytes, never repository
+paths or arbitrary files supplied through HTTP.
+
+For PostgreSQL, run the normal trusted migration command and use
+`ce publish --collections <sealed-directory> --scope <capability-id|*>`
+with optional native JSONL arguments. Model-only publication is supported.
+Exact model/source products and collection-bound source dispositions become
+immutable membership in the same compare-and-swap analysis snapshot as native
+artifacts. Repository defaults/revision choices cover both kinds of membership.
+Importing more products cannot add them to an already published snapshot.
+Local collection permission declarations remain operator assertions, not
+authenticated rights or authority to expose the trusted-local server remotely.
+
+`GET /api/models` returns summaries only, default 20 / maximum 50 items, with
+a 1 MiB serialized ceiling. Continue with the returned opaque cursor plus
+snapshot/generation and unchanged capability/revision scope.
+`GET /api/models/evidence?id=...` and `/api/models/source?id=...` require that
+same snapshot/generation/scope. Selected evidence is capped at 16 MiB including
+its wrapper; source at 1 MiB original bytes / 8 MiB serialized response.
+All successful responses echo snapshot, numeric generation and selection.
+Stale scopes fail with 409, invalid cursors with 400, denied source with 403,
+missing source/IDs with 404, invalid stored products explicitly, and oversized
+responses with 413. No successful truncation or unverified-source fallback is
+performed. Model IDs are content-bound and identical between modes for the
+same exact artifact inputs; opaque IDs and cursors do not grant authorization.
 
 The fixtures are synthetic, not a representative private business corpus.
 Filesystem descriptor/no-follow checks and atomic rename reduce aliasing/races

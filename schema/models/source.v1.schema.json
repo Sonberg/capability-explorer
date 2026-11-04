@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://capability-explorer/schema/models/source.v1.schema.json",
+  "title": "Explicit immutable authored model source attachment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "repositoryId", "commitSha", "unitPath", "modelArtifactSha256", "sourceSha256", "sourceFormat", "sourceBytesBase64"],
+  "properties": {
+    "schema": { "const": "ce.model-source.v1" },
+    "repositoryId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$" },
+    "commitSha": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "unitPath": {
+      "type": "string", "minLength": 1, "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*[/]$)[^\\\\:\\u0000-\\u001f\\u007f]+$"
+    },
+    "modelArtifactSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "sourceSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "sourceFormat": { "enum": ["bpmn+xml", "dmn+xml"] },
+    "sourceBytesBase64": { "type": "string", "minLength": 4, "maxLength": 1398104, "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$" }
+  }
+}

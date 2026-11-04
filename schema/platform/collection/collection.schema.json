@@ -123,6 +123,9 @@
     },
     "candidateProfileCommon": {
       "$ref": "../../candidates/artifact.schema.json"
+    },
+    "modelSourceProfile": {
+      "$ref": "../../models/source.v1.schema.json"
     }
   }
 }
