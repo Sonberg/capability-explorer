@@ -91,7 +91,7 @@ export function Explore({ params }: { params: URLSearchParams }) {
           {!hits.loading && !hits.error && hits.items.length === 0 && <div className="p-6 text-center text-zinc-500">No symbols match.</div>}
           {hits.loadingMore && <div role="status" className="p-3 text-xs text-zinc-500">Loading more…</div>}
           {hits.hasMore && !hits.loadingMore && !hits.error && <div className="p-2 text-center"><button type="button" className="rounded border border-zinc-300 px-3 py-1.5 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800" onClick={hits.loadMore}>Load more symbols</button></div>}
-          {!hits.hasMore && !hits.loading && !hits.error && hits.items.length > 0 && <div className="p-3 text-xs text-zinc-500">{typeof hits.total === "number" ? `Loaded ${hits.items.length} of ${hits.total} symbols.` : `Loaded ${hits.items.length} symbols.`}</div>}
+          {!hits.hasMore && !hits.loading && !hits.error && hits.items.length > 0 && <div role="status" aria-live="polite" className="p-3 text-xs text-zinc-500">{typeof hits.total === "number" ? `Loaded ${hits.items.length} of ${hits.total} symbols.` : `Loaded ${hits.items.length} symbols.`}</div>}
           <div ref={sentinelRef} aria-hidden="true" className="h-px" />
         </div>
       </aside>

@@ -109,7 +109,7 @@ function SymbolPage({ scope, query, kind, repository, select }: { scope: string;
     {!page.loading && !page.error && !page.data?.items.length && <Muted className="p-6 text-center">No matching symbols in this selection.</Muted>}
     {page.loadingMore && <div role="status" className="p-3 text-center text-xs text-zinc-500">Loading more symbols…</div>}
     {page.hasMore && !page.loadingMore && !page.error && <div className="p-2 text-center"><button type="button" className={button} onClick={page.loadMore}>Load more symbols</button></div>}
-    {!page.hasMore && !page.loading && !page.error && page.data?.items.length ? <div className="p-3 text-xs text-zinc-500">Loaded {page.data.items.length} symbols.</div> : null}
+    {!page.hasMore && !page.loading && !page.error && page.data?.items.length ? <div role="status" aria-live="polite" className="p-3 text-xs text-zinc-500">Loaded {page.data.items.length} symbols.</div> : null}
     <div ref={sentinelRef} aria-hidden="true" className="h-px" />
   </div>;
 }
