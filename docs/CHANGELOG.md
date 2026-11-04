@@ -11,6 +11,11 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Proposed MADR-0035 requires scoped quantitative SLOs for performance and
+  measurable operational-quality issues, with reproducible workloads, resource
+  envelopes, failure accounting and an optimization stop rule. Functional
+  correctness gates remain mandatory; policy is not measured compliance.
+
 - Pinned, non-root Node/.NET development container without a default engine
   socket, credential mounts or automatic service provisioning. Trusted native
   build/restore/frontend/backend goals work without an installed container
