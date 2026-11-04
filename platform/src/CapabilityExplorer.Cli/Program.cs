@@ -42,10 +42,18 @@ if (args.Length == 0)
 }
 
 var command = args[0];
+var strictCollectionOptions = command is "collect" or "validate-collection" or "collection-freshness";
 var options = new Dictionary<string, string>(StringComparer.Ordinal);
 var files = new List<string>();
 for (var i = 1; i < args.Length; i++)
 {
+    if (strictCollectionOptions && args[i].StartsWith("--", StringComparison.Ordinal) &&
+        (i + 1 == args.Length || args[i + 1].StartsWith("--", StringComparison.Ordinal) ||
+         options.ContainsKey(args[i][2..])))
+    {
+        Console.Error.WriteLine($"{command}: missing value or duplicate option {args[i]}");
+        return 2;
+    }
     if (args[i].StartsWith("--", StringComparison.Ordinal) && i + 1 < args.Length)
     {
         options[args[i][2..]] = args[++i];

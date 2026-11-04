@@ -65,6 +65,11 @@ test("Given sealed Git input vectors, the installed CLI detects source and autho
     compare({ ...vector, recipeSha256: hash("recipe:v2") }, 1, "stale");
     compare({ ...vector, enumerationComplete: false }, 1, "unknown");
     compare({ ...vector, repositories: repositories.slice(1) }, 1, "stale");
+    writeFileSync(current, JSON.stringify(vector));
+    const duplicate = spawnSync("dotnet", [cli, "collection-freshness", "--previous", previous,
+      "--previous", previous, "--current", current], { cwd: root, encoding: "utf8", timeout: 30_000 });
+    assert.ifError(duplicate.error);
+    assert.equal(duplicate.status, 2, "duplicate collector options must not be silently overwritten");
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
