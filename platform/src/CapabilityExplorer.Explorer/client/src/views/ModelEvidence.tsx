@@ -7,6 +7,7 @@ import type {
 const card = "rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900";
 const linkStyle = "text-blue-700 underline decoration-transparent underline-offset-2 hover:decoration-current focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-blue-300";
 const localTypeName = (type: string) => type.split(/[:/#}]/).at(-1)?.toLowerCase();
+const dmnNamespace = "https://www.omg.org/spec/DMN/20191111/MODEL/";
 
 export function ElementList({ elements, relationships, selected, renderedIds, onSelect }: {
   elements: AuthoredModelEvidence["elements"];
@@ -107,25 +108,13 @@ export function DmnTables({ elements, selected, onSelect }: {
       const declarationFor = (column: AuthoredModelEvidence["elements"][number], kind: "input" | "output") => {
         const declarationName = `${kind}values`;
         const declarations = elements.filter((element) =>
-          element.parent === column.identity && localTypeName(element.type) === declarationName
+          element.parent === column.identity && element.namespace === dmnNamespace &&
+          localTypeName(element.type) === declarationName
         ).sort((a, b) => a.order - b.order);
-        const textFor = (element: AuthoredModelEvidence["elements"][number]): string | undefined => {
-          const record = element as typeof element & { text?: string; attrs?: Record<string, string> };
-          if (element.content?.text) return element.content.text;
-          if (record.text) return record.text;
-          if (element.attributes.text) return element.attributes.text;
-          if (record.attrs?.text) return record.attrs.text;
-          const textChildren = elements.filter((child) =>
-            child.parent === element.identity && localTypeName(child.type) === "text"
-          ).sort((a, b) => a.order - b.order);
-          const parts = textChildren.map((child) => {
-            const childRecord = child as typeof child & { text?: string; attrs?: Record<string, string> };
-            return child.content?.text || childRecord.text || child.attributes.text || childRecord.attrs?.text;
-          }).filter((text): text is string => typeof text === "string" && text.length > 0);
-          return parts.length ? parts.join("\n") : undefined;
-        };
-        const texts = declarations.map(textFor).filter((text): text is string => text !== undefined && text.length > 0);
-        return texts.length ? texts.join("\n") : undefined;
+        if (!declarations.length) return "No standard DMN allowed-value declaration is present in this evidence. The reason is not established by this view.";
+        return declarations.map((declaration) => declaration.content?.text ||
+          "Declaration present; its text is empty or was not captured. The reason is not established by this view."
+        ).join("\n");
       };
       const tableShapeValid = columns.length > 0 && rules.every((rule) => {
         const inputCells = (rule.cells ?? []).filter((cell) => cell.kind === "input").sort((a, b) => a.order - b.order);
@@ -147,7 +136,7 @@ export function DmnTables({ elements, selected, onSelect }: {
               return <th key={column.identity} scope="col" className="border border-zinc-300 bg-zinc-100 px-2 py-1 align-top dark:border-zinc-700 dark:bg-zinc-800">
                 <span className="block">{column.attributes.label || column.attributes.name || column.id}</span>
                 <span className="mt-1 block text-xs font-normal text-zinc-600 dark:text-zinc-300">{kind === "input" ? "Input allowed values" : "Output allowed values"} (literal, not evaluated)</span>
-                <span className="block whitespace-pre-wrap break-words font-mono text-xs font-normal">{declaration ?? "Allowed-value declaration text was not captured in this evidence profile."}</span>
+                <span className="block whitespace-pre-wrap break-words font-mono text-xs font-normal">{declaration}</span>
               </th>;
             })}</tr></thead>
             <tbody>{tableShapeValid && rules.map((rule) => <tr key={rule.identity} className={selected === rule.id ? "bg-blue-50 outline outline-2 outline-blue-500 dark:bg-blue-950/60" : ""}>

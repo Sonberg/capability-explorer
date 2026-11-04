@@ -18,14 +18,15 @@ const server = await createServer({
 try {
   const { DmnTables, Diagnostics, Provenance, groupModelDiagnostics } = await server.ssrLoadModule("/src/views/ModelEvidence.tsx");
   const { modelSelectionUpdates } = await server.ssrLoadModule("/src/views/model-view-data.ts");
+  const namespace = "https://www.omg.org/spec/DMN/20191111/MODEL/";
   const elements = [
     { identity: "table", kind: "dmn", namespace: "urn:dmn", id: "DecisionTable", type: "dmn:decisionTable", order: 0, attributes: { name: "Eligibility" }, hitPolicy: "FIRST", source: { artifact: "model.dmn" } },
     { identity: "input", kind: "dmn", namespace: "urn:dmn", id: "Input_Age", type: "dmn:input", order: 1, parent: "table", attributes: { label: "Age" }, source: { artifact: "model.dmn", element: "Input_Age" } },
     { identity: "input-values", kind: "dmn", namespace: "urn:dmn", id: "InputValues_Age", type: "dmn:inputValues", order: 2, parent: "input", attributes: {}, content: { text: "<18, [18..24], -" }, source: { artifact: "model.dmn", element: "InputValues_Age" } },
     { identity: "output", kind: "dmn", namespace: "urn:dmn", id: "Output_Eligibility", type: "dmn:output", order: 3, parent: "table", attributes: { label: "Eligibility" }, source: { artifact: "model.dmn", element: "Output_Eligibility" } },
-    { identity: "output-values", kind: "dmn", namespace: "urn:dmn", id: "OutputValues_Eligibility", type: "dmn:outputValues", order: 4, parent: "output", attributes: {}, text: '"deny", "approve"', attrs: { text: "wrong column text" }, source: { artifact: "model.dmn", element: "OutputValues_Eligibility" } },
+    { identity: "output-values", kind: "dmn", namespace: "urn:dmn", id: "OutputValues_Eligibility", type: "dmn:outputValues", order: 4, parent: "output", attributes: {}, content: { text: '"deny", "approve"' }, source: { artifact: "model.dmn", element: "OutputValues_Eligibility" } },
     { identity: "rule", kind: "dmn", namespace: "urn:dmn", id: "Rule_1", type: "dmn:rule", order: 5, parent: "table", attributes: {}, cells: [{ kind: "input", order: 0, text: "<18", language: "FEEL" }, { kind: "output", order: 1, text: '"deny"', language: "FEEL" }], source: { artifact: "model.dmn", element: "Rule_1" } }
-  ];
+  ].map((element) => ({ ...element, namespace }));
   const tableMarkup = renderToStaticMarkup(createElement(DmnTables, {
     elements, selected: "", onSelect: () => undefined
   }));
@@ -39,7 +40,6 @@ try {
   assert.match(columns[1], /allowed values/i);
   assert.match(columns[1], /&quot;deny&quot;, &quot;approve&quot;/);
   assert.doesNotMatch(columns[1], /&lt;18/);
-  assert.doesNotMatch(columns[1], /wrong column text/);
   assert.match(tableMarkup, /Hit policy: FIRST/);
   assert.match(tableMarkup, /literal, not evaluated/);
   assert.match(tableMarkup, /&quot;deny&quot;/);
@@ -49,8 +49,29 @@ try {
     selected: "", onSelect: () => undefined
   }));
   const missingInputColumn = [...missingValueMarkup.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g)][0]?.[1] ?? "";
-  assert.match(missingInputColumn, /Allowed-value declaration text was not captured/);
+  assert.match(missingInputColumn, /No standard DMN allowed-value declaration is present in this evidence/);
+  assert.match(missingInputColumn, /The reason is not established by this view/);
   assert.doesNotMatch(missingInputColumn, /&lt;18/);
+
+  const inputColumnFor = (values: typeof elements) => {
+    const markup = renderToStaticMarkup(createElement(DmnTables, {
+      elements: values, selected: "", onSelect: () => undefined
+    }));
+    return [...markup.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g)][0]?.[1] ?? "";
+  };
+  for (const content of [undefined, { text: "" }]) {
+    const column = inputColumnFor(elements.map((element) => element.identity === "input-values"
+      ? { ...element, content, attributes: { text: "untrusted attribute is not a declaration" } }
+      : element));
+    assert.match(column, /Declaration present; its text is empty or was not captured/);
+    assert.match(column, /The reason is not established by this view/);
+    assert.doesNotMatch(column, /untrusted attribute|No standard DMN/);
+  }
+  const vendorColumn = inputColumnFor(elements.map((element) => element.identity === "input-values"
+    ? { ...element, namespace: "urn:vendor", type: "vendor:inputValues", content: { text: "vendor-only values" } }
+    : element));
+  assert.match(vendorColumn, /No standard DMN allowed-value declaration is present in this evidence/);
+  assert.doesNotMatch(vendorColumn, /vendor-only values/);
 
   const longArtifact = `models/${"nested/".repeat(90)}eligibility.dmn`;
   const diagnostics = [

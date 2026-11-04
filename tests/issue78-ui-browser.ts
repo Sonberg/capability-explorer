@@ -7,6 +7,7 @@ import { gzipSync } from "node:zlib";
 import { build, preview } from "../platform/src/CapabilityExplorer.Explorer/client/node_modules/vite/dist/node/index.js";
 import { createUiModelEvidence } from "./fixtures/issue78/ui-evidence.ts";
 import { installIssue78UiApiRoutes, type UiApiState } from "./fixtures/issue78/ui-api-routes.ts";
+import "./issue78-model-ui-quality.ts";
 
 const root = resolve(import.meta.dirname, "..");
 const client = resolve(root, "platform/src/CapabilityExplorer.Explorer/client");
