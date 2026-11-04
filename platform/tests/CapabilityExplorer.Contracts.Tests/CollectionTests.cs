@@ -76,6 +76,43 @@ public sealed class CollectionTests
     }
 
     [Fact]
+    public async Task Required_failure_after_staging_an_artifact_removes_partial_output()
+    {
+        var root = NewTestRoot();
+        try
+        {
+            var planPath = await WritePlanAsync(root,
+                [("repo-a", "models/a.json", CreateModel("repo-a", "models/a.json"))]);
+            var plan = JsonNode.Parse(await File.ReadAllTextAsync(planPath))!.AsObject();
+            plan["inputs"]!.AsArray().Add(new JsonObject
+            {
+                ["repositoryId"] = "repo-a",
+                ["profile"] = "ce.models.v1",
+                ["path"] = "inputs/missing.json",
+                ["unitPath"] = "models/z.json",
+                ["sha256"] = new string('f', 64),
+                ["byteLength"] = 12,
+                ["required"] = true,
+                ["contentProfile"] = "model-content"
+            });
+            await File.WriteAllTextAsync(planPath, plan.ToJsonString());
+
+            var output = Path.Combine(root, "bundle");
+            var result = await CollectionExporter.ExportAsync(planPath, output);
+
+            Assert.False(result.IsValid);
+            Assert.Contains(result.Problems, problem => problem.Contains("required", StringComparison.Ordinal));
+            Assert.False(Directory.Exists(output));
+            Assert.False(File.Exists(Path.Combine(output, "collection.json")));
+            Assert.Empty(Directory.GetDirectories(root, ".bundle.collection-stage-*"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Collection_validation_rejects_a_modified_descriptor_or_artifact()
     {
         var root = Path.Combine(AppContext.BaseDirectory, "collection-tests", Guid.NewGuid().ToString("N"));
