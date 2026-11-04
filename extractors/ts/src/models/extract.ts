@@ -4,20 +4,10 @@ import { BpmnModdle } from "bpmn-moddle";
 import { DmnModdle } from "dmn-moddle";
 import modelSupport from "../../../../schema/models/support.json" with { type: "json" };
 import { BPMN_NAMESPACE, DEFAULT_XML_LIMITS, DMN_13_NAMESPACE, ModelXmlError, parseXml, type XmlNode } from "./xml.ts";
+import { constructsFor, FLOW_NODE_TYPES, isStandardLayoutNamespace, validateFlowDirectionDeclarations, type ModelKind, type SupportConstruct } from "./extract-semantics.ts";
 import type { ModelDiagnostic, ModelElement, ModelEvidence, ModelExtractionOptions, ModelRelationship } from "./profile.ts";
 
-type ModelKind = "bpmn" | "dmn";
 type ModelParser = { fromXML(xml: string, options?: { lax?: boolean }): Promise<{ warnings: Error[] }> };
-type ConstructStatus = "semantic-evidence-supported" | "opaque-partial" | "rejected";
-interface SupportConstruct {
-  id: string;
-  family: ModelKind;
-  namespace: string;
-  elements: string[];
-  status: ConstructStatus;
-  capturesText?: boolean;
-  matchesUnlisted?: boolean;
-}
 
 const SUPPORT_CONSTRUCTS = (modelSupport as { constructs: SupportConstruct[] }).constructs;
 
@@ -25,12 +15,6 @@ const RELATIONSHIP_TYPES = new Map<string, ModelRelationship["kind"]>([
   ["sequenceFlow", "sequenceFlow"],
   ["messageFlow", "messageFlow"],
   ["association", "association"],
-]);
-const FLOW_NODE_TYPES = new Set([
-  "task", "userTask", "serviceTask", "scriptTask", "manualTask", "businessRuleTask", "sendTask", "receiveTask",
-  "startEvent", "endEvent", "intermediateCatchEvent", "intermediateThrowEvent", "boundaryEvent", "exclusiveGateway",
-  "inclusiveGateway", "parallelGateway", "eventBasedGateway", "complexGateway", "subProcess", "transaction",
-  "adHocSubProcess", "callActivity",
 ]);
 
 function hash(value: string): string {
@@ -78,11 +62,15 @@ function validateOptions(options: ModelExtractionOptions): void {
   }
 }
 
-async function parserWarnings(kind: ModelKind, xml: string): Promise<Error[]> {
+async function parserWarnings(kind: ModelKind, xml: string, validatedFlowQNames = new Set<string>()): Promise<Error[]> {
   const parser: ModelParser = kind === "bpmn" ? new BpmnModdle() : new DmnModdle();
   try {
     const parsed = await parser.fromXML(xml, { lax: true });
-    return parsed.warnings;
+    // The pinned moddle parser treats prefixed QName text as an unresolved literal ID.
+    return parsed.warnings.filter(warning => {
+      const unresolved = /^unresolved reference <([^<>]+)>$/.exec(warning.message);
+      return !(unresolved && validatedFlowQNames.has(unresolved[1]!));
+    });
   } catch {
     throw new ModelXmlError("model-parse-failed", "Moddle parser rejected the XML document");
   }
@@ -96,12 +84,6 @@ function collectNodes(root: XmlNode): XmlNode[] {
   };
   visit(root);
   return result;
-}
-
-function constructsFor(kind: ModelKind, namespace: string, element: string): SupportConstruct[] {
-  const rows = SUPPORT_CONSTRUCTS.filter(item => item.family === kind && (item.namespace === namespace || item.namespace === "*"));
-  const exact = rows.filter(item => item.elements.includes(element));
-  return exact.length ? exact : rows.filter(item => item.matchesUnlisted || item.namespace === "*");
 }
 
 function addPartialDiagnostic(
@@ -204,12 +186,6 @@ export async function extractModelXmlInProcess(
     throw new ModelXmlError("unsupported-model-namespace", `Unsupported authored model namespace or root: ${root.namespace || "(none)"}/${root.localName}`);
   }
 
-  const warnings = await parserWarnings(kind, xml);
-  if (performance.now() - started > DEFAULT_XML_LIMITS.maxParseMilliseconds) {
-    throw new ModelXmlError("xml-time-limit", `XML extraction budget exceeded (${DEFAULT_XML_LIMITS.maxParseMilliseconds}ms)`);
-  }
-  const expectedNamespace = kind === "bpmn" ? BPMN_NAMESPACE : DMN_13_NAMESPACE;
-  const contentProfile = options.contentProfile ?? "structural";
   const nodes = collectNodes(root);
   const idNodes = new Map<string, XmlNode>();
   const assignedIds = new Map<XmlNode, string>();
@@ -234,6 +210,14 @@ export async function extractModelXmlInProcess(
     elementIdentities.set(node, identity);
   }
 
+  const validatedFlowQNames = kind === "bpmn" ? validateFlowDirectionDeclarations(nodes, idNodes) : new Set<string>();
+  const warnings = await parserWarnings(kind, xml, validatedFlowQNames);
+  if (performance.now() - started > DEFAULT_XML_LIMITS.maxParseMilliseconds) {
+    throw new ModelXmlError("xml-time-limit", `XML extraction budget exceeded (${DEFAULT_XML_LIMITS.maxParseMilliseconds}ms)`);
+  }
+  const expectedNamespace = kind === "bpmn" ? BPMN_NAMESPACE : DMN_13_NAMESPACE;
+  const contentProfile = options.contentProfile ?? "structural";
+
   for (const warning of warnings) {
     diagnostics.push({
       code: "moddle-parser-warning",
@@ -247,7 +231,7 @@ export async function extractModelXmlInProcess(
   const relationships: ModelRelationship[] = [];
   for (const node of nodes) {
     if (node.namespace === expectedNamespace && node.localName === "text") continue;
-    const constructRows = constructsFor(kind, node.namespace, node.localName);
+    const constructRows = constructsFor(kind, node.namespace, node.localName, SUPPORT_CONSTRUCTS);
     const status = constructRows.some(item => item.status === "rejected")
       ? "rejected"
       : constructRows.some(item => item.status === "semantic-evidence-supported")
@@ -255,9 +239,11 @@ export async function extractModelXmlInProcess(
     if (status === "rejected") {
       throw new ModelXmlError("unsupported-rejected-construct", "Encountered a construct excluded from authored-model extraction");
     }
-    const nodeKind = node.namespace !== expectedNamespace
-      ? "opaqueExtension"
-      : status === "semantic-evidence-supported" ? kind : "unsupported";
+    const retainedLayout = constructRows.some(item => item.disposition === "structural-retained-layout");
+    const knownLayoutNamespace = isStandardLayoutNamespace(kind, node.namespace);
+    const nodeKind = node.namespace === expectedNamespace
+      ? status === "semantic-evidence-supported" ? kind : "unsupported"
+      : retainedLayout ? kind : knownLayoutNamespace ? "unsupported" : "opaqueExtension";
     if (nodeKind === "unsupported" || nodeKind === "opaqueExtension") {
       diagnostics.push({
         code: nodeKind === "unsupported" ? "unsupported-model-element" : "opaque-extension-content",
@@ -271,7 +257,7 @@ export async function extractModelXmlInProcess(
     const id = assignedIds.get(node)!;
     const element: ModelElement = {
       identity: elementIdentities.get(node)!,
-      kind: nodeKind === "opaqueExtension" ? "opaqueExtension" : nodeKind === "unsupported" ? "unsupported" : kind,
+      kind: nodeKind,
       namespace: node.namespace,
       id,
       type: node.localName,
@@ -283,6 +269,13 @@ export async function extractModelXmlInProcess(
     };
     if (node.parent) element.parent = elementIdentities.get(node.parent);
 
+    if (kind === "dmn" && node.namespace === DMN_13_NAMESPACE
+      && (node.localName === "inputValues" || node.localName === "outputValues")) {
+      const expectedParent = node.localName === "inputValues" ? "input" : "output";
+      if (node.parent?.namespace !== DMN_13_NAMESPACE || node.parent.localName !== expectedParent) {
+        throw new ModelXmlError("invalid-dmn-allowed-values-owner", "DMN allowed values must be contained by the matching input/output clause");
+      }
+    }
     if (node.namespace === expectedNamespace && kind === "dmn" && node.localName === "decisionTable") {
       const hitPolicy = attribute(node, "hitPolicy");
       const aggregation = attribute(node, "aggregation");
@@ -304,6 +297,9 @@ export async function extractModelXmlInProcess(
         });
     }
     const textContent = nodeContent(node);
+    const flowDirectionReference = node.namespace === BPMN_NAMESPACE
+      && (node.localName === "incoming" || node.localName === "outgoing");
+    if (flowDirectionReference && textContent.trim()) element.content = { text: textContent.trim() };
     const capturesText = node.namespace !== expectedNamespace || constructRows.some(item => item.capturesText);
     if (capturesText && textContent.trim()) {
       if (contentProfile === "model-content") {

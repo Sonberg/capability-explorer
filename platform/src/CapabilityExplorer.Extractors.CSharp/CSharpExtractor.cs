@@ -472,17 +472,3 @@ internal static class JsonObjectExtensions
         return o;
     }
 }
-
-/// <summary>ce.v1 symbol keys for Roslyn symbols: documentation comment IDs, scoped to repository and assembly.</summary>
-internal sealed class SymbolKeys(string repositoryId, IReadOnlySet<string> repoAssemblies)
-{
-    public string Of(ISymbol symbol)
-    {
-        var original = symbol.OriginalDefinition;
-        var id = original.GetDocumentationCommentId() ?? $"?:{original.ToDisplayString()}";
-        var assembly = original.ContainingAssembly?.Name ?? "unknown";
-        return repoAssemblies.Contains(assembly) && original.Locations.Any(l => l.IsInSource)
-            ? $"cs|{repositoryId}|{assembly}|{id}"
-            : $"cs|@ext|{assembly}|{id}";
-    }
-}

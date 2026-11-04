@@ -337,3 +337,125 @@ test("Given a real fixture and schema, the standalone command emits valid JSON e
     });
   }
 });
+
+
+test("Given issue78 BPMN and DMN diagram XML, standard layout is retained separately from lookalike extensions", async () => {
+  const bpmnXml = await readFile(fileURLToPath(new URL("../../../../tests/fixtures/issue78/bpmn-representative.xml", import.meta.url)), "utf8");
+  const dmnXml = await readFile(fileURLToPath(new URL("../../../../tests/fixtures/issue78/dmn-representative.xml", import.meta.url)), "utf8");
+  const bpmn = await extractModelXml(bpmnXml, options("issue78.bpmn", "model-content"));
+  const dmn = await extractModelXml(dmnXml, options("issue78.dmn", "model-content"));
+  const standardLayoutNamespaces = new Set([
+    "http://www.omg.org/spec/BPMN/20100524/DI",
+    "http://www.omg.org/spec/DD/20100524/DC",
+    "http://www.omg.org/spec/DD/20100524/DI",
+    "https://www.omg.org/spec/DMN/20191111/DMNDI/",
+    "http://www.omg.org/spec/DMN/20180521/DC/",
+    "http://www.omg.org/spec/DMN/20180521/DI/",
+  ]);
+  const layout = [...bpmn.elements, ...dmn.elements].filter(element => standardLayoutNamespaces.has(element.namespace));
+
+  assert.ok(layout.length > 0);
+  assert.ok(layout.every(element => element.kind === "bpmn" || element.kind === "dmn"));
+  const bpmnShape = bpmn.elements.find(element => element.id === "Shape_Task_Review");
+  assert.equal(bpmnShape?.namespace, "http://www.omg.org/spec/BPMN/20100524/DI");
+  assert.equal(bpmnShape?.attributes.bpmnElement, "Task_Review");
+  assert.equal(bpmnShape?.parent, bpmn.elements.find(element => element.id === "Plane_Issue78")?.identity);
+  const dmnShape = dmn.elements.find(element => element.id === "Shape_Decision_Eligibility");
+  assert.equal(dmnShape?.namespace, "https://www.omg.org/spec/DMN/20191111/DMNDI/");
+  assert.equal(dmnShape?.attributes.dmnElementRef, "Decision_Eligibility");
+  assert.ok(![...bpmn.diagnostics, ...dmn.diagnostics].some(item => item.code === "opaque-extension-content"));
+  assert.equal(bpmn.coverage.status, "full");
+  assert.equal(dmn.coverage.status, "full");
+  assert.ok(bpmn.coverage.supported.includes("bpmn.diagramInterchange"));
+  assert.ok(bpmn.coverage.supported.includes("bpmn.diagramCommon"));
+  assert.ok(bpmn.coverage.supported.includes("bpmn.diagramPrimitives"));
+  assert.ok(dmn.coverage.supported.includes("dmn.diagramInterchange"));
+  assert.ok(dmn.coverage.supported.includes("dmn.diagramCommon"));
+  assert.ok(dmn.coverage.supported.includes("dmn.diagramPrimitives"));
+
+  const unknownLayout = '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"><bpmn:extensionElements><bpmndi:UnlistedLayout id="future-layout"/></bpmn:extensionElements></bpmn:definitions>';
+  const partialLayout = await extractModelXml(unknownLayout, options("unknown-layout.bpmn"));
+  assert.ok(partialLayout.elements.some(element => element.id === "future-layout" && element.kind === "unsupported"));
+  assert.ok(partialLayout.diagnostics.some(item => item.code === "unsupported-model-element" && item.source?.element === "future-layout"));
+  assert.equal(partialLayout.coverage.status, "partial");
+
+  const lookalike = '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:v="urn:lookalike"><bpmn:extensionElements><v:BPMNShape id="vendor-shape">opaque</v:BPMNShape></bpmn:extensionElements></bpmn:definitions>';
+  const opaque = await extractModelXml(lookalike, options("lookalike.bpmn", "model-content"));
+  assert.ok(opaque.elements.some(element => element.type === "BPMNShape" && element.namespace === "urn:lookalike" && element.kind === "opaqueExtension"));
+  assert.equal(opaque.coverage.status, "partial");
+});
+
+test("Given BPMN incoming and outgoing declarations, references are optional but must agree with sequenceFlow endpoints", async () => {
+  const xml = await readFile(fileURLToPath(new URL("../../../../tests/fixtures/issue78/bpmn-representative.xml", import.meta.url)), "utf8");
+  const evidence = await extractModelXml(xml, options("issue78.bpmn"));
+  assert.equal(evidence.elements.filter(element => element.type === "incoming" || element.type === "outgoing").length, 14);
+  assert.equal(evidence.elements.find(element => element.type === "incoming")?.content?.text, "Flow_Start_Review");
+  assert.equal(evidence.coverage.status, "full");
+  assert.ok(evidence.coverage.supported.includes("bpmn.flowDirectionReferences"));
+  assert.equal(evidence.relationships.filter(relation => relation.kind === "sequenceFlow").length, 7);
+
+  const withoutOptionalDeclarations = '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"><bpmn:process id="p"><bpmn:task id="a"/><bpmn:task id="b"/><bpmn:sequenceFlow id="f" sourceRef="a" targetRef="b"/></bpmn:process></bpmn:definitions>';
+  const optional = await extractModelXml(withoutOptionalDeclarations, options("optional.bpmn"));
+  assert.equal(optional.coverage.status, "full");
+  assert.equal(optional.relationships.filter(relation => relation.kind === "sequenceFlow").length, 1);
+
+  const rejects = async (changed: string, code: string) => assert.rejects(
+    extractModelXml(changed, options("invalid-direction.bpmn")),
+    (error: unknown) => error instanceof ModelXmlError && error.code === code,
+  );
+  await rejects(xml.replace("<bpmn:incoming>Flow_Start_Review</bpmn:incoming>", "<bpmn:incoming>missing-flow</bpmn:incoming>"), "dangling-flow-direction-reference");
+  await rejects(xml.replace("<bpmn:incoming>Flow_Start_Review</bpmn:incoming>", "<bpmn:incoming>Flow_Review_Check</bpmn:incoming>"), "inconsistent-flow-direction-reference");
+  await rejects(xml.replace("<bpmn:outgoing>Flow_Start_Review</bpmn:outgoing>", "<bpmn:outgoing>missing-flow</bpmn:outgoing>"), "dangling-flow-direction-reference");
+  await rejects(xml.replace("<bpmn:outgoing>Flow_Start_Review</bpmn:outgoing>", "<bpmn:outgoing>Flow_Review_Check</bpmn:outgoing>"), "inconsistent-flow-direction-reference");
+});
+
+test("Given QName BPMN flow directions, only in-scope target-namespace prefixes resolve locally", async () => {
+  const local = '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:local="urn:test" targetNamespace="urn:test"><bpmn:process id="p"><bpmn:task id="a"><bpmn:outgoing>local:f</bpmn:outgoing></bpmn:task><bpmn:task id="b"><bpmn:incoming>local:f</bpmn:incoming></bpmn:task><bpmn:sequenceFlow id="f" sourceRef="a" targetRef="b"/></bpmn:process></bpmn:definitions>';
+  const evidence = await extractModelXml(local, options("prefixed-direction.bpmn"));
+  assert.equal(evidence.coverage.status, "full");
+  assert.equal(evidence.elements.find(element => element.type === "incoming")?.content?.text, "local:f");
+  assert.equal(evidence.elements.find(element => element.type === "outgoing")?.content?.text, "local:f");
+  assert.equal(evidence.relationships.filter(relation => relation.kind === "sequenceFlow").length, 1);
+
+  const rejects = async (xml: string, code: string) => assert.rejects(
+    extractModelXml(xml, options("invalid-qname.bpmn")),
+    (error: unknown) => error instanceof ModelXmlError && error.code === code,
+  );
+  await rejects(local.replace("local:f", "missing:f"), "undeclared-flow-direction-prefix");
+  await rejects(local.replace('xmlns:local="urn:test"', 'xmlns:local="urn:foreign"'), "foreign-flow-direction-prefix");
+  await rejects(local.replace("local:f", "bad:name:parts"), "invalid-flow-direction-qname");
+  await rejects(local.replace('targetRef="b"', 'targetRef="a"'), "inconsistent-flow-direction-reference");
+});
+
+test("Given DMN allowed-values clauses, extraction retains ordered literal source text only with model-content consent", async () => {
+  const xml = await readFile(fileURLToPath(new URL("../../../../tests/fixtures/issue78/dmn-representative.xml", import.meta.url)), "utf8");
+  const structural = await extractModelXml(xml, options("issue78.dmn"));
+  const content = await extractModelXml(xml, options("issue78.dmn", "model-content"));
+  const inputValues = content.elements.find(element => element.id === "InputValues_Age");
+  const outputValues = content.elements.find(element => element.id === "OutputValues_Eligibility");
+
+  assert.equal(inputValues?.kind, "dmn");
+  assert.equal(inputValues?.parent, content.elements.find(element => element.id === "InputClause_Age")?.identity);
+  assert.equal(inputValues?.order, 0);
+  assert.deepEqual(inputValues?.content, { text: "<18, [18..24], -" });
+  assert.equal(outputValues?.kind, "dmn");
+  assert.equal(outputValues?.parent, content.elements.find(element => element.id === "Output_Eligibility")?.identity);
+  assert.equal(outputValues?.order, 0);
+  assert.deepEqual(outputValues?.content, { text: '"deny", "manual", "approve"' });
+  assert.equal(structural.elements.find(element => element.id === "InputValues_Age")?.content, undefined);
+  assert.ok(structural.diagnostics.some(item => item.code === "content-redacted" && item.source?.element === "InputValues_Age"));
+  assert.equal(JSON.stringify(structural).includes("[18..24]"), false);
+  const withSecondClause = xml.replace(
+    '<dmn:output id="Output_Eligibility"',
+    '<dmn:input id="InputClause_Second"><dmn:inputValues id="InputValues_Second"><dmn:text>later clause</dmn:text></dmn:inputValues></dmn:input><dmn:output id="Output_Eligibility"',
+  );
+  const ordered = await extractModelXml(withSecondClause, options("issue78-ordered.dmn", "model-content"));
+  assert.deepEqual(ordered.elements.filter(element => element.id.startsWith("InputClause_")).map(element => [element.id, element.order]), [
+    ["InputClause_Age", 0], ["InputClause_Second", 1],
+  ]);
+  assert.equal(ordered.elements.find(element => element.id === "InputValues_Second")?.parent,
+    ordered.elements.find(element => element.id === "InputClause_Second")?.identity);
+  assert.equal(ordered.elements.find(element => element.id === "InputValues_Second")?.content?.text, "later clause");
+  assert.equal(content.coverage.status, "full");
+  assert.ok(content.coverage.supported.includes("dmn.allowedValues"));
+});

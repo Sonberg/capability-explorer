@@ -6,7 +6,7 @@ import {
 } from "../models/contracts";
 import { createModelSandbox, loadTrustedViewerAssets, type ModelSandbox, type SandboxEvent } from "../models/viewer-sandbox";
 import { CandidateEvidence, Diagnostics, DmnTables, ElementList, Provenance } from "./ModelEvidence";
-import { failureDescription, getJson, scopeFrom, scopedRequest, validateEvidence, validateSource, validModelList } from "./model-view-data";
+import { failureDescription, getJson, modelSelectionUpdates, scopeFrom, scopedRequest, validateEvidence, validateSource, validModelList } from "./model-view-data";
 import { href } from "../state";
 
 type Props = { scope: string; params: URLSearchParams; mode: "files" | "database" };
@@ -210,7 +210,7 @@ export function ProcessesDecisions({ scope, params, mode }: Props) {
     (!query || `${item.repositoryId} ${item.unitPath} ${item.commitSha} ${item.modelKind}`.toLowerCase().includes(query.toLowerCase()))
   ), [summaries, kind, query, selectedId, currentEvidence.data]);
   const selectModel = (id: string) => {
-    updateRoute({ id, element: undefined });
+    updateRoute(modelSelectionUpdates(id));
   };
 
   return <section className="space-y-4" aria-labelledby="processes-heading">
@@ -482,7 +482,7 @@ function ModelWorkspace(props: {
       {activeTab === "table" && <DmnTables elements={orderedElements} selected={selectedElement} onSelect={(id) => { setSelectedElement(id); sandbox.current?.selectElement(id); }} />}
     </section>}
     {candidate && <CandidateEvidence candidate={candidate} />}
-    {authored && <Diagnostics diagnostics={authored.diagnostics} />}
+    {authored && <Diagnostics diagnostics={authored.diagnostics} elements={authored.elements} />}
     {candidate && <Diagnostics diagnostics={candidate.diagnostics} />}
   </article>;
 }

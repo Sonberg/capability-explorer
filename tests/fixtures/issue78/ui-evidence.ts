@@ -40,7 +40,10 @@ export function createUiModelEvidence({ bpmnHash, dmnHash, revisionA, revisionB,
     sourceSha256: bpmnHash,
     contentProfile: "model-content",
     coverage: { status: "partial", supported: ["BPMN process"], limitations: ["Vendor extensions are opaque."] },
-    diagnostics: [{ code: "MODEL_PARTIAL", message: "One opaque extension was retained.", disposition: "partial", source: sourceLocator }],
+    diagnostics: [
+      { code: "MODEL_PARTIAL", message: "One opaque extension was retained.", disposition: "partial", source: { artifact: `models/${"nested/".repeat(40)}model.xml`, element: "Vendor_1" } },
+      { code: "MODEL_PARTIAL", message: "Another opaque extension was retained at Vendor_2.", disposition: "partial", source: { artifact: `models/${"nested/".repeat(40)}model.xml`, element: "Vendor_2" } }
+    ],
     elements: [
       { identity: bpmnIdentity, kind: "bpmn", namespace: "http://www.omg.org/spec/BPMN/20100524/MODEL", id: "Process_A", type: "bpmn:process", order: 0, attributes: { name: "Application" }, source: sourceLocator },
       { identity: laneIdentity, kind: "bpmn", namespace: "http://www.omg.org/spec/BPMN/20100524/MODEL", id: "Lane_Main", type: "bpmn:lane", order: 1, parent: bpmnIdentity, attributes: { name: "Applicant lane" }, source: sourceLocator },
@@ -69,6 +72,8 @@ export function createUiModelEvidence({ bpmnHash, dmnHash, revisionA, revisionB,
       { identity: tableIdentity, kind: "dmn", namespace: "https://www.omg.org/spec/DMN/20191111/MODEL/", id: "Table_Eligibility", type: "dmn:decisionTable", order: 1, parent: dmnIdentity, attributes: { name: "Eligibility", hitPolicy: "FIRST" }, hitPolicy: "FIRST", source: { artifact: "eligibility.dmn", element: "Table_Eligibility" } },
       { identity: `model:${"8".repeat(64)}`, kind: "dmn", namespace: "https://www.omg.org/spec/DMN/20191111/MODEL/", id: "InputClause_Age", type: "dmn:input", order: 2, parent: tableIdentity, attributes: { label: "Applicant age" }, source: { artifact: "eligibility.dmn", element: "InputClause_Age" } },
       { identity: `model:${"9".repeat(64)}`, kind: "dmn", namespace: "https://www.omg.org/spec/DMN/20191111/MODEL/", id: "Output_Eligibility", type: "dmn:output", order: 3, parent: tableIdentity, attributes: { label: "Eligibility" }, source: { artifact: "eligibility.dmn", element: "Output_Eligibility" } },
+      { identity: "input-values-age", kind: "dmn", namespace: "https://www.omg.org/spec/DMN/20191111/MODEL/", id: "InputValues_Age", type: "dmn:inputValues", order: 2, parent: `model:${"8".repeat(64)}`, attributes: {}, content: { text: "<18, [18..24], -" }, source: { artifact: "eligibility.dmn", element: "InputValues_Age" } },
+      { identity: "output-values-eligibility", kind: "dmn", namespace: "https://www.omg.org/spec/DMN/20191111/MODEL/", id: "OutputValues_Eligibility", type: "dmn:outputValues", order: 3, parent: `model:${"9".repeat(64)}`, attributes: {}, content: { text: '"deny", "manual", "approve"' }, source: { artifact: "eligibility.dmn", element: "OutputValues_Eligibility" } },
       ...["<18", "[18..24]", "-"].map((input, index) => ({
         identity: ruleIdentities[index], kind: "dmn", namespace: "https://www.omg.org/spec/DMN/20191111/MODEL/", id: `Rule_${index + 1}`,
         type: "dmn:rule", order: index + 4, parent: tableIdentity, attributes: {},
@@ -110,7 +115,7 @@ export function createUiModelEvidence({ bpmnHash, dmnHash, revisionA, revisionB,
   const malformedEvidence = { ...bpmnEvidence, unitPath: "models/malformed.bpmn.json" };
   const tamperedEvidence = { ...bpmnEvidence, unitPath: "models/tampered.bpmn.json" };
   const items: SummaryFixture[] = [
-    { id: "model-bpmn", kind: "authored", repositoryId: "repo-a", commitSha: revisionA, unitPath: "models/application.bpmn.json", modelKind: "bpmn", coverage: "partial", diagnosticCount: 1, source: { status: "available", sha256: bpmnHash } },
+    { id: "model-bpmn", kind: "authored", repositoryId: "repo-a", commitSha: revisionA, unitPath: "models/application.bpmn.json", modelKind: "bpmn", coverage: "partial", diagnosticCount: 2, source: { status: "available", sha256: bpmnHash } },
     { id: "model-dmn", kind: "authored", repositoryId: "repo-a", commitSha: revisionA, unitPath: "models/eligibility.dmn.json", modelKind: "dmn", coverage: "full", diagnosticCount: 0, source: { status: "available", sha256: dmnHash } },
     { id: "candidate-cs", kind: "candidate", repositoryId: "repo-a", commitSha: revisionA, unitPath: "src/Eligibility.cs", modelKind: "candidate", coverage: "partial", diagnosticCount: 1, source: { status: "missing", sha256: "f".repeat(64) } },
     { id: "model-denied", kind: "authored", repositoryId: "repo-a", commitSha: revisionA, unitPath: "models/denied.bpmn.json", modelKind: "bpmn", coverage: "full", diagnosticCount: 0, source: { status: "denied", sha256: bpmnHash } },

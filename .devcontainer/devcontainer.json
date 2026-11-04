@@ -1,0 +1,28 @@
+{
+  "name": "Capability Explorer",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+  "remoteUser": "node",
+  "updateRemoteUserUID": true,
+  "forwardPorts": [5080, 5173],
+  "portsAttributes": {
+    "5080": {
+      "label": "Explorer API",
+      "onAutoForward": "notify"
+    },
+    "5173": {
+      "label": "Explorer frontend",
+      "onAutoForward": "notify"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-dotnettools.csharp"],
+      "settings": {
+        "remote.autoForwardPorts": false
+      }
+    }
+  }
+}

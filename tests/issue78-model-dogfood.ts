@@ -32,7 +32,13 @@ function command(program: string, args: string[], cwd = root) {
 }
 const ce = join(root, "platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll");
 const explorer = join(root, "platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll");
-for (const path of [ce, explorer, import.meta.filename])
+for (const path of [ce, explorer, import.meta.filename,
+  join(root, "extractors/ts/src/models/extract.ts"),
+  join(root, "extractors/ts/src/models/extract-semantics.ts"),
+  join(root, "extractors/ts/src/models/xml.ts"),
+  join(root, "schema/models/support.json"),
+  join(root, "extractors/ts/package-lock.json"),
+  join(root, "config/runtime/images.env")])
   sourceHashes[path.slice(root.length + 1)] = digest(await readFile(path));
 await fingerprint(join(root, "platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/wwwroot"));
 const fixtures = join(root, "tests/fixtures/issue78");
@@ -55,13 +61,27 @@ for (const name of ["process.bpmn", "decision.dmn"]) {
     const path = name + suffix;
     const bytes = await readFile(join(run, path));
     const artifact = JSON.parse(bytes.toString("utf8"));
+    if (artifact.schema === "ce.models.v1") {
+      assert(!artifact.diagnostics.some((diagnostic: { code: string }) =>
+        diagnostic.code === "opaque-extension-content"), "standard fixture layout is not a vendor extension");
+      if (name === "decision.dmn") {
+        for (const [id, text] of [
+          ["InputValues_Age", "<18, [18..24], -"],
+          ["OutputValues_Eligibility", '"deny", "manual", "approve"']
+        ]) {
+          const element = artifact.elements.find((candidate: { id: string }) => candidate.id === id);
+          assert.equal(element?.kind, "dmn");
+          assert.equal(element?.content?.text, text);
+        }
+      }
+    }
     inputs.push({ repositoryId: "viewer-fixture", profile: artifact.schema, path,
       unitPath: artifact.unitPath, sha256: digest(bytes), byteLength: bytes.length,
       required: true, contentProfile: "model-content" });
   }
 }
 await writeFile(join(run, "plan.json"), JSON.stringify({
-  schema: "ce.collection.plan.v1", recipeSha256: "1".repeat(64), configSha256: "2".repeat(64),
+  schema: "ce.collection.plan.v1", recipeSha256: digest(Buffer.from(JSON.stringify(sourceHashes))), configSha256: "2".repeat(64),
   policySha256: "3".repeat(64), repositories: [{
     repositoryId: "viewer-fixture", providerId: "local", producerId: "viewer-dogfood",
     tenantRef: "synthetic", rightsRef: "explicit-local-fixture", commitSha: commit, treeSha: tree,
@@ -135,9 +155,17 @@ try {
   await table.waitFor();
   assert((await table.locator("tbody tr").count()) >= 3);
   assert.equal(await table.getByRole("columnheader", { name: "Annotations" }).count(), 0);
+  const headers = table.getByRole("columnheader");
+  assert.match(await headers.nth(0).innerText(), /Input allowed values[\s\S]*<18, \[18\.\.24\], -/);
+  assert.match(await headers.nth(1).innerText(), /Output allowed values[\s\S]*"deny", "manual", "approve"/);
   assert.deepEqual(external, []);
   assert(modelResponses.every((response) => response.status === 200), JSON.stringify(modelResponses));
   await tab.screenshot({ path: join(run, "actual-model-dogfood.png"), fullPage: true });
+  await tab.emulateMedia({ colorScheme: "dark" });
+  await tab.screenshot({ path: join(run, "actual-model-dogfood-dark.png"), fullPage: true });
+  await tab.setViewportSize({ width: 390, height: 844 });
+  assert(await table.isVisible());
+  await tab.screenshot({ path: join(run, "actual-model-dogfood-mobile.png"), fullPage: true });
   await writeFile(join(run, "receipt.json"), JSON.stringify({
     source: command("git", ["rev-parse", "HEAD"]),
     trackedDiffSha256: digest(Buffer.from(command("git", ["diff", "HEAD", "--binary"]))),
