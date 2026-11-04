@@ -15,7 +15,7 @@ sources:
   - id: block
     resource: https://learn.microsoft.com/en-us/dotnet/api/microsoft.codeanalysis.flowanalysis.basicblock?view=roslyn-dotnet-4.9.0
   - id: fixtures
-    resource: ../../fixtures/src
+    resource: https://github.com/Sonberg/capability-explorer/tree/ae9bac966037a5348027c2b2d3e0201a430bf09c/fixtures/src
 ---
 # Result and evidence ceiling
 

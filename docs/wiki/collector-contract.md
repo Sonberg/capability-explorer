@@ -7,7 +7,7 @@ tags: [collection, contracts, provenance]
 generated: {by: copilot-cli/1.0.105, at: "2026-11-04T01:10:00+01:00"}
 sources:
   - id: native
-    resource: ../../schema/README.md
+    resource: https://github.com/Sonberg/capability-explorer/blob/ae9bac966037a5348027c2b2d3e0201a430bf09c/schema/README.md
   - id: platform
     resource: https://github.com/Sonberg/capability-explorer/issues/33
 ---

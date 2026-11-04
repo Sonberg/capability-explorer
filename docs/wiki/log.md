@@ -12,7 +12,9 @@
   and two HTTP 404. Parser behavior and runtime semantics remain implementation
   gates; unsupported async-lowering and graph-count claims were rejected.
 - Structural checks passed eight public wiki pages and 17 positive/rejection
-  fixtures. Product source equals the inspected stage-1 base, whose sandboxed
-  build passed with zero warnings/errors before this documentation-only export.
+  fixtures. The historical stage-1 sandboxed build passed with zero warnings/
+  errors. Publication is based on public main
+  `80ae845b0d4c84a3bd71653f1c3b87a01619f67b`, without product-source changes;
+  its mandatory push gate is a separate validation.
   Publication review checked file contents and clean branch ancestry; no private
   evidence commit is reachable from this branch.

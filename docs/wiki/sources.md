@@ -9,7 +9,7 @@ sources:
   - id: qualification
     resource: qualification.md
   - id: native
-    resource: ../../schema/README.md
+    resource: https://github.com/Sonberg/capability-explorer/blob/ae9bac966037a5348027c2b2d3e0201a430bf09c/schema/README.md
 ---
 # Bounded request register
 
@@ -36,8 +36,10 @@ worker reports do not establish exhaustive conformance.
 
 Public code/schema inspection is bound to the stage-1 base
 `ae9bac966037a5348027c2b2d3e0201a430bf09c`; documentation changes do not
-alter those files. Native evidence conventions come from the
-[contract guide](../../schema/README.md).[^native]
+alter those inspected files. Publication is based on newer public main; source
+claims here retain their original scope rather than being relabeled. Native
+evidence conventions come from the
+[pinned contract guide](https://github.com/Sonberg/capability-explorer/blob/ae9bac966037a5348027c2b2d3e0201a430bf09c/schema/README.md).[^native]
 
 The [maintenance page](maintenance.md) cites retained OKF and LLM Wiki readings;
 they were not new retrievals in this six-request round. No new OMG, viewer

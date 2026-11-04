@@ -5,6 +5,10 @@
 This is a static source view, not a deployment verification. Documentation
 changes do not change the depicted product behavior.
 
+All implementing links below are pinned to this historical source, not the
+newer publication branch. This view must be reconciled before being used as
+an architecture claim about newer main.
+
 ## Component and artifact flow
 
 ```mermaid
@@ -45,14 +49,14 @@ checkout. Fixture variety is not evidence that these capabilities exist.
 
 | Responsibility | Implementing source |
 |---|---|
-| Record shape and relation constraints | [schema](../../schema/v1/record.schema.json), [relations](../../schema/v1/relations.json), [contract rules](../../schema/README.md) |
-| Golden artifacts from fixture facts | [builder](../../fixtures/golden/build.mjs), [fixture guide](../../fixtures/README.md) |
-| Command dispatch and database connection selection | [CLI Program.cs](../../platform/src/CapabilityExplorer.Cli/Program.cs), `validate`, `verify-evidence`, `migrate`, `import` |
-| Framing, IDs, foreign keys, coverage and relations | [ArtifactValidator.Validate](../../platform/src/CapabilityExplorer.Contracts/ArtifactValidator.cs) |
-| Revision, source span and snippet-hash checks | [EvidenceVerifier.VerifyAsync](../../platform/src/CapabilityExplorer.Contracts/EvidenceVerifier.cs) |
-| Schema-backed TypeScript contract checks | [TS package](../../extractors/ts/package.json), [TS validator source](../../extractors/ts/src) |
-| Atomic import and duplicate/conflicting-content handling | [ArtifactImporter.ImportAsync](../../platform/src/CapabilityExplorer.Store/ArtifactImporter.cs) |
-| Database schema changes | [Migrator](../../platform/src/CapabilityExplorer.Store/Migrator.cs) |
+| Record shape and relation constraints | [schema](https://github.com/Sonberg/capability-explorer/blob/ae9bac966037a5348027c2b2d3e0201a430bf09c/schema/v1/record.schema.json), [relations](https://github.com/Sonberg/capability-explorer/blob/ae9bac966037a5348027c2b2d3e0201a430bf09c/schema/v1/relations.json), [contract rules](https://github.com/Sonberg/capability-explorer/blob/ae9bac966037a5348027c2b2d3e0201a430bf09c/schema/README.md) |
+| Golden artifacts from fixture facts | [builder](https://github.com/Sonberg/capability-explorer/blob/ae9bac966037a5348027c2b2d3e0201a430bf09c/fixtures/golden/build.mjs), [fixture guide](https://github.com/Sonberg/capability-explorer/blob/ae9bac966037a5348027c2b2d3e0201a430bf09c/fixtures/README.md) |
+| Command dispatch and database connection selection | [CLI Program.cs](https://github.com/Sonberg/capability-explorer/blob/ae9bac966037a5348027c2b2d3e0201a430bf09c/platform/src/CapabilityExplorer.Cli/Program.cs), `validate`, `verify-evidence`, `migrate`, `import` |
+| Framing, IDs, foreign keys, coverage and relations | [ArtifactValidator.Validate](https://github.com/Sonberg/capability-explorer/blob/ae9bac966037a5348027c2b2d3e0201a430bf09c/platform/src/CapabilityExplorer.Contracts/ArtifactValidator.cs) |
+| Revision, source span and snippet-hash checks | [EvidenceVerifier.VerifyAsync](https://github.com/Sonberg/capability-explorer/blob/ae9bac966037a5348027c2b2d3e0201a430bf09c/platform/src/CapabilityExplorer.Contracts/EvidenceVerifier.cs) |
+| Schema-backed TypeScript contract checks | [TS package](https://github.com/Sonberg/capability-explorer/blob/ae9bac966037a5348027c2b2d3e0201a430bf09c/extractors/ts/package.json), [TS validator source](https://github.com/Sonberg/capability-explorer/tree/ae9bac966037a5348027c2b2d3e0201a430bf09c/extractors/ts/src) |
+| Atomic import and duplicate/conflicting-content handling | [ArtifactImporter.ImportAsync](https://github.com/Sonberg/capability-explorer/blob/ae9bac966037a5348027c2b2d3e0201a430bf09c/platform/src/CapabilityExplorer.Store/ArtifactImporter.cs) |
+| Database schema changes | [Migrator](https://github.com/Sonberg/capability-explorer/blob/ae9bac966037a5348027c2b2d3e0201a430bf09c/platform/src/CapabilityExplorer.Store/Migrator.cs) |
 
 The importer identifies an analysis by repository, commit, unit, extractor
 identity/version and configuration. Identical content under that key is a
@@ -81,8 +85,8 @@ flowchart TB
     SDK --> Tests -->|"through host daemon"| DB
 ```
 
-The [Makefile](../../Makefile) routes product build/test/install steps through
-[scripts/sandbox](../../scripts/sandbox). The documented sandbox uses a
+The [pinned Makefile](https://github.com/Sonberg/capability-explorer/blob/ae9bac966037a5348027c2b2d3e0201a430bf09c/Makefile) routes product build/test/install steps through
+[scripts/sandbox](https://github.com/Sonberg/capability-explorer/blob/ae9bac966037a5348027c2b2d3e0201a430bf09c/scripts/sandbox). The documented sandbox uses a
 non-root user, read-only root filesystem, dropped capabilities, an environment
 allowlist and offline build/test steps after restore. The Docker socket
 exception used by `test-store` grants host-daemon control; it is not suitable
