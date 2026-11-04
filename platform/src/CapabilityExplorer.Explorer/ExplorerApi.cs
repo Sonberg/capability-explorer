@@ -1,3 +1,4 @@
+using System.Globalization;
 using CapabilityExplorer.Binding;
 using CapabilityExplorer.Capabilities;
 using CapabilityExplorer.Contracts;
@@ -129,8 +130,31 @@ public static class ExplorerApi
         // Every view can be scoped to a capability (cap=<id>): only its repositories, starting from its locked revisions.
         api.MapGet("/view", (ExplorerIndex index, CapabilityService caps, string? view, string? cap) => index.View(view, caps.Scope(cap)).Selection);
 
-        api.MapGet("/search", (ExplorerIndex index, CapabilityService caps, string? q, string? kind, string? repo, string? view, string? cap) =>
-            Queries.Search(index.View(view, caps.Scope(cap)), q, kind, repo));
+        api.MapGet("/search", (ExplorerIndex index, CapabilityService caps, string? q, string? kind, string? repo, string? view, string? cap, int? limit, string? cursor) =>
+        {
+            if (limit is null && cursor is null)
+            {
+                return Results.Ok(Queries.Search(index.View(view, caps.Scope(cap)), q, kind, repo));
+            }
+
+            var size = limit ?? 50;
+            if (size is < 1 or > 100)
+            {
+                return Results.BadRequest(new { error = "page limit must be 1 to 100" });
+            }
+
+            var offset = 0;
+            if (cursor is not null && !int.TryParse(cursor, NumberStyles.None, CultureInfo.InvariantCulture, out offset) || offset < 0)
+            {
+                return Results.BadRequest(new { error = "cursor must be a non-negative integer offset" });
+            }
+
+            var page = Queries.SearchSlice(index.View(view, caps.Scope(cap)), q, kind, repo, offset, size);
+            var next = page.Items.Count + offset < page.Total
+                ? (offset + page.Items.Count).ToString()
+                : null;
+            return Results.Ok(new { items = page.Items, nextCursor = next, total = page.Total });
+        });
 
         // Similarity (pgvector): stored vectors of the configured embedding model, limited to what the view shows.
         api.MapGet("/similar", async (ExplorerIndex index, CapabilityService caps, Intelligence intelligence, string key, string? view, string? cap, int? k, CancellationToken ct) =>
@@ -230,10 +254,10 @@ public static class ExplorerApi
             GlossaryConcepts.Build(index.View(view, caps.Scope(cap)), Membership(caps)));
 
         // Layered architecture canvas: level = landscape | system | repository | component. The landscape ignores cap.
-        api.MapGet("/architecture", (ExplorerIndex index, CapabilityService caps, string? level, string? focus, string? view, string? cap) =>
+        api.MapGet("/architecture", (ExplorerIndex index, CapabilityService caps, string? level, string? focus, string? view, string? cap, int? nodeBudget) =>
         {
             var capability = string.IsNullOrEmpty(cap) ? null : caps.Get(cap);
-            return Architecture.Build(index.View(view, caps.Scope(cap)), level ?? (capability is null ? "landscape" : "system"), focus, index.View(view), caps.List(), capability);
+            return Architecture.Build(index.View(view, caps.Scope(cap)), level ?? (capability is null ? "landscape" : "system"), focus, index.View(view), caps.List(), capability, nodeBudget);
         });
 
         api.MapGet("/changes", (ExplorerIndex index, string repo, string from, string to) =>

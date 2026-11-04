@@ -68,6 +68,24 @@ public sealed class ExplorerApiTests(ExplorerFactory factory) : IClassFixture<Ex
     }
 
     [Fact]
+    public async Task Search_supports_cursor_pagination_with_stable_ordering()
+    {
+        var first = await Get("/api/search?q=a&limit=1");
+        var firstItems = first.GetProperty("items").EnumerateArray().ToList();
+        Assert.Single(firstItems);
+        var cursor = first.GetProperty("nextCursor").GetString();
+        Assert.False(string.IsNullOrEmpty(cursor));
+        var total = first.GetProperty("total").GetInt32();
+        Assert.True(total > 1);
+
+        var second = await Get($"/api/search?q=a&limit=1&cursor={cursor}");
+        var secondItems = second.GetProperty("items").EnumerateArray().ToList();
+        Assert.Single(secondItems);
+        Assert.NotEqual(firstItems[0].GetProperty("key").GetString(), secondItems[0].GetProperty("key").GetString());
+        Assert.Equal(total, second.GetProperty("total").GetInt32());
+    }
+
+    [Fact]
     public async Task Symbol_detail_has_edges_calculation_evidence_and_history()
     {
         var d = await Get($"/api/symbol?key={Q(WorkerCalc)}");
