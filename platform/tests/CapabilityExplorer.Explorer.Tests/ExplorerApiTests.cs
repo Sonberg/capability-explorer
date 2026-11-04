@@ -3,6 +3,7 @@ using System.Text.Json;
 using CapabilityExplorer.Explorer;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace CapabilityExplorer.Tests;
@@ -78,11 +79,76 @@ public sealed class ExplorerApiTests(ExplorerFactory factory) : IClassFixture<Ex
         var total = first.GetProperty("total").GetInt32();
         Assert.True(total > 1);
 
-        var second = await Get($"/api/search?q=a&limit=1&cursor={cursor}");
+        var snapshot = first.GetProperty("snapshotId").GetString()!;
+        var second = await Get($"/api/search?q=a&limit=1&snapshot={snapshot}&cursor={Q(cursor!)}");
         var secondItems = second.GetProperty("items").EnumerateArray().ToList();
         Assert.Single(secondItems);
         Assert.NotEqual(firstItems[0].GetProperty("key").GetString(), secondItems[0].GetProperty("key").GetString());
         Assert.Equal(total, second.GetProperty("total").GetInt32());
+    }
+
+    [Fact]
+    public async Task Paged_search_traverses_every_result_once_in_stable_duplicate_name_order()
+    {
+        var meta = await Get("/api/meta");
+        var snapshot = meta.GetProperty("snapshotId").GetString();
+        var current = factory.Services.GetRequiredService<ExplorerState>().Current;
+        var expected = current.Index.View(null, current.Capabilities.Scope(null)).Nodes.Values
+            .Select(nodes => nodes[0].Record)
+            .OrderBy(node => node.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(node => node.SymbolKey, StringComparer.Ordinal).ToList();
+        Assert.True(expected.Count > 100);
+        Assert.Contains(expected.GroupBy(x => x.Name), group => group.Count() > 1);
+        var keys = new List<string>();
+        string? cursor = null;
+        var pageCount = 0;
+        do
+        {
+            var page = await Get($"/api/search?limit=17&snapshot={snapshot}" + (cursor is null ? "" : $"&cursor={Q(cursor)}"));
+            Assert.Equal(snapshot, page.GetProperty("snapshotId").GetString());
+            Assert.Equal(expected.Count, page.GetProperty("total").GetInt32());
+            var items = page.GetProperty("items").EnumerateArray().ToArray();
+            Assert.InRange(items.Length, 1, 17);
+            keys.AddRange(items.Select(x => x.GetProperty("key").GetString()!));
+            cursor = page.TryGetProperty("nextCursor", out var next) ? next.GetString() : null;
+            Assert.True(++pageCount <= expected.Count);
+        } while (cursor is not null);
+        Assert.Equal(expected.Select(x => x.SymbolKey), keys);
+        Assert.Equal(keys.Count, keys.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Theory]
+    [InlineData("q=changed&limit=1")]
+    [InlineData("q=a&limit=2")]
+    [InlineData("q=a&kind=Method&limit=1")]
+    [InlineData("q=a&repo=api-cs&limit=1")]
+    [InlineData("q=a&view=api-cs:v1-base&limit=1")]
+    public async Task Search_rejects_cursor_reuse_under_changed_filters(string query)
+    {
+        var first = await Get("/api/search?q=a&limit=1");
+        var cursor = Q(first.GetProperty("nextCursor").GetString()!);
+        var snapshot = first.GetProperty("snapshotId").GetString();
+        using var response = await _client.GetAsync(new Uri($"/api/search?{query}&snapshot={snapshot}&cursor={cursor}", UriKind.Relative));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal("invalid-cursor", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Search_rejects_tampered_unpinned_and_stale_continuations()
+    {
+        var first = await Get("/api/search?q=a&limit=1");
+        var cursor = first.GetProperty("nextCursor").GetString()!;
+        var snapshot = first.GetProperty("snapshotId").GetString();
+        foreach (var suffix in new[] { $"snapshot={snapshot}&cursor={Q("x" + cursor)}", $"cursor={Q(cursor)}" })
+        {
+            using var invalid = await _client.GetAsync(new Uri($"/api/search?q=a&limit=1&{suffix}", UriKind.Relative));
+            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        }
+        using var stale = await _client.GetAsync(new Uri($"/api/search?q=a&limit=1&snapshot={Guid.NewGuid()}&cursor={Q(cursor)}", UriKind.Relative));
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        var problem = JsonDocument.Parse(await stale.Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal("stale-snapshot", problem.GetProperty("code").GetString());
     }
 
     [Fact]

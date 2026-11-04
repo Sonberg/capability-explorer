@@ -109,10 +109,12 @@ public static class ExplorerApi
 
         api.MapGet("/meta", (ExplorerState state, InterpretationLayer interpretation, Intelligence intelligence) => SourceCheckApi.Respond(() =>
         {
-            var (index, capabilities, generation) = state.Current;
+            var current = state.Current;
+            var (index, capabilities, generation) = current;
             return Results.Ok(new
             {
                 generation,
+                snapshotId = current.ModelSnapshotId,
                 capabilities = capabilities.List().Select(c => new { c.Id, c.Name, repositories = c.Repositories.Select(r => r.Id) }),
                 githubAuth = new { source = "host-only", hostManaged = true },
                 interpretation = new { enabled = interpretation.Enabled, chat = interpretation.Chat is not null, provider = interpretation.Options.Provider, model = interpretation.Explanations?.ModelId },
@@ -130,11 +132,15 @@ public static class ExplorerApi
         // Every view can be scoped to a capability (cap=<id>): only its repositories, starting from its locked revisions.
         api.MapGet("/view", (ExplorerIndex index, CapabilityService caps, string? view, string? cap) => index.View(view, caps.Scope(cap)).Selection);
 
-        api.MapGet("/search", (ExplorerIndex index, CapabilityService caps, string? q, string? kind, string? repo, string? view, string? cap, int? limit, string? cursor) =>
+        api.MapGet("/search", (ExplorerState state, ExplorerQueryCursor cursors, string? q, string? kind, string? repo, string? view, string? cap, int? limit, string? cursor, Guid? snapshot) =>
         {
+            var current = state.Current;
+            if (!string.IsNullOrEmpty(cap) && current.Capabilities.Get(cap) is null)
+                return Results.BadRequest(new { code = "unknown-capability", error = "unknown capability" });
+            var selected = current.Index.View(view, current.Capabilities.Scope(cap));
             if (limit is null && cursor is null)
             {
-                return Results.Ok(Queries.Search(index.View(view, caps.Scope(cap)), q, kind, repo));
+                return Results.Ok(Queries.Search(selected, q, kind, repo));
             }
 
             var size = limit ?? 50;
@@ -143,17 +149,33 @@ public static class ExplorerApi
                 return Results.BadRequest(new { error = "page limit must be 1 to 100" });
             }
 
-            var offset = 0;
-            if (cursor is not null && !int.TryParse(cursor, NumberStyles.None, CultureInfo.InvariantCulture, out offset) || offset < 0)
-            {
-                return Results.BadRequest(new { error = "cursor must be a non-negative integer offset" });
-            }
+            if (snapshot is not null && snapshot != current.ModelSnapshotId)
+                return Results.Conflict(new { code = "stale-snapshot", error = "Results changed. Reload the results to continue." });
+            if (cursor is not null && snapshot is null)
+                return Results.BadRequest(new { code = "invalid-cursor", error = "continuation requires snapshot" });
 
-            var page = Queries.SearchSlice(index.View(view, caps.Scope(cap)), q, kind, repo, offset, size);
+            var context = new ExplorerQueryContext(current.ModelSnapshotId, cap ?? "", current.Generation, selected.Selection);
+            var filter = System.Text.Json.JsonSerializer.Serialize(new { endpoint = "file-search.v1", q = (q ?? "").Trim(), kind = kind ?? "", repo = repo ?? "", size });
+            var offset = 0;
+            try
+            {
+                var position = cursors.Decode(context, filter, cursor);
+                if (position is not null && (position.Length != 1
+                    || !int.TryParse(position[0], NumberStyles.None, CultureInfo.InvariantCulture, out offset) || offset < 0))
+                    return Results.BadRequest(new { code = "invalid-cursor", error = "invalid continuation cursor" });
+            }
+            catch (ArgumentException)
+            {
+                return Results.BadRequest(new { code = "invalid-cursor", error = "invalid or incompatible continuation cursor" });
+            }
+            var page = Queries.SearchSlice(selected, q, kind, repo, offset, size);
+            if (offset > page.Total)
+                return Results.BadRequest(new { code = "invalid-cursor", error = "cursor is outside the result set" });
             var next = page.Items.Count + offset < page.Total
-                ? (offset + page.Items.Count).ToString()
+                ? cursors.Encode(context, filter, (offset + page.Items.Count).ToString(CultureInfo.InvariantCulture))
                 : null;
-            return Results.Ok(new { items = page.Items, nextCursor = next, total = page.Total });
+            return Results.Ok(new { items = page.Items, nextCursor = next, total = page.Total,
+                snapshotId = current.ModelSnapshotId, generation = current.Generation });
         });
 
         // Similarity (pgvector): stored vectors of the configured embedding model, limited to what the view shows.

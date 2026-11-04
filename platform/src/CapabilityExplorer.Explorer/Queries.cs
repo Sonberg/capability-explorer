@@ -64,13 +64,13 @@ public static class Queries
             .Where(x => x.Rank > 0)
             .OrderByDescending(x => x.Rank)
             .ThenBy(x => x.o.Record.Name, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(x => x.o.Record.SymbolKey, StringComparer.Ordinal);
-        var all = hits.Select(x => new SearchHit(
+            .ThenBy(x => x.o.Record.SymbolKey, StringComparer.Ordinal)
+            .ToArray();
+        var start = Math.Clamp(offset, 0, hits.Length);
+        var page = hits.Skip(start).Take(limit).Select(x => new SearchHit(
             x.o.Record.SymbolKey, x.o.Record.Name, x.o.Record.NodeKind, x.o.Artifact.RepositoryId, x.o.Artifact.Artifact.Header.Unit.Name,
             x.o.Record.Generated ?? false, view.Calculations.ContainsKey(x.o.Record.SymbolKey))).ToList();
-        var start = Math.Clamp(offset, 0, all.Count);
-        var page = all.Skip(start).Take(limit).ToList();
-        return (page, all.Count);
+        return (page, hits.Length);
     }
 
     /// <summary>
