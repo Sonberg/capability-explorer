@@ -11,6 +11,7 @@ function validator(profile: string): ValidateFunction {
   if (cached) return cached;
   const files: Record<string, string> = {
     "ce.models.v1": "../../../../schema/models/v1.schema.json",
+    "ce.model-source.v1": "../../../../schema/models/source.v1.schema.json",
     "ce.candidates.v1": "../../../../schema/candidates/artifact.schema.json",
     "ce.collection.v1": "../../../../schema/platform/collection/collection.schema.json",
     "ce.collection.plan.v1": "../../../../schema/platform/collection/plan.schema.json",

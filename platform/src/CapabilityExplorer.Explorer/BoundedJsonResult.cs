@@ -4,14 +4,14 @@ using Microsoft.Extensions.Options;
 namespace CapabilityExplorer.Explorer;
 
 /// <summary>Bounds serialized uncompressed output before headers/body are sent.</summary>
-internal sealed class BoundedJsonResult(object value, int statusCode = 200) : IResult
+internal sealed class BoundedJsonResult(object value, int statusCode = 200, int maximumBytes = 1024 * 1024) : IResult
 {
     public const int MaximumBytes = 1024 * 1024;
 
     public async Task ExecuteAsync(HttpContext httpContext)
     {
         ArgumentNullException.ThrowIfNull(httpContext);
-        using var stream = new LimitedStream();
+        using var stream = new LimitedStream(maximumBytes);
         var options = httpContext.RequestServices.GetRequiredService<IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>>().Value.SerializerOptions;
         try
         {
@@ -22,7 +22,7 @@ internal sealed class BoundedJsonResult(object value, int statusCode = 200) : IR
         catch (ResponseLimitException)
         {
             httpContext.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
-            await httpContext.Response.WriteAsJsonAsync(new { error = "response exceeds one MiB; narrow the request or reduce the page size" }, httpContext.RequestAborted);
+            await httpContext.Response.WriteAsJsonAsync(new { error = $"response exceeds its fixed {maximumBytes}-byte limit; narrow the request or reduce the page size" }, httpContext.RequestAborted);
             return;
         }
         httpContext.Response.StatusCode = statusCode;
@@ -34,9 +34,8 @@ internal sealed class BoundedJsonResult(object value, int statusCode = 200) : IR
 
     private sealed class ResponseLimitException : Exception;
 
-    private sealed class LimitedStream : MemoryStream
+    private sealed class LimitedStream(int maximum) : MemoryStream(4096)
     {
-        public LimitedStream() : base(4096) { }
         public override void Write(byte[] buffer, int offset, int count)
         {
             Check(count); base.Write(buffer, offset, count);
@@ -47,9 +46,9 @@ internal sealed class BoundedJsonResult(object value, int statusCode = 200) : IR
         }
         private void Check(int count)
         {
-            if (count > MaximumBytes - Position) throw new ResponseLimitException();
+            if (count > maximum - Position) throw new ResponseLimitException();
             var needed = checked((int)Position + count);
-            if (needed > Capacity) Capacity = Math.Min(MaximumBytes, Math.Max(needed, Capacity * 2));
+            if (needed > Capacity) Capacity = Math.Min(maximum, Math.Max(needed, Capacity * 2));
         }
     }
 }

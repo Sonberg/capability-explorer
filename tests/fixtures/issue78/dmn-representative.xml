@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dmn:definitions xmlns:dmn="https://www.omg.org/spec/DMN/20191111/MODEL/"
+                 xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/"
+                 xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/"
+                 xmlns:di="http://www.omg.org/spec/DMN/20180521/DI/"
+                 id="Definitions_Eligibility"
+                 name="Eligibility"
+                 namespace="urn:capability-explorer:issue78">
+  <dmn:inputData id="Input_Age" name="Applicant age">
+    <dmn:variable id="Variable_Age" name="Applicant age" typeRef="number" />
+  </dmn:inputData>
+  <dmn:decision id="Decision_Eligibility" name="Eligibility decision">
+    <dmn:variable id="Variable_Eligibility" name="Eligibility result" typeRef="string" />
+    <dmn:informationRequirement id="Requirement_Age">
+      <dmn:requiredInput href="#Input_Age" />
+    </dmn:informationRequirement>
+    <dmn:decisionTable id="Table_Eligibility" hitPolicy="FIRST">
+      <dmn:input id="InputClause_Age" label="Applicant age">
+        <dmn:inputExpression id="InputExpression_Age" typeRef="number">
+          <dmn:text>age</dmn:text>
+        </dmn:inputExpression>
+        <dmn:inputValues id="InputValues_Age">
+          <dmn:text>&lt;18, [18..24], -</dmn:text>
+        </dmn:inputValues>
+      </dmn:input>
+      <dmn:output id="Output_Eligibility" label="Eligibility" name="Eligibility" typeRef="string">
+        <dmn:outputValues id="OutputValues_Eligibility">
+          <dmn:text>"deny", "manual", "approve"</dmn:text>
+        </dmn:outputValues>
+      </dmn:output>
+      <dmn:rule id="Rule_1">
+        <dmn:inputEntry id="Rule_1_Age"><dmn:text>&lt;18</dmn:text></dmn:inputEntry>
+        <dmn:outputEntry id="Rule_1_Result"><dmn:text>"deny"</dmn:text></dmn:outputEntry>
+      </dmn:rule>
+      <dmn:rule id="Rule_2">
+        <dmn:inputEntry id="Rule_2_Age"><dmn:text>[18..24]</dmn:text></dmn:inputEntry>
+        <dmn:outputEntry id="Rule_2_Result"><dmn:text>"manual"</dmn:text></dmn:outputEntry>
+      </dmn:rule>
+      <dmn:rule id="Rule_3">
+        <dmn:inputEntry id="Rule_3_Age"><dmn:text>-</dmn:text></dmn:inputEntry>
+        <dmn:outputEntry id="Rule_3_Result"><dmn:text>"approve"</dmn:text></dmn:outputEntry>
+      </dmn:rule>
+    </dmn:decisionTable>
+  </dmn:decision>
+  <dmn:decision id="Decision_Literal" name="Threshold check">
+    <dmn:variable id="Variable_Literal" name="Threshold result" typeRef="boolean" />
+    <dmn:literalExpression id="Literal_Threshold" typeRef="boolean">
+      <dmn:text>score &gt;= threshold</dmn:text>
+    </dmn:literalExpression>
+  </dmn:decision>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram id="Diagram_Eligibility">
+      <dmndi:DMNShape id="Shape_Input_Age" dmnElementRef="Input_Age">
+        <dc:Bounds x="100" y="120" width="160" height="80" />
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="Shape_Decision_Eligibility" dmnElementRef="Decision_Eligibility">
+        <dc:Bounds x="400" y="120" width="180" height="80" />
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="Shape_Decision_Literal" dmnElementRef="Decision_Literal">
+        <dc:Bounds x="400" y="300" width="180" height="80" />
+      </dmndi:DMNShape>
+      <dmndi:DMNEdge id="Edge_Requirement_Age" dmnElementRef="Requirement_Age">
+        <di:waypoint x="260" y="160" />
+        <di:waypoint x="400" y="160" />
+      </dmndi:DMNEdge>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</dmn:definitions>

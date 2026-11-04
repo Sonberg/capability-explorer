@@ -29,8 +29,8 @@ const string Usage = """
       ce verify-evidence --repo <git dir> <artifact.jsonl...>
       ce migrate [--connection <connection string>]
       ce import-deprecations --file <legacy-deprecations.json> [--connection <connection string>]
-      ce import [--connection <connection string>] [--bindings <bindings.json>] <artifact.jsonl...>  (--bindings also saves the bound edges)
-      ce publish [--scope <capability-id|*>] [--view <repo:full-sha,...>] [--bindings <bindings.json>] [--expected-generation <n>] <artifact.jsonl...>
+      ce import [--connection <connection string>] [--bindings <bindings.json>] [--collections <directory,...>] [artifact.jsonl...]  (native artifacts or validated model collections required)
+      ce publish [--scope <capability-id|*>] [--view <repo:full-sha,...>] [--bindings <bindings.json>] [--collections <directory,...>] [--expected-generation <n>] [artifact.jsonl...]
       ce reconcile-publication --run <id> --attempt <id> [--connection <connection string>]  (read-only; never authorizes recovery)
       ce embed [--connection <connection string>] [--settings <model.json>]  (model from CE_MODEL_ENDPOINT + CE_EMBEDDING_MODEL, else the saved settings: make ollama / explorer Settings)
       ce export (disabled: use the exclusive host analysis worker)

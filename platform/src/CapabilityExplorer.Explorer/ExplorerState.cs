@@ -1,7 +1,11 @@
 namespace CapabilityExplorer.Explorer;
 
 /// <summary>One consistent load of artifacts and capabilities. Replaced as a whole, never mutated.</summary>
-public sealed record ExplorerSnapshot(ExplorerIndex Index, CapabilityService Capabilities, long Generation);
+public sealed record ExplorerSnapshot(ExplorerIndex Index, CapabilityService Capabilities, long Generation)
+{
+    public ModelFileSnapshot Models { get; init; } = ModelFileSnapshot.Empty;
+    public Guid ModelSnapshotId { get; init; } = Guid.NewGuid();
+}
 
 /// <summary>
 /// Holds the current load and replaces it when artifact directories, capability definitions or snapshots change
@@ -62,7 +66,7 @@ public sealed partial class ExplorerState(ExplorerOptions options, ILogger<Explo
             {
                 Refresh();
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException)
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException or FormatException)
             {
                 // A writer is mid-swap; the next tick sees the finished state.
                 if (logger is not null)
@@ -81,15 +85,29 @@ public sealed partial class ExplorerState(ExplorerOptions options, ILogger<Explo
 
     private ExplorerSnapshot Load(long generation)
     {
-        _fingerprint = Fingerprint();
+        var fingerprint = Fingerprint();
+        var models = ModelFileSnapshot.Load(options.CollectionDirectories ?? []);
         var (index, capabilities) = options.Build();
-        return new ExplorerSnapshot(index, capabilities, generation);
+        if (Fingerprint() != fingerprint) throw new IOException("Explorer inputs changed during snapshot loading");
+        _fingerprint = fingerprint;
+        return new ExplorerSnapshot(index, capabilities, generation) { Models = models };
     }
 
     /// <summary>Names, sizes and write times of every artifact plus the capability files.</summary>
     private string Fingerprint()
     {
         var parts = new List<string>();
+        foreach (var directory in options.CollectionDirectories ?? [])
+        {
+            if (!Directory.Exists(directory)) { parts.Add($"{directory}|missing"); continue; }
+            var files = Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories).Take(132).ToArray();
+            if (files.Length > 130) throw new InvalidOperationException("collection file count exceeds bounds");
+            foreach (var file in files)
+            {
+                var info = new FileInfo(file);
+                parts.Add($"{file}|{info.Length}|{info.LastWriteTimeUtc.Ticks}");
+            }
+        }
         foreach (var dir in options.ArtifactDirectories.Where(Directory.Exists))
         {
             foreach (var file in Directory.EnumerateFiles(dir, "*.jsonl", SearchOption.AllDirectories))

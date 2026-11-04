@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using CapabilityExplorer.Binding;
 using CapabilityExplorer.Store;
+using CapabilityExplorer.Contracts.Collection;
 using Npgsql;
 
 namespace CapabilityExplorer.Cli;
@@ -37,12 +38,18 @@ internal static class ImportCommand
         var publishStarted = false;
         Guid? candidateId = null;
         SnapshotStore? snapshots = null;
-        if (files.Count is < 1 or > SnapshotStore.MaximumArtifacts)
+        if ((files.Count < 1 && !options.ContainsKey("collections")) || files.Count > SnapshotStore.MaximumArtifacts)
         {
             Console.Error.WriteLine("import requires 1 to 100000 artifact files"); return 2;
         }
         try
         {
+            var models = new List<ModelProduct>();
+            foreach (var collection in (options.GetValueOrDefault("collections") ?? "").Split(',',StringSplitOptions.RemoveEmptyEntries))
+                models.AddRange((await ValidatedModelBundle.ReadAsync(collection,cancellationToken)).Products);
+            if (models.Count > 128) throw new FormatException("model import exceeds 128 products");
+            if (files.Count == 0 && models.Count == 0) throw new FormatException("import requires native artifacts or validated model products");
+            await new ModelProductStore(database).ImportAsync(models,cancellationToken);
             BindingFile? bindings = null;
             if (options.TryGetValue("bindings", out var path))
             {
@@ -130,7 +137,11 @@ internal static class ImportCommand
             if (publish)
             {
                 var identity = await Identity(database, ids, bound?.SnapshotId ?? "no-bindings", defaults, cancellationToken);
-                var candidate = await snapshots.CreateAsync(scope, identity, ids, defaults, cancellationToken);
+                if (models.Count != 0)
+                    identity = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(identity + "\nce-model-membership.v1\n" +
+                        string.Join("\n", models.OrderBy(m=>m.Id,StringComparer.Ordinal).Select(m=>
+                            $"{m.Id}:{m.CollectionIdentity}:{m.SourceStatus}:{(m.SourceEnvelopeBytes is {} source ? CapabilityExplorer.Contracts.ModelSource.Digest(source) : "none")}")))));
+                var candidate = await snapshots.CreateWithModelsAsync(scope, identity, ids, defaults, models, cancellationToken);
                 candidateId = candidate.Id;
                 if (bound is not null)
                 {

@@ -10,6 +10,7 @@ public static class EvidenceProfileSchema
         new Dictionary<string, JsonSchema>(StringComparer.Ordinal)
         {
             ["ce.models.v1"] = JsonSchema.FromText(ContractSchema.ReadResource("ce.models.v1.schema.json")),
+            ["ce.model-source.v1"] = JsonSchema.FromText(ContractSchema.ReadResource("ce.model-source.v1.schema.json")),
             ["ce.candidates.v1"] = JsonSchema.FromText(ContractSchema.ReadResource("ce.candidates.v1.schema.json")),
             ["ce.collection.plan.v1"] = JsonSchema.FromText(ContractSchema.ReadResource("ce.collection.plan.v1.schema.json")),
             ["ce.collection.v1"] = JsonSchema.FromText(ContractSchema.ReadResource("ce.collection.v1.schema.json"))

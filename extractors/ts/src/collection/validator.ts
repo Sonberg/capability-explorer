@@ -6,8 +6,9 @@ import { validateArtifact } from "../contracts/validateArtifact.ts";
 import { validateProfileSchema } from "./profileSchemas.ts";
 import { canonicalContentBytes, canonicalizationRecipe } from "./canonicalContent.ts";
 import { parseStrictJson } from "./strictJson.ts";
+import { sourceBytes, type ModelSource } from "../models/source.ts";
 
-const profiles = new Set(["ce.v1", "ce.models.v1", "ce.candidates.v1"]);
+const profiles = new Set(["ce.v1", "ce.models.v1", "ce.candidates.v1", "ce.model-source.v1"]);
 const maxManifestBytes = 1_048_576;
 const maxAttemptBytes = 16_384;
 const maxArtifactBytes = 16_777_216;
@@ -98,6 +99,7 @@ export async function validateCollectionBundle(bundleDirectory: string): Promise
 
     const repositories = new Map(envelope.content.repositories.map((repo) => [repo.repositoryId, repo]));
     const referenced = new Set<string>();
+    const products = new Map<string, { bytes: Uint8Array; input: Input }>();
     let totalBytes = 0;
     for (const [index, input] of envelope.content.inputs.entries()) {
       if (input.status === "optional-failed") continue;
@@ -131,6 +133,19 @@ export async function validateCollectionBundle(bundleDirectory: string): Promise
       problems.push(...validateProfile(input.profile, bytes, repo, input.unitPath,
         input.contentProfile, input.repositoryId).map((message) => ({ message })));
       referenced.add(artifactPath);
+      products.set(`${input.repositoryId}\n${input.profile}\n${input.unitPath}`, { bytes, input });
+    }
+
+    for (const { bytes, input } of products.values()) {
+      if (input.profile !== "ce.model-source.v1") continue;
+      try {
+        const source = parseJson(bytes) as ModelSource;
+        const companion = products.get(`${input.repositoryId}\nce.models.v1\n${input.unitPath}`);
+        if (!companion || sha256(companion.bytes) !== source.modelArtifactSha256) throw new Error("companion missing or digest mismatch");
+        const evidence = parseJson(companion.bytes) as Record<string, unknown>;
+        if (evidence.sourceSha256 !== source.sourceSha256 || evidence.repositoryId !== source.repositoryId ||
+            evidence.commitSha !== source.commitSha || evidence.unitPath !== source.unitPath) throw new Error("companion source identity mismatch");
+      } catch { problems.push({ message: "source companion binding is invalid" }); }
     }
 
     const files = await listFilesWithoutLinks(root);
@@ -279,6 +294,17 @@ function validateProfile(
       root = parseStrictJson(text);
       if (!isObject(root)) return ["profile root must be a JSON object"];
       errors.push(...validateProfileSchema(profile, root));
+      if (profile === "ce.model-source.v1") {
+        if (root.repositoryId !== repositoryId || root.commitSha !== repository.commitSha || root.unitPath !== unitPath) {
+          errors.push("source identity does not match collection");
+        }
+        try { sourceBytes(root as unknown as ModelSource); }
+        catch { errors.push("source bytes, digest, XML or limits are invalid"); }
+        if (contentProfile !== "model-content" || !repository.permittedContentProfiles.includes("model-content")) {
+          errors.push("source requires matching explicitly permitted contentProfile");
+        }
+        return errors;
+      }
       const expectedPayload = profile === "ce.models.v1" ? "elements" : "candidates";
       const allowedKeys = profile === "ce.models.v1"
         ? ["schema", "repositoryId", "commitSha", "unitPath", "sourceSha256", "contentProfile",

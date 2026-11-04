@@ -23,22 +23,25 @@ test("recomputes cross-runtime identity for Unicode and JSON metacharacters", as
 });
 
 test("rejects artifact bytes altered after the descriptor was sealed", async () => {
-  const artifact = join(fixture, "artifacts/repo-a/ce.models.v1/0000.json");
-  const original = await readFile(artifact);
+  const root = await mkdtemp(join(tmpdir(), "ce-collection-tampered-"));
   try {
+    await cp(fixture, root, { recursive: true });
+    const artifact = join(root, "artifacts/repo-a/ce.models.v1/0000.json");
     await writeFile(artifact, Buffer.from("{}"));
-    const result = await validateCollectionBundle(fixture);
+    const result = await validateCollectionBundle(root);
     assert.equal(result.ok, false);
     assert.ok(result.problems.some((problem) => problem.message.includes("bytes")));
   } finally {
-    await writeFile(artifact, original);
+    await rm(root, { recursive: true, force: true });
   }
 });
 
 test("rejects a traversal reference even when its content digest is recomputed", async () => {
-  const manifest = join(fixture, "collection.json");
-  const original = await readFile(manifest);
+  const root = await mkdtemp(join(tmpdir(), "ce-collection-traversal-"));
   try {
+    await cp(fixture, root, { recursive: true });
+    const manifest = join(root, "collection.json");
+    const original = await readFile(manifest);
     const envelope = JSON.parse(original.toString("utf8")) as {
       content: { inputs: Array<{ artifactPath: string }>;
         [key: string]: unknown };
@@ -48,12 +51,12 @@ test("rejects a traversal reference even when its content digest is recomputed",
     envelope.contentSha256 = createHash("sha256").update(canonicalContentBytes(envelope.content)).digest("hex");
     await writeFile(manifest, JSON.stringify(envelope));
 
-    const result = await validateCollectionBundle(fixture);
+    const result = await validateCollectionBundle(root);
 
     assert.equal(result.ok, false);
     assert.ok(result.problems.some((problem) => problem.message.includes("descriptor")));
   } finally {
-    await writeFile(manifest, original);
+    await rm(root, { recursive: true, force: true });
   }
 });
 

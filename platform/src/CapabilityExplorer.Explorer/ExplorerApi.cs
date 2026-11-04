@@ -13,7 +13,8 @@ public sealed record ExplorerOptions(
     string CapabilitiesFile,
     string Workspace,
     string? BindingsFile = null,
-    string RequestsDirectory = ".sandbox-cache/requests")
+    string RequestsDirectory = ".sandbox-cache/requests",
+    IReadOnlyList<string>? CollectionDirectories = null)
 {
     public static ExplorerOptions From(IConfiguration configuration)
     {
@@ -26,7 +27,8 @@ public sealed record ExplorerOptions(
             configuration["capabilities"] ?? "capabilities.json",
             configuration["workspace"] ?? ".sandbox-cache/sources",
             configuration["bindings"],
-            configuration["requests"] ?? ".sandbox-cache/requests");
+            configuration["requests"] ?? ".sandbox-cache/requests",
+            (configuration["collections"] ?? "").Split(',',StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     }
 
     /// <summary>Builds the index, resolving repository sources through capabilities first, then the repos directory.</summary>

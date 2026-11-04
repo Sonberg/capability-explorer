@@ -20,6 +20,7 @@ import { Settings } from "./views/Settings";
 
 // Load the shared LikeC4 canvas only when Architecture is opened.
 const ArchitectureView = lazy(() => import("./views/Architecture").then((m) => ({ default: m.ArchitectureView })));
+const ProcessesDecisions = lazy(() => import("./views/ProcessesDecisions").then((m) => ({ default: m.ProcessesDecisions })));
 
 const VIEWS = [
   ["explore", "Explore"],
@@ -32,6 +33,7 @@ const VIEWS = [
   ["changes", "Changes"],
   ["capabilities", "Capabilities"],
   ["artifacts", "Artifacts"],
+  ["processes-decisions", "Processes & decisions"],
   ["evaluation", "Evaluation"],
 ] as const;
 
@@ -67,6 +69,7 @@ function useLiveReload(generation: number | undefined, reload: () => void) {
 
 function Shell() {
   const route = useRoute();
+  const { scope } = useSelection();
   const view = route.path;
   const [palette, setPalette] = useState(false);
   const [chat, setChat] = useState(false);
@@ -157,13 +160,15 @@ function Shell() {
       <ScopeBar />
       {chat && <ChatPanel onClose={() => setChat(false)} />}
       <main className={`min-w-0 p-3 sm:p-5 ${chat ? "sm:mr-[420px]" : "w-full"}`}>
-        <Routed path={view} params={route.params} />
+        <Suspense fallback={<Loading what="model view" />}>
+          <Routed path={view} params={route.params} scope={scope} mode="files" />
+        </Suspense>
       </main>
     </>
   );
 }
 
-function Routed({ path, params }: { path: string; params: URLSearchParams }) {
+function Routed({ path, params, scope, mode }: { path: string; params: URLSearchParams; scope: string; mode: "files" | "database" }) {
   switch (path) {
     case "architecture":
       return (
@@ -190,6 +195,8 @@ function Routed({ path, params }: { path: string; params: URLSearchParams }) {
       return <Capabilities />;
     case "artifacts":
       return <Artifacts />;
+    case "processes-decisions":
+      return <ProcessesDecisions key={scope} scope={scope} params={params} mode={mode} />;
     case "evaluation":
       return <Evaluation />;
     case "settings":

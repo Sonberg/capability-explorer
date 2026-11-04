@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_Issue78"
+                  targetNamespace="urn:capability-explorer:issue78">
+  <bpmn:collaboration id="Collaboration_Issue78">
+    <bpmn:participant id="Participant_A" name="Applicant" processRef="Process_A" />
+    <bpmn:participant id="Participant_B" name="Eligibility service" processRef="Process_B" />
+    <bpmn:messageFlow id="MessageFlow_A_B" name="Eligibility request" sourceRef="Task_Review" targetRef="Task_Service" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_A" name="Application" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_A">
+      <bpmn:lane id="Lane_Main" name="Applicant lane">
+        <bpmn:flowNodeRef>Start_Application</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Review</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>SubProcess_Check</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>End_Application</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="Start_Application" name="Application received">
+      <bpmn:outgoing>Flow_Start_Review</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="Task_Review" name="&lt;img src=&quot;https://example.invalid/issue78-probe&quot; onerror=&quot;window.__issue78Pwned=true&quot;&gt;">
+      <bpmn:incoming>Flow_Start_Review</bpmn:incoming>
+      <bpmn:outgoing>Flow_Review_Check</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:subProcess id="SubProcess_Check" name="Check documents">
+      <bpmn:incoming>Flow_Review_Check</bpmn:incoming>
+      <bpmn:outgoing>Flow_Check_End</bpmn:outgoing>
+      <bpmn:startEvent id="Start_Nested" name="Documents received">
+        <bpmn:outgoing>Flow_Nested_Review</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:task id="Task_Nested" name="Inspect documents">
+        <bpmn:incoming>Flow_Nested_Review</bpmn:incoming>
+        <bpmn:outgoing>Flow_Nested_End</bpmn:outgoing>
+      </bpmn:task>
+      <bpmn:endEvent id="End_Nested" name="Documents checked">
+        <bpmn:incoming>Flow_Nested_End</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:sequenceFlow id="Flow_Nested_Review" sourceRef="Start_Nested" targetRef="Task_Nested" />
+      <bpmn:sequenceFlow id="Flow_Nested_End" sourceRef="Task_Nested" targetRef="End_Nested" />
+    </bpmn:subProcess>
+    <bpmn:endEvent id="End_Application" name="Application assessed">
+      <bpmn:incoming>Flow_Check_End</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_Start_Review" sourceRef="Start_Application" targetRef="Task_Review" />
+    <bpmn:sequenceFlow id="Flow_Review_Check" sourceRef="Task_Review" targetRef="SubProcess_Check" />
+    <bpmn:sequenceFlow id="Flow_Check_End" sourceRef="SubProcess_Check" targetRef="End_Application" />
+  </bpmn:process>
+  <bpmn:process id="Process_B" name="Eligibility service" isExecutable="false">
+    <bpmn:startEvent id="Start_Service" name="Request received">
+      <bpmn:outgoing>Flow_Service_Task</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="Task_Service" name="Assess eligibility">
+      <bpmn:incoming>Flow_Service_Task</bpmn:incoming>
+      <bpmn:outgoing>Flow_Task_ServiceEnd</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="End_Service" name="Assessment returned">
+      <bpmn:incoming>Flow_Task_ServiceEnd</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_Service_Task" sourceRef="Start_Service" targetRef="Task_Service" />
+    <bpmn:sequenceFlow id="Flow_Task_ServiceEnd" sourceRef="Task_Service" targetRef="End_Service" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram_Issue78">
+    <bpmndi:BPMNPlane id="Plane_Issue78" bpmnElement="Collaboration_Issue78">
+      <bpmndi:BPMNShape id="Shape_Participant_A" bpmnElement="Participant_A" isHorizontal="true">
+        <dc:Bounds x="80" y="80" width="740" height="240" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Lane_Main" bpmnElement="Lane_Main" isHorizontal="true">
+        <dc:Bounds x="110" y="80" width="710" height="240" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Start_Application" bpmnElement="Start_Application">
+        <dc:Bounds x="150" y="180" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Review" bpmnElement="Task_Review">
+        <dc:Bounds x="230" y="158" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_SubProcess_Check" bpmnElement="SubProcess_Check" isExpanded="true">
+        <dc:Bounds x="390" y="140" width="250" height="120" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Start_Nested" bpmnElement="Start_Nested">
+        <dc:Bounds x="415" y="184" width="28" height="28" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Nested" bpmnElement="Task_Nested">
+        <dc:Bounds x="475" y="170" width="90" height="56" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_Nested" bpmnElement="End_Nested">
+        <dc:Bounds x="595" y="184" width="28" height="28" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_Application" bpmnElement="End_Application">
+        <dc:Bounds x="700" y="180" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Participant_B" bpmnElement="Participant_B" isHorizontal="true">
+        <dc:Bounds x="80" y="370" width="740" height="150" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Start_Service" bpmnElement="Start_Service">
+        <dc:Bounds x="150" y="425" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Service" bpmnElement="Task_Service">
+        <dc:Bounds x="300" y="403" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_Service" bpmnElement="End_Service">
+        <dc:Bounds x="550" y="425" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Edge_Flow_Start_Review" bpmnElement="Flow_Start_Review">
+        <di:waypoint x="186" y="198" />
+        <di:waypoint x="230" y="198" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Review_Check" bpmnElement="Flow_Review_Check">
+        <di:waypoint x="340" y="198" />
+        <di:waypoint x="390" y="198" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Check_End" bpmnElement="Flow_Check_End">
+        <di:waypoint x="640" y="198" />
+        <di:waypoint x="700" y="198" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Nested_Review" bpmnElement="Flow_Nested_Review">
+        <di:waypoint x="443" y="198" />
+        <di:waypoint x="475" y="198" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Nested_End" bpmnElement="Flow_Nested_End">
+        <di:waypoint x="565" y="198" />
+        <di:waypoint x="595" y="198" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Service_Task" bpmnElement="Flow_Service_Task">
+        <di:waypoint x="186" y="443" />
+        <di:waypoint x="300" y="443" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Task_ServiceEnd" bpmnElement="Flow_Task_ServiceEnd">
+        <di:waypoint x="420" y="443" />
+        <di:waypoint x="550" y="443" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MessageFlow_A_B" bpmnElement="MessageFlow_A_B">
+        <di:waypoint x="285" y="238" />
+        <di:waypoint x="360" y="403" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
