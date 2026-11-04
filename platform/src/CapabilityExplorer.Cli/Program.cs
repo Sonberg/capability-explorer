@@ -21,6 +21,7 @@ const string Usage = """
       ce analysis-worker [--capabilities <file>]
       ce analysis-run --capability <id> [--capabilities <file>]
       ce analysis-all [--capabilities <file>]
+      ce collection-freshness --previous <input-vector.json> --current <input-vector.json>
       ce package-feeds --import <legacy-settings> --catalog <public-catalog> [--host-file <outside-workspace>]
       ce validate <artifact.jsonl...>
       ce verify-evidence --repo <git dir> <artifact.jsonl...>
@@ -64,6 +65,9 @@ NpgsqlDataSource OpenDatabase()
 
 switch (command)
 {
+    case "collection-freshness":
+        if (files.Count != 0) { Console.Error.WriteLine(Usage); return 2; }
+        return await CollectionFreshnessCommand.RunAsync(options);
     case "package-feeds":
         return HostPackageFeeds.Command(Path.GetFullPath(Environment.CurrentDirectory), options);
     case "analysis-worker":
