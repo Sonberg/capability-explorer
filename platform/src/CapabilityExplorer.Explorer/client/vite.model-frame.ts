@@ -10,6 +10,7 @@ export async function buildModelFrame(outDir: string) {
       emptyOutDir: false,
       sourcemap: false,
       cssCodeSplit: false,
+      assetsInlineLimit: 512_000,
       rollupOptions: {
         input: new URL("src/models/viewer-frame-entry.ts", import.meta.url).pathname,
         output: {

@@ -4,6 +4,7 @@ import { Card, ErrorBox, H1, Loading, Muted, Pill } from "../components/ui";
 import { databaseUrl, useDatabasePage, useDebouncedText, type DatabaseMeta, type DatabaseHit, type DatabaseArtifact, type DatabaseCalculation } from "../database-api";
 import { DatabaseInspector } from "./DatabaseInspector";
 import { DatabasePager } from "../components/DatabasePager";
+import { href, useRoute } from "../state";
 
 const ProcessesDecisions = lazy(() => import("./ProcessesDecisions").then((module) => ({ default: module.ProcessesDecisions })));
 type Tab = "explore" | "calculations" | "artifacts" | "processes-decisions";
@@ -11,6 +12,7 @@ const button = "rounded border border-zinc-300 px-3 py-1.5 text-sm disabled:curs
 const input = "rounded border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900";
 
 export function DatabaseExplorer({ meta, reload }: { meta: DatabaseMeta; reload: () => void }) {
+  const route = useRoute();
   const [capability, setCapability] = useState("*");
   const scoped = useApi<DatabaseMeta>(capability === "*" ? null : `/api/meta?cap=${encodeURIComponent(capability)}`);
   const effective = capability === "*" ? meta : scoped.data?.capability === capability ? scoped.data : undefined;
@@ -27,13 +29,14 @@ export function DatabaseExplorer({ meta, reload }: { meta: DatabaseMeta; reload:
     </header>
     <main className="w-full min-w-0 space-y-4 p-3 sm:p-5">
       {scoped.error && capability !== "*" && <ErrorBox message={scoped.error} />}
-      {!effective ? <Loading what="Loading published snapshot" /> : <DatabaseWorkspace key={effective.snapshotId} meta={effective} />}
+      {!effective ? <Loading what="Loading published snapshot" /> : <DatabaseWorkspace key={effective.snapshotId} meta={effective} route={route} />}
     </main>
   </>;
 }
 
-function DatabaseWorkspace({ meta }: { meta: DatabaseMeta }) {
-  const [tab, setTab] = useState<Tab>("explore");
+function DatabaseWorkspace({ meta, route }: { meta: DatabaseMeta; route: { path: string; params: URLSearchParams } }) {
+  const validTabs: Tab[] = ["explore", "calculations", "artifacts", "processes-decisions"];
+  const tab: Tab = validTabs.includes(route.path as Tab) ? route.path as Tab : "explore";
   const [query, setQuery] = useState("");
   const settled = useDebouncedText(query);
   const [kind, setKind] = useState("");
@@ -58,8 +61,8 @@ function DatabaseWorkspace({ meta }: { meta: DatabaseMeta }) {
       <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">Architecture, integrations, glossary, changes and binding review are not silently reconstructed from JSONL.</p>
     </Card>
     <nav aria-label="Database views" className="flex flex-wrap gap-2">{(["explore", "calculations", "artifacts", "processes-decisions"] as Tab[]).map((id) =>
-      <button key={id} type="button" aria-current={tab === id ? "page" : undefined} className={`${button} ${tab === id ? "bg-blue-50 font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300" : ""}`} onClick={() => { setTab(id); setKey(null); }}>{id === "processes-decisions" ? "Processes & decisions" : id[0].toUpperCase() + id.slice(1)}</button>)}</nav>
-    {tab === "processes-decisions" && <Suspense fallback={<Loading what="model view" />}><ProcessesDecisions key={scope} scope={`${scope}&g=${meta.generation}`} params={new URLSearchParams()} mode="database" /></Suspense>}
+      <a key={id} href={href(id, Object.fromEntries(route.params))} aria-current={tab === id ? "page" : undefined} className={`${button} ${tab === id ? "bg-blue-50 font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300" : ""}`}>{id === "processes-decisions" ? "Processes & decisions" : id[0].toUpperCase() + id.slice(1)}</a>)}</nav>
+    {tab === "processes-decisions" && <Suspense fallback={<Loading what="model view" />}><ProcessesDecisions key={scope} scope={`${scope}&g=${meta.generation}`} params={route.params} mode="database" /></Suspense>}
     {tab !== "processes-decisions" && <div className={`grid min-w-0 gap-4 ${key ? "xl:grid-cols-[minmax(0,1fr)_minmax(340px,40%)]" : "grid-cols-1"}`}>
       <section className="min-w-0 space-y-3">
         <H1>{tab === "explore" ? "Explore symbols" : tab === "calculations" ? "Calculations" : "Artifacts"}</H1>

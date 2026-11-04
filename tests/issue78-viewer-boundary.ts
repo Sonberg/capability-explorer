@@ -66,6 +66,8 @@ const dmnHash = createHash('sha256').update(dmnXml).digest('hex');
 const assertions: string[] = [];
 const browserRequests: string[] = [];
 const externalRequests: string[] = [];
+const childFrameRequests: string[] = [];
+const explicitPopupNavigations: string[] = [];
 const consoleErrors: string[] = [];
 
 await build({
@@ -125,6 +127,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1450, height: 1150 } });
   page.on('request', request => {
     browserRequests.push(request.url());
+    if (request.frame() !== page.mainFrame()) childFrameRequests.push(request.url());
     if (new URL(request.url()).origin !== baseUrl) externalRequests.push(request.url());
   });
   page.on('pageerror', error => consoleErrors.push(error.message));
@@ -134,6 +137,10 @@ try {
   await page.route('https://example.invalid/**', route => {
     externalRequests.push(route.request().url());
     return route.abort();
+  });
+  await page.context().route('https://bpmn.io/**', async route => {
+    explicitPopupNavigations.push(route.request().url());
+    await route.abort();
   });
   await page.goto(`${baseUrl}/viewer-shell.html`);
   await page.waitForFunction(() => window.__issue78Ready === true);
@@ -162,19 +169,26 @@ try {
     referrerPolicy: frame.getAttribute('referrerpolicy'),
     srcdoc: frame.getAttribute('srcdoc')
   }));
-  assert.equal(bpmnFrameAttributes.sandbox, 'allow-scripts');
+  assert.equal(bpmnFrameAttributes.sandbox, 'allow-scripts allow-popups allow-popups-to-escape-sandbox');
   assert.equal(bpmnFrameAttributes.referrerPolicy, 'no-referrer');
   assert(!bpmnFrameAttributes.sandbox.includes('allow-same-origin'));
-  assert(!/allow-(?:top-navigation|popups|forms)/i.test(bpmnFrameAttributes.sandbox));
+  assert(!/allow-(?:top-navigation|forms)/i.test(bpmnFrameAttributes.sandbox));
+  assert.match(bpmnFrameAttributes.sandbox, /allow-popups(?: |$)/);
+  assert.match(bpmnFrameAttributes.sandbox, /allow-popups-to-escape-sandbox/);
   assert.match(bpmnFrameAttributes.srcdoc, /default-src 'none'/);
   assert.match(bpmnFrameAttributes.srcdoc, /connect-src 'none'/);
   assert.match(bpmnFrameAttributes.srcdoc, /img-src data:/);
-  assert.match(bpmnFrameAttributes.srcdoc, /font-src http:\/\/127\.0\.0\.1:\d+\/assets\/ data:/);
+  assert.match(bpmnFrameAttributes.srcdoc, /font-src data:/);
   assert.match(bpmnFrameAttributes.srcdoc, /script-src 'nonce-[^']+'/);
-  assert.match(bpmnFrameAttributes.srcdoc, /style-src http:\/\/127\.0\.0\.1:\d+\/assets\/model-viewer-frame\.css 'nonce-[^']+'/);
-  assert.match(bpmnFrameAttributes.srcdoc, /src="http:\/\/127\.0\.0\.1:\d+\/assets\/model-viewer-frame\.js" nonce="[^"]+"/);
+  assert.match(bpmnFrameAttributes.srcdoc, /style-src 'nonce-[^']+'/);
+  assert.match(bpmnFrameAttributes.srcdoc, /<script nonce="[^"]+">/);
+  assert.doesNotMatch(bpmnFrameAttributes.srcdoc, /<script[^>]+src=/);
+  assert.doesNotMatch(bpmnFrameAttributes.srcdoc, /\/assets\/model-viewer-frame\.(?:js|css)/);
   assert.match(bpmnFrameAttributes.srcdoc, /style-src-attr 'unsafe-inline'/);
-  assertions.push('Opaque sandbox, origin/scope/generation/source ID/nonce checks, and restrictive CSP are in the live built frame.');
+  assert(browserRequests.some(url => url.endsWith('/assets/model-viewer-frame.js')));
+  assert(browserRequests.some(url => url.endsWith('/assets/model-viewer-frame.css')));
+  assert.deepEqual(childFrameRequests, [], 'opaque iframe must not request same-origin assets or API endpoints');
+  assertions.push('Parent fetches bounded trusted JS/CSS; nonce-inlined assets execute in an opaque sandbox with network-deny CSP and authenticated messages.');
 
   const bpmnShapeCount = await bpmnFrame.locator('.djs-element[data-element-id]').count();
   assert(bpmnShapeCount > 10 && bpmnShapeCount <= 500);
@@ -191,13 +205,29 @@ try {
   assert.match(await watermark.getAttribute('href'), /bpmn\.io/);
   assert(await watermark.isVisible());
   assert.equal(await watermark.evaluate(anchor => getComputedStyle(anchor).opacity), '1');
-  assert.equal(await watermark.evaluate(anchor => {
+  const watermarkGeometry = await watermark.evaluate(anchor => {
     const box = anchor.getBoundingClientRect();
     const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-    return hit === anchor || anchor.contains(hit);
-  }), true);
+    const viewport = { width: innerWidth, height: innerHeight };
+    return {
+      hit: hit === anchor || anchor.contains(hit),
+      inViewport: box.left >= 0 && box.top >= 0 && box.right <= viewport.width && box.bottom <= viewport.height,
+      width: box.width, height: box.height,
+      color: getComputedStyle(anchor).color
+    };
+  });
+  assert(watermarkGeometry.hit && watermarkGeometry.inViewport && watermarkGeometry.width > 0 && watermarkGeometry.height > 0);
+  assert.notEqual(watermarkGeometry.color, 'rgba(0, 0, 0, 0)');
+  await watermark.click();
+  const lightbox = bpmnFrame.locator('.bjs-powered-by-lightbox');
+  await lightbox.waitFor({ state: 'visible' });
+  const popupPromise = page.context().waitForEvent('page');
+  await lightbox.locator('a[href="https://bpmn.io"]').last().click();
+  const popup = await popupPromise;
+  assert.deepEqual(explicitPopupNavigations, ['https://bpmn.io/']);
+  await popup.close();
   await page.waitForFunction(() => window.__issue78Events.some(event => event.status === 'selection' && event.elementId === 'Task_Review'));
-  assertions.push(`Production BPMN renderer displayed ${bpmnShapeCount} elements; selection event, inert hostile label, and unobscured watermark were verified.`);
+  assertions.push(`Production BPMN renderer displayed ${bpmnShapeCount} elements; inert hostile label, in-viewport watermark and explicitly activated bpmn.io popup were verified.`);
   await page.screenshot({ path: resolve(artifacts, 'issue78-ui-production-boundary-bpmn.png'), fullPage: true });
 
   const replaceSource = (needle: string, replacement: string) => bpmnXml.replace(needle, replacement);

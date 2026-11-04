@@ -1,10 +1,11 @@
 import bpmnXml from './bpmn-representative.xml?raw';
 import dmnXml from './dmn-representative.xml?raw';
-import { createModelSandbox } from '../../../platform/src/CapabilityExplorer.Explorer/client/src/models/viewer-sandbox.js';
+import { createModelSandbox, loadTrustedViewerAssets } from '../../../platform/src/CapabilityExplorer.Explorer/client/src/models/viewer-sandbox.js';
 
+const assets = await loadTrustedViewerAssets(new AbortController().signal);
 const sandbox = createModelSandbox(
   document.querySelector<HTMLElement>('#viewer-host')!,
-  '/assets/model-viewer-frame.css'
+  assets
 );
 window.__issue78Sandbox = sandbox;
 window.__issue78Fixtures = { bpmn: bpmnXml, dmn: dmnXml };

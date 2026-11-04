@@ -31,9 +31,15 @@ type CanvasService = {
 type RegistryService = { get(id: string): unknown; getAll(): unknown[] };
 type ViewerServices = { get(name: string): unknown };
 
-function send(status: string, message?: string, renderedCount?: number, elementId?: string) {
+function referenceId(reference: unknown): string | undefined {
+  if (typeof reference === 'string') return reference;
+  if (reference && typeof reference === 'object' && 'id' in reference && typeof reference.id === 'string') return reference.id;
+  return undefined;
+}
+
+function send(status: string, message?: string, renderedCount?: number, elementId?: string, renderedIds?: string[], relationshipSourceId?: string, relationshipTargetId?: string, relationshipMatchCount?: number) {
   if (!requestIdentity) return;
-  window.parent.postMessage({ ...requestIdentity, status, message, renderedCount, elementId }, '*');
+  window.parent.postMessage({ ...requestIdentity, status, message, renderedCount, elementId, renderedIds, relationshipSourceId, relationshipTargetId, relationshipMatchCount }, '*');
 }
 
 function parseSource(kind: 'bpmn' | 'dmn', source: string) {
@@ -76,9 +82,13 @@ function sameIdentity(message: Record<string, unknown>) {
 
 function installSelectionEvents(instance: NavigatedViewer | DmnViewer) {
   const active = instance instanceof NavigatedViewer ? instance : instance.getActiveViewer();
-  active?.on('element.click', (event: { element: { id: string } }) => {
+  active?.on('element.click', (event: { element: { id: string; businessObject?: { sourceRef?: unknown; targetRef?: unknown } } }) => {
+    const canvas = (active as unknown as ViewerServices).get('canvas') as CanvasService;
+    if (selectedElement) canvas.removeMarker(selectedElement, 'issue78-selected');
     selectedElement = event.element.id;
-    send('selection', undefined, undefined, selectedElement);
+    canvas.addMarker(selectedElement, 'issue78-selected');
+    send('selection', undefined, undefined, selectedElement, undefined,
+      referenceId(event.element.businessObject?.sourceRef), referenceId(event.element.businessObject?.targetRef));
   });
 }
 
@@ -126,7 +136,10 @@ window.addEventListener('message', async event => {
       const active = kind === 'bpmn' ? instance as unknown as ViewerServices : (instance as DmnViewer).getActiveViewer() as ViewerServices;
       const renderedCount = (active.get('elementRegistry') as RegistryService).getAll().length;
       if (renderedCount > LIMIT_ELEMENTS) throw Object.assign(new Error('Rendered element count exceeds 500'), { code: 'too-many-elements' });
-      send('rendered', undefined, renderedCount);
+      const renderedIds = (active.get('elementRegistry') as RegistryService).getAll()
+        .map((element) => (element as { id?: unknown }).id)
+        .filter((id): id is string => typeof id === 'string');
+      send('rendered', undefined, renderedCount, undefined, renderedIds);
     } catch (error) {
       viewer?.destroy();
       viewer = undefined;
@@ -141,11 +154,31 @@ window.addEventListener('message', async event => {
     const active = viewer instanceof NavigatedViewer ? viewer as unknown as ViewerServices : viewer.getActiveViewer() as ViewerServices;
     const canvas = active.get('canvas') as CanvasService;
     const element = (active.get('elementRegistry') as RegistryService).get(request.elementId);
+    if (selectedElement) canvas.removeMarker(selectedElement, 'issue78-selected');
+    selectedElement = undefined;
     if (element) {
-      if (selectedElement) canvas.removeMarker(selectedElement, 'issue78-selected');
       selectedElement = request.elementId;
       canvas.addMarker(selectedElement, 'issue78-selected');
     }
+  } else if (request.status === 'select-relationship' &&
+    typeof request.relationshipSourceId === 'string' && typeof request.relationshipTargetId === 'string' && viewer) {
+    const active = viewer instanceof NavigatedViewer ? viewer as unknown as ViewerServices : viewer.getActiveViewer() as ViewerServices;
+    const canvas = active.get('canvas') as CanvasService;
+    const registry = active.get('elementRegistry') as RegistryService;
+    if (selectedElement) canvas.removeMarker(selectedElement, 'issue78-selected');
+    selectedElement = undefined;
+    const matches = registry.getAll().filter((candidate) => {
+      const businessObject = (candidate as { businessObject?: { sourceRef?: unknown; targetRef?: unknown } }).businessObject;
+      return referenceId(businessObject?.sourceRef) === request.relationshipSourceId &&
+        referenceId(businessObject?.targetRef) === request.relationshipTargetId;
+    }) as Array<{ id: string }>;
+    if (matches.length === 1) {
+      selectedElement = matches[0].id;
+      canvas.addMarker(selectedElement, 'issue78-selected');
+    }
+    send('selection-result', matches.length === 1 ? 'highlighted' : 'not-unique-or-unavailable',
+      undefined, matches.length === 1 ? matches[0].id : undefined, undefined,
+      request.relationshipSourceId, request.relationshipTargetId, matches.length);
   } else if (request.status === 'zoom' && viewer) {
     const active = viewer instanceof NavigatedViewer ? viewer as unknown as ViewerServices : viewer.getActiveViewer() as ViewerServices;
     const canvas = active.get('canvas') as CanvasService;
