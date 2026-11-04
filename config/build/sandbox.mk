@@ -104,7 +104,11 @@ test-frugal-ci:
 	scripts/ci/check-frugal-ci
 	$(OFFLINE) node node --test tests/frugal-ci.test.mjs tests/fixture-concurrency.test.mjs
 
-test: test-postmerge-analysis test-local-ci test-mapping-replay test-package-feeds test-security-gates test-corpus-replay test-binding-preview golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
+test: test-postmerge-analysis test-local-ci test-mapping-replay test-package-feeds test-security-gates test-corpus-replay test-binding-preview golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store test-model-viewer-browser
+
+.PHONY: test-model-viewer-browser
+test-model-viewer-browser: build
+	SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) --offline node sh -c 'node --experimental-strip-types tests/issue78-ui-browser.ts && node --experimental-strip-types tests/issue78-viewer-boundary.ts'
 
 .PHONY: test-binding-preview test-binding-preview-browser
 test-binding-preview: build

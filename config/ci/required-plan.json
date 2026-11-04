@@ -2,7 +2,7 @@
   "version": 1,
   "inputs": {
     "Makefile": "9b93474750da63ecd9700d05f33bfa23adcb84b0b42b31335a019e77161bff42",
-    "config/build/sandbox.mk": "b0a477726d9ae3da9c4a5fe5330a02dac531425a6af0defbbe8bc759f851cdc3",
+    "config/build/sandbox.mk": "052c47208e486c93c3a7bdc9e46a4bb6dd3c793e9c4a8f71631ab62dc662e14f",
     "config/build/native.mk": "bafd5328f7bf3732e6bf23ad29ebb176a229bf9372ba5cce5ded8db89c7068d7",
     "config/build/issue28.mk": "ccfb43921135dd3028a724bfebd3475c2e621872eee8898a3ede915098c2d91e",
     "config/build/platform.mk": "624eaac4c6f9093035dc59c82510b9ae3f450ecd4a9bc86a70bd15df7d50baad",
@@ -58,6 +58,7 @@
     "scripts/sandbox --offline dotnet dotnet platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll evaluate --expected fixtures/expected --actual .sandbox-cache/extracted/sql --config fixtures/evaluation.extractors.json --repos fixtures/.repos --language sql --json .sandbox-cache/extracted/sql/evaluation.json",
     "scripts/sandbox --offline dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Explorer.Tests && dotnet test --no-build tests/CapabilityExplorer.Interpretation.Tests && dotnet test --no-build tests/CapabilityExplorer.Capabilities.Tests'",
     "scripts/sandbox --docker dotnet sh -c 'cd platform && dotnet test --no-build tests/CapabilityExplorer.Store.Tests --filter \"Profile!=HostDocker\"'",
+    "SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea scripts/sandbox --offline node sh -c 'node --experimental-strip-types tests/issue78-ui-browser.ts && node --experimental-strip-types tests/issue78-viewer-boundary.ts'",
     "scripts/sandbox --offline node node --test tests/issue28-contract.test.mjs scripts/benchmarks/issue28-tools.test.mjs",
     "scripts/sandbox --offline node sh -c 'cd spikes/likec4 && npm run build'",
     "scripts/sandbox --offline node sh -c 'cd spikes/likec4 && npm test && node --experimental-strip-types scripts/check-model.mjs'",
@@ -67,7 +68,7 @@
     "scripts/sandbox --offline node node scripts/check-platform-contract-plan.mjs foundation",
     "scripts/sandbox --offline node node scripts/research/check-frontend-contracts.mjs all",
     "scripts/sandbox --offline node node scripts/research/check-domain-object-contracts.mjs all",
-    "scripts/collection-dogfood \"b39a5b5b5cbbbed53cee7fa19edc1f22d9c0e9562adfc4057c58e5b43b0aa9d2:8ad7260dc8cc40499f3e635550d4c428a6e8bc057c017b4191aff4134dcb5d23:\"",
+    "scripts/collection-dogfood \"b39a5b5b5cbbbed53cee7fa19edc1f22d9c0e9562adfc4057c58e5b43b0aa9d2:3026509166c625e2dba579c68b84004cd38dc56ebb70824e6f113dde0770a297:\"",
     "scripts/sandbox --offline node node scripts/decisions/check.mjs all"
   ]
 }

@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto';
 import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { execFileSync } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
 import { build, preview } from '../platform/src/CapabilityExplorer.Explorer/client/node_modules/vite/dist/node/index.js';
 import { buildModelFrame } from '../platform/src/CapabilityExplorer.Explorer/client/vite.model-frame.ts';
@@ -366,14 +365,14 @@ try {
   assertions.push('Real static browser run observed no external requests from hostile label/reference/extension cases.');
 
   const artifact = {
-    head: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
+    sourceIdentity: 'Exact exercised source bytes are bound by dirtySnapshotHashes, independent of host Git metadata.',
     dirtySnapshotHashes: sourceHashes,
     fixtureSha256: { bpmn: bpmnHash, dmn: dmnHash },
     packages: {
       bpmnJs: { version: lockedPackages.bpmnJs.version, integrity: lockedPackages.bpmnJs.integrity },
       dmnJs: { version: lockedPackages.dmnJs.version, integrity: lockedPackages.dmnJs.integrity }
     },
-    environment: { node: process.version, platform: process.platform, architecture: process.arch, browser: browser.version(), browserImage: 'Host Playwright browser cache, pinned container image not exercised.' },
+    environment: { node: process.version, platform: process.platform, architecture: process.arch, browser: browser.version() },
     bundle,
     assertions,
     browserRequests: browserRequests.map(url => url.replace(baseUrl, '')),

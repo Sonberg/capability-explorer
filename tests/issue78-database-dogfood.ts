@@ -240,7 +240,7 @@ try {
     await frame.locator('.djs-element[data-element-id="Task_Review"]').waitFor();
     assert(await frame.locator('a[href*="bpmn.io"]').first().isVisible(), "required renderer watermark must remain visible");
     await tab.getByRole("button", { name: "Elements", exact: true }).click();
-    await tab.getByRole("button", { name: /Task_Review/ }).click();
+    await tab.locator("button[aria-pressed]").filter({ has: tab.getByText("Task_Review", { exact: true }) }).click();
     assert(await tab.getByText(commit, { exact: true }).first().isVisible());
     await tab.screenshot({ path: join(run, "database-bpmn.png"), fullPage: true });
     await tab.getByRole("button", { name: /decision\.dmn/ }).click();
