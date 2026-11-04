@@ -303,7 +303,26 @@ try {
   await page.waitForFunction(() => window.location.hash.includes("element=Task_Review"));
   await page.goForward();
   await page.waitForFunction(() => window.location.hash.includes("element=rel-flow-start-review"));
+  const diagnostics = page.getByRole("region", { name: "Model diagnostics" });
+  const diagnosticDisclosure = diagnostics.locator("summary");
+  assert.equal(await diagnosticDisclosure.count(), 1);
+  assert.match(await diagnostics.getByRole("heading").innerText(), /Diagnostics \(2\)/);
+  assert.match(await diagnosticDisclosure.innerText(), /MODEL_PARTIAL · partial · Construct not identified · 2 occurrences/);
+  assert.equal(await page.getByText("One opaque extension was retained.").isVisible(), false);
+  await activateByKeyboard(diagnosticDisclosure, "Inspect grouped diagnostic occurrences", "Enter");
   assert(await page.getByText("One opaque extension was retained.").isVisible());
+  assert(await page.getByText("Another opaque extension was retained at Vendor_2.").isVisible());
+  assert(await diagnostics.getByText("Vendor_2", { exact: true }).isVisible());
+  for (const [theme, width, height] of [["light", 1500, 1100], ["dark", 1500, 1100], ["dark", 390, 844]] as const) {
+    await page.setViewportSize({ width, height });
+    await page.emulateMedia({ colorScheme: theme });
+    await diagnostics.scrollIntoViewIfNeeded();
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.screenshot({ path: resolve(artifacts, `issue78-ui-grouped-details-${theme}-${width}.png`), fullPage: true });
+  }
+  await page.setViewportSize({ width: 1500, height: 1100 });
+  await page.emulateMedia({ colorScheme: "light" });
+  assertions.push("Repeated diagnostics retain total and group counts, start collapsed, disclose exact messages and long locators by keyboard, and stay viewport-bounded in light/dark/mobile views.");
   assert(await page.getByText(/element source locator not supplied/).isVisible());
   const relationshipProvenance = page.getByRole("complementary", { name: "Model provenance" }).getByLabel("Selected relationship provenance");
   const relationshipOverflow = await page.evaluate(() => ({
@@ -338,8 +357,13 @@ try {
   await activateByKeyboard(page.getByRole("button", { name: /eligibility\.dmn\.json/ }), "Select DMN model", "Space");
   await activateByKeyboard(page.getByRole("button", { name: "Decision table", exact: true }), "Open Decision table tab", "Enter");
   const table = page.getByRole("table", { name: "Eligibility authored decision table" });
-  const tableHeaders = await table.evaluate((element) => [...element.querySelectorAll("thead th")].map((header) => header.textContent));
+  const tableHeaders = await table.evaluate((element) => [...element.querySelectorAll("thead th")].map((header) => header.firstElementChild?.textContent));
   assert.deepEqual(tableHeaders, ["Applicant age", "Eligibility"]);
+  const headers = table.getByRole("columnheader");
+  assert.match(await headers.nth(0).innerText(), /Input allowed values \(literal, not evaluated\)[\s\S]*<18, \[18\.\.24\], -/);
+  assert.doesNotMatch(await headers.nth(0).innerText(), /"deny"/);
+  assert.match(await headers.nth(1).innerText(), /Output allowed values \(literal, not evaluated\)[\s\S]*"deny", "manual", "approve"/);
+  assert.doesNotMatch(await headers.nth(1).innerText(), /<18/);
   assert.deepEqual(await table.locator("tbody tr").evaluateAll((rows) => rows.map((row) => [...row.querySelectorAll("td")].map((cell) => cell.textContent))), [
     ["<18", '"deny"'], ["[18..24]", '"manual"'], ["-", '"approve"']
   ]);
@@ -354,6 +378,15 @@ try {
   assert(await page.getByText(/never evaluated/).isVisible());
   assert(await page.getByText(/FEEL · text only; not evaluated/).isVisible());
   await page.screenshot({ path: resolve(artifacts, "issue78-ui-production-dmn.png"), fullPage: true });
+  for (const [theme, width, height] of [["light", 1500, 1100], ["dark", 1500, 1100], ["dark", 390, 844]] as const) {
+    await page.setViewportSize({ width, height });
+    await page.emulateMedia({ colorScheme: theme });
+    await table.scrollIntoViewIfNeeded();
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.screenshot({ path: resolve(artifacts, `issue78-ui-allowed-values-${theme}-${width}.png`), fullPage: true });
+  }
+  await page.setViewportSize({ width: 1500, height: 1100 });
+  await page.emulateMedia({ colorScheme: "light" });
   assertions.push("DMN source-derived accessible table has exact authored columns and ordered rule cells; no renderer-generated annotations or expression evaluation.");
   assertions.push("Bounded real Tab traversal reaches route, BPMN/DMN model selection, Elements/Decision table tabs, process element and decision rule; Enter/Space activate controls with viewport-visible focus indicators. This is a keyboard baseline, not assistive-technology certification.");
 
@@ -489,6 +522,7 @@ try {
       "src/views/ProcessesDecisions.tsx", "src/views/ModelEvidence.tsx", "src/views/model-view-data.ts", "src/views/DatabaseExplorer.tsx",
       "src/App.tsx", "src/index.css", "vite.model-frame.ts", "vite.config.ts", "public/licenses/bpmn-io-viewers.txt",
       "../../../../tests/issue78-ui-browser.ts", "../../../../tests/issue78-viewer-boundary.ts",
+      "../../../../tests/issue78-model-ui-quality.ts",
       "../../../../tests/fixtures/issue78/ui-evidence.ts", "../../../../tests/fixtures/issue78/ui-api-routes.ts",
       "../../../../tests/fixtures/issue78/viewer-shell-entry.ts", "../../../../tests/fixtures/issue78/bpmn-representative.xml",
       "../../../../tests/fixtures/issue78/dmn-representative.xml"
