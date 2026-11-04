@@ -143,6 +143,53 @@ passing TypeScript tests and clean solution build. New behavior, GUI forwarding,
 private-corpus recovery and SLO compliance are not tested by this gate.
 Brain pass clean: `sparc/capability-cards.md#sparc`.
 
+## Refinement gate
+
+| Criterion | Passing proof |
+|---|---|
+| Standard layout, unknown content and allowed values | Actual model tests and full TS suite: 208 passed |
+| Local/foreign QNames and contradictory references | Focused RED/GREEN in `authored.test.ts`; independent finding resolved |
+| Literal values, missing text, grouped exact locators | SSR cases plus production browser assertions and real keyboard disclosure |
+| Bounded consistent C# keys | New synthetic RED/GREEN, package/no-package consistency; full extractor suite 221 passed |
+| Development environment | Real CLI up, non-root/tools/mount checks, native build and running HTML/JSON smoke |
+| Collector compatibility | Actual collection CLI and independent .NET/TS consumers; C#/TS/SQL golden thresholds passed |
+| Production model pages | Unmocked file and PostgreSQL extraction→collection→API→browser dogfood passed |
+
+`make EXECUTION=sandbox test-model-viewer-browser test-ts test-extractors`
+passes. The broader collector/golden/Explorer command also passes: Explorer
+290, interpretation 48 and capabilities 132 tests. Mechanical dependency
+security scan reports zero findings in the scanned project dependencies;
+this is not an OS-image/security-release clearance.
+
+The browser regression was an old assertion expecting an occurrence visible
+before opening its new disclosure. The corrected test first asserts collapsed
+state/count, opens by keyboard, then verifies the unchanged occurrence message
+and locator. Assertions were not dropped. Actual model/source CLI products
+display their allowed-value columns through both file and PostgreSQL modes,
+without API mocks or external requests. Light/dark/mobile images were captured.
+Historical before/after comparison has different fixture occurrence counts and
+no matching baseline dark/mobile DMN captures; it is not a controlled pixel diff.
+
+Refinement grade: **97/100**, two iterations. The three-point deduction is
+private-corpus acceptance and environment/visual-comparison limits, not a
+substitute for a failing test. The complete canonical pre-push/hosted gate is
+still required at Completion.
+
+The full #13/#43/#63/#60 SLO policies were read. No drag-routing, analytics
+scheduler, query backend, capacity tier or authoritative write optimization is
+part of this change. Synthetic correctness/browser samples do not meet their
+declared resource, offered-load or percentile protocols. Therefore **no SLO
+compliance or enterprise capacity claim is made**; those separate qualification
+obligations remain open, and no speculative optimization was added.
+
+What was not tested: authorized affected private corpus/recovery, production
+authorization, large-corpus SLO compliance, VS Code GUI forwarding/extensions,
+full transitive legal review or production deployment. Native unmocked browser
+proof used the installed host Node/.NET/Chromium; pinned sandbox proof is
+recorded separately. No paid model calls were added; native agent metering is
+not available, so no monetary savings are claimed.
+Brain pass clean: `sparc/capability-cards.md#sparc`.
+
 ## Architecture gate
 
 The existing ce.v1 and model/collection record shapes remain unchanged. The
