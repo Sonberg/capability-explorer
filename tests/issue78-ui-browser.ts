@@ -92,6 +92,48 @@ try {
   const origin = `http://127.0.0.1:${address.port}`;
   browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
   const page = await browser.newPage({ viewport: { width: 1500, height: 1100 }, colorScheme: "light" });
+  const keyboardJourney: unknown[] = [];
+  async function activateByKeyboard(target: ReturnType<typeof page.getByRole>, label: string, key: "Enter" | "Space") {
+    const visited: string[] = [];
+    try {
+      await target.waitFor({ state: "visible" });
+      let reached = false;
+      for (let steps = 0; steps < 120; steps++) {
+        await page.keyboard.press("Tab");
+        visited.push(await page.evaluate(() => {
+          const active = document.activeElement;
+          return `${active?.tagName}: ${active?.getAttribute("aria-label") ?? active?.textContent?.trim().slice(0, 100) ?? ""}`;
+        }));
+        if (await target.evaluate((node) => node === document.activeElement)) {
+          reached = true;
+          break;
+        }
+      }
+      assert(reached, `${label} must be reachable within 120 real Tab presses; visited ${JSON.stringify(visited)}`);
+      const focus = await target.evaluate((node) => {
+        const style = getComputedStyle(node);
+        const box = node.getBoundingClientRect();
+        return {
+          focusVisible: node.matches(":focus-visible"),
+          outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth, outlineColor: style.outlineColor,
+          boxShadow: style.boxShadow,
+          visible: box.width > 0 && box.height > 0 && box.bottom > 0 && box.top < innerHeight &&
+            box.right > 0 && box.left < innerWidth && style.visibility === "visible" && Number(style.opacity) > 0
+        };
+      });
+      keyboardJourney.push({ label, key, tabPresses: visited.length, visited, focus });
+      assert(focus.focusVisible && focus.visible, `${label} must show keyboard focus in the viewport`);
+      assert((focus.outlineStyle !== "none" && Number.parseFloat(focus.outlineWidth) > 0 &&
+        !["transparent", "rgba(0, 0, 0, 0)"].includes(focus.outlineColor)) ||
+        focus.boxShadow !== "none", `${label} must have a visible outline or focus shadow: ${JSON.stringify(focus)}`);
+      await page.screenshot({ path: resolve(artifacts, `issue78-ui-keyboard-${keyboardJourney.length}.png`), fullPage: true });
+      await page.keyboard.press(key);
+    } catch (error) {
+      await writeFile(resolve(artifacts, "issue78-ui-keyboard-failed.json"), `${JSON.stringify({ label, visited, keyboardJourney, error: String(error) }, null, 2)}\n`);
+      await page.screenshot({ path: resolve(artifacts, "issue78-ui-keyboard-failed.png"), fullPage: true });
+      throw error;
+    }
+  }
   page.on("request", (request) => {
     requests.push(request.url());
     if (new URL(request.url()).origin !== origin) externalRequests.push(request.url());
@@ -102,14 +144,14 @@ try {
   await installIssue78UiApiRoutes(page, { state: apiState, snapshot, revisionA, revisionB, selection, bpmnHash, items, evidenceById, xmlById });
 
   const routeStarted = Date.now();
-  await page.goto(`${origin}/#/processes-decisions`);
-  await page.getByRole("link", { name: "Processes & decisions" }).click();
+  await page.goto(`${origin}/#/explore`);
+  await activateByKeyboard(page.getByRole("link", { name: "Processes & decisions" }), "Discover processes and decisions route", "Enter");
   await page.getByRole("heading", { name: "Processes & decisions" }).waitFor();
   const selectedEvidenceResponse = page.waitForResponse((response) => {
     const url = new URL(response.url());
     return url.pathname === "/api/models/evidence" && url.searchParams.get("id") === "model-bpmn";
   });
-  await page.getByRole("button", { name: /application\.bpmn\.json/ }).click();
+  await activateByKeyboard(page.getByRole("button", { name: /application\.bpmn\.json/ }), "Select BPMN model", "Enter");
   const evidenceReply = await selectedEvidenceResponse;
   assert.equal(evidenceReply.status(), 200, "selected evidence must use the API's generation parameter");
   assert.equal(new URL(evidenceReply.url()).searchParams.get("generation"), String(apiState.listedGeneration));
@@ -205,8 +247,8 @@ try {
     requests.findIndex((request) => request.startsWith("/api/models/source?id=model-bpmn")));
   await page.screenshot({ path: resolve(artifacts, "issue78-ui-production-bpmn-diagram.png"), fullPage: true });
 
-  await page.getByRole("button", { name: "Elements", exact: true }).click();
-  await page.getByRole("button", { name: /Task_Review/ }).click();
+  await activateByKeyboard(page.getByRole("button", { name: "Elements", exact: true }), "Open Elements tab", "Space");
+  await activateByKeyboard(page.getByRole("button", { name: /Task_Review/ }), "Select process element", "Enter");
   await page.waitForFunction(() => window.location.hash.includes("element=Task_Review") &&
     [...document.querySelectorAll('button[aria-pressed="true"]')].some((button) => button.textContent?.includes("Task_Review")));
   assert.match(await page.getByRole("button", { name: /Task_Review/ }).getAttribute("aria-pressed") ?? "", /true/);
@@ -231,8 +273,6 @@ try {
   assert.match(await bpmnFrame.locator('.djs-element[data-element-id="SubProcess_Check"]').getAttribute("class") ?? "", /issue78-selected/);
   await page.getByRole("button", { name: /Task_Review/ }).click();
   const flowRow = page.getByRole("button", { name: /sequenceFlow: Application received →/ });
-  await page.getByRole("button", { name: /Task_Review/ }).focus();
-  await page.keyboard.press("Enter");
   assert.match(page.url(), /element=Task_Review/);
   await flowRow.click();
   await page.waitForFunction(() => window.location.hash.includes("element=rel-flow-start-review") &&
@@ -294,8 +334,8 @@ try {
 
   assertions.push("Live frame CSP restricts scripts to nonce-authorized bundled viewer, CSS to bundled asset, images to data, and network connections to none; watermark remains unobscured.");
 
-  await page.getByRole("button", { name: /eligibility\.dmn\.json/ }).click();
-  await page.getByRole("button", { name: "Decision table", exact: true }).click();
+  await activateByKeyboard(page.getByRole("button", { name: /eligibility\.dmn\.json/ }), "Select DMN model", "Space");
+  await activateByKeyboard(page.getByRole("button", { name: "Decision table", exact: true }), "Open Decision table tab", "Enter");
   const table = page.getByRole("table", { name: "Eligibility authored decision table" });
   const tableHeaders = await table.evaluate((element) => [...element.querySelectorAll("thead th")].map((header) => header.textContent));
   assert.deepEqual(tableHeaders, ["Applicant age", "Eligibility"]);
@@ -304,7 +344,7 @@ try {
   ]);
   assert.equal(await table.getByRole("columnheader", { name: "Annotations" }).count(), 0);
   const selectedRule = table.getByRole("button", { name: "<18", exact: true });
-  await selectedRule.click();
+  await activateByKeyboard(selectedRule, "Select decision table rule", "Space");
   await page.waitForFunction(() => window.location.hash.includes("element=Rule_1") &&
     [...document.querySelectorAll('button[aria-pressed="true"]')].some((button) => button.textContent?.includes("<18")));
   assert.match(await selectedRule.getAttribute("aria-pressed") ?? "", /true/);
@@ -314,6 +354,7 @@ try {
   assert(await page.getByText(/FEEL · text only; not evaluated/).isVisible());
   await page.screenshot({ path: resolve(artifacts, "issue78-ui-production-dmn.png"), fullPage: true });
   assertions.push("DMN source-derived accessible table has exact authored columns and ordered rule cells; no renderer-generated annotations or expression evaluation.");
+  assertions.push("Bounded real Tab traversal reaches route, BPMN/DMN model selection, Elements/Decision table tabs, process element and decision rule; Enter/Space activate controls with viewport-visible focus indicators. This is a keyboard baseline, not assistive-technology certification.");
 
   await page.getByRole("button", { name: /Eligibility\.cs/ }).click();
   await page.waitForFunction(() => window.location.hash.includes("id=candidate-cs"));
@@ -455,11 +496,12 @@ try {
     packageLockSha256: summariesHash,
     bundle,
     assertions,
+    keyboardJourney,
     timingsMs,
     apiPaths: expectedRequests.map((request) => request.replace(/^\/api\/models/, "/api/models")),
     browserRequests: requests.filter((request) => !request.startsWith("/api/")),
     externalRequests,
-    browser: { version: browser.version(), node: process.version, browserImage: "Host Playwright Chromium; pinned browser container image not exercised." },
+    browser: { version: browser.version(), node: process.version, platform: process.platform, arch: process.arch },
   };
   await writeFile(resolve(artifacts, "issue78-ui-implementation-browser.json"), `${JSON.stringify(artifact, null, 2)}\n`);
   await writeFile(resolve(artifacts, "issue78-ui-implementation-browser.log"),
