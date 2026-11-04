@@ -58,6 +58,26 @@ public sealed class CandidateSafetyTests : IDisposable
         Assert.NotEmpty(result.Diagnostics);
     }
 
+    [Theory]
+    [InlineData("public static int Value => Effect(); public static extern int Effect();")]
+    [InlineData("public int this[int index] => Effect(); public static extern int Effect();")]
+    [InlineData("public static C operator +(C left, C right) { Effect(); return left; } public static extern void Effect();")]
+    [InlineData("public static C operator -(C value) => Effect(); public static extern C Effect();")]
+    [InlineData("public static implicit operator int(C value) { return Effect(); } public static extern int Effect();")]
+    [InlineData("public static explicit operator bool(C value) => Effect(); public static extern bool Effect();")]
+    [InlineData("public static event System.Action Changed = Effect(); public static extern System.Action Effect();")]
+    public void Given_uncovered_member_effect_then_partial_preserves_supported_neighbor(string declaration)
+    {
+        var result = Extract("public class C { " + declaration +
+            " public static string Classify(int amount) { if(amount < 0) return \"Invalid\"; return \"None\"; } }");
+        var candidate = Assert.Single(result.Candidates);
+        Assert.Equal("decision", candidate.Kind);
+        Assert.Equal(1, result.Coverage.SupportedMethods);
+        Assert.Equal(0, result.Coverage.UnsupportedMethods);
+        Assert.Equal("partial", result.Coverage.Status);
+        Assert.Contains(result.Diagnostics, d => d.Code == "outside-method-scope");
+    }
+
     [Fact]
     public void Given_nullable_reference_annotation_then_scalar_type_remains_schema_compatible()
     {
