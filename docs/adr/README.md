@@ -15,7 +15,7 @@ No existing status was changed to produce this index.
 | Red | D: draft | Not yet ready for decision review; not a severity rating. |
 | Gray | H: historical | Rejected, deprecated or superseded; retain the decision and replacement links. |
 
-There are **32 local records: 1 scoped accepted, 31 proposed, 0 draft,
+There are **34 local records: 1 scoped accepted, 33 proposed, 0 draft,
 0 historical**. MADR-0016 is accepted for the **operator workflow only**.
 Both `0005` paths are distinct records, named `0005-G` and `0005-PR` below solely
 for navigation. No `0015` exists; this is a numbering gap, not a missing file
@@ -55,6 +55,8 @@ invented by the index. MADR-0025 landed in owner-merged #55 and remains proposed
 | 0030 | [Govern dependency caches across framework and toolchain upgrades](0030-dependency-cache-lifecycle.md) | P: proposed; scoped cleanup and retention policy, not implemented automation |
 | 0031 | [Convert maintained JavaScript to TypeScript 7 when modified](0031-typescript7-on-touch.md) | P: repository-wide adoption proposed; operator-directed workstream rule, no compiler upgrade yet |
 | 0032 | [Drive implementation with behavior scenarios and red-green-refactor tests](0032-tdd-bdd-delivery.md) | P: repository-wide adoption proposed; operator-directed TDD/BDD workflow, no new framework mandated |
+| 0033 | [Maintain reusable knowledge as an interlinked OKF LLM wiki](0033-okf-llm-knowledge-wiki.md) | P: knowledge maintenance and public-source controls, not product storage |
+| 0034 | [Maintain source-bound architecture and diagrams with relevant changes](0034-living-architecture-as-code.md) | P: same-change documentation maintenance, not automated drift detection |
 
 ## Relationship map
 
@@ -86,6 +88,8 @@ flowchart LR
     a30["0030 Cache lifecycle [P]"]:::proposed
     a31["0031 TypeScript 7 on touch [P]"]:::proposed
     a32["0032 TDD and BDD [P]"]:::proposed
+    a33["0033 OKF knowledge wiki [P]"]:::proposed
+    a34["0034 Architecture as code [P]"]:::proposed
   end
   subgraph Evidence_and_language
     a02["0002 Ubiquitous language [P]"]:::proposed

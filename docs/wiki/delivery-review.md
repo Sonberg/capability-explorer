@@ -24,10 +24,14 @@ scheduler, live consumer integration or broad UI work is required.
 |---|---|---|---|
 | A | Update #33 | Foundation/high | Collector export contract and offline conformance |
 | B | Update #12 | High | Authored BPMN/DMN ingestion with explicit support matrix |
-| C | New | High | Bounded static process/decision candidates |
-| D | New | Normal | Missing declaration profiles and per-family coverage |
+| C | Created #75 | High | Bounded static process/decision candidates |
+| D | Created #74 | Normal | Missing declaration profiles and per-family coverage |
 | E | Update #6 | Normal | Revision-bound identity/link qualification |
-| F | New | Later | Evidence-bound DDD/domain candidates |
+| F | Created #76 | Later | Evidence-bound DDD/domain candidates |
+
+All six issue actions were authorized on 2026-11-04 and read back for
+verification. #33/#6 retain their original requirements; #12 now targets authored
+ingestion while #75 owns static candidates. No issue was deleted.
 
 The existing issues supply public platform, model and mapping context;
 their unrelated requirements should remain intact.[^platform][^models][^identity]

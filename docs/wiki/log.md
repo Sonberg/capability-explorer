@@ -18,3 +18,9 @@
   its mandatory push gate is a separate validation.
   Publication review checked file contents and clean branch ancestry; no private
   evidence commit is reachable from this branch.
+- Applied and verified the six issue actions: updated #33/#12/#6 and created
+  #75/#74/#76. Their scopes and priorities remain bounded; no issues deleted.
+- The mandatory full local CI run reached the decision-ledger gate and rejected
+  the two new MADRs missing from its inventory. Added their source-bound proposed
+  entries and regenerated the disposable navigation views before rerunning CI.
+  No decision is promoted to accepted and no gate is bypassed.
