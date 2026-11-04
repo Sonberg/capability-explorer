@@ -21,6 +21,10 @@
 }
 
 @media (max-width: 650px) { .architecture-canvas { height: 1100px; } }
+@media (max-width: 650px) {
+  .architecture-workspace.is-connecting .architecture-panels > aside { order: -1; }
+  .architecture-workspace.is-connecting .architecture-canvas { height: 420px; }
+}
 
 .model-viewer-frame {
   min-width: 0;

@@ -32,7 +32,8 @@ public sealed record ArchFact(string Relation, SymbolRef From, SymbolRef? To, st
 /// known by a configuration name only), "bound" (named by the service map, endpoint found), "broken" (named by the service map, endpoint missing),
 /// "candidate" (a match by route or name, or a candidate fact), "unresolved".
 /// </summary>
-public sealed record ArchEdge(string Id, string From, string To, string Kind, string Label, int Count, string Certainty, IReadOnlyList<ArchFact> Facts);
+public sealed record ArchEdge(string Id, string From, string To, string Kind, string Label, int Count, string Certainty, IReadOnlyList<ArchFact> Facts,
+    string? ManualConnectionId = null, string? Note = null);
 
 public sealed record Crumb(string Label, string Level, string? Focus);
 
@@ -572,6 +573,11 @@ public static class Architecture
                 category = n.Props?.TryGetProperty("typeKind", out var tk) == true && tk.GetString() == "interface" ? "interface" : "component";
                 break;
             case "cs" when n.NodeKind is "Method" or "Property" or "Field" or "Variable" && seg.Length >= 4:
+                if (seg[3].StartsWith("sha256:", StringComparison.Ordinal))
+                {
+                    var declaringType = SourcePathResolver.TypeKey(view, n.SymbolKey);
+                    return declaringType is not null && view.Node(declaringType) is { } parent ? Component(view, parent) : null;
+                }
                 var body = seg[3].Length > 2 && seg[3][1] == ':' ? seg[3][2..] : seg[3];
                 var paren = body.IndexOf('(', StringComparison.Ordinal);
                 var head = paren >= 0 ? body[..paren] : body;

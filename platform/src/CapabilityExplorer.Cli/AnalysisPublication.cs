@@ -34,17 +34,31 @@ internal static class AnalysisPublication
         foreach (var repo in prepared.Repositories)
         {
             var destination = Path.Combine(root,".sandbox-cache/artifacts",repo.Id,repo.Sha);
-            var previous = Path.Combine(Path.GetDirectoryName(repo.Staging)!,"previous-" + run.RunId + "-" + run.AttemptId);
-            AnalysisPreparation.RejectLinks(destination); AnalysisPreparation.RejectLinks(previous);
-            if (Directory.Exists(previous) || File.Exists(destination)) throw new IOException("publication destination contains unreconciled evidence");
+            var publication = Path.Combine(root,".sandbox-cache/artifact-publication",run.RunId,run.AttemptId!,repo.Id,repo.Sha);
+            var preparedDirectory = Path.Combine(publication,"prepared");
+            var previous = Path.Combine(publication,"previous");
+            AnalysisPreparation.RejectLinks(destination); AnalysisPreparation.RejectLinks(publication);
+            AnalysisPreparation.RejectLinks(preparedDirectory); AnalysisPreparation.RejectLinks(previous);
+            if (Directory.Exists(publication) || File.Exists(publication) || File.Exists(destination))
+                throw new IOException("publication destination contains unreconciled evidence");
             var expected = prepared.Artifacts.Where(p => p.Key.StartsWith(repo.Staging + Path.DirectorySeparatorChar,StringComparison.Ordinal))
                 .OrderBy(p => p.Key,StringComparer.Ordinal)
                 .ToDictionary(p => Path.GetRelativePath(repo.Staging,p.Key),p => p.Value,StringComparer.Ordinal);
             AssertFiles(repo.Staging,expected);
+            Directory.CreateDirectory(preparedDirectory);
+            foreach (var path in expected.Keys.Order(StringComparer.Ordinal))
+            {
+                var target = Path.Combine(preparedDirectory,path);
+                AnalysisPreparation.RejectLinks(target);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(Path.Combine(repo.Staging,path),target,overwrite:false);
+            }
+            AssertFiles(preparedDirectory,expected);
+            AssertFiles(repo.Staging,expected);
             permit.Intent("local-artifacts",destination);
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             if (Directory.Exists(destination)) Directory.Move(destination,previous);
-            Directory.Move(repo.Staging,destination);
+            Directory.Move(preparedDirectory,destination);
             AssertFiles(destination,expected);
             var evidence = AnalysisWorkerCommand.HashText(string.Join('\n',expected.OrderBy(p => p.Key,StringComparer.Ordinal).Select(p => p.Key + ":" + p.Value)));
             permit.Confirm("local-artifacts",destination,evidence);

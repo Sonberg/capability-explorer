@@ -61,6 +61,12 @@ Rules:
   encodes kind, containing type, generic arity and parameter types. The assembly segment is the one
   the compiler sees: reference assemblies for framework types (`System.Runtime`, not
   `System.Private.CoreLib`).
+  Keys up to 2,048 characters are unchanged. Longer keys use
+  `cs|<repo-or-@ext>|<assembly>|sha256:<64 lowercase hex characters>`, hashing the
+  complete original scoped key with SHA-256 over UTF-8. Declarations and references
+  use the same mapping; observed collisions across extraction units fail closed.
+  Consumers must follow `DECLARES` to locate a compacted member's containing type
+  rather than parse its digest. Names, signatures and source evidence remain separate.
 - **TypeScript**: the module path is relative to the package root. The declaration path is the chain
   of containers joined with `.` (`SalesApi.getWeeklySales`). `#meaning` (`value`, `type`, `namespace`)
   separates merged declarations that share a name. Overloads are **one** symbol with several

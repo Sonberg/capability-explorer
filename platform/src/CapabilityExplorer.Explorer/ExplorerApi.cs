@@ -102,6 +102,7 @@ public static class ExplorerApi
     public static void MapExplorerApi(this IEndpointRouteBuilder app, string? evaluationReport)
     {
         var api = app.MapGroup("/api");
+        api.MapArchitectureConnections();
 
         // Cheap poll target: the client reloads when the generation changes (artifacts or capabilities on disk changed).
         api.MapGet("/generation", (ExplorerState state) => new { generation = state.Current.Generation });
@@ -230,10 +231,11 @@ public static class ExplorerApi
             GlossaryConcepts.Build(index.View(view, caps.Scope(cap)), Membership(caps)));
 
         // Layered architecture canvas: level = landscape | system | repository | component. The landscape ignores cap.
-        api.MapGet("/architecture", (ExplorerIndex index, CapabilityService caps, string? level, string? focus, string? view, string? cap) =>
+        api.MapGet("/architecture", (ExplorerIndex index, CapabilityService caps, ExplorerOptions options, string? level, string? focus, string? view, string? cap) =>
         {
             var capability = string.IsNullOrEmpty(cap) ? null : caps.Get(cap);
-            return Architecture.Build(index.View(view, caps.Scope(cap)), level ?? (capability is null ? "landscape" : "system"), focus, index.View(view), caps.List(), capability);
+            var graph = Architecture.Build(index.View(view, caps.Scope(cap)), level ?? (capability is null ? "landscape" : "system"), focus, index.View(view), caps.List(), capability);
+            return new ArchitectureConnections(options.CapabilitiesFile).Apply(graph, caps.List());
         });
 
         api.MapGet("/changes", (ExplorerIndex index, string repo, string from, string to) =>

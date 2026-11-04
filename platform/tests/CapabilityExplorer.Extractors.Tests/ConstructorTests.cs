@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CapabilityExplorer.Contracts;
 using CapabilityExplorer.Extractors.CSharp;
 using Xunit;
 
@@ -114,6 +115,79 @@ public sealed class ConstructorTests : IDisposable
     public void Framework_constructors_are_not_recorded()
     {
         Assert.DoesNotContain(_records, r => r.GetProperty("kind").GetString() == "edge" && To(r) is { } to && to.StartsWith("cs|@ext|", StringComparison.Ordinal) && to.Contains("#ctor", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Given_a_long_constructor_signature_when_extracted_then_keys_are_bounded_consistent_and_deterministic()
+    {
+        var payload = "Payload" + new string('P', 100);
+        var parameters = string.Join(", ", Enumerable.Range(0, 24).Select(index => $"{payload} parameter{index}"));
+        var arguments = string.Join(", ", Enumerable.Repeat("value", 24));
+        var code = $$"""
+            namespace Synthetic;
+            public class {{payload}} { }
+            public class Wide
+            {
+                public Wide({{parameters}}) { Touch(); }
+                public void Touch() { }
+            }
+            public class Handler
+            {
+                public Wide Build({{payload}} value) => new Wide({{arguments}});
+            }
+            """;
+        var records = Extract(code);
+        var constructor = Assert.Single(records, record => record.GetProperty("kind").GetString() == "node"
+            && record.TryGetProperty("name", out var name) && name.GetString() == "Wide"
+            && record.TryGetProperty("props", out var props) && props.TryGetProperty("constructor", out _));
+        var key = constructor.GetProperty("symbolKey").GetString()!;
+
+        Assert.True(key.Length <= 2048, $"Constructor symbol key has {key.Length} characters; maximum is 2048.");
+        Assert.StartsWith(Ns + "sha256:", key);
+        Assert.Contains(records, record => record.GetProperty("kind").GetString() == "edge"
+            && record.GetProperty("relation").GetString() == "CALLS" && To(record) == key);
+        Assert.Contains(records, record => record.GetProperty("kind").GetString() == "edge"
+            && record.GetProperty("from").GetString() == key && To(record) == Ns + "M:Synthetic.Wide.Touch");
+        foreach (var record in records)
+            foreach (var field in new[] { "symbolKey", "from", "to" })
+                if (record.TryGetProperty(field, out var value)) Assert.InRange(value.GetString()!.Length, 1, 2048);
+
+        var report = ArtifactValidator.Validate(string.Join('\n', records.Select(record => record.GetRawText())) + "\n");
+        Assert.True(report.IsValid, string.Join("; ", report.Problems));
+        Assert.Equal(records.Select(record => record.GetRawText()), Extract(code).Select(record => record.GetRawText()));
+    }
+
+    [Fact]
+    public void Given_long_overloads_when_extracted_then_each_identity_and_call_remains_distinct()
+    {
+        var payload = "Payload" + new string('P', 100);
+        var parameters = string.Join(", ", Enumerable.Range(0, 24).Select(index => $"{payload} parameter{index}"));
+        var arguments = string.Join(", ", Enumerable.Repeat("value", 24));
+        var records = Extract($$"""
+            namespace Synthetic;
+            public class {{payload}} { }
+            public class Wide
+            {
+                public Wide({{parameters}}) { }
+                public Wide({{parameters}}, int marker) { }
+            }
+            public class Handler
+            {
+                public Wide First({{payload}} value) => new Wide({{arguments}});
+                public Wide Second({{payload}} value) => new Wide({{arguments}}, 1);
+            }
+            """);
+        var keys = records.Where(record => record.GetProperty("kind").GetString() == "node"
+            && record.TryGetProperty("props", out var props) && props.TryGetProperty("constructor", out _))
+            .Select(record => record.GetProperty("symbolKey").GetString()!).ToArray();
+        Assert.Equal(2, keys.Length);
+        Assert.Equal(2, keys.Distinct(StringComparer.Ordinal).Count());
+        Assert.All(keys, key => Assert.Matches(@"^cs\|synthetic\|Synthetic\|sha256:[a-f0-9]{64}$", key));
+        foreach (var key in keys)
+            Assert.Single(records, record => record.GetProperty("kind").GetString() == "edge"
+                && record.GetProperty("relation").GetString() == "CALLS" && To(record) == key);
+        var report = ArtifactValidator.Validate(string.Join('\n', records.Select(record => record.GetRawText())) + "\n");
+        Assert.True(report.IsValid, string.Join("; ", report.Problems));
     }
 
     private JsonElement[] Extract(string code)

@@ -420,14 +420,14 @@ public sealed class AnalysisExecutionTests(PostgresFixture database)
         public Task<bool> CleanupOwned(string label) { CleanupLabel=label; return Task.FromResult(true); }
     }
 
-    private sealed class DatabaseEnvironment : IDisposable
+    internal sealed class DatabaseEnvironment : IDisposable
     {
         private readonly string? _old = Environment.GetEnvironmentVariable("CE_DATABASE");
         public DatabaseEnvironment(string? value) => Environment.SetEnvironmentVariable("CE_DATABASE", value);
         public void Dispose() => Environment.SetEnvironmentVariable("CE_DATABASE", _old);
     }
 
-    private sealed class ExecutionFixture : IDisposable
+    internal sealed class ExecutionFixture : IDisposable
     {
         public string Root { get; } = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "ce-analysis-effects-" + Guid.NewGuid().ToString("N"))
             .Replace("/var/", "/private/var/", StringComparison.Ordinal));
@@ -435,10 +435,13 @@ public sealed class AnalysisExecutionTests(PostgresFixture database)
         public WorkerOwnership Owner { get; }
         public AnalysisRun Run { get; private set; }
         private readonly string? _exportGroup;
+        private readonly bool _preserve;
         public AttemptIdentity Identity => new(Run.RunId, Run.AttemptId!);
-        public ExecutionFixture(bool withBindings = false,string? exportGroup = null)
+        public ExecutionFixture(bool withBindings = false,string? exportGroup = null,string? root = null,bool preserve = false)
         {
             _exportGroup=exportGroup;
+            _preserve=preserve;
+            if (root is not null) Root=Path.GetFullPath(root);
             Directory.CreateDirectory(Root);
             var configuration = Path.Combine(Root, "capabilities.json");
             var capability = "test-lifecycle-" + Guid.NewGuid().ToString("N");
@@ -488,6 +491,36 @@ public sealed class AnalysisExecutionTests(PostgresFixture database)
         }
         public PublicationPermit Begin() => Store.BeginPublication(Owner, Identity, Run.ManifestHash!);
         public string Destination(AnalysisRepository repo) => Path.Combine(Root, ".sandbox-cache", "artifacts", repo.Id, repo.Sha, "artifact.jsonl");
-        public void Dispose() { Owner.Dispose(); Directory.Delete(Root, true); }
+        public void Dispose() { Owner.Dispose(); if (!_preserve) Directory.Delete(Root, true); }
+    }
+}
+
+[CollectionDefinition("Local publication environment", DisableParallelization = true)]
+public sealed class LocalPublicationCollection;
+
+[Collection("Local publication environment")]
+public sealed class LocalPublicationTests
+{
+    [Fact]
+    public async Task Given_existing_artifacts_when_publishing_then_staging_is_preserved_and_atomic_moves_share_artifact_storage()
+    {
+        using var environment = new AnalysisExecutionTests.DatabaseEnvironment(null);
+        var physicalRoot = Environment.GetEnvironmentVariable("CE_PUBLICATION_FIXTURE_ROOT");
+        using var fixture = new AnalysisExecutionTests.ExecutionFixture(root: physicalRoot, preserve: physicalRoot is not null);
+        var prepared = fixture.Prepare();
+        var repository = Assert.Single(prepared.Repositories);
+        var destination = Path.GetDirectoryName(fixture.Destination(repository))!;
+        Directory.CreateDirectory(destination);
+        File.WriteAllText(Path.Combine(destination, "previous.txt"), "previous canonical evidence");
+        using var permit = fixture.Begin();
+        await AnalysisPublication.Publish(fixture.Root, fixture.Run, prepared, permit);
+        var completed = permit.Complete();
+        Assert.Equal("done", completed.State);
+        Assert.True(Directory.Exists(repository.Staging), "Publication must retain the original journal staging directory.");
+        Assert.Equal(Fixtures.Golden("web-ts/v1-base/_fixture_web.jsonl"), File.ReadAllText(fixture.Destination(repository)));
+        var previous = Path.Combine(fixture.Root, ".sandbox-cache", "artifact-publication", fixture.Run.RunId,
+            fixture.Run.AttemptId!, repository.Id, repository.Sha, "previous", "previous.txt");
+        Assert.Equal("previous canonical evidence", File.ReadAllText(previous));
+        Assert.All(completed.Effects!, effect => Assert.Equal("confirmed", effect.State));
     }
 }

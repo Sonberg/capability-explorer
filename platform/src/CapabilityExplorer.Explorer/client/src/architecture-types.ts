@@ -42,7 +42,28 @@ export interface ArchEdge {
   count: number;
   certainty: "human" | "proven" | "static" | "bound" | "broken" | "unbound" | "candidate" | "unresolved";
   facts: ArchFact[];
+  manualConnectionId?: string | null;
+  note?: string | null;
 }
+
+export interface ManualConnection {
+  id: string;
+  fromCapabilityId: string;
+  toCapabilityId: string;
+  kind: string;
+  note?: string | null;
+  sourceRepositoryId?: string | null;
+  sourceKey?: string | null;
+  targetRepositoryId?: string | null;
+  targetKey?: string | null;
+}
+
+export interface ManualConnectionSnapshot {
+  version: number;
+  connections: ManualConnection[];
+}
+
+export type ConnectionDraft = Omit<ManualConnection, "id"> & { id?: string };
 
 export interface Graph {
   level: "landscape" | "system" | "repository" | "component" | "requests" | "glossary-flow";

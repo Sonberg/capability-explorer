@@ -118,7 +118,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
     {
         var p = unit.Project;
         var b = new ArtifactBuilder(options.RepositoryId, options.CommitSha, Tool);
-        var keys = new SymbolKeys(options.RepositoryId, context.RepoAssemblies);
+        var keys = context.Keys;
         var projectText = File.ReadAllText(p.FullPath);
         var projectKey = $"proj|{options.RepositoryId}|{p.RelativePath}";
         b.Node(projectKey, "Project", p.AssemblyName, [b.LineEvidence(p.RelativePath, p.SdkLine, projectText)]);
@@ -476,13 +476,23 @@ internal static class JsonObjectExtensions
 /// <summary>ce.v1 symbol keys for Roslyn symbols: documentation comment IDs, scoped to repository and assembly.</summary>
 internal sealed class SymbolKeys(string repositoryId, IReadOnlySet<string> repoAssemblies)
 {
+    private readonly Dictionary<string, string> _compacted = new(StringComparer.Ordinal);
+
     public string Of(ISymbol symbol)
     {
         var original = symbol.OriginalDefinition;
         var id = original.GetDocumentationCommentId() ?? $"?:{original.ToDisplayString()}";
         var assembly = original.ContainingAssembly?.Name ?? "unknown";
-        return repoAssemblies.Contains(assembly) && original.Locations.Any(l => l.IsInSource)
-            ? $"cs|{repositoryId}|{assembly}|{id}"
-            : $"cs|@ext|{assembly}|{id}";
+        var owner = repoAssemblies.Contains(assembly) && original.Locations.Any(location => location.IsInSource)
+            ? repositoryId : "@ext";
+        var prefix = $"cs|{owner}|{assembly}|";
+        var key = prefix + id;
+        if (key.Length <= 2048) return key;
+        var compact = prefix + "sha256:" + ArtifactBuilder.Sha256(key);
+        if (compact.Length > 2048) throw new InvalidOperationException("symbol identity scope exceeds the schema limit");
+        if (_compacted.TryGetValue(compact, out var existing) && existing != key)
+            throw new InvalidOperationException("compacted symbol identity collision");
+        _compacted[compact] = key;
+        return compact;
     }
 }

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ArchNode, ArchEdge, Graph } from "../architecture-types";
+import { Link2, Pencil } from "lucide-react";
+import type { ArchNode, ArchEdge, Graph, ConnectionDraft, ManualConnection, ManualConnectionSnapshot } from "../architecture-types";
+import { ArchitectureConnectionEditor, connectionKinds, graphIconButton } from "../components/ArchitectureConnectionEditor";
 import { LiveArchitectureCanvas } from "../components/live-architecture";
 import { EvidenceLinks } from "../components/source";
 import { ResolutionPill, SymbolLink } from "../components/symbols";
@@ -38,6 +40,9 @@ const kindColor: Record<string, string> = {
   sameName: "#fb7185",
   "human-assertion": "#a855f7",
   shares: "#6366f1",
+  navigation: "#0d9488",
+  schedule: "#d97706",
+  dependency: "#64748b",
 };
 
 const kindLabel: Record<string, string> = {
@@ -52,6 +57,9 @@ const kindLabel: Record<string, string> = {
   sameName: "same name (unproven)",
   "human-assertion": "human assertion",
   shares: "shares repository",
+  navigation: "navigation",
+  schedule: "schedule / cron",
+  dependency: "dependency",
 };
 
 const certaintyDash: Record<ArchEdge["certainty"], string | undefined> = {
@@ -66,7 +74,7 @@ const certaintyDash: Record<ArchEdge["certainty"], string | undefined> = {
 };
 
 const certaintyText: Record<ArchEdge["certainty"], { label: string; tone: Tone; title: string }> = {
-  human: { label: "human assertion", tone: "info", title: "Reviewed assertion of intended meaning with a self-reported reviewer label; no observed runtime value equality is implied" },
+  human: { label: "manual", tone: "info", title: "Manually connected capabilities; not proven by extractor output" },
   proven: { label: "proven", tone: "ok", title: "Every underlying fact is resolved" },
   static: { label: "static target", tone: "info", title: "Static target proven; the runtime target is not (interface dispatch, DI)" },
   bound: { label: "bound", tone: "ok", title: "Bound by the service map to a declared endpoint (human-derived link; extractor output unchanged)" },
@@ -82,7 +90,9 @@ export function ArchitectureView({ params }: { params: URLSearchParams }) {
   const { capability, scope } = useSelection();
   const level = params.get("level") ?? (capability ? "system" : "landscape");
   const focus = params.get("focus") ?? undefined;
-  return <Canvas key={`${scope}|${level}|${focus ?? ""}`} level={level} focus={focus} />;
+  const selection = new URLSearchParams(scope);
+  selection.delete("g");
+  return <Canvas key={`${selection}|${level}|${focus ?? ""}`} level={level} focus={focus} />;
 }
 
 type Selected = { type: "node"; node: ArchNode } | { type: "edge"; edge: ArchEdge } | null;
@@ -90,8 +100,10 @@ type Selected = { type: "node"; node: ArchNode } | { type: "edge"; edge: ArchEdg
 let rememberedHidden = new Set<string>(["declares"]);
 
 function Canvas({ level, focus }: { level: string; focus?: string }) {
-  const { scope, setCapability } = useSelection();
-  const { data, error, loading } = useApi<Graph>(`/api/architecture?level=${level}${focus ? `&focus=${encodeURIComponent(focus)}` : ""}&${scope}`);
+  const { scope, setCapability, capability, meta } = useSelection();
+  const { data, error, loading, reload } = useApi<Graph>(`/api/architecture?level=${level}${focus ? `&focus=${encodeURIComponent(focus)}` : ""}&${scope}`);
+  const connections = useApi<ManualConnectionSnapshot>("/api/architecture/connections");
+  const [editor, setEditor] = useState<ConnectionDraft | null>(null);
   const [hidden, setHidden] = useState<Set<string>>(rememberedHidden);
   const [selected, setSelected] = useState<Selected>(null);
   const graph = loading ? undefined : data;
@@ -109,12 +121,29 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
     window.location.hash = href("architecture", { level: to.level, focus: to.level === "system" ? undefined : to.focus });
   };
   const drill = (n: ArchNode) => n.drill && open(n.drill);
+  const connect = (existing?: ManualConnection) => {
+    if (existing) { setEditor(existing); return; }
+    const node = selected?.type === "node" ? selected.node : undefined;
+    const edge = selected?.type === "edge" ? selected.edge : node && node.category !== "capability"
+      ? graph?.edges.find(item => item.to === node.id) : undefined;
+    const fact = edge?.facts[0];
+    const repository = fact?.from.repositoryId ?? node?.repositoryId;
+    const owner = node?.category === "capability" ? node.id.slice(4)
+      : meta.capabilities.find(item => item.repositories.includes(repository ?? ""))?.id ?? capability ?? "";
+    const from = owner || meta.capabilities[0]?.id || "";
+    setEditor({ fromCapabilityId: from, toCapabilityId: meta.capabilities.find(item => item.id !== from)?.id ?? "",
+      kind: connectionKinds.some(([kind]) => kind === edge?.kind) ? edge!.kind : "dependency",
+      sourceRepositoryId: repository, sourceKey: fact?.from.key ?? (repository ? node?.symbolKey : undefined) });
+  };
+  const saved = () => { setEditor(null); setSelected(null); connections.reload(); reload(); };
+  const capabilityName = (id: string) => meta.capabilities.find(item => item.id === id)?.name ?? id;
 
   return (
-    <div className="architecture-workspace flex flex-col gap-2">
+    <div className={`architecture-workspace ${editor ? "is-connecting " : ""}flex flex-col gap-2`}>
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="secondary" onClick={() => { setCapability(""); window.location.hash = href("architecture", { level: "system" }); }}>All repositories</Button>
         <Button variant="secondary" onClick={() => { setCapability(""); window.location.hash = href("architecture", { level: "landscape" }); }}>Capability landscape</Button>
+        <button type="button" className={graphIconButton} title="Connect capabilities" aria-label="Connect capabilities" disabled={meta.capabilities.length < 2} onClick={() => connect()}><Link2 size={17} /></button>
         <nav aria-label="Abstraction level" className="flex items-center gap-1 text-[13px]">
           {(graph?.breadcrumbs ?? [{ label: "Landscape", level: "landscape" }]).map((c, i, all) => (
             <span key={c.level} className="flex items-center gap-1">
@@ -176,13 +205,28 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
 
         </div>
         <aside className="min-h-0 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-3 text-[13px] dark:border-zinc-800 dark:bg-zinc-900">
-          {selected?.type === "node" ? (
+          {editor ? <ArchitectureConnectionEditor key={editor.id ?? `${editor.fromCapabilityId}|${editor.sourceKey ?? "new"}`} draft={editor} capabilities={meta.capabilities}
+            snapshot={connections.data} onClose={() => setEditor(null)} onSaved={saved} onReload={connections.reload} /> : selected?.type === "node" ? (
             <NodePanel node={selected.node} onDrill={() => drill(selected.node)} graph={graph} />
           ) : selected?.type === "edge" ? (
             <EdgePanel edge={selected.edge} graph={graph} />
           ) : (
             <Legend graph={graph} />
           )}
+          {!editor && selected && meta.capabilities.length > 1 && <div className="mt-3 border-t border-zinc-200 pt-3 dark:border-zinc-700">
+            <Button variant="secondary" onClick={() => {
+              const id = selected.type === "edge" ? selected.edge.manualConnectionId : undefined;
+              connect(connections.data?.connections.find(connection => connection.id === id));
+            }}><span className="inline-flex items-center gap-1.5"><Link2 size={15} aria-hidden="true" />{selected.type === "edge" && selected.edge.manualConnectionId ? "Edit connection" : "Connect to capability"}</span></Button>
+          </div>}
+          {!editor && connections.data && connections.data.connections.length > 0 && <section className="mt-4 border-t border-zinc-200 pt-3 dark:border-zinc-700" aria-label="Manual connections">
+            <h2 className="mb-2 text-xs font-semibold text-zinc-500">Manual connections</h2>
+            <ul className="space-y-2">{connections.data.connections.map(connection => <li key={connection.id} className="flex min-w-0 items-start gap-2">
+              <div className="min-w-0 flex-1 break-words"><div>{capabilityName(connection.fromCapabilityId)} → {capabilityName(connection.toCapabilityId)}</div><span className="text-xs text-zinc-500">{connectionKinds.find(([kind]) => kind === connection.kind)?.[1] ?? connection.kind}</span></div>
+              <button type="button" className={graphIconButton} title="Edit connection" aria-label={`Edit ${connection.kind} connection from ${capabilityName(connection.fromCapabilityId)} to ${capabilityName(connection.toCapabilityId)}`} onClick={() => connect(connection)}><Pencil size={14} /></button>
+            </li>)}</ul>
+          </section>}
+          {!editor && connections.error && <div role="alert" className="mt-3 break-words text-xs text-red-700 dark:text-red-300">{connections.error}</div>}
         </aside>
       </div>
     </div>
@@ -276,7 +320,8 @@ function EdgePanel({ edge: e, graph }: { edge: ArchEdge; graph?: Graph }) {
         {name(e.from)} → {name(e.to)}
       </div>
       <div className="text-zinc-500">{e.label}</div>
-      {e.kind === "sameName" ? (
+      {e.note && <div className="break-words text-zinc-600 dark:text-zinc-300">{e.note}</div>}
+      {e.manualConnectionId ? <Pill tone="info">Manual connection</Pill> : e.kind === "sameName" ? (
         <p className="text-xs text-zinc-500">These resources share a name but have different keys (different binding, namespace or entity type). Nothing in the code proves they are the same resource.</p>
       ) : (
         <>
