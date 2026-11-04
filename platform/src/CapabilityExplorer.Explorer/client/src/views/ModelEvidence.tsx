@@ -6,6 +6,7 @@ import type {
 
 const card = "rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900";
 const linkStyle = "text-blue-700 underline decoration-transparent underline-offset-2 hover:decoration-current focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-blue-300";
+const localTypeName = (type: string) => type.split(/[:/#}]/).at(-1)?.toLowerCase();
 
 export function ElementList({ elements, relationships, selected, renderedIds, onSelect }: {
   elements: AuthoredModelEvidence["elements"];
@@ -103,6 +104,29 @@ export function DmnTables({ elements, selected, onSelect }: {
       const outputs = children.filter((element) => /(^|:)output$/i.test(element.type)).sort((a, b) => a.order - b.order);
       const rules = children.filter((element) => /(^|:)rule$/i.test(element.type)).sort((a, b) => a.order - b.order);
       const columns = [...inputs, ...outputs];
+      const declarationFor = (column: AuthoredModelEvidence["elements"][number], kind: "input" | "output") => {
+        const declarationName = `${kind}values`;
+        const declarations = elements.filter((element) =>
+          element.parent === column.identity && localTypeName(element.type) === declarationName
+        ).sort((a, b) => a.order - b.order);
+        const textFor = (element: AuthoredModelEvidence["elements"][number]): string | undefined => {
+          const record = element as typeof element & { text?: string; attrs?: Record<string, string> };
+          if (element.content?.text) return element.content.text;
+          if (record.text) return record.text;
+          if (element.attributes.text) return element.attributes.text;
+          if (record.attrs?.text) return record.attrs.text;
+          const textChildren = elements.filter((child) =>
+            child.parent === element.identity && localTypeName(child.type) === "text"
+          ).sort((a, b) => a.order - b.order);
+          const parts = textChildren.map((child) => {
+            const childRecord = child as typeof child & { text?: string; attrs?: Record<string, string> };
+            return child.content?.text || childRecord.text || child.attributes.text || childRecord.attrs?.text;
+          }).filter((text): text is string => typeof text === "string" && text.length > 0);
+          return parts.length ? parts.join("\n") : undefined;
+        };
+        const texts = declarations.map(textFor).filter((text): text is string => text !== undefined && text.length > 0);
+        return texts.length ? texts.join("\n") : undefined;
+      };
       const tableShapeValid = columns.length > 0 && rules.every((rule) => {
         const inputCells = (rule.cells ?? []).filter((cell) => cell.kind === "input").sort((a, b) => a.order - b.order);
         const outputCells = (rule.cells ?? []).filter((cell) => cell.kind === "output").sort((a, b) => a.order - b.order);
@@ -117,7 +141,15 @@ export function DmnTables({ elements, selected, onSelect }: {
         <div className="overflow-x-auto">
           <table className="min-w-full border-collapse text-left text-sm">
             <caption className="sr-only">{table.attributes.name || table.id} authored decision table</caption>
-            <thead><tr>{columns.map((column) => <th key={column.identity} scope="col" className="border border-zinc-300 bg-zinc-100 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-800">{column.attributes.label || column.attributes.name || column.id}</th>)}</tr></thead>
+            <thead><tr>{columns.map((column, index) => {
+              const kind = index < inputs.length ? "input" : "output";
+              const declaration = declarationFor(column, kind);
+              return <th key={column.identity} scope="col" className="border border-zinc-300 bg-zinc-100 px-2 py-1 align-top dark:border-zinc-700 dark:bg-zinc-800">
+                <span className="block">{column.attributes.label || column.attributes.name || column.id}</span>
+                <span className="mt-1 block text-xs font-normal text-zinc-600 dark:text-zinc-300">{kind === "input" ? "Input allowed values" : "Output allowed values"} (literal, not evaluated)</span>
+                <span className="block whitespace-pre-wrap break-words font-mono text-xs font-normal">{declaration ?? "Allowed-value declaration text was not captured in this evidence profile."}</span>
+              </th>;
+            })}</tr></thead>
             <tbody>{tableShapeValid && rules.map((rule) => <tr key={rule.identity} className={selected === rule.id ? "bg-blue-50 outline outline-2 outline-blue-500 dark:bg-blue-950/60" : ""}>
               {columns.map((column, columnIndex) => {
                 const cells = (rule.cells ?? []).filter((cell) => cell.kind === (columnIndex < inputs.length ? "input" : "output")).sort((a, b) => a.order - b.order);
@@ -169,14 +201,80 @@ function SourceLocator({ source }: { source: CandidateSource }) {
   return <p className="break-all font-mono text-[10px] text-zinc-500">{source.unitPath} · {source.commitSha.slice(0, 12)} · lines {source.startLine}:{source.startColumn}–{source.endLine}:{source.endColumn} · UTF-16 span {source.start}+{source.length} · SHA-256 {source.sourceSha256}</p>;
 }
 
-export function Diagnostics({ diagnostics }: { diagnostics: Array<{ code: string; message: string; disposition?: string; source?: object }> }) {
+type DiagnosticRecord = { code: string; message: string; disposition?: string; source?: object };
+
+function sourceRecord(diagnostic: DiagnosticRecord): Record<string, unknown> | undefined {
+  return diagnostic.source && typeof diagnostic.source === "object"
+    ? diagnostic.source as Record<string, unknown>
+    : undefined;
+}
+
+function constructFor(diagnostic: DiagnosticRecord, elements: AuthoredModelEvidence["elements"]): string {
+  const source = sourceRecord(diagnostic);
+  const explicitNamespace = typeof source?.namespace === "string" ? source.namespace : undefined;
+  const explicitType = typeof source?.type === "string" ? source.type :
+    typeof source?.construct === "string" ? source.construct :
+      typeof source?.elementKind === "string" ? source.elementKind :
+        typeof source?.kind === "string" ? source.kind : undefined;
+  if (explicitNamespace || explicitType) return [explicitNamespace, explicitType].filter(Boolean).join(" · ");
+  const locator = source?.element;
+  const artifact = source?.artifact;
+  const element = elements.find((candidate) =>
+    (typeof artifact !== "string" || candidate.source.artifact === artifact) &&
+    (candidate.id === locator || candidate.identity === locator ||
+      (candidate.source.element === locator && candidate.source.artifact === artifact))
+  );
+  return element ? `${element.namespace} · ${element.type}` : "Construct not identified";
+}
+
+function compareText(a: string, b: string): number {
+  return a === b ? 0 : a < b ? -1 : 1;
+}
+
+export function groupModelDiagnostics(
+  diagnostics: DiagnosticRecord[],
+  elements: AuthoredModelEvidence["elements"] = []
+) {
+  const groups = new Map<string, { code: string; disposition: string; construct: string; items: DiagnosticRecord[] }>();
+  for (const diagnostic of diagnostics) {
+    const disposition = diagnostic.disposition ?? "not specified";
+    const construct = constructFor(diagnostic, elements);
+    const key = JSON.stringify([diagnostic.code, disposition, construct]);
+    const group = groups.get(key) ?? { code: diagnostic.code, disposition, construct, items: [] };
+    group.items.push(diagnostic);
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort((a, b) =>
+    compareText(a.code, b.code) || compareText(a.disposition, b.disposition) || compareText(a.construct, b.construct)
+  );
+}
+
+export function Diagnostics({ diagnostics, elements = [] }: {
+  diagnostics: DiagnosticRecord[];
+  elements?: AuthoredModelEvidence["elements"];
+}) {
   if (!diagnostics.length) return null;
+  const groups = groupModelDiagnostics(diagnostics, elements);
   return <section className={`${card} border-amber-300`} aria-label="Model diagnostics">
     <h2 className="font-semibold">Diagnostics ({diagnostics.length})</h2>
-    <ul className="mt-1 space-y-1">{diagnostics.map((diagnostic, index) => <li key={`${diagnostic.code}:${index}`} className="text-sm">
-      <span className="font-mono text-xs">{diagnostic.code}</span>{diagnostic.disposition && <span> · {diagnostic.disposition}</span>}
-      <p>{diagnostic.message}</p>
-      {diagnostic.source && <p className="break-all text-xs text-zinc-500">{Object.entries(diagnostic.source).map(([key, value]) => `${key}: ${String(value)}`).join(" · ")}</p>}
+    <ul className="mt-1 space-y-2">{groups.map((group) => <li key={JSON.stringify([group.code, group.disposition, group.construct])} className="rounded border border-amber-200 p-2 text-sm dark:border-amber-900">
+      <details>
+        <summary className="cursor-pointer rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600">
+          <span className="font-mono text-xs">{group.code}</span> · {group.disposition} · {group.construct} · {group.items.length} {group.items.length === 1 ? "occurrence" : "occurrences"}
+        </summary>
+        <ol className="mt-2 list-decimal space-y-2 pl-5">
+          {group.items.map((diagnostic, index) => <li key={`${group.code}:${group.construct}:${index}`} className="min-w-0">
+            <p className="whitespace-pre-wrap break-words">{diagnostic.message}</p>
+            {sourceRecord(diagnostic)
+              ? <dl className="mt-1 grid min-w-0 gap-x-2 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
+                {Object.entries(sourceRecord(diagnostic)!).map(([key, value]) => <div key={key} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-1">
+                  <dt>{key}:</dt><dd className="min-w-0 break-all font-mono">{String(value)}</dd>
+                </div>)}
+              </dl>
+              : <p className="mt-1 text-xs text-zinc-500">Source locator not supplied.</p>}
+          </li>)}
+        </ol>
+      </details>
     </li>)}</ul>
   </section>;
 }
