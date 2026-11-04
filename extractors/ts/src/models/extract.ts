@@ -1,0 +1,355 @@
+import { createHash } from "node:crypto";
+import { Worker } from "node:worker_threads";
+import { BpmnModdle } from "bpmn-moddle";
+import { DmnModdle } from "dmn-moddle";
+import { BPMN_NAMESPACE, DEFAULT_XML_LIMITS, DMN_13_NAMESPACE, ModelXmlError, parseXml, type XmlNode } from "./xml.ts";
+import type { ModelDiagnostic, ModelElement, ModelEvidence, ModelExtractionOptions, ModelRelationship } from "./profile.ts";
+
+type ModelKind = "bpmn" | "dmn";
+type ModelParser = { fromXML(xml: string, options?: { lax?: boolean }): Promise<{ warnings: Error[] }> };
+
+const BPMN_TYPES = new Set([
+  "definitions", "process", "collaboration", "participant", "laneSet", "lane", "sequenceFlow", "messageFlow",
+  "association", "startEvent", "endEvent", "intermediateCatchEvent", "intermediateThrowEvent", "boundaryEvent",
+  "task", "userTask", "serviceTask", "scriptTask", "manualTask", "businessRuleTask", "sendTask", "receiveTask",
+  "exclusiveGateway", "inclusiveGateway", "parallelGateway", "eventBasedGateway", "complexGateway", "subProcess",
+  "transaction", "callActivity", "adHocSubProcess", "dataObject", "dataObjectReference", "dataStoreReference",
+  "dataInput", "dataOutput", "property", "textAnnotation", "group", "category", "categoryValue",
+  "error", "escalation", "signal", "message", "itemDefinition", "resource", "resourceRole", "resourceParameter",
+  "extensionElements", "conditionExpression", "formalExpression", "documentation", "ioSpecification", "dataInputAssociation",
+  "dataOutputAssociation", "inputSet", "outputSet", "potentialOwner", "humanPerformer", "performer", "loopCharacteristics",
+  "multiInstanceLoopCharacteristics", "standardLoopCharacteristics", "timerEventDefinition", "messageEventDefinition",
+  "signalEventDefinition", "errorEventDefinition", "escalationEventDefinition", "terminateEventDefinition",
+  "cancelEventDefinition", "compensateEventDefinition", "conditionalEventDefinition", "linkEventDefinition",
+  "eventDefinition", "operation", "interface", "inputOutputSpecification", "inputSet", "outputSet",
+]);
+
+const DMN_TYPES = new Set([
+  "definitions", "decision", "decisionTable", "input", "inputExpression", "output", "rule", "inputEntry", "outputEntry",
+  "literalExpression", "informationRequirement", "knowledgeRequirement", "authorityRequirement", "requiredInput",
+  "requiredDecision", "requiredKnowledge", "knowledgeSource", "businessKnowledgeModel", "invocation", "binding",
+  "context", "contextEntry", "itemDefinition", "itemComponent", "variable", "allowedValues", "functionDefinition",
+  "relation", "list", "extensionElements", "decisionService", "encapsulatedDecision", "outputDecision",
+]);
+
+const RELATIONSHIP_TYPES = new Map<string, ModelRelationship["kind"]>([
+  ["sequenceFlow", "sequenceFlow"],
+  ["messageFlow", "messageFlow"],
+  ["association", "association"],
+]);
+
+function hash(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function attribute(node: XmlNode, localName: string): string | undefined {
+  for (const [key, value] of Object.entries(node.attributes)) {
+    if (key.split(":").at(-1) === localName) return value;
+  }
+  return undefined;
+}
+
+function nodeContent(node: XmlNode): string {
+  const text = node.children.find((child) => child.localName === "text");
+  return text?.text ?? node.text;
+}
+
+function nodePath(node: XmlNode): string {
+  const parts: string[] = [];
+  for (let current: XmlNode | undefined = node; current; current = current.parent) {
+    const siblings = current.parent?.children ?? [current];
+    const order = siblings.filter((sibling) => sibling.localName === current!.localName).indexOf(current);
+    parts.push(`${current.localName}[${Math.max(order, 0)}]`);
+  }
+  return parts.reverse().join("/");
+}
+
+function validateOptions(options: ModelExtractionOptions): void {
+  if (!options.repositoryId.trim() || /[\u0000-\u001f]/.test(options.repositoryId)) {
+    throw new ModelXmlError("invalid-repository", "Repository identity must be non-empty and contain no control characters");
+  }
+  if (!/^[a-f\d]{40}$/i.test(options.commitSha)) {
+    throw new ModelXmlError("invalid-commit", "Commit SHA must be exactly 40 hexadecimal characters");
+  }
+  if (
+    !options.unitPath
+    || options.unitPath.startsWith("/")
+    || /^[a-zA-Z]:[\\/]/.test(options.unitPath)
+    || options.unitPath.startsWith("\\\\")
+    || options.unitPath.split(/[\\/]/).includes("..")
+    || /[\u0000-\u001f]/.test(options.unitPath)
+  ) {
+    throw new ModelXmlError("invalid-unit-path", "Model unit path must be a non-empty repository-relative path without traversal");
+  }
+  if (options.contentProfile && options.contentProfile !== "structural" && options.contentProfile !== "model-content") {
+    throw new ModelXmlError("invalid-content-profile", "Content profile must be structural or model-content");
+  }
+}
+
+async function parserWarnings(kind: ModelKind, xml: string): Promise<Error[]> {
+  const parser: ModelParser = kind === "bpmn" ? new BpmnModdle() : new DmnModdle();
+  try {
+    const parsed = await parser.fromXML(xml, { lax: true });
+    return parsed.warnings;
+  } catch {
+    throw new ModelXmlError("model-parse-failed", "Moddle parser rejected the XML document");
+  }
+}
+
+function collectNodes(root: XmlNode): XmlNode[] {
+  const result: XmlNode[] = [];
+  const visit = (node: XmlNode) => {
+    result.push(node);
+    for (const child of node.children) visit(child);
+  };
+  visit(root);
+  return result;
+}
+
+interface ModelWorkerResult {
+  ok: boolean;
+  evidence?: ModelEvidence;
+  code?: string;
+  message?: string;
+}
+
+export async function extractModelXml(
+  xml: string,
+  options: ModelExtractionOptions,
+  sourceBytes: Uint8Array = Buffer.from(xml, "utf8"),
+): Promise<ModelEvidence> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const worker = new Worker(new URL("./worker.ts", import.meta.url), {
+      workerData: { xml, options, sourceBytes: Buffer.from(sourceBytes) },
+      execArgv: [],
+    });
+    const timer = setTimeout(() => {
+      settled = true;
+      void worker.terminate();
+      reject(new ModelXmlError("xml-time-limit", `XML extraction exceeded ${DEFAULT_XML_LIMITS.maxParseMilliseconds}ms`));
+    }, DEFAULT_XML_LIMITS.maxParseMilliseconds);
+    worker.once("message", (result: ModelWorkerResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (result.ok && result.evidence) resolve(result.evidence);
+      else reject(new ModelXmlError(result.code ?? "model-extraction-failed", result.message ?? "Model extraction failed"));
+    });
+    worker.once("error", () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new ModelXmlError("model-worker-failed", "Model parser worker failed"));
+    });
+    worker.once("exit", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new ModelXmlError("model-worker-failed", `Model parser worker exited (${code}) without a result`));
+    });
+  });
+}
+
+export async function extractModelXmlInProcess(
+  xml: string,
+  options: ModelExtractionOptions,
+  sourceBytes: Uint8Array = Buffer.from(xml, "utf8"),
+): Promise<ModelEvidence> {
+  const started = performance.now();
+  validateOptions(options);
+  const root = parseXml(xml);
+  const kind: ModelKind | undefined = root.namespace === BPMN_NAMESPACE
+    ? "bpmn"
+    : root.namespace === DMN_13_NAMESPACE ? "dmn" : undefined;
+  if (!kind || root.localName !== "definitions") {
+    throw new ModelXmlError("unsupported-model-namespace", `Unsupported authored model namespace or root: ${root.namespace || "(none)"}/${root.localName}`);
+  }
+
+  const warnings = await parserWarnings(kind, xml);
+  if (performance.now() - started > DEFAULT_XML_LIMITS.maxParseMilliseconds) {
+    throw new ModelXmlError("xml-time-limit", `XML extraction budget exceeded (${DEFAULT_XML_LIMITS.maxParseMilliseconds}ms)`);
+  }
+  const expectedNamespace = kind === "bpmn" ? BPMN_NAMESPACE : DMN_13_NAMESPACE;
+  const supportedTypes = kind === "bpmn" ? BPMN_TYPES : DMN_TYPES;
+  const contentProfile = options.contentProfile ?? "structural";
+  const nodes = collectNodes(root);
+  const idNodes = new Map<string, XmlNode>();
+  const assignedIds = new Map<XmlNode, string>();
+  const diagnostics: ModelDiagnostic[] = [];
+  const elementIdentities = new Map<XmlNode, string>();
+  const generatedIds = new Set<string>();
+
+  for (const node of nodes) {
+    if (node.localName.toLowerCase() === "script") {
+      throw new ModelXmlError("xml-script-disabled", "Executable script elements are not supported or evaluated");
+    }
+    const explicitId = attribute(node, "id");
+    if (explicitId) {
+      if (idNodes.has(explicitId)) throw new ModelXmlError("duplicate-model-id", "Duplicate explicit model id");
+      idNodes.set(explicitId, node);
+    }
+    const id = explicitId ?? `${node.localName}@${nodePath(node)}`;
+    if (generatedIds.has(id)) throw new ModelXmlError("duplicate-model-id", "Duplicate explicit or generated model id");
+    generatedIds.add(id);
+    assignedIds.set(node, id);
+    const identity = `model:${hash(`${options.repositoryId}\0${options.unitPath}\0${node.namespace}\0${id}`)}`;
+    elementIdentities.set(node, identity);
+  }
+
+  for (const warning of warnings) {
+    diagnostics.push({
+      code: "moddle-parser-warning",
+      message: "Moddle parser reported an unsupported or invalid construct; raw parser detail is omitted",
+      disposition: "partial",
+      source: { artifact: options.unitPath },
+    });
+  }
+
+  const elements: ModelElement[] = [];
+  const relationships: ModelRelationship[] = [];
+  for (const node of nodes) {
+    if (node.localName === "text") continue;
+    const nodeKind = node.namespace === expectedNamespace
+      ? supportedTypes.has(node.localName) ? kind : "unsupported"
+      : "opaqueExtension";
+    if (nodeKind === "unsupported" || nodeKind === "opaqueExtension") {
+      diagnostics.push({
+        code: nodeKind === "unsupported" ? "unsupported-model-element" : "opaque-extension-content",
+        message: nodeKind === "unsupported"
+          ? `Unsupported ${kind.toUpperCase()} element ${node.localName}`
+          : `Opaque extension element ${node.localName} in namespace ${node.namespace || "(none)"}`,
+        disposition: "partial",
+        source: { artifact: options.unitPath, element: assignedIds.get(node) },
+      });
+    }
+    const id = assignedIds.get(node)!;
+    const element: ModelElement = {
+      identity: elementIdentities.get(node)!,
+      kind: nodeKind === "opaqueExtension" ? "opaqueExtension" : nodeKind === "unsupported" ? "unsupported" : kind,
+      namespace: node.namespace,
+      id,
+      type: node.localName,
+      order: node.parent
+        ? node.parent.children.filter((child) => child.namespace === expectedNamespace && child.localName === node.localName).indexOf(node)
+        : 0,
+      attributes: node.attributes,
+      source: { artifact: options.unitPath, element: id },
+    };
+    if (node.parent) element.parent = elementIdentities.get(node.parent);
+
+    if (kind === "dmn" && node.localName === "decisionTable") {
+      const hitPolicy = attribute(node, "hitPolicy");
+      const aggregation = attribute(node, "aggregation");
+      if (hitPolicy) element.hitPolicy = hitPolicy;
+      if (aggregation) element.aggregation = aggregation;
+    }
+    if (kind === "dmn" && node.localName === "rule") {
+      element.cells = node.children
+        .filter((child) => child.localName === "inputEntry" || child.localName === "outputEntry")
+        .map((cell, index) => {
+          const text = nodeContent(cell);
+          const language = attribute(cell, "expressionLanguage");
+          return {
+            kind: cell.localName === "inputEntry" ? "input" : "output",
+            order: index,
+            ...(contentProfile === "model-content" ? { text } : {}),
+            ...(language ? { language } : {}),
+          };
+        });
+    }
+    const textContent = nodeContent(node);
+    const capturesText = node.children.some((child) => child.localName === "text") || Boolean(node.text.trim());
+    if (capturesText && textContent.trim()) {
+      if (contentProfile === "model-content") {
+        const language = attribute(node, "language");
+        element.content = { text: textContent, ...(language ? { language } : {}) };
+      } else {
+        diagnostics.push({
+          code: "content-redacted",
+          message: "Model text omitted by the structural content profile",
+          disposition: "partial",
+          source: { artifact: options.unitPath, element: id },
+        });
+      }
+    }
+    elements.push(element);
+
+    const relationKind = RELATIONSHIP_TYPES.get(node.localName);
+    const sourceRef = attribute(node, "sourceRef");
+    const targetRef = attribute(node, "targetRef");
+    if (relationKind && sourceRef && targetRef) {
+      const sourceNode = idNodes.get(sourceRef);
+      const targetNode = idNodes.get(targetRef);
+      if (!sourceNode || !targetNode) {
+        throw new ModelXmlError("dangling-model-reference", `Dangling ${node.localName} reference`);
+      }
+      const condition = node.children.find((child) => child.localName === "conditionExpression");
+      relationships.push({
+        identity: `relationship:${hash(`${options.repositoryId}\0${options.unitPath}\0${id}`)}`,
+        kind: relationKind,
+        source: elementIdentities.get(sourceNode)!,
+        target: elementIdentities.get(targetNode)!,
+        order: relationships.length,
+        ...(condition ? {
+          condition: {
+            ...(contentProfile === "model-content" ? { text: nodeContent(condition) } : {}),
+            ...(attribute(condition, "language") ? { language: attribute(condition, "language") } : {}),
+          },
+        } : {}),
+      });
+    }
+
+    const processRef = kind === "bpmn" && node.localName === "participant" ? attribute(node, "processRef") : undefined;
+    if (processRef) addReference(node, processRef, id, idNodes, elementIdentities, relationships, options);
+    if (kind === "bpmn" && node.localName === "lane") {
+      for (const reference of node.children.filter((child) => child.localName === "flowNodeRef")) {
+        addReference(node, reference.text.trim(), `${id}:${reference.text.trim()}`, idNodes, elementIdentities, relationships, options);
+      }
+    }
+    if (kind === "dmn" && ["requiredInput", "requiredDecision", "requiredKnowledge"].includes(node.localName)) {
+      const href = attribute(node, "href");
+      if (href?.startsWith("#")) addReference(node.parent ?? node, href.slice(1), id, idNodes, elementIdentities, relationships, options);
+    }
+  }
+
+  const limitations = [...new Set(diagnostics.map(({ code }) => code))].sort();
+  return {
+    schema: "ce.models.v1",
+    repositoryId: options.repositoryId,
+    commitSha: options.commitSha.toLowerCase(),
+    unitPath: options.unitPath,
+    sourceSha256: createHash("sha256").update(sourceBytes).digest("hex"),
+    contentProfile,
+    coverage: {
+      status: diagnostics.length === 0 ? "full" : "partial",
+      supported: kind === "bpmn"
+        ? ["BPMN definitions, participants, process structure, flow nodes, sequence/message flows, references, conditions"]
+        : ["DMN 1.3 definitions, decisions, decision tables, inputs, outputs, ordered rules and cells"],
+      limitations,
+    },
+    diagnostics,
+    elements,
+    relationships,
+  };
+}
+
+function addReference(
+  sourceNode: XmlNode,
+  reference: string,
+  identityPart: string,
+  idNodes: Map<string, XmlNode>,
+  elementIdentities: Map<XmlNode, string>,
+  relationships: ModelRelationship[],
+  options: ModelExtractionOptions,
+): void {
+  const targetNode = idNodes.get(reference);
+  if (!targetNode) throw new ModelXmlError("dangling-model-reference", "Dangling model reference");
+  relationships.push({
+    identity: `relationship:${hash(`${options.repositoryId}\0${options.unitPath}\0${identityPart}\0${reference}`)}`,
+    kind: "reference",
+    source: elementIdentities.get(sourceNode)!,
+    target: elementIdentities.get(targetNode)!,
+    order: relationships.length,
+  });
+}

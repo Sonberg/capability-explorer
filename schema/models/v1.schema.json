@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://capability-explorer/schema/models/v1.schema.json",
+  "title": "Capability Explorer authored BPMN/DMN evidence profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "repositoryId",
+    "commitSha",
+    "unitPath",
+    "sourceSha256",
+    "contentProfile",
+    "coverage",
+    "diagnostics",
+    "elements",
+    "relationships"
+  ],
+  "properties": {
+    "schema": { "const": "ce.models.v1" },
+    "repositoryId": { "type": "string", "minLength": 1 },
+    "commitSha": { "type": "string", "pattern": "^[a-fA-F0-9]{40}$" },
+    "unitPath": { "type": "string", "minLength": 1 },
+    "sourceSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "contentProfile": { "enum": ["structural", "model-content"] },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "supported", "limitations"],
+      "properties": {
+        "status": { "enum": ["full", "partial"] },
+        "supported": { "type": "array", "items": { "type": "string" } },
+        "limitations": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "disposition"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "message": { "type": "string" },
+          "disposition": { "enum": ["partial", "rejected"] },
+          "source": { "$ref": "#/$defs/source" }
+        }
+      }
+    },
+    "elements": { "type": "array", "items": { "$ref": "#/$defs/element" } },
+    "relationships": { "type": "array", "items": { "$ref": "#/$defs/relationship" } }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact"],
+      "properties": {
+        "artifact": { "type": "string", "minLength": 1 },
+        "element": { "type": "string", "minLength": 1 }
+      }
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "properties": {
+        "text": { "type": "string" },
+        "language": { "type": "string" }
+      }
+    },
+    "element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "kind", "namespace", "id", "type", "order", "attributes", "source"],
+      "properties": {
+        "identity": { "type": "string", "pattern": "^model:[a-f0-9]{64}$" },
+        "kind": { "enum": ["bpmn", "dmn", "opaqueExtension", "unsupported"] },
+        "namespace": { "type": "string" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "minLength": 1 },
+        "order": { "type": "integer", "minimum": 0 },
+        "parent": { "type": "string", "pattern": "^model:[a-f0-9]{64}$" },
+        "attributes": { "type": "object", "additionalProperties": { "type": "string" } },
+        "content": { "$ref": "#/$defs/content" },
+        "cells": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "order"],
+            "properties": {
+              "kind": { "enum": ["input", "output"] },
+              "order": { "type": "integer", "minimum": 0 },
+              "text": { "type": "string" },
+              "language": { "type": "string" }
+            }
+          }
+        },
+        "hitPolicy": { "type": "string" },
+        "aggregation": { "type": "string" },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "kind", "source", "target", "order"],
+      "properties": {
+        "identity": { "type": "string", "pattern": "^relationship:[a-f0-9]{64}$" },
+        "kind": { "enum": ["sequenceFlow", "messageFlow", "association", "reference"] },
+        "source": { "type": "string", "pattern": "^model:[a-f0-9]{64}$" },
+        "target": { "type": "string", "pattern": "^model:[a-f0-9]{64}$" },
+        "order": { "type": "integer", "minimum": 0 },
+        "condition": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "text": { "type": "string" },
+            "language": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

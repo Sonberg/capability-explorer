@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="definitions" name="Eligibility" namespace="urn:example:eligibility">
+  <decision id="eligibility" name="Eligibility">
+    <decisionTable id="eligibility-table" hitPolicy="FIRST">
+      <input id="age-input" label="Age"><inputExpression id="age-expression" typeRef="number"><text>age</text></inputExpression></input>
+      <output id="result-output" name="eligible" typeRef="boolean"/>
+      <rule id="rule-adult">
+        <inputEntry id="age-test"><text>&gt;= 18</text></inputEntry>
+        <outputEntry id="eligible-result"><text>true</text></outputEntry>
+      </rule>
+      <rule id="rule-minor">
+        <inputEntry id="age-minor-test"><text>&lt; 18</text></inputEntry>
+        <outputEntry id="minor-result"><text>false</text></outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>
