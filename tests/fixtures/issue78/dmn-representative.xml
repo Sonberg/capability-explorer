@@ -42,6 +42,12 @@
       </dmn:rule>
     </dmn:decisionTable>
   </dmn:decision>
+  <dmn:decision id="Decision_Literal" name="Threshold check">
+    <dmn:variable id="Variable_Literal" name="Threshold result" typeRef="boolean" />
+    <dmn:literalExpression id="Literal_Threshold" typeRef="boolean">
+      <dmn:text>score &gt;= threshold</dmn:text>
+    </dmn:literalExpression>
+  </dmn:decision>
   <dmndi:DMNDI>
     <dmndi:DMNDiagram id="Diagram_Eligibility">
       <dmndi:DMNShape id="Shape_Input_Age" dmnElementRef="Input_Age">
@@ -49,6 +55,9 @@
       </dmndi:DMNShape>
       <dmndi:DMNShape id="Shape_Decision_Eligibility" dmnElementRef="Decision_Eligibility">
         <dc:Bounds x="400" y="120" width="180" height="80" />
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="Shape_Decision_Literal" dmnElementRef="Decision_Literal">
+        <dc:Bounds x="400" y="300" width="180" height="80" />
       </dmndi:DMNShape>
       <dmndi:DMNEdge id="Edge_Requirement_Age" dmnElementRef="Requirement_Age">
         <di:waypoint x="260" y="160" />

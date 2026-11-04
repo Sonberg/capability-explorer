@@ -1,23 +1,19 @@
 import bpmnXml from './bpmn-representative.xml?raw';
 import dmnXml from './dmn-representative.xml?raw';
-import { createModelSandbox } from './viewer-sandbox.js';
+import { createModelSandbox } from '../../../platform/src/CapabilityExplorer.Explorer/client/src/models/viewer-sandbox.js';
 
-const response = await fetch('/assets/viewer-frame-entry.js');
-if (!response.ok) throw new Error(`Viewer frame bundle unavailable: ${response.status}`);
-const frameScript = await response.text();
 const sandbox = createModelSandbox(
   document.querySelector<HTMLElement>('#viewer-host')!,
-  frameScript,
-  '/assets/viewer-frame-entry.css'
+  '/assets/model-viewer-frame.css'
 );
 window.__issue78Sandbox = sandbox;
 window.__issue78Fixtures = { bpmn: bpmnXml, dmn: dmnXml };
 window.__issue78Events = [] as unknown[];
-window.__issue78SwitchOnAccepted = false;
+window.__issue78SwitchOnImportStarted = false;
 sandbox.subscribe(event => {
   window.__issue78Events.push(event);
-  if (window.__issue78SwitchOnAccepted && event.status === 'accepted' && event.sourceId === 'stale-first') {
-    window.__issue78SwitchOnAccepted = false;
+  if (window.__issue78SwitchOnImportStarted && event.status === 'import-started' && event.sourceId === 'stale-first') {
+    window.__issue78SwitchOnImportStarted = false;
     sandbox.render({
       kind: 'bpmn',
       source: bpmnXml,

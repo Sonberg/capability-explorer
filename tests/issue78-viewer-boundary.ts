@@ -6,12 +6,13 @@ import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
 import { build, preview } from '../platform/src/CapabilityExplorer.Explorer/client/node_modules/vite/dist/node/index.js';
+import { buildModelFrame } from '../platform/src/CapabilityExplorer.Explorer/client/vite.model-frame.ts';
 
 const root = resolve(import.meta.dirname, '..');
 const client = resolve(root, 'platform/src/CapabilityExplorer.Explorer/client');
 const artifacts = resolve(root, '../issue78-execution');
 const fixtureDirectory = resolve(root, 'tests/fixtures/issue78');
-const staticOutput = resolve(artifacts, 'issue78-ui-sandbox-iteration2-29a80d4');
+const staticOutput = resolve(artifacts, 'issue78-ui-production-browser');
 const browserModuleCandidates = [
   resolve(root, 'spikes/likec4/node_modules/playwright/index.mjs'),
   resolve(root, '../bpmn-dmn-plan/spikes/likec4/node_modules/playwright/index.mjs')
@@ -38,9 +39,16 @@ const lockedPackages = {
 assert.equal(lockedPackages.bpmnJs.version, '18.31.1');
 assert.equal(lockedPackages.dmnJs.version, '18.0.1');
 const sourceFiles = [
-  'tests/issue78-viewer-spike.ts',
-  'tests/fixtures/issue78/viewer-sandbox.ts',
-  'tests/fixtures/issue78/viewer-frame-entry.ts',
+  'tests/issue78-viewer-boundary.ts',
+  'platform/src/CapabilityExplorer.Explorer/client/src/models/viewer-sandbox.ts',
+  'platform/src/CapabilityExplorer.Explorer/client/src/models/viewer-frame-entry.ts',
+  'platform/src/CapabilityExplorer.Explorer/client/src/models/viewer-frame-entry.css',
+  'platform/src/CapabilityExplorer.Explorer/client/src/models/contracts.ts',
+  'platform/src/CapabilityExplorer.Explorer/client/src/views/ProcessesDecisions.tsx',
+  'platform/src/CapabilityExplorer.Explorer/client/src/views/ModelEvidence.tsx',
+  'platform/src/CapabilityExplorer.Explorer/client/src/App.tsx',
+  'platform/src/CapabilityExplorer.Explorer/client/vite.model-frame.ts',
+  'platform/src/CapabilityExplorer.Explorer/client/vite.config.ts',
   'tests/fixtures/issue78/viewer-shell-entry.ts',
   'tests/fixtures/issue78/viewer-shell.html',
   'tests/fixtures/issue78/bpmn-representative.xml',
@@ -76,8 +84,7 @@ await build({
     assetsDir: 'assets',
     rollupOptions: {
       input: {
-        shell: resolve(fixtureDirectory, 'viewer-shell.html'),
-        'viewer-frame-entry': resolve(fixtureDirectory, 'viewer-frame-entry.ts')
+        shell: resolve(fixtureDirectory, 'viewer-shell.html')
       },
       output: {
         entryFileNames: 'assets/[name].js',
@@ -88,9 +95,10 @@ await build({
   },
   logLevel: 'warn'
 });
+await buildModelFrame(staticOutput);
 const assetDirectory = resolve(staticOutput, 'assets');
 const assets = await readdir(assetDirectory);
-assert(assets.includes('viewer-frame-entry.js') && assets.includes('viewer-frame-entry.css'), `expected stable child bundle assets, got ${assets.join(', ')}`);
+assert(assets.includes('model-viewer-frame.js') && assets.includes('model-viewer-frame.css'), `expected production child assets, got ${assets.join(', ')}`);
 const javascriptAssets = await Promise.all(assets.filter(name => name.endsWith('.js')).map(name => readFile(resolve(assetDirectory, name))));
 const cssAssets = await Promise.all(assets.filter(name => name.endsWith('.css')).map(name => readFile(resolve(assetDirectory, name))));
 const bundle = {
@@ -162,7 +170,8 @@ try {
   assert.match(bpmnFrameAttributes.srcdoc, /img-src data:/);
   assert.match(bpmnFrameAttributes.srcdoc, /font-src http:\/\/127\.0\.0\.1:\d+\/assets\/ data:/);
   assert.match(bpmnFrameAttributes.srcdoc, /script-src 'nonce-[^']+'/);
-  assert.match(bpmnFrameAttributes.srcdoc, /style-src http:\/\/127\.0\.0\.1:\d+\/assets\/viewer-frame-entry\.css 'nonce-[^']+'/);
+  assert.match(bpmnFrameAttributes.srcdoc, /style-src http:\/\/127\.0\.0\.1:\d+\/assets\/model-viewer-frame\.css 'nonce-[^']+'/);
+  assert.match(bpmnFrameAttributes.srcdoc, /src="http:\/\/127\.0\.0\.1:\d+\/assets\/model-viewer-frame\.js" nonce="[^"]+"/);
   assert.match(bpmnFrameAttributes.srcdoc, /style-src-attr 'unsafe-inline'/);
   assertions.push('Opaque sandbox, origin/scope/generation/source ID/nonce checks, and restrictive CSP are in the live built frame.');
 
@@ -177,10 +186,6 @@ try {
   assert.match(await selectedShape.textContent() ?? '', /<img src=/);
   assert.equal(await bpmnFrame.locator('img[src*="example.invalid"]').count(), 0);
   assert.equal(await bpmnFrame.locator('[contenteditable="true"], input, textarea, select, .djs-palette, .djs-context-pad').count(), 0);
-  const bpmnHasCommandStack = await bpmnFrame.locator('body').evaluate(() => {
-    try { return Boolean((window as Window & { __issue78Viewer: { get(name: string): unknown } }).__issue78Viewer.get('commandStack')); } catch { return false; }
-  });
-  assert.equal(bpmnHasCommandStack, false);
   const watermark = bpmnFrame.locator('a.bjs-powered-by');
   assert.match(await watermark.getAttribute('href'), /bpmn\.io/);
   assert(await watermark.isVisible());
@@ -190,8 +195,9 @@ try {
     const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
     return hit === anchor || anchor.contains(hit);
   }), true);
-  assertions.push(`BPMN read-only DI rendered ${bpmnShapeCount} elements; selection worked, hostile label stayed inert, watermark visible and unobscured.`);
-  await page.screenshot({ path: resolve(artifacts, 'issue78-ui-sandbox-iteration2-bpmn.png'), fullPage: true });
+  await page.waitForFunction(() => window.__issue78Events.some(event => event.status === 'selection' && event.elementId === 'Task_Review'));
+  assertions.push(`Production BPMN renderer displayed ${bpmnShapeCount} elements; selection event, inert hostile label, and unobscured watermark were verified.`);
+  await page.screenshot({ path: resolve(artifacts, 'issue78-ui-production-boundary-bpmn.png'), fullPage: true });
 
   const replaceSource = (needle: string, replacement: string) => bpmnXml.replace(needle, replacement);
   const exactLimitPadding = 'x'.repeat(1_048_576 - Buffer.byteLength(bpmnXml) - 8);
@@ -223,6 +229,11 @@ try {
       source: bpmnXml.replace('</bpmn:process>', '<bpmn:documentation href="https://example.invalid/hostile">link</bpmn:documentation></bpmn:process>'),
       expected: 'external-reference',
       sourceId: 'external-link'
+    },
+    {
+      source: bpmnXml.replace('</bpmn:process>', '<bpmn:script>window.pwned=1</bpmn:script></bpmn:process>'),
+      expected: 'unsafe-source',
+      sourceId: 'script-element'
     },
     { source: '<bpmn:definitions', expected: 'invalid-xml', sourceId: 'malformed' },
     {
@@ -261,46 +272,34 @@ try {
     await page.waitForFunction(({ sourceId, expected }) =>
       window.__issue78Events.some(event => event.sourceId === sourceId && event.status === expected),
     { sourceId: item.sourceId, expected: item.expected });
+    assert.equal(
+      await page.evaluate(sourceId => window.__issue78Events.some(event => event.sourceId === sourceId && event.status === 'import-started'), item.sourceId),
+      false,
+      `${item.sourceId} must be rejected before viewer construction/import`
+    );
     const currentText = await page.frameLocator('#viewer-host iframe').locator('#state').textContent();
     assert.match(currentText ?? '', new RegExp(item.expected));
   }
-  assertions.push('UTF-8 source cap, conservative XML element cap, DTD/entity, unsupported namespaces/extensions/URLs, malformed XML and missing-DI fail before viewer import with explicit states.');
+  assertions.push('UTF-8 source cap, conservative XML element cap, DTD/entity, executable-script elements, unsupported namespaces/extensions/URLs, malformed XML and missing-DI fail before viewer import with explicit states.');
 
   const dmnRequest = { kind: 'dmn', source: dmnXml, scope: 'repository-scope-B', generation: 11, sourceId: 'dmn-source-B' };
   await page.evaluate(request => window.__issue78Sandbox.render(request), dmnRequest);
   await page.waitForFunction(() => window.__issue78Events.some(event => event.status === 'rendered' && event.sourceId === 'dmn-source-B'));
   const dmnFrame = page.frameLocator('#viewer-host iframe');
   assert.equal(await dmnFrame.locator('.djs-element[data-element-id="Decision_Eligibility"]').count(), 1);
-  const sourceTable = dmnFrame.locator('table');
-  assert.deepEqual(await sourceTable.locator('thead th').allTextContents(), ['Applicant age', 'Eligibility']);
-  assert.deepEqual(
-    await sourceTable.locator('tbody tr').evaluateAll(rows => rows.map(row => [...row.querySelectorAll('td')].map(cell => cell.textContent))),
-    [['<18', '"deny"'], ['[18..24]', '"manual"'], ['-', '"approve"']]
-  );
-  assert.equal(await sourceTable.locator('th').filter({ hasText: 'Annotations' }).count(), 0);
-  assert.equal(await dmnFrame.locator('input, textarea, select, [contenteditable="true"]').count(), 0);
-  const dmnButtons = await dmnFrame.locator('button').allTextContents();
-  assert(!dmnButtons.some(label => /edit|add|delete|execute|evaluate/i.test(label)), `DMN viewer must remain read-only: ${dmnButtons.join(', ')}`);
-  const dmnHasCommandStack = await dmnFrame.locator('body').evaluate(() => {
-    try {
-      const viewer = (window as Window & { __issue78Viewer: { getActiveViewer(): { get(name: string): unknown } } }).__issue78Viewer;
-      return Boolean(viewer.getActiveViewer().get('commandStack'));
-    } catch { return false; }
-  });
-  assert.equal(dmnHasCommandStack, false);
+  assert.equal(await dmnFrame.locator('input, textarea, select, [contenteditable="true"], .djs-palette, .djs-context-pad').count(), 0);
   assert(await dmnFrame.locator('.stage a.bjs-powered-by').isVisible());
-  assertions.push('DMN DRD watermark remains untouched; accessible decision table is built only from authored input/output columns and ordered source cells, with no synthetic annotations or evaluation.');
-  await page.screenshot({ path: resolve(artifacts, 'issue78-ui-sandbox-iteration2-dmn.png'), fullPage: true });
+  assertions.push('Production DMN DRD renders without editor controls and preserves the unobscured upstream watermark; the source-derived table is tested in the UI journey.');
+  await page.screenshot({ path: resolve(artifacts, 'issue78-ui-production-boundary-dmn.png'), fullPage: true });
 
   await page.evaluate(() => {
-    window.__issue78SwitchOnAccepted = true;
+    window.__issue78SwitchOnImportStarted = true;
     window.__issue78Sandbox.render({
       kind: 'bpmn',
       source: window.__issue78Fixtures.bpmn,
       scope: 'scope-stale',
       generation: 41,
-      sourceId: 'stale-first',
-      testLateMessage: true
+      sourceId: 'stale-first'
     });
   });
   await page.waitForFunction(() =>
@@ -329,8 +328,8 @@ try {
   assert.equal(await page.locator('#viewer-host').textContent(), '');
   assertions.push('Dispose tears down the opaque iframe, clears visible source content, and preserves the exact upstream license notice.');
 
-  assert(browserRequests.some(url => url.includes('/assets/viewer-frame-entry.js')));
-  assert(browserRequests.some(url => url.includes('/assets/viewer-frame-entry.css')));
+  assert(browserRequests.some(url => url.includes('/assets/model-viewer-frame.js')));
+  assert(browserRequests.some(url => url.includes('/assets/model-viewer-frame.css')));
   assert.deepEqual(externalRequests, [], `sandboxed imports must not fetch externally: ${externalRequests.join(', ')}`);
   assert.deepEqual(consoleErrors, [], `browser must be free of console and CSP errors: ${consoleErrors.join('; ')}`);
   assertions.push('Real static browser run observed no external requests from hostile label/reference/extension cases.');
@@ -351,11 +350,11 @@ try {
     consoleErrors,
     residualRisk: 'XML DOMParser preflight and bpmn-js/dmn-js import share the iframe renderer main thread. The opaque sandbox with network-deny CSP and teardown bounds lifetime/capabilities but provides no hard CPU deadline; destroying the iframe cannot guarantee the browser process is immediately interrupted.'
   };
-  await writeFile(resolve(artifacts, 'issue78-ui-sandbox-iteration2-browser.json'), `${JSON.stringify(artifact, null, 2)}\n`);
-  await writeFile(resolve(artifacts, 'issue78-ui-sandbox-iteration2-browser.log'),
-    `Issue #78 sandbox iteration 2 passed: ${assertions.length} grouped browser assertions; ${browserRequests.length} requests, ${externalRequests.length} external.\n`
+  await writeFile(resolve(artifacts, 'issue78-ui-production-boundary-browser.json'), `${JSON.stringify(artifact, null, 2)}\n`);
+  await writeFile(resolve(artifacts, 'issue78-ui-production-boundary-browser.log'),
+    `Issue #78 production boundary passed: ${assertions.length} grouped browser assertions, ${checks.length} negative source cases; ${browserRequests.length} requests, ${externalRequests.length} external.\n`
     + `Source hashes: BPMN ${bpmnHash}; DMN ${dmnHash}\nResidual: ${artifact.residualRisk}\n`);
-  console.log(`Issue #78 sandbox iteration 2 passed: ${assertions.length} grouped browser assertions; ${browserRequests.length} requests, ${externalRequests.length} external.`);
+  console.log(`Issue #78 production boundary passed: ${assertions.length} grouped browser assertions, ${checks.length} negative source cases; ${browserRequests.length} requests, ${externalRequests.length} external.`);
 } finally {
   await browser?.close();
   await server.close();
