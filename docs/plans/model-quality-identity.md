@@ -101,3 +101,44 @@ are explicitly outside synthetic proof. These baseline checks do not yet test
 the new behavior, VS Code GUI forwarding, performance SLO compliance or a
 production deployment. Brain grounding: SPARC capability card
 `sparc/capability-cards.md#sparc`; no additional stack dependency is needed.
+
+## Pseudocode gate
+
+```text
+extract model:
+  parse within existing XML/source budgets; reject unsafe/malformed input
+  classify by exact namespace and construct census, not local name alone
+  preserve typed elements, raw declarations, source links and diagnostics
+  resolve supported local references; report invalid/unresolved references
+  never evaluate a condition or claim opaque content is understood
+
+present model:
+  use existing typed evidence fields to show allowed-value declarations
+  group diagnostics by shared semantic classification, not just free text
+  show occurrence count and expandable artifact/element details
+  retain genuine partial/failed coverage and keyboard-accessible controls
+
+construct C# identity:
+  derive the existing canonical symbol key
+  preserve keys already within the shared contract limit
+  map oversized keys to deterministic bounded cryptographic identities
+  apply the same mapping at declaration and every reference boundary
+  preserve original source evidence; do not silently truncate distinct symbols
+
+integrate:
+  cherry-pick only owned public-safe commits; reject unexpected shared edits
+  run focused checks and original-XML browser/collection acceptance
+  commit exact source; mandatory pre-push full CI; verify PR at that SHA
+```
+
+Parsing and grouping remain linear in the bounded input/occurrence count;
+hashing is linear in canonical-key length with fixed-size output. Sorting
+needed for deterministic presentation is at most O(n log n). No new execution
+engine, remote model call or cross-repository dependency is required.
+
+Pseudocode grade: **96/100**, one iteration. All six criteria have a path and
+error/unknown behavior; the four-point deduction is implementation validation
+still pending, not proof by pseudocode. Baseline instruments remain the 204
+passing TypeScript tests and clean solution build. New behavior, GUI forwarding,
+private-corpus recovery and SLO compliance are not tested by this gate.
+Brain pass clean: `sparc/capability-cards.md#sparc`.
