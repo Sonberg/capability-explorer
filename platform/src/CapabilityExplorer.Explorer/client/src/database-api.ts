@@ -76,7 +76,9 @@ type InfiniteDatabaseState<T> = {
 };
 
 /** Appends cursor pages on one immutable database snapshot without limiting the result count. */
-export function useDatabaseInfinitePage<T>(base: string) {
+export function useDatabaseInfinitePage<T>(base: string, meta: DatabaseMeta, reloadMeta: () => void) {
+  const [restart, setRestart] = useState(0);
+  const pendingMeta = useRef<{ meta: DatabaseMeta; base: string } | null>(null);
   const [state, setState] = useState<InfiniteDatabaseState<T>>({ base: "", loading: true, loadingMore: false });
   const generation = useRef(0);
   const inFlight = useRef<{ controller: AbortController; token: number; cursor: string | null } | null>(null);
@@ -128,6 +130,14 @@ export function useDatabaseInfinitePage<T>(base: string) {
   }, [base]);
 
   useEffect(() => {
+    if (pendingMeta.current && pendingMeta.current.meta !== meta) {
+      const needsRestart = pendingMeta.current.base === base;
+      pendingMeta.current = null;
+      if (needsRestart) setRestart((previous) => previous + 1);
+    }
+  }, [base, meta]);
+
+  useEffect(() => {
     const token = ++generation.current;
     inFlight.current?.controller.abort();
     inFlight.current = null;
@@ -142,7 +152,7 @@ export function useDatabaseInfinitePage<T>(base: string) {
         }
       }
     };
-  }, [base, fetchPage]);
+  }, [base, fetchPage, restart]);
 
   const loadMore = useCallback(() => {
     if (!active.data?.nextCursor || active.loading || active.loadingMore || active.error || inFlight.current) return;
@@ -152,13 +162,12 @@ export function useDatabaseInfinitePage<T>(base: string) {
   const retry = useCallback(() => {
     if (!active.error || active.loading || active.loadingMore || inFlight.current) return;
     if (active.errorStatus === 400 || active.errorStatus === 409) {
-      const token = ++generation.current;
-      setState({ base, loading: true, loadingMore: false });
-      void fetchPage(null, token);
+      pendingMeta.current = { meta, base };
+      reloadMeta();
       return;
     }
     void fetchPage(active.failedCursor ?? null, generation.current);
-  }, [active, base, fetchPage]);
+  }, [active, base, fetchPage, meta, reloadMeta]);
 
   return {
     ...active,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, request, shortSha, type Calculation, type Edge, type SearchHit, type SimilarHit, type SymbolDetail } from "../api";
+import { ApiError, request, shortSha, type Calculation, type Edge, type Meta, type SearchHit, type SimilarHit, type SymbolDetail } from "../api";
 import { Formula, shortTarget } from "../components/formula";
 import { EvidenceLinks, SourceView } from "../components/source";
 import { KindPill, ResolutionPill, SymbolLink } from "../components/symbols";
@@ -27,7 +27,7 @@ export function Explore({ params }: { params: URLSearchParams }) {
     lastSearch = { q, kind, repo };
   }, [q, kind, repo]);
 
-  const hits = useSearchHits(debounced, kind, repo, scope, meta.snapshotId, meta.generation, reloadMeta);
+  const hits = useSearchHits(debounced, kind, repo, scope, meta, reloadMeta);
   const repos = Object.keys(view).sort();
   const listRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -113,8 +113,11 @@ type SearchState = {
   failedCursor?: string | null;
 };
 
-function useSearchHits(query: string, kind: string, repo: string, scope: string, snapshotId: string, generation: number, reloadMeta: () => void) {
+function useSearchHits(query: string, kind: string, repo: string, scope: string, meta: Meta, reloadMeta: () => void) {
+  const { snapshotId, generation } = meta;
   const identity = JSON.stringify([query, kind, repo, scope, snapshotId, generation]);
+  const [restart, setRestart] = useState(0);
+  const pendingMeta = useRef<{ meta: Meta; identity: string } | null>(null);
   const [state, setState] = useState<SearchState>({ identity: "", items: [], nextCursor: null, loading: true, loadingMore: false });
   const generationRef = useRef(0);
   const inFlight = useRef<{ controller: AbortController; token: number; cursor: string | null } | null>(null);
@@ -184,6 +187,14 @@ function useSearchHits(query: string, kind: string, repo: string, scope: string,
   }, [generation, identity, kind, query, repo, scope, snapshotId]);
 
   useEffect(() => {
+    if (pendingMeta.current && pendingMeta.current.meta !== meta) {
+      const needsRestart = pendingMeta.current.identity === identity;
+      pendingMeta.current = null;
+      if (needsRestart) setRestart((previous) => previous + 1);
+    }
+  }, [identity, meta]);
+
+  useEffect(() => {
     const token = ++generationRef.current;
     inFlight.current?.controller.abort();
     inFlight.current = null;
@@ -199,7 +210,7 @@ function useSearchHits(query: string, kind: string, repo: string, scope: string,
         }
       }
     };
-  }, [fetchPage, identity, snapshotId]);
+  }, [fetchPage, identity, snapshotId, restart]);
 
   const loadMore = useCallback(() => {
     if (!active.nextCursor || active.loading || active.loadingMore || active.error || inFlight.current) return;
@@ -209,15 +220,12 @@ function useSearchHits(query: string, kind: string, repo: string, scope: string,
   const retry = useCallback(() => {
     if (!active.error || active.loading || active.loadingMore || inFlight.current) return;
     if (active.errorStatus === 400 || active.errorStatus === 409) {
+      pendingMeta.current = { meta, identity };
       reloadMeta();
-      const token = ++generationRef.current;
-      snapshotRef.current = snapshotId;
-      setState({ identity, items: [], nextCursor: null, loading: true, loadingMore: false });
-      void fetchPage(null, token);
       return;
     }
     void fetchPage(active.failedCursor ?? null, generationRef.current);
-  }, [active, fetchPage, identity, reloadMeta, snapshotId]);
+  }, [active, fetchPage, identity, meta, reloadMeta]);
 
   return { ...active, hasMore: active.nextCursor !== null, loadMore, retry };
 }

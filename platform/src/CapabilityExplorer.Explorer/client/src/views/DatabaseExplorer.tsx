@@ -16,6 +16,7 @@ export function DatabaseExplorer({ meta, reload }: { meta: DatabaseMeta; reload:
   const [capability, setCapability] = useState("*");
   const scoped = useApi<DatabaseMeta>(capability === "*" ? null : `/api/meta?cap=${encodeURIComponent(capability)}`);
   const effective = capability === "*" ? meta : scoped.data?.capability === capability ? scoped.data : undefined;
+  const loadLatest = () => { reload(); if (capability !== "*") scoped.reload(); };
   return <>
     <header className="flex flex-wrap items-center gap-4 border-b border-zinc-200 bg-white px-5 py-3 dark:border-zinc-800 dark:bg-zinc-900">
       <span className="text-lg font-bold">Capability Explorer</span><Pill tone="info">PostgreSQL</Pill>
@@ -25,16 +26,16 @@ export function DatabaseExplorer({ meta, reload }: { meta: DatabaseMeta; reload:
           {meta.capabilities.map((cap) => <option key={cap.id} value={cap.id}>{cap.name}</option>)}
         </select>
       </label>
-      <button type="button" className={`${button} sm:ml-auto`} onClick={() => { reload(); if (capability !== "*") scoped.reload(); }}>Load latest snapshot</button>
+      <button type="button" className={`${button} sm:ml-auto`} onClick={loadLatest}>Load latest snapshot</button>
     </header>
     <main className="w-full min-w-0 space-y-4 p-3 sm:p-5">
       {scoped.error && capability !== "*" && <ErrorBox message={scoped.error} />}
-      {!effective ? <Loading what="Loading published snapshot" /> : <DatabaseWorkspace key={effective.snapshotId} meta={effective} route={route} />}
+      {!effective ? <Loading what="Loading published snapshot" /> : <DatabaseWorkspace key={effective.snapshotId} meta={effective} route={route} loadLatest={loadLatest} />}
     </main>
   </>;
 }
 
-function DatabaseWorkspace({ meta, route }: { meta: DatabaseMeta; route: { path: string; params: URLSearchParams } }) {
+function DatabaseWorkspace({ meta, route, loadLatest }: { meta: DatabaseMeta; route: { path: string; params: URLSearchParams }; loadLatest: () => void }) {
   const validTabs: Tab[] = ["explore", "calculations", "artifacts", "processes-decisions"];
   const tab: Tab = validTabs.includes(route.path as Tab) ? route.path as Tab : "explore";
   const [query, setQuery] = useState("");
@@ -71,7 +72,7 @@ function DatabaseWorkspace({ meta, route }: { meta: DatabaseMeta; route: { path:
           <input aria-label="Node kind" placeholder="Kind (optional)" className={input} value={kind} onChange={(event) => setKind(event.target.value)} />
           <select aria-label="Repository" className={input} value={repository} onChange={(event) => setRepository(event.target.value)}><option value="">All selected repositories</option>{Object.keys(selection).map((repo) => <option key={repo}>{repo}</option>)}</select>
         </div>}
-        {tab === "explore" && <SymbolPage key={`${scope}|${meta.generation}|${settled}|${kind}|${repository}`} scope={scope} query={settled} kind={kind} repository={repository} select={setKey} />}
+        {tab === "explore" && <SymbolPage key={`${scope}|${meta.generation}|${settled}|${kind}|${repository}`} scope={scope} meta={meta} loadLatest={loadLatest} query={settled} kind={kind} repository={repository} select={setKey} />}
         {tab === "calculations" && <CalculationPage key={scope} scope={scope} select={setKey} />}
         {tab === "artifacts" && <ArtifactPage key={scope} scope={scope} />}
       </section>
@@ -81,8 +82,8 @@ function DatabaseWorkspace({ meta, route }: { meta: DatabaseMeta; route: { path:
 }
 
 
-function SymbolPage({ scope, query, kind, repository, select }: { scope: string; query: string; kind: string; repository: string; select: (key: string) => void }) {
-  const page = useDatabaseInfinitePage<DatabaseHit>(databaseUrl("search", scope, { q: query, kind, repo: repository }));
+function SymbolPage({ scope, meta, loadLatest, query, kind, repository, select }: { scope: string; meta: DatabaseMeta; loadLatest: () => void; query: string; kind: string; repository: string; select: (key: string) => void }) {
+  const page = useDatabaseInfinitePage<DatabaseHit>(databaseUrl("search", scope, { q: query, kind, repo: repository }), meta, loadLatest);
   const listRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
