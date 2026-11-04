@@ -1,1 +1,79 @@
-{"snapshotId":"snapshot-01","items":[{"processId":"order-flow","snapshotId":"snapshot-01","revisions":[{"repositoryId":"repo-a","commitSha":"dddddddddddddddddddddddddddddddddddddddd","treeSha":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}],"authoredModel":{"schema":"ce.models.v1","repositoryId":"repo-a","commitSha":"dddddddddddddddddddddddddddddddddddddddd","unitPath":"models/repo-a.json","sourceSha256":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","contentProfile":"structural","coverage":{"status":"full","supported":[],"limitations":[]},"diagnostics":[],"elements":[],"relationships":[]},"candidateProfiles":[{"schema":"ce.candidates.v1","recipe":"roslyn.scalar-guards.v1","repositoryId":"repo-b","commitSha":"dddddddddddddddddddddddddddddddddddddddd","unitPath":"src/Eligibility.cs","sourceSha256":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","coverage":{"status":"partial","scope":"single-file-intra-method","supportedMethods":[],"unsupportedMethods":[]},"diagnostics":[],"candidates":[]}],"evidence":[],"freshness":{"status":"fresh","reason":"all declared input identities match","observedAt":"2026-11-04T00:00:00+00:00","lastSuccessfulAt":"2026-11-04T00:00:00+00:00","inputRevisionVectorHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}],"nextCursor":null}
+{
+  "snapshotId": "snapshot-01",
+  "items": [
+    {
+      "processId": "order-flow",
+      "snapshotId": "snapshot-01",
+      "revisions": [
+        {
+          "repositoryId": "repo-a",
+          "commitSha": "dddddddddddddddddddddddddddddddddddddddd",
+          "treeSha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        {
+          "repositoryId": "repo-b",
+          "commitSha": "dddddddddddddddddddddddddddddddddddddddd",
+          "treeSha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      ],
+      "authoredModel": {
+        "schema": "ce.models.v1",
+        "repositoryId": "repo-a",
+        "commitSha": "dddddddddddddddddddddddddddddddddddddddd",
+        "unitPath": "models/repo-a.json",
+        "sourceSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "contentProfile": "structural",
+        "coverage": {
+          "status": "full",
+          "supported": [],
+          "limitations": []
+        },
+        "diagnostics": [],
+        "elements": [],
+        "relationships": []
+      },
+      "candidateProfiles": [
+        {
+          "schema": "ce.candidates.v1",
+          "recipe": "roslyn.scalar-guards.v1",
+          "repositoryId": "repo-b",
+          "commitSha": "dddddddddddddddddddddddddddddddddddddddd",
+          "unitPath": "Eligibility.cs",
+          "sourceSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "coverage": {
+            "status": "full",
+            "scope": "single-file-intra-method",
+            "supportedMethods": 0,
+            "unsupportedMethods": 0
+          },
+          "diagnostics": [],
+          "candidates": []
+        }
+      ],
+      "evidence": [],
+      "freshness": {
+        "status": "fresh",
+        "reason": "all declared input identities match",
+        "observedAt": "2026-11-04T00:00:00+00:00",
+        "lastSuccessfulAt": "2026-11-04T00:00:00+00:00",
+        "inputRevisionVectorHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "asOf": "2026-11-04T00:00:00Z",
+        "collectedAt": "2026-11-04T00:00:00Z",
+        "attemptId": "0123456789abcdef0123456789abcdef",
+        "sourceEffectiveAt": null,
+        "publishedAt": null,
+        "policyId": "synthetic-observation",
+        "policySha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "maxAgeSeconds": 86400,
+        "validUntil": "2026-11-05T00:00:00Z",
+        "lastSuccessful": {
+          "attemptId": "0123456789abcdef0123456789abcdef",
+          "collectedAt": "2026-11-04T00:00:00Z",
+          "inputVectorSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "bundleSha256": "309077bb610183045b650dac95972602f418dcc7f8033a4441244a3d5f95fa77"
+        }
+      }
+    }
+  ],
+  "nextCursor": null
+}

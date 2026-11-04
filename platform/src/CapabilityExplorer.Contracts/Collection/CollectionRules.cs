@@ -178,6 +178,8 @@ internal static partial class CollectionRules
                 foreach (var line in json.Split('\n', StringSplitOptions.RemoveEmptyEntries))
                 {
                     using var document = JsonDocument.Parse(line, new JsonDocumentOptions { MaxDepth = 32 });
+                    if (!EvidenceProfileSchema.HasUnambiguousStructure(document.RootElement))
+                        problems.Add("native JSON has duplicate members or malformed Unicode");
                     _ = HasSensitiveOrForbiddenData(document.RootElement, out var lineContent, out var lineForbidden);
                     hasSensitiveContent |= lineContent;
                     hasForbiddenData |= lineForbidden;
@@ -213,10 +215,17 @@ internal static partial class CollectionRules
             problems.Add("credential or personal Git author data is not exportable");
         }
 
-        if (hasSensitiveContent && (contentProfile is null || !IsId(contentProfile) ||
-            !permittedContentProfiles.Contains(contentProfile, StringComparer.Ordinal)))
+        var requiredContentProfile = profile switch
         {
-            problems.Add("content-bearing artifact requires an explicitly permitted contentProfile");
+            "ce.v1" => "native-content",
+            "ce.models.v1" => "model-content",
+            "ce.candidates.v1" => "candidate-content",
+            _ => null
+        };
+        if (requiredContentProfile is null || contentProfile != requiredContentProfile ||
+            !permittedContentProfiles.Contains(requiredContentProfile, StringComparer.Ordinal))
+        {
+            problems.Add("artifact requires its matching explicitly permitted contentProfile");
         }
 
         return problems;
@@ -244,78 +253,7 @@ internal static partial class CollectionRules
             RequireString(root, "repositoryId", repositoryId, problems);
             RequireString(root, "commitSha", commitSha, problems);
             RequireString(root, "unitPath", unitPath, problems);
-            var allowedProperties = profile == "ce.models.v1"
-                ? new HashSet<string>(["schema", "repositoryId", "commitSha", "unitPath", "sourceSha256",
-                    "contentProfile", "coverage", "diagnostics", "elements", "relationships"], StringComparer.Ordinal)
-                : new HashSet<string>(["schema", "recipe", "repositoryId", "commitSha", "unitPath",
-                    "sourceSha256", "coverage", "diagnostics", "candidates"], StringComparer.Ordinal);
-            if (root.EnumerateObject().Any(property => !allowedProperties.Contains(property.Name)))
-            {
-                problems.Add("profile contains an unknown top-level property");
-            }
-
-            if (!root.TryGetProperty("sourceSha256", out var sourceHash) ||
-                sourceHash.ValueKind != JsonValueKind.String || !IsSha256(sourceHash.GetString()))
-            {
-                problems.Add("sourceSha256 must be a lowercase SHA-256 digest");
-            }
-
-            if (!root.TryGetProperty("coverage", out var coverage) || coverage.ValueKind != JsonValueKind.Object ||
-                !coverage.TryGetProperty("status", out var status) || status.ValueKind != JsonValueKind.String ||
-                status.GetString() is not ("full" or "partial"))
-            {
-                problems.Add("coverage.status must be full or partial");
-            }
-
-            if (profile == "ce.models.v1")
-            {
-                RequireString(root, "contentProfile", ["structural", "model-content"], problems);
-                if (coverage.ValueKind == JsonValueKind.Object)
-                {
-                    if (coverage.EnumerateObject().Any(p => p.Name is not ("status" or "supported" or "limitations")))
-                    {
-                        problems.Add("coverage contains an unknown top-level property");
-                    }
-
-                    if (!coverage.TryGetProperty("supported", out var supported) || supported.ValueKind != JsonValueKind.Array ||
-                        !coverage.TryGetProperty("limitations", out var limitations) || limitations.ValueKind != JsonValueKind.Array)
-                    {
-                        problems.Add("coverage requires supported and limitations arrays");
-                    }
-                }
-            }
-            else
-            {
-                RequireString(root, "recipe", "roslyn.scalar-guards.v1", problems);
-                if (coverage.ValueKind == JsonValueKind.Object)
-                {
-                    if (!coverage.TryGetProperty("scope", out var scope) || scope.ValueKind != JsonValueKind.String ||
-                        scope.GetString() != "single-file-intra-method" ||
-                        !coverage.TryGetProperty("supportedMethods", out var supported) || supported.ValueKind != JsonValueKind.Array ||
-                        !coverage.TryGetProperty("unsupportedMethods", out var unsupported) || unsupported.ValueKind != JsonValueKind.Array ||
-                        coverage.EnumerateObject().Any(p => p.Name is not ("status" or "scope" or "supportedMethods" or "unsupportedMethods")))
-                    {
-                        problems.Add("candidate coverage does not match the bounded scalar-guard profile");
-                    }
-                }
-            }
-
-            if (!root.TryGetProperty("diagnostics", out var diagnostics) || diagnostics.ValueKind != JsonValueKind.Array)
-            {
-                problems.Add("diagnostics must be an array");
-            }
-
-            var payloadName = profile == "ce.models.v1" ? "elements" : "candidates";
-            if (!root.TryGetProperty(payloadName, out var payload) || payload.ValueKind != JsonValueKind.Array)
-            {
-                problems.Add($"{payloadName} must be an array");
-            }
-
-            if (profile == "ce.models.v1" &&
-                (!root.TryGetProperty("relationships", out var relationships) || relationships.ValueKind != JsonValueKind.Array))
-            {
-                problems.Add("relationships must be an array");
-            }
+            problems.AddRange(EvidenceProfileSchema.Validate(profile, root).Select(problem => $"profile schema: {problem}"));
         }
         catch (JsonException)
         {
@@ -329,15 +267,6 @@ internal static partial class CollectionRules
             !string.Equals(property.GetString(), expected, StringComparison.Ordinal))
         {
             problems.Add($"{name} does not match the collection identity");
-        }
-    }
-
-    private static void RequireString(JsonElement root, string name, IReadOnlyCollection<string> allowed, List<string> problems)
-    {
-        if (!root.TryGetProperty(name, out var property) || property.ValueKind != JsonValueKind.String ||
-            property.GetString() is not { } value || !allowed.Contains(value, StringComparer.Ordinal))
-        {
-            problems.Add($"{name} is missing or unsupported");
         }
     }
 

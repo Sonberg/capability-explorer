@@ -177,13 +177,49 @@
       "Freshness": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["status", "reason", "observedAt", "lastSuccessfulAt", "inputRevisionVectorHash"],
+        "description": "Caller-observed freshness, not remote HEAD or continuing authorization. Providers must evaluate the half-open policy window using asOf; sourceEffectiveAt is informational. Local CLI current maps to this design contract's fresh.",
+        "required": ["status", "reason", "asOf", "observedAt", "collectedAt", "attemptId", "sourceEffectiveAt", "publishedAt", "policyId", "policySha256", "maxAgeSeconds", "validUntil", "lastSuccessful", "lastSuccessfulAt", "inputRevisionVectorHash"],
         "properties": {
           "status": { "enum": ["fresh", "stale", "unknown"] },
           "reason": { "type": "string", "minLength": 1, "maxLength": 512 },
           "observedAt": { "type": "string", "format": "date-time" },
+          "asOf": { "type": "string", "format": "date-time" },
+          "collectedAt": { "type": "string", "format": "date-time" },
+          "attemptId": { "$ref": "#/components/schemas/Identifier" },
+          "sourceEffectiveAt": { "type": ["string", "null"], "format": "date-time" },
+          "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+          "policyId": { "type": ["string", "null"], "maxLength": 128 },
+          "policySha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+          "maxAgeSeconds": { "type": ["integer", "null"], "minimum": 1 },
+          "validUntil": { "type": ["string", "null"], "format": "date-time" },
+          "lastSuccessful": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/LastSuccessful" },
+              { "type": "null" }
+            ]
+          },
           "lastSuccessfulAt": { "type": ["string", "null"], "format": "date-time" },
           "inputRevisionVectorHash": { "$ref": "../platform/collection/collection.schema.json#/$defs/sha256" }
+        },
+        "allOf": [{
+          "if": { "properties": { "status": { "const": "fresh" } }, "required": ["status"] },
+          "then": { "properties": {
+            "validUntil": { "type": "string" },
+            "policyId": { "type": "string", "minLength": 1 },
+            "policySha256": { "type": "string" },
+            "maxAgeSeconds": { "type": "integer" }
+          } }
+        }]
+      },
+      "LastSuccessful": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["attemptId", "collectedAt", "inputVectorSha256", "bundleSha256"],
+        "properties": {
+          "attemptId": { "$ref": "#/components/schemas/Identifier" },
+          "collectedAt": { "type": "string", "format": "date-time" },
+          "inputVectorSha256": { "$ref": "../platform/collection/collection.schema.json#/$defs/sha256" },
+          "bundleSha256": { "$ref": "../platform/collection/collection.schema.json#/$defs/sha256" }
         }
       },
       "ProcessResource": {

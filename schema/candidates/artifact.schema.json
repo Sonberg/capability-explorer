@@ -38,11 +38,11 @@
   },
   "allOf": [
     {
-      "if": { "properties": { "coverage": { "properties": { "status": { "const": "full" } } } } },
+      "if": { "properties": { "coverage": { "type": "object", "properties": { "status": { "const": "full" } } } } },
       "then": {
         "properties": {
-          "diagnostics": { "maxItems": 0 },
-          "coverage": { "properties": { "unsupportedMethods": { "const": 0 } } }
+          "diagnostics": { "type": "array", "maxItems": 0 },
+          "coverage": { "type": "object", "properties": { "unsupportedMethods": { "const": 0 } } }
         }
       }
     }
@@ -111,7 +111,7 @@
       "allOf": [
         {
           "if": { "properties": { "kind": { "enum": ["constant", "parameter"] } } },
-          "then": { "required": ["type"], "properties": { "children": { "maxItems": 0 } } }
+          "then": { "required": ["type"], "properties": { "children": { "type": "array", "maxItems": 0 } } }
         },
         {
           "if": { "properties": { "kind": { "const": "parameter" } } },
@@ -128,15 +128,15 @@
         },
         {
           "if": { "properties": { "kind": { "enum": ["return", "not", "length"] } } },
-          "then": { "properties": { "children": { "minItems": 1, "maxItems": 1 } } }
+          "then": { "properties": { "children": { "type": "array", "minItems": 1, "maxItems": 1 } } }
         },
         {
           "if": { "properties": { "kind": { "const": "if" } } },
-          "then": { "properties": { "children": { "minItems": 2, "maxItems": 3 } } }
+          "then": { "properties": { "children": { "type": "array", "minItems": 2, "maxItems": 3 } } }
         },
         {
           "if": { "properties": { "kind": { "const": "binary" } } },
-          "then": { "required": ["operator"], "properties": { "children": { "minItems": 2, "maxItems": 2 } } }
+          "then": { "required": ["operator"], "properties": { "children": { "type": "array", "minItems": 2, "maxItems": 2 } } }
         },
         {
           "if": { "properties": { "kind": { "enum": ["call", "throw", "length"] } } },

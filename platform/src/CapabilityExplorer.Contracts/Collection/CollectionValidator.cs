@@ -44,8 +44,7 @@ internal static class CollectionValidator
                 return Failure("bundle schema, content digest, or attempt identity is invalid");
             }
 
-            var canonical = JsonSerializer.Serialize(envelope.Content, CollectionJson.Options);
-            var contentDigest = CollectionRules.Digest(canonical);
+            var contentDigest = CollectionCanonicalization.Digest(envelope.Content);
             if (!CryptographicOperations.FixedTimeEquals(
                     Convert.FromHexString(envelope.ContentSha256), Convert.FromHexString(contentDigest)))
             {
@@ -227,11 +226,16 @@ internal static class CollectionValidator
     {
         var files = new List<string>();
         var directories = new Stack<string>();
+        var entries = 0;
         directories.Push(root);
         while (directories.TryPop(out var current))
         {
             foreach (var entry in Directory.EnumerateFileSystemEntries(current))
             {
+                if (++entries > CollectionRules.MaxInputs * 4 + CollectionRules.MaxRepositories + 4)
+                {
+                    throw new IOException("bundle contains too many entries");
+                }
                 var attributes = File.GetAttributes(entry);
                 if ((attributes & FileAttributes.ReparsePoint) != 0)
                 {
@@ -261,7 +265,14 @@ internal static class CollectionValidator
         try
         {
             var bytes = await CollectionRules.ReadBoundedAsync(path, maxBytes, cancellationToken).ConfigureAwait(false);
-            return JsonSerializer.Deserialize<T>(bytes, CollectionJson.Options);
+            using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 32 });
+            if (!EvidenceProfileSchema.HasUnambiguousStructure(document.RootElement)) return default;
+            if (typeof(T) == typeof(CollectionEnvelope) &&
+                EvidenceProfileSchema.Validate(CollectionRules.BundleSchema, document.RootElement).Count > 0)
+            {
+                return default;
+            }
+            return document.RootElement.Deserialize<T>(CollectionJson.Options);
         }
         catch (IOException)
         {

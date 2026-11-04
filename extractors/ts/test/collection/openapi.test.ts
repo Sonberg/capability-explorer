@@ -123,6 +123,8 @@ test("all API references and examples resolve to local files without a remote lo
   const planSchemaPath = resolve(platformRoot, "collection/plan.schema.json");
   const recordSchemaPath = resolve(repositoryRoot, "schema/v1/record.schema.json");
   const collectionSchema = await json(collectionSchemaPath);
+  ajv.addSchema(await json(resolve(repositoryRoot, "schema/models/v1.schema.json")));
+  ajv.addSchema(await json(resolve(repositoryRoot, "schema/candidates/artifact.schema.json")));
   const planSchema = await json(planSchemaPath);
   const recordSchema = await json(recordSchemaPath);
   const platformSchema = await json(resolve(platformRoot, "v1/envelope.schema.json"));
@@ -169,6 +171,11 @@ test("all API references and examples resolve to local files without a remote lo
     const validator = ajv.compile(wrapper);
     const value = await json(resolve(platformRoot, `collection/examples/${examplePath}`));
     assert.equal(validator(value), true, JSON.stringify(validator.errors?.slice(0, 5)));
+    const invalidWindow = structuredClone(value) as {
+      items: Array<{ freshness: { validUntil: string | null } }>;
+    };
+    invalidWindow.items[0]!.freshness.validUntil = null;
+    assert.equal(validator(invalidWindow), false, "fresh cannot omit its policy deadline");
   }
 });
 

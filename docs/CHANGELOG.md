@@ -11,6 +11,14 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Offline authored BPMN/DMN evidence and bounded, non-executable Roslyn
+  process/decision candidates, separate from unchanged native `ce.v1`.
+  Negotiated immutable collection, independent .NET/TypeScript consumers,
+  observed-input freshness and real CLI dogfood accompany two design-only
+  OpenAPI 3.2.1 stakeholder contracts. Proposed MADR-0033 keeps coverage,
+  source content, local permissions and central publication authority separate;
+  no workflow/FEEL engine, business approval or central deployment is included.
+
 - PostgreSQL-backed global deprecation marks with optimistic version tokens and explicit,
   idempotent legacy import. Integrations now use one pinned database snapshot/revision selection
   with global marks and bounded projections; database outages never return stale JSON marks.

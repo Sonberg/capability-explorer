@@ -20,6 +20,16 @@ endif
 test-domain-object-contracts:
 	scripts/sandbox --offline node node scripts/research/check-domain-object-contracts.mjs all
 
+.PHONY: test-collection-dogfood
+ifeq ($(EXECUTION),sandbox)
+ci: test-collection-dogfood
+endif
+
+# Bind the cross-runtime recipe internals into the reviewed expanded CI plan.
+COLLECTION_DOGFOOD_SOURCE := $(shell shasum -a 256 scripts/collection-dogfood extractors/ts/test/dogfood/collection-runner.ts | awk '{print $$1}' | tr '\n' ':')
+test-collection-dogfood: build
+	scripts/collection-dogfood "$(COLLECTION_DOGFOOD_SOURCE)"
+
 .PHONY: test-decision-ledger
 ifeq ($(EXECUTION),sandbox)
 ci: test-decision-ledger

@@ -58,6 +58,12 @@ authenticate central enrollment or grant rights.
 
 Seal bounded artifact bytes and a canonical manifest atomically. Distinguish
 content identity, source observation and submission attempt identity/time.
+For this new collection profile, declare
+`ce.collection.v1/utf16-escaped-json`: domain-separated ASCII JSON, ordinal
+UTF-16 keys, fully escaped string code units and normalized safe integers.
+Do not normalize Unicode or hash attempt metadata. Reject ambiguous duplicate
+members and malformed Unicode. This profile-specific recipe is not the
+unimplemented RFC 8785 proposal for `ce.platform` in MADR-0020.
 Identical content can be reused without making every attempt the same receipt.
 Required failures never create a completed collection; optional failures remain
 visible partial coverage. Neither `received` nor `validated` means `published`.
@@ -71,6 +77,11 @@ invalidates reuse; an incomplete vector is unknown. A matching vector is not
 a real-time SLA, proof of an unobserved remote HEAD, business approval or proof
 that rights remain valid beyond the observed authority state. Manual and CI
 triggers are the initial mechanism; no paid learning daemon is required.
+Time-qualified claims additionally require an explicit as-of clock, observed/
+collected/attempt context, identified maximum-age policy and last-successful
+reference. Missing policy is unknown and the expiry boundary is stale. Source
+effective time is informational; failed attempts cannot replace last-good
+receipts. Keep this metadata out of immutable content/input-vector identity.
 
 Supply two design-only OpenAPI 3.2.1 documents for intake/receipts and immutable
 process/decision product reads with shared local schemas. Publish tooling

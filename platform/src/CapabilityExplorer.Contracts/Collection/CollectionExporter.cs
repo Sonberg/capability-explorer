@@ -40,11 +40,11 @@ public static class CollectionExporter
                 return Failure(["output directory has no parent"]);
             }
 
-            Directory.CreateDirectory(parent);
             if (!HasSafeExistingPath(parent, includeLeaf: true))
             {
                 return Failure(["output parent contains a symbolic link"]);
             }
+            Directory.CreateDirectory(parent);
 
             stage = Path.Combine(parent, $".{Path.GetFileName(outputFullPath)}.collection-stage-{Guid.NewGuid():N}");
             Directory.CreateDirectory(stage);
@@ -56,8 +56,7 @@ public static class CollectionExporter
             }
 
             var content = CreateContent(plan, descriptors);
-            var contentJson = JsonSerializer.Serialize(content, CollectionJson.Options);
-            var contentSha256 = CollectionRules.Digest(contentJson);
+            var contentSha256 = CollectionCanonicalization.Digest(content);
             var envelope = new CollectionEnvelope(CollectionRules.BundleSchema, contentSha256, content);
             await WriteJsonAsync(Path.Combine(stage, "collection.json"), envelope, cancellationToken).ConfigureAwait(false);
             var attempt = new CollectionAttempt(Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow);
@@ -128,7 +127,14 @@ public static class CollectionExporter
             .ConfigureAwait(false);
         try
         {
-            return JsonSerializer.Deserialize<CollectionPlan>(bytes, CollectionJson.Options);
+            using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 32 });
+            var schemaProblems = EvidenceProfileSchema.Validate(CollectionRules.PlanSchema, document.RootElement);
+            if (schemaProblems.Count > 0)
+            {
+                problems.AddRange(schemaProblems.Select(problem => $"plan schema: {problem}"));
+                return null;
+            }
+            return document.RootElement.Deserialize<CollectionPlan>(CollectionJson.Options);
         }
         catch (JsonException)
         {
@@ -281,7 +287,8 @@ public static class CollectionExporter
     private static CollectionContent CreateContent(
         CollectionPlan plan,
         IReadOnlyList<CollectionInputDescriptor> inputs) =>
-        new(CollectionRules.BundleSchema, plan.RecipeSha256, plan.ConfigSha256, plan.PolicySha256,
+        new(CollectionRules.BundleSchema, CollectionCanonicalization.Recipe,
+            plan.RecipeSha256, plan.ConfigSha256, plan.PolicySha256,
             plan.Repositories.OrderBy(r => r.RepositoryId, StringComparer.Ordinal)
                 .Select(r => new CollectionRepositoryDescriptor(r.RepositoryId, r.ProviderId, r.ProducerId,
                     r.TenantRef, r.RightsRef, r.CommitSha, r.TreeSha,

@@ -38,6 +38,7 @@ public sealed record CollectionInputPlan(
 
 public sealed record CollectionContent(
     string Schema,
+    string Canonicalization,
     string RecipeSha256,
     string ConfigSha256,
     string PolicySha256,
@@ -76,5 +77,21 @@ internal static class CollectionJson
         MaxDepth = 32,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        Converters = { new CollectionIntegerConverter() },
     };
+}
+
+internal sealed class CollectionIntegerConverter : JsonConverter<long>
+{
+    public override long Read(ref System.Text.Json.Utf8JsonReader reader, Type type,
+        System.Text.Json.JsonSerializerOptions options)
+    {
+        if (reader.TokenType != System.Text.Json.JsonTokenType.Number || !reader.TryGetDecimal(out var number) ||
+            decimal.Truncate(number) != number || number is < -9007199254740991m or > 9007199254740991m)
+            throw new System.Text.Json.JsonException("collection numbers must be safe integers");
+        return decimal.ToInt64(number);
+    }
+
+    public override void Write(System.Text.Json.Utf8JsonWriter writer, long value,
+        System.Text.Json.JsonSerializerOptions options) => writer.WriteNumberValue(value);
 }

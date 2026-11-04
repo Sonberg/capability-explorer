@@ -1,7 +1,11 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { lstat, readFile, readdir } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, readdir } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { validateArtifact } from "../contracts/validateArtifact.ts";
+import { validateProfileSchema } from "./profileSchemas.ts";
+import { canonicalContentBytes, canonicalizationRecipe } from "./canonicalContent.ts";
+import { parseStrictJson } from "./strictJson.ts";
 
 const profiles = new Set(["ce.v1", "ce.models.v1", "ce.candidates.v1"]);
 const maxManifestBytes = 1_048_576;
@@ -52,6 +56,7 @@ interface Input {
 
 interface Content {
   schema: string;
+  canonicalization: string;
   recipeSha256: string;
   configSha256: string;
   policySha256: string;
@@ -74,6 +79,10 @@ export async function validateCollectionBundle(bundleDirectory: string): Promise
         envelope.schema !== "ce.collection.v1" || !isSha256(envelope.contentSha256) || !isObject(envelope.content)) {
       return invalid("bundle descriptor is invalid");
     }
+    const schemaProblems = validateProfileSchema("ce.collection.v1", envelope);
+    if (schemaProblems.length) return {
+      ok: false, problems: schemaProblems.map(message => ({ message: `bundle descriptor ${message}` })),
+    };
 
     if (!onlyKeys(attempt, ["attemptId", "observedAt"]) || typeof attempt.attemptId !== "string" ||
         !/^[a-f0-9]{32}$/.test(attempt.attemptId) || typeof attempt.observedAt !== "string" ||
@@ -128,14 +137,18 @@ export async function validateCollectionBundle(bundleDirectory: string): Promise
     }
     return problems.length ? { ok: false, problems: problems.slice(0, 32) } : { ok: true, contentSha256: digest, problems: [] };
   } catch (error) {
+    if (error instanceof SyntaxError) return invalid("bundle JSON is invalid or ambiguous");
+    if (error instanceof Error && error.message.startsWith("strict mode:"))
+      return invalid(`profile schema configuration failed: ${error.message.slice(0, 200)}`);
     return invalid(error instanceof Error && error.message === "cancelled" ? "validation cancelled" : "bundle validation failed");
   }
 }
 
 function validateContentShape(content: Content): CollectionProblem[] {
   const problems: CollectionProblem[] = [];
-  if (!onlyKeys(content, ["schema", "recipeSha256", "configSha256", "policySha256", "repositories", "inputs"]) ||
+  if (!onlyKeys(content, ["schema", "canonicalization", "recipeSha256", "configSha256", "policySha256", "repositories", "inputs"]) ||
       content.schema !== "ce.collection.v1" || !isSha256(content.recipeSha256) ||
+      content.canonicalization !== canonicalizationRecipe ||
       !isSha256(content.configSha256) || !isSha256(content.policySha256) ||
       !Array.isArray(content.repositories) || content.repositories.length < 1 ||
       content.repositories.length > maxRepositories || !Array.isArray(content.inputs) ||
@@ -200,8 +213,9 @@ function validateContentShape(content: Content): CollectionProblem[] {
 }
 
 function canonicalContent(content: Content): string {
-  return JSON.stringify({
+  return canonicalContentBytes({
     schema: content.schema,
+    canonicalization: content.canonicalization,
     recipeSha256: content.recipeSha256,
     configSha256: content.configSha256,
     policySha256: content.policySha256,
@@ -254,11 +268,12 @@ function validateProfile(
         result.header.commitSha !== repository.commitSha || result.header.unit.path !== unitPath) {
       errors.push("ce.v1 header identity does not match the collection input");
     }
-    root = JSON.parse(text.split("\n", 1)[0]!) as unknown;
+    root = text.split("\n").filter(line => line.length > 0).map(parseStrictJson);
   } else {
     try {
-      root = JSON.parse(text) as unknown;
+      root = parseStrictJson(text);
       if (!isObject(root)) return ["profile root must be a JSON object"];
+      errors.push(...validateProfileSchema(profile, root));
       const expectedPayload = profile === "ce.models.v1" ? "elements" : "candidates";
       const allowedKeys = profile === "ce.models.v1"
         ? ["schema", "repositoryId", "commitSha", "unitPath", "sourceSha256", "contentProfile",
@@ -286,24 +301,23 @@ function validateProfile(
       } else {
         if (root.recipe !== "roslyn.scalar-guards.v1" || !isObject(root.coverage) ||
             root.coverage.scope !== "single-file-intra-method" ||
-            !Array.isArray(root.coverage.supportedMethods) || !Array.isArray(root.coverage.unsupportedMethods) ||
+            !Number.isSafeInteger(root.coverage.supportedMethods) || !Number.isSafeInteger(root.coverage.unsupportedMethods) ||
             Object.keys(root.coverage).some((key) => !["status", "scope", "supportedMethods", "unsupportedMethods"].includes(key))) {
           errors.push("ce.candidates.v1 recipe or bounded coverage is invalid");
         }
       }
-    } catch {
-      return ["artifact is not valid JSON"];
+    } catch (error) {
+      if (error instanceof SyntaxError) return ["artifact is not valid JSON"];
+      throw error;
     }
   }
 
   const scan = scanPrivacy(root);
   if (scan.forbidden) errors.push("credential or personal Git author data is not exportable");
-  const semanticContent = profile === "ce.candidates.v1" && isObject(root) &&
-    Array.isArray(root.candidates) && root.candidates.length > 0;
-  const modelContent = profile === "ce.models.v1" && isObject(root) && root.contentProfile === "model-content";
-  if ((scan.content || semanticContent || modelContent) &&
-      (!contentProfile || !repository.permittedContentProfiles.includes(contentProfile))) {
-    errors.push("content-bearing artifact requires an explicitly permitted contentProfile");
+  const requiredProfile = profile === "ce.v1" ? "native-content"
+    : profile === "ce.models.v1" ? "model-content" : "candidate-content";
+  if (contentProfile !== requiredProfile || !repository.permittedContentProfiles.includes(requiredProfile)) {
+    errors.push("artifact requires its matching explicitly permitted contentProfile");
   }
   return errors;
 }
@@ -336,11 +350,22 @@ function resolveArtifact(root: string, value: string): string | undefined {
 
 async function readBounded(path: string, limit: number): Promise<Buffer> {
   if (!await isRegularFile(path)) throw new Error("unsafe file");
-  const stat = await lstat(path);
-  if (stat.size < 1 || stat.size > limit) throw new Error("file exceeds size bounds");
-  const bytes = await readFile(path);
-  if (bytes.byteLength !== stat.size || bytes.byteLength > limit) throw new Error("file changed while reading");
-  return bytes;
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const stat = await file.stat();
+    if (!stat.isFile() || stat.size < 1 || stat.size > limit) throw new Error("file exceeds size bounds");
+    const bytes = Buffer.alloc(stat.size + 1);
+    let length = 0;
+    while (length < bytes.length) {
+      const { bytesRead } = await file.read(bytes, length, bytes.length - length);
+      if (bytesRead === 0) break;
+      length += bytesRead;
+    }
+    if (length !== stat.size) throw new Error("file changed while reading");
+    return bytes.subarray(0, length);
+  } finally {
+    await file.close();
+  }
 }
 
 async function isRealDirectory(path: string): Promise<boolean> {
@@ -364,9 +389,11 @@ async function isRegularFile(path: string): Promise<boolean> {
 async function listFilesWithoutLinks(root: string): Promise<string[]> {
   const output: string[] = [];
   const pending = [root];
+  let entries = 0;
   while (pending.length) {
     const current = pending.pop()!;
     for (const entry of await readdir(current, { withFileTypes: true })) {
+      if (++entries > maxInputs * 4 + maxRepositories + 4) throw new Error("bundle contains too many entries");
       const path = join(current, entry.name);
       if (entry.isSymbolicLink()) throw new Error("symbolic link in bundle");
       if (entry.isDirectory()) pending.push(path);
@@ -379,10 +406,10 @@ async function listFilesWithoutLinks(root: string): Promise<string[]> {
 }
 
 function parseJson(bytes: Uint8Array): unknown {
-  return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
+  return parseStrictJson(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
 }
 
-function isObject(value: unknown): value is Record<string, any> {
+function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 

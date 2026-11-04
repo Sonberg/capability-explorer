@@ -187,7 +187,8 @@ public sealed class CollectionTests
             Assert.False(Directory.Exists(Path.Combine(root, "unsafe")));
 
             var modelContent = CreateModel("repo-a", "models/a.json", "model-content");
-            var contentPlan = await WritePlanAsync(root, [("repo-a", "models/content.json", modelContent)]);
+            var contentPlan = await WritePlanAsync(root, [("repo-a", "models/content.json", modelContent)],
+                permittedContentProfiles: [], contentProfile: null);
             var contentResult = await CollectionExporter.ExportAsync(contentPlan, Path.Combine(root, "content"));
             Assert.False(contentResult.IsValid);
             Assert.Contains(contentResult.Problems, p => p.Contains("contentProfile", StringComparison.Ordinal));
@@ -309,7 +310,7 @@ public sealed class CollectionTests
         var result = await CollectionExporter.ValidateAsync(fixture);
 
         Assert.True(result.IsValid, string.Join("; ", result.Problems));
-        Assert.Equal("775010c538a4f024dd4281a0430b7b1ff01a410f2e3fe7c82e298cceb06e71d2", result.ContentSha256);
+        Assert.Equal("309077bb610183045b650dac95972602f418dcc7f8033a4441244a3d5f95fa77", result.ContentSha256);
     }
 
     [Fact]
@@ -332,7 +333,7 @@ public sealed class CollectionTests
             Assert.True(exported.IsValid, string.Join("; ", exported.Problems));
             Assert.True(independentlyValidated.IsValid, string.Join("; ", independentlyValidated.Problems));
             Assert.Equal(independentlyValidated.ContentSha256, exported.ContentSha256);
-            Assert.Equal("ca81a48e8258c3006236d0737befa83616b88762e09311402721434809756b85",
+            Assert.Equal("01ec741e70af99231a58b85d9f241b0bee4bb158573697df39f20d5ba8f79044",
                 exported.ContentSha256);
         }
         finally
@@ -342,6 +343,56 @@ public sealed class CollectionTests
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    [Fact]
+    public async Task Nested_invalid_model_evidence_is_refused_even_when_common_identity_matches()
+    {
+        var root = NewTestRoot();
+        try
+        {
+            var model = JsonNode.Parse(CreateModel("repo-a", "models/a.json"))!.AsObject();
+            model["elements"] = new JsonArray(new JsonObject());
+            var plan = await WritePlanAsync(root,
+                [("repo-a", "models/a.json", Encoding.UTF8.GetBytes(model.ToJsonString()))],
+                ["model-content"], "model-content");
+            var output = Path.Combine(root, "invalid-evidence");
+
+            var result = await CollectionExporter.ExportAsync(plan, output);
+
+            Assert.False(result.IsValid);
+            Assert.False(Directory.Exists(output));
+            Assert.Contains(result.Problems, problem => problem.Contains("schema", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("unrelated-content")]
+    public async Task Structural_evidence_requires_the_matching_content_permission(string? permission)
+    {
+        var root = NewTestRoot();
+        try
+        {
+            var plan = await WritePlanAsync(root,
+                [("repo-a", "models/a.json", CreateModel("repo-a", "models/a.json"))],
+                permission is null ? [] : [permission], permission);
+            var output = Path.Combine(root, "denied");
+
+            var result = await CollectionExporter.ExportAsync(plan, output);
+
+            Assert.False(result.IsValid);
+            Assert.False(Directory.Exists(output));
+            Assert.Contains(result.Problems, problem => problem.Contains("contentProfile", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 
     private static string NewTestRoot()
     {
@@ -354,11 +405,11 @@ public sealed class CollectionTests
         string root,
         IReadOnlyList<(string Repository, string UnitPath, byte[] Bytes)> artifacts,
         IReadOnlyList<string>? permittedContentProfiles = null,
-        string? contentProfile = null)
+        string? contentProfile = "model-content")
     {
         Directory.CreateDirectory(root);
         var repositories = artifacts.Select(a => a.Repository).Distinct(StringComparer.Ordinal)
-            .Select(id => Repository(id, permittedContentProfiles)).ToArray();
+            .Select(id => Repository(id, permittedContentProfiles ?? ["model-content"])).ToArray();
         var inputs = new List<CollectionInputPlan>();
         foreach (var (repository, unitPath, bytes) in artifacts)
         {

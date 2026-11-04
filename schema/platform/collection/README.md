@@ -23,6 +23,15 @@ without conflating distinct audited attempts. Output is staged and atomically
 renamed; conflicts and failed required inputs do not replace a last-good
 bundle. Optional failures are represented as partial results.
 
+The explicit canonicalization recipe is
+`ce.collection.v1/utf16-escaped-json`, not RFC 8785. Hash the recipe ID, NUL,
+then ASCII JSON with ordinal UTF-16 key ordering, every string code unit
+escaped as lowercase `\uXXXX`, ordered arrays, safe integers in shortest
+decimal form, booleans and null. Do not normalize Unicode. Duplicate members,
+unpaired surrogates and excessive depth are refused. Only closed collection
+metadata is canonicalized; producer artifacts retain their exact byte hashes.
+Canonical hash input is bounded after escaping.
+
 Plans use literal relative input paths, exact repository/commit/tree identity,
 declared lengths and SHA-256 digests, explicit required/optional disposition,
 and producer/profile identity. Reads, counts and bytes are bounded. URI
@@ -30,18 +39,19 @@ retrieval, traversal and symlinks are not accepted. The independent TypeScript
 validator recomputes bundle and artifact digests and can be run with
 `node src/collection/cli.ts validate <directory>` from `extractors/ts`.
 
-Native `ce.v1` payloads use the existing artifact validator. Authored model and
-candidate payloads are content-bearing: export requires explicit authorization
-through the plan's permitted content profiles. The collector does not export
+Native `ce.v1` payloads use the existing artifact validator. Every included
+artifact is conservatively content-bearing, including structural model output
+and native opaque properties. Its exact matching `native-content`,
+`model-content` or `candidate-content` permission must be declared for that
+repository. Both consumers scan every native JSONL line. The collector does not export
 raw BPMN/XML, source expressions, credentials, or personal Git author data by
 default. A local plan's rights/tenant/provider references are declarations,
 not proof of authorization by a central authority.
 
-The current collector profile checks common identity and strict profile-root
-fields. Full nested validation against the authored and candidate producer
-schemas is an integration responsibility; the lead's
-`EvidenceProfileSchema.Validate(profile, payload)` is the intended strict
-validation hook. Unknown profile roots are rejected. Do not treat successful
+Both consumers validate complete nested authored/candidate payloads against the
+single-source producer schemas, in addition to collection identity and byte
+checks. The API aliases reference those schemas rather than maintaining a
+weaker common shape. Unknown profile roots are rejected. Do not treat successful
 collection validation as central receipt, publication, or authorization.
 
 ## API design and validation status
@@ -85,7 +95,8 @@ decisions.
   content-profile permission, validates bytes and identity, rejects unsafe
   paths, and protects the last-good output on required-input failure.
 - **Interoperability:** Canonical content identity is independent of attempt
-  time, with cross-runtime tests covering Unicode, `<`, and `+`.
+  time, with cross-runtime tests covering Unicode, U+2028, non-BMP characters,
+  `<`, `+`, and equivalent integral number spellings.
 - **Validator qualification:** Complete-document OAS 3.2 structural
   validation uses the hash- and structure-guarded AJV rewrite described above.
   The `schema-base` Schema Object dialect remains unqualified. The APIs remain

@@ -1,1 +1,61 @@
-{"schema":"ce.collection.v1","contentSha256":"775010c538a4f024dd4281a0430b7b1ff01a410f2e3fe7c82e298cceb06e71d2","content":{"schema":"ce.collection.v1","recipeSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","configSha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","policySha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","repositories":[{"repositoryId":"repo-a","providerId":"github:repo-a","producerId":"producer-1","tenantRef":"tenant-1","rightsRef":"rights-1","commitSha":"dddddddddddddddddddddddddddddddddddddddd","treeSha":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","permittedContentProfiles":[]},{"repositoryId":"repo-b","providerId":"github:repo-b","producerId":"producer-1","tenantRef":"tenant-1","rightsRef":"rights-1","commitSha":"dddddddddddddddddddddddddddddddddddddddd","treeSha":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","permittedContentProfiles":[]}],"inputs":[{"repositoryId":"repo-a","profile":"ce.models.v1","unitPath":"models/repo-a.json","required":true,"status":"included","artifactPath":"artifacts/repo-a/ce.models.v1/0000.json","sha256":"0e894f87422b71c93b575a7c3c7190e1a7ac1f7431e8f2f6aeedcad6aa5cc9ee","byteLength":359,"contentProfile":null},{"repositoryId":"repo-b","profile":"ce.models.v1","unitPath":"models/repo-b.json","required":true,"status":"included","artifactPath":"artifacts/repo-b/ce.models.v1/0001.json","sha256":"1bc8908541f07c99901f8a5584f2a775391df34522aa2d876bb7f7b00011baf5","byteLength":359,"contentProfile":null}]}}
+{
+  "schema": "ce.collection.v1",
+  "contentSha256": "309077bb610183045b650dac95972602f418dcc7f8033a4441244a3d5f95fa77",
+  "content": {
+    "schema": "ce.collection.v1",
+    "recipeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "configSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "policySha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "repositories": [
+      {
+        "repositoryId": "repo-a",
+        "providerId": "github:repo-a",
+        "producerId": "producer-1",
+        "tenantRef": "tenant-1",
+        "rightsRef": "rights-1",
+        "commitSha": "dddddddddddddddddddddddddddddddddddddddd",
+        "treeSha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "permittedContentProfiles": [
+          "model-content"
+        ]
+      },
+      {
+        "repositoryId": "repo-b",
+        "providerId": "github:repo-b",
+        "producerId": "producer-1",
+        "tenantRef": "tenant-1",
+        "rightsRef": "rights-1",
+        "commitSha": "dddddddddddddddddddddddddddddddddddddddd",
+        "treeSha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "permittedContentProfiles": [
+          "model-content"
+        ]
+      }
+    ],
+    "inputs": [
+      {
+        "repositoryId": "repo-a",
+        "profile": "ce.models.v1",
+        "unitPath": "models/repo-a.json",
+        "required": true,
+        "status": "included",
+        "artifactPath": "artifacts/repo-a/ce.models.v1/0000.json",
+        "sha256": "0e894f87422b71c93b575a7c3c7190e1a7ac1f7431e8f2f6aeedcad6aa5cc9ee",
+        "byteLength": 359,
+        "contentProfile": "model-content"
+      },
+      {
+        "repositoryId": "repo-b",
+        "profile": "ce.models.v1",
+        "unitPath": "models/repo-b.json",
+        "required": true,
+        "status": "included",
+        "artifactPath": "artifacts/repo-b/ce.models.v1/0001.json",
+        "sha256": "1bc8908541f07c99901f8a5584f2a775391df34522aa2d876bb7f7b00011baf5",
+        "byteLength": 359,
+        "contentProfile": "model-content"
+      }
+    ],
+    "canonicalization": "ce.collection.v1/utf16-escaped-json"
+  }
+}
