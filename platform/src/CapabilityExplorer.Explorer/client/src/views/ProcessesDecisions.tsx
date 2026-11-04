@@ -77,7 +77,7 @@ function scopeFrom(value: { snapshot: string; generation: number; selection: Rec
 function scopedRequest(scope: string, snapshot: ModelScope, cursor?: string) {
   const query = new URLSearchParams(scope);
   query.set("snapshot", snapshot.snapshot);
-  query.set("g", String(snapshot.generation));
+  query.set("generation", String(snapshot.generation));
   if (cursor) query.set("cursor", cursor);
   return query.toString();
 }

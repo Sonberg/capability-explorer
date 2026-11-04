@@ -35,6 +35,7 @@ const dmnIdentity = `model:${"2".repeat(64)}`;
 const tableIdentity = `model:${"3".repeat(64)}`;
 const ruleIdentities = [`model:${"4".repeat(64)}`, `model:${"5".repeat(64)}`, `model:${"6".repeat(64)}`];
 const sourceLocator = { artifact: "model.xml", element: "Decision_Eligibility" };
+let listedGeneration: number | undefined;
 const bpmnEvidence = {
   schema: "ce.models.v1",
   repositoryId: "repo-a",
@@ -190,9 +191,13 @@ try {
       return json({ "repo-a": alternate ? revisionB : revisionA });
     }
     if (url.pathname === "/api/models") {
+      if (url.searchParams.has("cursor") && !/^\d+$/.test(url.searchParams.get("generation") ?? "")) {
+        return json({ detail: "continuation requires numeric generation" }, 400);
+      }
       const isAlternate = url.searchParams.get("view")?.includes(revisionB);
       const currentItems = isAlternate ? [items[4]] : items.slice(0, 3);
       const continuation = url.searchParams.has("cursor") ? items.slice(3) : currentItems;
+      listedGeneration = 3;
       return json({
         schema: "ce.model-views.v1", items: continuation, problems: [], mode: "files",
         snapshot: isAlternate ? "snapshot-ui-b" : snapshot, generation: 3,
@@ -202,18 +207,24 @@ try {
     }
     if (url.pathname === "/api/models/evidence") {
       const id = url.searchParams.get("id") ?? "";
+      if (!/^\d+$/.test(url.searchParams.get("generation") ?? "")) {
+        return json({ detail: "selected model request requires numeric generation" }, 400);
+      }
       if (id === "candidate-cs") await new Promise((resolve) => setTimeout(resolve, 300));
       const evidence = evidenceById[id as keyof typeof evidenceById];
       if (!evidence) return json({ detail: "not found" }, 404);
       return json({
         schema: "ce.model-evidence-view.v1", id, evidence,
         snapshot: url.searchParams.get("snapshot") === "snapshot-ui-b" ? "snapshot-ui-b" : snapshot,
-        generation: Number(url.searchParams.get("g")), selection: url.searchParams.get("snapshot") === "snapshot-ui-b" ? { "repo-a": revisionB } : selection
+        generation: Number(url.searchParams.get("generation")), selection: url.searchParams.get("snapshot") === "snapshot-ui-b" ? { "repo-a": revisionB } : selection
       });
     }
     if (url.pathname === "/api/models/source") {
       const id = url.searchParams.get("id") ?? "";
       sourceRequestIds.push(id);
+      if (!/^\d+$/.test(url.searchParams.get("generation") ?? "")) {
+        return json({ detail: "selected model request requires numeric generation" }, 400);
+      }
       if (id === "model-denied") return json({ detail: "denied" }, 403);
       if (id === "oversize-bpmn") {
         return route.fulfill({
@@ -235,7 +246,7 @@ try {
         commitSha: revisionA, unitPath: evidence.unitPath, sha256: sourceHash,
         format: id === "model-dmn" ? "dmn+xml" : "bpmn+xml", xml,
         snapshot: url.searchParams.get("snapshot") === "snapshot-ui-b" ? "snapshot-ui-b" : snapshot,
-        generation: Number(url.searchParams.get("g")), selection: url.searchParams.get("snapshot") === "snapshot-ui-b" ? { "repo-a": revisionB } : selection
+        generation: Number(url.searchParams.get("generation")), selection: url.searchParams.get("snapshot") === "snapshot-ui-b" ? { "repo-a": revisionB } : selection
       });
     }
     return json({ detail: `unexpected API route ${url.pathname}` }, 404);
@@ -245,7 +256,14 @@ try {
   await page.goto(`${origin}/#/processes-decisions`);
   await page.getByRole("link", { name: "Processes & decisions" }).click();
   await page.getByRole("heading", { name: "Processes & decisions" }).waitFor();
+  const selectedEvidenceResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === "/api/models/evidence" && url.searchParams.get("id") === "model-bpmn";
+  });
   await page.getByRole("button", { name: /application\.bpmn\.json/ }).click();
+  const evidenceReply = await selectedEvidenceResponse;
+  assert.equal(evidenceReply.status(), 200, "selected evidence must use the API's generation parameter");
+  assert.equal(new URL(evidenceReply.url()).searchParams.get("generation"), String(listedGeneration));
   timingsMs.firstSummarySelection = Date.now() - routeStarted;
   const bpmnFrame = page.frameLocator(".model-viewer-frame iframe");
   await bpmnFrame.locator('.djs-element[data-element-id="Task_Review"]').waitFor();
@@ -278,10 +296,10 @@ try {
   assert(sourceRequestIds.includes("model-bpmn"));
   const bpmnSourceRequest = new URL(requests.find((request) => request.startsWith("/api/models/source?id=model-bpmn"))!, origin);
   assert.equal(bpmnSourceRequest.searchParams.get("snapshot"), snapshot);
-  assert.equal(bpmnSourceRequest.searchParams.get("g"), "3");
+  assert.equal(bpmnSourceRequest.searchParams.get("generation"), String(listedGeneration));
   const bpmnEvidenceRequest = new URL(requests.find((request) => request.startsWith("/api/models/evidence?id=model-bpmn"))!, origin);
   assert.equal(bpmnEvidenceRequest.searchParams.get("snapshot"), snapshot);
-  assert.equal(bpmnEvidenceRequest.searchParams.get("g"), "3");
+  assert.equal(bpmnEvidenceRequest.searchParams.get("generation"), String(listedGeneration));
   assert(requests.findIndex((request) => request.startsWith("/api/models/evidence?id=model-bpmn")) <
     requests.findIndex((request) => request.startsWith("/api/models/source?id=model-bpmn")));
   await page.screenshot({ path: resolve(artifacts, "issue78-ui-production-bpmn-diagram.png"), fullPage: true });
@@ -354,7 +372,7 @@ try {
   assert(expectedRequests.some((request) => request.includes("/source?id=model-bpmn")));
   const cursorRequest = new URL(expectedRequests.find((request) => request.startsWith("/api/models?") && request.includes("cursor="))!, origin);
   assert.equal(cursorRequest.searchParams.get("snapshot"), snapshot);
-  assert.equal(cursorRequest.searchParams.get("g"), "3");
+  assert.equal(cursorRequest.searchParams.get("generation"), String(listedGeneration));
   assert.deepEqual(externalRequests, []);
   assert.deepEqual(consoleErrors, []);
   const artifact = {
