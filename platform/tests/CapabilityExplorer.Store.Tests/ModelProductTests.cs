@@ -221,6 +221,7 @@ internal sealed class ModelDatabaseFactory : WebApplicationFactory<Program>
         builder.UseSetting("artifacts",Path.Combine(_root,"must-not-read-artifacts"));
         builder.UseSetting("modelSettings",Path.Combine(_root,"no-model-settings.json"));
         builder.UseSetting("workspace",_root);
+        builder.UseSetting("requests",Path.Combine(_root,"requests"));
     }
     protected override void Dispose(bool disposing)
     {
