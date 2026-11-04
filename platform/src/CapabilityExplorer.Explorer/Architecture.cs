@@ -36,7 +36,9 @@ public sealed record ArchEdge(string Id, string From, string To, string Kind, st
 
 public sealed record Crumb(string Label, string Level, string? Focus);
 
-public sealed record ArchitectureGraph(string Level, string? Focus, string Title, IReadOnlyList<Crumb> Breadcrumbs, IReadOnlyList<ArchNode> Nodes, IReadOnlyList<ArchEdge> Edges, IReadOnlyList<string> Notes);
+public sealed record ArchitectureBudget(int NodeBudget, int TotalNodes, int ShownNodes, int TotalEdges, int ShownEdges, bool Truncated);
+
+public sealed record ArchitectureGraph(string Level, string? Focus, string Title, IReadOnlyList<Crumb> Breadcrumbs, IReadOnlyList<ArchNode> Nodes, IReadOnlyList<ArchEdge> Edges, IReadOnlyList<string> Notes, ArchitectureBudget? Budget = null);
 
 /// <summary>
 /// Builds the canvas at four levels of abstraction from the facts in a view:
@@ -47,24 +49,59 @@ public sealed record ArchitectureGraph(string Level, string? Focus, string Title
 public static class Architecture
 {
     private const int MaxFactsPerEdge = 40;
+    private const int DefaultNodeBudget = 400;
+    private const int MinNodeBudget = 1;
+    private const int MaxNodeBudget = 2000;
     private static readonly HashSet<string> CodeRelations = ["CALLS", "REFERENCES", "IMPLEMENTS", "INHERITS", "REGISTERS"];
     private static readonly HashSet<string> DataRelations = ["READS", "WRITES", "MAPS_TO"];
     private static readonly HashSet<string> MessageRelations = ["PUBLISHES", "CONSUMES"];
 
     /// <param name="all">The unscoped view, used by the landscape (every capability).</param>
     /// <param name="capability">The capability the view is scoped to, if any: it names the level above the repositories.</param>
-    public static ArchitectureGraph Build(ViewIndex view, string level, string? focus, ViewIndex all, IReadOnlyList<CapabilityStatus> capabilities, CapabilityStatus? capability)
+    public static ArchitectureGraph Build(ViewIndex view, string level, string? focus, ViewIndex all, IReadOnlyList<CapabilityStatus> capabilities, CapabilityStatus? capability, int? nodeBudget = null)
     {
         IReadOnlyList<Crumb> top = capability is null
             ? [new Crumb("Landscape", "landscape", null), new Crumb("System", "system", null)]
             : [new Crumb("Landscape", "landscape", null), new Crumb(capability.Name, "system", capability.Id)];
-        return level switch
+        var graph = level switch
         {
             "landscape" => Landscape(all, capabilities),
             "repository" when focus is not null => Repository(view, focus, top),
             "component" when focus is not null => Component(view, focus, top),
             "requests" when focus is not null => Requests(view, focus, top),
             _ => System(view, top, capability?.Name ?? "System"),
+        };
+        return ApplyNodeBudget(graph, nodeBudget);
+    }
+
+    private static ArchitectureGraph ApplyNodeBudget(ArchitectureGraph graph, int? requestedBudget)
+    {
+        var budget = Math.Clamp(requestedBudget ?? DefaultNodeBudget, MinNodeBudget, MaxNodeBudget);
+        var totalNodes = graph.Nodes.Count;
+        var totalEdges = graph.Edges.Count;
+        if (totalNodes <= budget)
+        {
+            return graph with { Budget = new ArchitectureBudget(budget, totalNodes, totalNodes, totalEdges, totalEdges, false) };
+        }
+
+        var degree = graph.Edges.SelectMany(edge => new[] { edge.From, edge.To })
+            .GroupBy(id => id, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
+        var keep = graph.Nodes
+            .OrderByDescending(node => degree.TryGetValue(node.Id, out var hits) ? hits : 0)
+            .ThenBy(node => node.Id, StringComparer.Ordinal)
+            .Take(budget)
+            .Select(node => node.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        var shownNodes = graph.Nodes.Where(node => keep.Contains(node.Id)).OrderBy(node => node.Id, StringComparer.Ordinal).ToList();
+        var shownEdges = graph.Edges.Where(edge => keep.Contains(edge.From) && keep.Contains(edge.To)).OrderBy(edge => edge.Id, StringComparer.Ordinal).ToList();
+        var notes = graph.Notes.Concat([$"Showing {shownNodes.Count} of {totalNodes} nodes and {shownEdges.Count} of {totalEdges} edges (node budget {budget}). Filter or drill down to inspect omitted items."]).ToList();
+        return graph with
+        {
+            Nodes = shownNodes,
+            Edges = shownEdges,
+            Notes = notes,
+            Budget = new ArchitectureBudget(budget, totalNodes, shownNodes.Count, totalEdges, shownEdges.Count, true),
         };
     }
 

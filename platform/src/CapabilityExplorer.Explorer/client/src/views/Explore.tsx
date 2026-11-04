@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { shortSha, type Calculation, type Edge, type SearchHit, type SimilarHit, type SymbolDetail } from "../api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { request, shortSha, type Calculation, type Edge, type SearchHit, type SimilarHit, type SymbolDetail } from "../api";
 import { Formula, shortTarget } from "../components/formula";
 import { EvidenceLinks, SourceView } from "../components/source";
 import { KindPill, ResolutionPill, SymbolLink } from "../components/symbols";
@@ -27,8 +27,21 @@ export function Explore({ params }: { params: URLSearchParams }) {
     lastSearch = { q, kind, repo };
   }, [q, kind, repo]);
 
-  const hits = useApi<SearchHit[]>(`/api/search?q=${encodeURIComponent(debounced)}&kind=${kind}&repo=${repo}&${scope}`);
+  const hits = useSearchHits(debounced, kind, repo, scope);
   const repos = Object.keys(view).sort();
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const root = listRef.current;
+    const target = sentinelRef.current;
+    if (!root || !target || !hits.hasMore) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) hits.loadMore();
+    }, { root, rootMargin: "0px 0px 120px 0px", threshold: 0 });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hits.hasMore, hits.loadMore]);
 
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
@@ -48,10 +61,10 @@ export function Explore({ params }: { params: URLSearchParams }) {
             ))}
           </select>
         </div>
-        <div className="max-h-[360px] overflow-y-auto rounded-lg border border-zinc-200 bg-white lg:max-h-none dark:border-zinc-800 dark:bg-zinc-900">
-          {hits.error && <div className="p-3 text-red-600">{hits.error}</div>}
-          {hits.data?.length === 0 && <div className="p-6 text-center text-zinc-500">No symbols match.</div>}
-          {hits.data?.map((h) => (
+        <div ref={listRef} className="max-h-[360px] overflow-y-auto rounded-lg border border-zinc-200 bg-white lg:max-h-none dark:border-zinc-800 dark:bg-zinc-900">
+          {hits.error && hits.items.length === 0 && <div className="p-3 text-red-600">{hits.error}</div>}
+          {!hits.loading && !hits.error && hits.items.length === 0 && <div className="p-6 text-center text-zinc-500">No symbols match.</div>}
+          {hits.items.map((h) => (
             <a
               key={h.key}
               href={symbolHref(h.key)}
@@ -66,11 +79,105 @@ export function Explore({ params }: { params: URLSearchParams }) {
               </div>
             </a>
           ))}
+          {hits.loading && <div className="p-3 text-xs text-zinc-500">Loading symbols…</div>}
+          {hits.loadingMore && <div className="p-3 text-xs text-zinc-500">Loading more…</div>}
+          {hits.error && hits.items.length > 0 && (
+            <div className="flex items-center justify-between gap-2 p-3 text-xs text-red-600">
+              <span>{hits.error}</span>
+              <button type="button" className="rounded border border-red-300 px-2 py-1 text-[11px] font-semibold hover:bg-red-50 dark:border-red-700 dark:hover:bg-red-950/40" onClick={hits.retry}>Retry</button>
+            </div>
+          )}
+          {!hits.hasMore && hits.items.length > 0 && <div className="p-3 text-xs text-zinc-500">{typeof hits.total === "number" ? `Loaded ${hits.items.length} of ${hits.total} symbols.` : `Loaded ${hits.items.length} symbols.`}</div>}
+          <div ref={sentinelRef} aria-hidden="true" className="h-px" />
         </div>
       </aside>
       <div className="min-w-0">{key ? <Symbol symbolKey={key} /> : <Welcome onPick={(next) => { setQ(next.q); setKind(next.kind); }} />}</div>
     </div>
   );
+}
+
+type SearchPageResponse = SearchHit[] | { items: SearchHit[]; nextCursor?: string | null; total?: number; snapshotId?: string };
+
+function useSearchHits(query: string, kind: string, repo: string, scope: string) {
+  const [items, setItems] = useState<SearchHit[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [total, setTotal] = useState<number | undefined>(undefined);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+  const requestId = useRef(0);
+  const inFlight = useRef<AbortController | null>(null);
+  const snapshotId = useRef<string | null>(null);
+
+  const fetchPage = useCallback(async (cursor: string | null, append: boolean) => {
+    const current = ++requestId.current;
+    inFlight.current?.abort();
+    const controller = new AbortController();
+    inFlight.current = controller;
+    if (append) setLoadingMore(true); else setLoading(true);
+    setError(undefined);
+    const params = new URLSearchParams(scope);
+    params.set("q", query);
+    params.set("kind", kind);
+    params.set("repo", repo);
+    params.set("limit", "50");
+    if (cursor) params.set("cursor", cursor);
+    if (cursor && snapshotId.current) params.set("snapshot", snapshotId.current);
+    try {
+      const response = await request<SearchPageResponse>(`/api/search?${params.toString()}`, { signal: controller.signal });
+      if (requestId.current !== current) return;
+      const page = Array.isArray(response)
+        ? { items: response, nextCursor: null as string | null, total: response.length as number | undefined, snapshotId: null as string | null }
+        : { items: response.items, nextCursor: response.nextCursor ?? null, total: response.total, snapshotId: response.snapshotId ?? null };
+      setTotal(page.total);
+      snapshotId.current = page.snapshotId ?? snapshotId.current;
+      setNextCursor(page.nextCursor);
+      setItems((previous) => {
+        if (!append) return page.items;
+        const seen = new Set(previous.map((item) => item.key));
+        const merged = [...previous];
+        for (const item of page.items) {
+          if (!seen.has(item.key)) {
+            seen.add(item.key);
+            merged.push(item);
+          }
+        }
+        return merged;
+      });
+    } catch (e) {
+      if (controller.signal.aborted) return;
+      if (requestId.current === current) setError((e as Error).message);
+    } finally {
+      if (requestId.current === current) {
+        inFlight.current = null;
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    }
+  }, [kind, query, repo, scope]);
+
+  useEffect(() => {
+    setItems([]);
+    setTotal(undefined);
+    snapshotId.current = null;
+    setNextCursor(null);
+    void fetchPage(null, false);
+  }, [fetchPage]);
+
+  useEffect(() => () => {
+    inFlight.current?.abort();
+  }, []);
+
+  const loadMore = useCallback(() => {
+    if (!nextCursor || loading || loadingMore || !!error) return;
+    void fetchPage(nextCursor, true);
+  }, [error, fetchPage, loading, loadingMore, nextCursor]);
+
+  const retry = useCallback(() => {
+    void fetchPage(nextCursor, items.length > 0);
+  }, [fetchPage, items.length, nextCursor]);
+
+  return { items, total, loading, loadingMore, error, hasMore: nextCursor !== null, loadMore, retry };
 }
 
 function Welcome({ onPick }: { onPick: (s: { q: string; kind: string }) => void }) {
@@ -271,4 +378,3 @@ export function CalculationCard({ calculation: c }: { calculation: Calculation }
     </Card>
   );
 }
-

@@ -95,6 +95,7 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
   const [hidden, setHidden] = useState<Set<string>>(rememberedHidden);
   const [selected, setSelected] = useState<Selected>(null);
   const graph = loading ? undefined : data;
+  const budget = graph?.budget;
   const hiddenEdgeIds = useMemo(() => new Set(graph?.edges.filter(edge => hidden.has(edge.kind)).map(edge => edge.id) ?? []), [graph, hidden]);
   usePublishFocus(selected?.type === "node" && graph
     ? { kind: selected.node.category, label: selected.node.label, key: selected.node.symbolKey } : null);
@@ -137,6 +138,7 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
           ))}
         </nav>
         <Pill tone="info">{{ landscape: "1 · landscape", system: "2 · capability", repository: "3 · components", component: "4 · code", requests: "3 · requests" }[level] ?? level}</Pill>
+        {budget && <Pill tone={budget.truncated ? "warn" : "info"}>{`showing ${budget.shownNodes}/${budget.totalNodes} nodes · ${budget.shownEdges}/${budget.totalEdges} edges`}</Pill>}
         <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           {kinds.map((k) => (
             <label key={k} className="flex cursor-pointer items-center gap-1">
@@ -156,6 +158,7 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
         <div className="architecture-canvas relative min-h-[420px] min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
           {loading && !graph && <div className="absolute inset-0 grid place-items-center text-zinc-500">Laying out…</div>}
           {graph && graph.nodes.length === 0 && <div className="absolute inset-0 grid place-items-center text-zinc-500">Nothing to draw at this level for the selected scope.</div>}
+          {graph?.budget?.truncated && <div className="absolute left-3 top-3 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-200">Node budget reached. Narrow filters or drill down for omitted nodes.</div>}
           {graph && graph.nodes.length > 0 && <LiveArchitectureCanvas
             graph={graph} hiddenEdgeIds={hiddenEdgeIds} snapshotKey={snapshotKey}
             selectedId={selected?.type === "node" ? selected.node.id : selected?.edge.id}

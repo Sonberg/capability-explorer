@@ -66,6 +66,19 @@ public sealed class ArchitectureApiTests(ExplorerFactory factory) : IClassFixtur
         Assert.Contains(Edges(g), e => e.GetProperty("certainty").GetString() == "candidate"); // keyed DI
         Assert.Equal(["Landscape", "System", "forecast-cs", "StrategyLoader"], g.GetProperty("breadcrumbs").EnumerateArray().Select(c => c.GetProperty("label").GetString()));
     }
+
+    [Fact]
+    public async Task Architecture_honours_node_budget_and_reports_shown_vs_total()
+    {
+        var g = await Graph("level=system&nodeBudget=2");
+        var budget = g.GetProperty("budget");
+        Assert.True(budget.GetProperty("truncated").GetBoolean());
+        Assert.Equal(2, budget.GetProperty("nodeBudget").GetInt32());
+        Assert.Equal(2, budget.GetProperty("shownNodes").GetInt32());
+        Assert.True(budget.GetProperty("totalNodes").GetInt32() > budget.GetProperty("shownNodes").GetInt32());
+        Assert.Equal(budget.GetProperty("shownNodes").GetInt32(), g.GetProperty("nodes").GetArrayLength());
+        Assert.Contains(g.GetProperty("notes").EnumerateArray().Select(n => n.GetString()), note => note!.Contains("Showing 2 of", StringComparison.Ordinal));
+    }
 }
 
 public sealed class VendorTests

@@ -52,4 +52,12 @@ export interface Graph {
   nodes: ArchNode[];
   edges: ArchEdge[];
   notes: string[];
+  budget?: {
+    nodeBudget: number;
+    totalNodes: number;
+    shownNodes: number;
+    totalEdges: number;
+    shownEdges: number;
+    truncated: boolean;
+  };
 }
