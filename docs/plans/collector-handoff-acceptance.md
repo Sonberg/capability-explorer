@@ -91,3 +91,24 @@ Baseline `test-ts` (208) and `test-contracts` (244) remain green; no source code
 has changed in the integration checkout. New worker assertions still need
 validation before Refinement. Brain pass clean:
 `sparc/capability-cards.md#sparc`; no new stack primitive is justified.
+
+## Architecture gate
+
+The existing ce.v1/ce.models.v1/ce.collection.v1 shapes and .NET/TypeScript
+validators remain the contract. No production API, package, model call, source
+execution or storage migration is proposed. The current diagram now makes
+staging, atomic completion and separate attempt metadata explicit; these are
+existing boundaries, not newly delivered runtime capabilities.
+
+Only the collector worker writes collector tests, in its isolated worktree.
+The SLO worker's GitHub-only allocation is independent; the queen alone enrolls
+MADR-0035 and generates its checked projections. This avoids shared-manifest
+conflicts and a second implementation of already-qualified consumers.
+
+Architecture grade: **97/100**, one iteration. Three points retain unqualified
+crash/host/environment behavior and external consumer authority, not a known
+architectural defect. The unchanged-code baseline (208 TS/244 contracts) and
+decision-ledger checks (29) pass; new assertions must pass at integration.
+`git diff --check` passes. No full enterprise/SLO/release claim is made.
+Brain pass clean: `sparc/capability-cards.md#sparc`; native workers plus the
+already-enabled Ruflo bookkeeping are sufficient.

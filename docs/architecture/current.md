@@ -12,7 +12,9 @@ flowchart LR
     Evidence["ce.models.v1: typed elements, references, raw text, diagnostics"]
     Original["ce.model-source.v1: opt-in exact original bytes"]
     Seal["Collection exporter: hash, permission and crosslink validation"]
+    Stage["Bounded staging and independent verification"]
     Collection["Immutable ce.collection.v1"]
+    Attempt["Separate attempt identity / observation metadata"]
     TS["Independent TypeScript consumer"]
     NET["Independent .NET consumer"]
     Store["File / PostgreSQL model queries"]
@@ -23,7 +25,9 @@ flowchart LR
     XML -->|"explicit model-content permission"| Original
     Evidence --> Seal
     Original --> Seal
-    Seal --> Collection
+    Seal -->|"required validation succeeds; optional failures stay partial"| Stage
+    Stage -->|"atomic rename; refuse conflicting target"| Collection
+    Seal --> Attempt
     Collection --> TS
     Collection --> NET --> Store --> UI
     Store -->|"independently verified source attachment"| Frame
@@ -50,3 +54,10 @@ Repository evidence can feed aligned architectural and business viewpoints at
 higher levels; accepted semantics, aggregation/ownership decisions and
 stakeholder products remain downstream under #33. This flow establishes no
 enterprise hierarchy or inferred business approval.
+
+The #33 acceptance follow-up exercises the existing collection boundary, not a
+new service. Content identity excludes attempt metadata; changing an attempt is
+not changing immutable evidence. Required failures do not produce a completed
+bundle; optional omissions remain explicit. A pre-cancelled export test does
+not establish arbitrary crash/interruption recovery or authenticated publication.
+See the [acceptance record](../plans/collector-handoff-acceptance.md).
