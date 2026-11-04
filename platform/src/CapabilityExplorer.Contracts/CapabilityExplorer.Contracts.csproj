@@ -7,6 +7,7 @@
     <EmbeddedResource Include="../../../schema/v1/record.schema.json" LogicalName="ce.v1.record.schema.json" />
     <EmbeddedResource Include="../../../schema/v1/relations.json" LogicalName="ce.v1.relations.json" />
     <EmbeddedResource Include="../../../schema/models/v1.schema.json" LogicalName="ce.models.v1.schema.json" />
+    <EmbeddedResource Include="../../../schema/models/source.v1.schema.json" LogicalName="ce.model-source.v1.schema.json" />
     <EmbeddedResource Include="../../../schema/candidates/artifact.schema.json" LogicalName="ce.candidates.v1.schema.json" />
     <EmbeddedResource Include="../../../schema/platform/collection/plan.schema.json" LogicalName="ce.collection.plan.v1.schema.json" />
     <EmbeddedResource Include="../../../schema/platform/collection/collection.schema.json" LogicalName="ce.collection.v1.schema.json" />
