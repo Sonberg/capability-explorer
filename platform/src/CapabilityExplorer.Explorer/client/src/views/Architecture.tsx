@@ -78,8 +78,8 @@ const certaintyText: Record<ArchEdge["certainty"], { label: string; tone: Tone; 
   unresolved: { label: "unresolved", tone: "bad", title: "Target not statically known" },
 };
 
-const MAX_NODE_BUDGET = 400;
-const MAX_EDGE_BUDGET = 800;
+const MAX_NODE_BUDGET = 100;
+const MAX_EDGE_BUDGET = 100;
 const MAX_PINS = 20;
 const MAX_OMITTED_NODES = 200;
 const DEFAULT_HIDDEN_KINDS = ["declares"];
