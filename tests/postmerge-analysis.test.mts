@@ -212,8 +212,8 @@ test('analysis wrappers reject unqualified engines before invoking the host or c
  copyFileSync(join(repository,'scripts/analyze-all'),join(root,'scripts/analyze-all'));
  copyFileSync(join(repository,'scripts/lib/container-engine.sh'),join(root,'scripts/lib/container-engine.sh'));
  write(root,receiptPath,'preserved');
- const result=spawnSync('bash',['scripts/analyze-all'],{cwd:root,encoding:'utf8',timeout:20000,env:{PATH:process.env.PATH,CE_CONTAINER_ENGINE:'podman'}});
+ const result=spawnSync('bash',['scripts/analyze-all'],{cwd:root,encoding:'utf8',timeout:20000,env:{PATH:process.env.PATH,CE_CONTAINER_ENGINE:'containerd'}});
  assert.equal(result.status,2);
- assert.match(result.stderr,/not qualified/);
+ assert.match(result.stderr,/CE_CONTAINER_ENGINE must be docker or podman/);
  assert.equal(readFileSync(join(root,receiptPath),'utf8'),'preserved');
 }));
