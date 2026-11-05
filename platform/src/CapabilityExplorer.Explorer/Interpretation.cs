@@ -19,6 +19,7 @@ public sealed partial class Intelligence
 {
     private readonly InterpretationOptions _configured;
     private readonly bool _metadataOnly;
+    private readonly Func<EmbeddingConfiguration?>? _embeddingConfiguration;
     private volatile State _state;
 
     private sealed record State(InterpretationLayer Layer, OpenAiEmbeddingModel? Embeddings, ModelSettings? Saved);
@@ -27,10 +28,13 @@ public sealed partial class Intelligence
     /// <param name="settingsPath">Where the UI saves model settings (shared with <c>ce embed</c> and <c>make ollama</c>).</param>
     /// <param name="store">Similarity search; null without a database (CE_DATABASE).</param>
     /// <param name="metadataOnly">PostgreSQL browsing resolves identity lazily, without initializing optional model clients.</param>
-    public Intelligence(InterpretationOptions configured, string settingsPath, EmbeddingStore? store, bool metadataOnly = false)
+    /// <param name="embeddingConfiguration">The shared host resolver, evaluated only on optional projection paths.</param>
+    public Intelligence(InterpretationOptions configured, string settingsPath, EmbeddingStore? store, bool metadataOnly = false,
+        Func<EmbeddingConfiguration?>? embeddingConfiguration = null)
     {
         _configured = configured;
         _metadataOnly = metadataOnly;
+        _embeddingConfiguration = embeddingConfiguration;
         SettingsPath = settingsPath;
         Store = store;
         if (metadataOnly)
@@ -67,7 +71,7 @@ public sealed partial class Intelligence
     public ModelSettings? Saved => _state.Saved;
 
     public EmbeddingConfiguration? ResolveEmbeddingConfiguration() =>
-        EmbeddingConfiguration.Resolve(_configured, SettingsPath);
+        _embeddingConfiguration is not null ? _embeddingConfiguration() : EmbeddingConfiguration.Resolve(_configured, SettingsPath);
 
     /// <summary>Validates, saves and applies. A blank API key keeps the saved one.</summary>
     public string? Save(ModelSettingsRequest request)

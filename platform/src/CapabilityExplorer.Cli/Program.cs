@@ -18,7 +18,7 @@ using CapabilityExplorer.Cli;
 // The connection string defaults to the CE_DATABASE environment variable.
 const string Usage = """
     usage:
-      ce analysis-worker [--capabilities <file>]
+      ce analysis-worker [--capabilities <file>] [--model-config <shared.json> | --modelSettings <model.json>]
       ce analysis-run --capability <id> [--capabilities <file>]
       ce analysis-all [--capabilities <file>]
       ce collection-freshness --previous <input-vector.json> --current <input-vector.json> [--as-of <ISO-8601-offset-time> --policy <observation-policy.json>]
@@ -32,7 +32,8 @@ const string Usage = """
       ce import [--connection <connection string>] [--bindings <bindings.json>] [--collections <directory,...>] [artifact.jsonl...]  (native artifacts or validated model collections required)
       ce publish [--scope <capability-id|*>] [--view <repo:full-sha,...>] [--bindings <bindings.json>] [--collections <directory,...>] [--expected-generation <n>] [artifact.jsonl...]
       ce reconcile-publication --run <id> --attempt <id> [--connection <connection string>]  (read-only; never authorizes recovery)
-      ce embed [--snapshot <id> | --scope <capability-id|*>] [--connection <connection string>] [--settings <model.json>]  (whole-snapshot projection; model from environment or saved settings)
+      ce embed [--snapshot <id> | --scope <capability-id|*>] [--connection <connection string>] [--model-config <shared.json>] [--modelSettings <model.json> | --settings <model.json>] [--interpretation:<option> <value>]
+        Embedding configuration shared by API, analysis and retry: appsettings[.environment].json, interpretation__* / modelSettings environment, then --model-config / CE_MODEL_CONFIG, then explicit options; CE_MODEL_SETTINGS selects the saved settings file. CE_MODEL_ENDPOINT + CE_EMBEDDING_MODEL retain final precedence.
       ce export (disabled: use the exclusive host analysis worker)
       ce evaluate --expected <dir> --actual <dir> [--config <evaluation.json>] [--repos <dir>] [--repository <id[,id]>] [--language <csharp,typescript,...>] [--json <report.json>] [--max-findings <n>]
     """;
@@ -163,39 +164,7 @@ switch (command)
     }
 
     case "embed":
-    {
-        try
-        {
-            if (files.Count > 0 || options.Keys.Any(key => key is not ("snapshot" or "scope" or "connection" or "settings"))
-                || options.ContainsKey("snapshot") && options.ContainsKey("scope"))
-                throw new ArgumentException("invalid embed options");
-            var configuration = EmbeddingConfiguration.Resolve(new InterpretationOptions(), options.GetValueOrDefault("settings") ?? ModelSettings.DefaultPath);
-            if (configuration is null)
-            {
-                Console.Error.WriteLine("no embedding model: save one in Settings or set CE_MODEL_ENDPOINT and CE_EMBEDDING_MODEL");
-                return 2;
-            }
-            var model = configuration.Options.CreateEmbeddingModel()!;
-            var connection = options.GetValueOrDefault("connection") ?? Environment.GetEnvironmentVariable("CE_DATABASE")
-                ?? throw new InvalidOperationException("PostgreSQL connection is required");
-            await using var db = NpgsqlDataSource.Create(connection);
-            var store = new SnapshotEmbeddingStore(db, connection);
-            var snapshot = options.TryGetValue("snapshot", out var pinned)
-                ? Guid.TryParse(pinned, out var id) ? id : throw new ArgumentException("invalid snapshot")
-                : await store.ResolvePublishedAsync(options.GetValueOrDefault("scope") ?? "*");
-            var identity = configuration.Identity;
-            var count = await store.EmbedAsync(snapshot, new(identity.Id, identity.Fingerprint, identity.RecipeVersion),
-                (texts, ct) => model.EmbedAsync(texts, ct));
-            Console.WriteLine($"Embedding projection ready for snapshot {snapshot}: embedded {count} occurrence(s) ({identity.Id}); PostgreSQL similarity search remains unavailable.");
-            return 0;
-        }
-        catch (Exception e) when (e is EmbeddingConfigurationException or EmbeddingProjectionBusyException or EmbeddingProjectionFailedException
-            or InterpretationUnavailableException or NpgsqlException or InvalidOperationException or ArgumentException or IOException)
-        {
-            Console.Error.WriteLine($"embed: failed ({e.GetType().Name}); verify configuration and retry the same snapshot");
-            return 1;
-        }
-    }
+        return await EmbeddingCommand.Run(options, files);
 
     case "export":
     {

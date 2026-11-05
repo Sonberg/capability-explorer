@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using CapabilityExplorer.Capabilities;
 using CapabilityExplorer.Capabilities.Analysis;
+using CapabilityExplorer.Interpretation;
 
 namespace CapabilityExplorer.Cli;
 
@@ -17,7 +18,8 @@ internal static class AnalysisWorkerCommand
         {
             if (command is not ("analysis-worker" or "analysis-run" or "analysis-all")) throw new ArgumentException("unsupported analysis command");
             foreach (var key in options.Keys)
-                if (key is not ("capability" or "capabilities" or "bindings" or "include-tests" or "packages" or "locked" or "github-auth" or "extraction-jobs"))
+                if (key is not ("capability" or "capabilities" or "bindings" or "include-tests" or "packages" or "locked" or "github-auth" or "extraction-jobs")
+                    && !EmbeddingHostConfiguration.IsOption(key))
                     throw new ArgumentException("unsupported analysis option");
             if (command != "analysis-worker" && ResolveEngine() != "docker")
                 throw new InvalidOperationException("analysis requires the qualified Docker host profile");
@@ -59,7 +61,7 @@ internal static class AnalysisWorkerCommand
                             continue;
                         }
                         var result = await AnalysisCapabilityScheduler.RunPending(store, owner, hostDefaults.CapabilityWorkers,
-                            run => Execute(root, store, owner, run, stop.Token), stop.Token);
+                            run => Execute(root, store, owner, run, options, stop.Token), stop.Token);
                         if (result != 0) return result;
                         await Task.Delay(300, stop.Token);
                     }
@@ -93,7 +95,7 @@ internal static class AnalysisWorkerCommand
                 var executionResult = await AnalysisCapabilityScheduler.RunAdmitted(store, owner, acceptedRuns,
                     acceptedRuns[0].Settings.CapabilityWorkers, async run =>
                     {
-                        var result = await Execute(root, store, owner, run, stop.Token);
+                        var result = await Execute(root, store, owner, run, options, stop.Token);
                         if (result == 0) completedRuns.Add(run.RunId);
                         return result;
                     }, stop.Token);
@@ -118,7 +120,8 @@ internal static class AnalysisWorkerCommand
         { Console.Error.WriteLine("analysis: host operation failed (" + e.GetType().Name + ")"); return 2; }
     }
 
-    private static async Task<int> Execute(string root, FileRunStore store, WorkerOwnership owner, AnalysisRun run, CancellationToken stop)
+    private static async Task<int> Execute(string root, FileRunStore store, WorkerOwnership owner, AnalysisRun run,
+        IReadOnlyDictionary<string, string> options, CancellationToken stop)
     {
         var attempt = new AttemptIdentity(run.RunId, run.AttemptId!);
         using var process = new AnalysisProcess(root, store, run, stop);
@@ -144,7 +147,7 @@ internal static class AnalysisWorkerCommand
             try { AnalysisSourceCleanup.AfterPublication(store,completed,prepared); }
             catch (Exception cleanupError) when (cleanupError is IOException or InvalidOperationException or UnauthorizedAccessException)
             { Console.Error.WriteLine("analysis: source cleanup incomplete; preserved attempt data for inspection"); }
-            var enrichment = await AnalysisEnrichment.Run(publishedSnapshot, stop);
+            var enrichment = await AnalysisEnrichment.Run(publishedSnapshot, options, ct: stop);
             store.RecordEnrichment(owner,attempt,enrichment.Outcome,enrichment.Detail);
             Console.WriteLine($"analysis {run.RunId}/{run.AttemptId}: done");
             return 0;
