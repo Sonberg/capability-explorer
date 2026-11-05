@@ -46,6 +46,60 @@ analysis state. A worker already running for Explorer also excludes direct
 A second worker refuses before recovery changes live records.
 Direct `ce export` is disabled; it cannot bypass this owner.
 
+## Integration reconciliation
+
+After confirmed core publication, the host reconciles integration observations
+against the latest successfully published analysis of each capability, in both
+directions. A newly published target can supply candidates for older callers
+without re-extracting them. Failed newer analyses do not replace the previous
+successful input. Worker startup also retries reconciliation, covering a crash
+between publication and matching. Matching does not change run input manifests,
+extracted facts, reviewed bindings or manual connections.
+
+To reconcile already ingested artifacts without running analysis, from the
+project root:
+
+```bash
+dotnet platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll match-integrations
+```
+
+The host verifies publication manifest and artifact hashes before atomically
+replacing the private `.sandbox-cache/integration-matches.json` catalogue.
+Matching failure preserves the previous complete catalogue and confirmed
+publication; the command or the next successful publication/startup retries it.
+The catalogue has a 128 MiB byte budget and refuses rather than truncating an
+oversized result. Reconciliation reads complete artifacts, not the capped
+integration UI projection. A dedicated writer lock serializes catalogue updates;
+the publication input vector is rechecked before commit.
+
+Only exact declared endpoint identities, existing explicit bindings, and fully
+bound shared-resource identities can produce confirmed automatic links.
+HTTP calls are additionally clustered by qualified caller and host, compared as
+operation sets against analyzed service endpoints. A unique best target with at
+least two distinct related operations can produce an inferred candidate graph
+connection. HTTP method, path/query identifier layout, concrete versions and
+available payload schemas are compared; differences stay visible and absent
+metadata stays unknown. Gateway prefixes/version templates are comparison
+heuristics, not adopted endpoint rewrites. Ties and single-operation overlaps
+remain suggestions. Unbound same-name resources remain suggestions; generic
+root/health-only HTTP matches do not establish a cluster. Dynamic destinations
+remain unresolved. The
+file-backed architecture graph filters matches to both selected artifact hashes
+and current capability membership, aggregates each inferred service cluster into
+one edge and retains contract warnings in its inspector. Scoped system views
+retain only incoming/outgoing clusters involving their selected capability.
+Inferred links are drawn as candidates, never confirmed automatic edges. The
+match API pages the complete selected catalogue at
+`GET /api/architecture/integration-matches?offset=0&limit=50` (limit 1-100).
+
+Optional LLM assessment is a separate, on-demand action in the architecture
+inspector, using the existing configured model. It reads bounded source pages
+from exact analyzed commits, cites both sides and distinguishes dependency
+intent from compatibility. It never writes bindings, extracted facts, manual
+connections or the deterministic match catalogue, and it does not run as an
+unattended model batch after every analysis. See the
+[qualification and limits](evidence/automatic-integration-matching.md).
+
 The one owner executes **one capability and one extractor at a time on both
 engines**. This also applies to old frozen worker/job settings of 2 or 4; those
 records are not rewritten to enforce serialization. Newly admitted settings are

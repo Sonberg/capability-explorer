@@ -18,6 +18,102 @@ public sealed class HttpBindingRecommendationTests
     private const string Hint = "@unbound:pricing-node/@fixture/pricing:env=FORECAST_API_URL";
     private const string Target = "forecast-cs/Forecast.Api";
 
+    [Fact]
+    public void Given_only_a_generic_root_route_when_reconciling_then_no_dependency_is_suggested()
+    {
+        var original = Load("pricing-node", "v1-base", "@fixture/pricing");
+        var call = original.Artifact.Edges.Single(edge => edge.To?.Contains(Hint, StringComparison.Ordinal) == true);
+        var source = ChangedPricing(text => text.Replace(call.To!, $"http|{Hint}|GET /", StringComparison.Ordinal));
+        var destination = Load("forecast-cs", "v1-base", "Forecast.Api");
+        var endpoint = destination.Artifact.Nodes.Single(node => node.NodeKind == "Endpoint" && node.SymbolKey.Split('|')[2] == call.To!.Split('|')[2]);
+        var report = ArtifactValidator.Validate(Fixtures.Golden("forecast-cs/v1-base/Forecast.Api.jsonl")
+            .Replace(endpoint.SymbolKey, $"http|{Target}|GET /", StringComparison.Ordinal));
+        Assert.True(report.IsValid, string.Join("; ", report.Problems));
+        Assert.DoesNotContain(IntegrationMatching.Build([
+            new("pricing", "source-run", source.From, source.Artifact),
+            new("forecast", "target-run", destination.From, report.Artifact!),
+        ], BindingFile.Empty), match => match.EdgeId == call.Id);
+    }
+
+    [Theory]
+    [InlineData("PUBLISHES", "CONSUMES", "chan|servicebus|orders|topic/sales", "message", "matched")]
+    [InlineData("PUBLISHES", "CONSUMES", "chan|servicebus|@unbound:pricing-node/@fixture/pricing:env=BUS|topic/sales", "message", "suggested")]
+    [InlineData("WRITES", "READS", "sql|orders|dbo|sales", "data", "matched")]
+    public void Given_resource_participants_when_reconciling_then_identity_controls_connection_strength(
+        string sourceRelation, string targetRelation, string resource, string kind, string status)
+    {
+        var source = Load("pricing-node", "v1-base", "@fixture/pricing");
+        var target = Load("forecast-cs", "v1-base", "Forecast.Api");
+        var sourceArtifact = Participant("pricing-node/v1-base/_fixture_pricing.jsonl", sourceRelation, resource);
+        var targetArtifact = Participant("forecast-cs/v1-base/Forecast.Api.jsonl", targetRelation, resource);
+        var match = Assert.Single(IntegrationMatching.Build([
+            new("pricing", "source-run", source.From, sourceArtifact),
+            new("forecast", "target-run", target.From, targetArtifact),
+        ], BindingFile.Empty), item => item.SourceCapabilityId == "pricing");
+        Assert.Equal(kind, match.Kind);
+        Assert.Equal(status, match.Status);
+        Assert.Equal(targetArtifact.Edges[0].From, match.TargetKey);
+        Assert.NotEmpty(match.SourceEvidence);
+        Assert.NotEmpty(match.TargetEvidence);
+    }
+
+    private static Artifact Participant(string fixture, string relation, string resource)
+    {
+        var rows = Fixtures.Golden(fixture).Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line => JsonNode.Parse(line)!).ToList();
+        if (resource.Contains("@unbound:", StringComparison.Ordinal))
+            resource = resource.Replace("@unbound:pricing-node/@fixture/pricing:",
+                $"@unbound:{rows[0]["repositoryId"]!.GetValue<string>()}/{rows[0]["unit"]!["path"]!.GetValue<string>()}:", StringComparison.Ordinal);
+        var edge = rows.First(row => row["kind"]?.GetValue<string>() == "edge" && row["relation"]?.GetValue<string>() == "REQUESTS");
+        rows.RemoveAll(row => row["kind"]?.GetValue<string>() == "edge" && !ReferenceEquals(row, edge));
+        edge["relation"] = relation;
+        edge["to"] = resource;
+        edge["resolution"] = "resolved";
+        edge.AsObject().Remove("unresolvedReason");
+        var complete = rows.Single(row => row["kind"]?.GetValue<string>() == "complete");
+        complete["counts"]!["edge"] = 1;
+        complete["coverage"]!["unresolvedEdges"] = 0;
+        var report = ArtifactValidator.Validate(string.Join('\n', rows.Select(row => row.ToJsonString())));
+        Assert.True(report.IsValid, string.Join("; ", report.Problems));
+        return report.Artifact!;
+    }
+
+    [Fact]
+    public void Given_route_only_identity_when_reconciling_then_complete_route_coverage_remains_suggested()
+    {
+        var source = Load("pricing-node", "v1-base", "@fixture/pricing");
+        var target = Load("forecast-cs", "v1-base", "Forecast.Api");
+        var matches = IntegrationMatching.Build([
+            new("pricing", "source-run", source.From, source.Artifact),
+            new("forecast", "target-run", target.From, target.Artifact),
+        ], BindingFile.Empty);
+        Assert.Equal("suggested", Assert.Single(matches, item => item.TargetCapabilityId == "forecast").Status);
+        Assert.Equal(matches.Select(match => match.Id), IntegrationMatching.Build([
+            new("forecast", "target-run", target.From, target.Artifact),
+            new("pricing", "source-run", source.From, source.Artifact),
+        ], BindingFile.Empty).Select(match => match.Id));
+    }
+
+    [Fact]
+    public void Given_published_capabilities_when_binding_proves_http_identity_then_automatic_match_retains_both_revisions()
+    {
+        var source = Load("pricing-node", "v1-base", "@fixture/pricing");
+        var target = Load("forecast-cs", "v1-base", "Forecast.Api");
+        var binding = BindingFile.Parse(JsonSerializer.Serialize(new { bindings = new[] { new { hint = Hint, target = Target } } }));
+        var matches = IntegrationMatching.Build([
+            new("pricing", "source-run", source.From, source.Artifact),
+            new("forecast", "target-run", target.From, target.Artifact),
+        ], binding);
+        var match = Assert.Single(matches, item => item.SourceCapabilityId == "pricing" && item.TargetCapabilityId == "forecast");
+        Assert.Equal("matched", match.Status);
+        Assert.Equal("http", match.Kind);
+        Assert.Equal("source-run", match.SourceRunId);
+        Assert.Equal("target-run", match.TargetRunId);
+        Assert.Equal(source.Artifact.ContentSha256, match.Source.ArtifactHash);
+        Assert.Equal(target.Artifact.ContentSha256, match.Target.ArtifactHash);
+        Assert.NotEmpty(match.SourceEvidence);
+        Assert.NotEmpty(match.TargetEvidence);
+    }
+
     private static (LoadedFrom From, Artifact Artifact) Load(string repo, string revision, string unit)
     {
         var artifact = ArtifactValidator.Validate(Fixtures.Golden($"{repo}/{revision}/{unit.Replace('/', '_').Replace('@', '_')}.jsonl")).Artifact!;

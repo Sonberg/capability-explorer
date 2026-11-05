@@ -30,6 +30,7 @@ internal static class AnalysisWorkerCommand
             var store = new FileRunStore(Path.Combine(root, ".sandbox-cache/requests"));
             using var owner = store.AcquireWorker(); // precedes recovery, admission and every shared write
             if (store.Recover(owner).Blocked) throw new InvalidOperationException("unreconciled execution/publication blocks analysis; inspect run history");
+            AnalysisIntegrationReconciliation.TryReconcile(root, store);
             HostPackageFeeds.Publish(root);
             using var stop = new CancellationTokenSource();
             ConsoleCancelEventHandler interrupt = (_, e) => { e.Cancel = true; stop.Cancel(); };
@@ -143,6 +144,11 @@ internal static class AnalysisWorkerCommand
                 timing.Complete();
             }
             finally { PublicationGate.Release(); }
+            using (var timing = process.Measure("integration-matching"))
+            {
+                AnalysisIntegrationReconciliation.TryReconcile(root, store);
+                timing.Complete();
+            }
             try
             {
                 using var timing = process.Measure("cleanup");

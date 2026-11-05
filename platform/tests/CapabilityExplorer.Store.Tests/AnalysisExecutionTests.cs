@@ -490,6 +490,14 @@ public sealed class AnalysisExecutionTests(PostgresFixture database)
             return new(repositories, inputs, artifacts);
         }
         public PublicationPermit Begin() => Store.BeginPublication(Owner, Identity, Run.ManifestHash!);
+        public void StartNext(string? capabilityId = null)
+        {
+            var configuration = Path.Combine(Root, "capabilities.json");
+            var capability = capabilityId ?? "next-" + Guid.NewGuid().ToString("N");
+            File.WriteAllText(configuration, JsonSerializer.Serialize(new { capabilities = new[] { new { id = capability, repositories = Array.Empty<object>() } } }));
+            Assert.True(Store.Admit(capability, configuration, null, new()).Accepted);
+            Run = Store.ClaimNext(Owner)!;
+        }
         public string Destination(AnalysisRepository repo) => Path.Combine(Root, ".sandbox-cache", "artifacts", repo.Id, repo.Sha, "artifact.jsonl");
         public void Dispose() { Owner.Dispose(); if (!_preserve) Directory.Delete(Root, true); }
     }
@@ -501,6 +509,98 @@ public sealed class LocalPublicationCollection;
 [Collection("Local publication environment")]
 public sealed class LocalPublicationTests
 {
+    [Theory]
+    [InlineData("accepted.json")]
+    [InlineData("capabilities.json")]
+    public async Task Given_changed_frozen_inputs_when_matching_then_the_published_identity_is_rejected(string metadata)
+    {
+        using var environment = new AnalysisExecutionTests.DatabaseEnvironment(null);
+        using var fixture = new AnalysisExecutionTests.ExecutionFixture();
+        var prepared = fixture.Prepare();
+        using (var permit = fixture.Begin())
+        {
+            await AnalysisPublication.Publish(fixture.Root, fixture.Run, prepared, permit);
+            permit.Complete();
+        }
+        File.AppendAllText(Path.Combine(fixture.Store.RunDirectory(fixture.Run.RunId), metadata), " ");
+        Assert.Throws<InvalidDataException>(() => AnalysisIntegrationReconciliation.Reconcile(fixture.Root, fixture.Store));
+        Assert.Equal("done", fixture.Store.ReadRun(fixture.Run.RunId).State);
+    }
+
+    [Fact]
+    public async Task Given_an_existing_caller_when_a_target_is_published_then_incoming_references_are_revisited_without_reanalysis()
+    {
+        using var environment = new AnalysisExecutionTests.DatabaseEnvironment(null);
+        using var fixture = new AnalysisExecutionTests.ExecutionFixture();
+        var source = fixture.Prepare("pricing-node/v1-base/_fixture_pricing.jsonl");
+        using (var permit = fixture.Begin())
+        {
+            await AnalysisPublication.Publish(fixture.Root, fixture.Run, source, permit);
+            permit.Complete();
+        }
+        var sourceRun = fixture.Run;
+        AnalysisIntegrationReconciliation.Reconcile(fixture.Root, fixture.Store);
+        fixture.StartNext();
+        var target = fixture.Prepare("forecast-cs/v1-base/Forecast.Api.jsonl");
+        using (var permit = fixture.Begin())
+        {
+            await AnalysisPublication.Publish(fixture.Root, fixture.Run, target, permit);
+            permit.Complete();
+        }
+        AnalysisIntegrationReconciliation.Reconcile(fixture.Root, fixture.Store);
+        var catalogue = new CapabilityExplorer.Binding.IntegrationMatchCatalogueStore(fixture.Root).Read()!;
+        Assert.Contains(catalogue.Matches, match => match.SourceRunId == sourceRun.RunId
+            && match.TargetRunId == fixture.Run.RunId && match.Status == "suggested");
+        Assert.Equal("done", fixture.Store.ReadRun(sourceRun.RunId).State);
+    }
+
+    [Fact]
+    public async Task Given_failed_reanalysis_or_tampered_artifacts_when_reconciling_then_the_last_complete_catalogue_survives()
+    {
+        using var environment = new AnalysisExecutionTests.DatabaseEnvironment(null);
+        using var fixture = new AnalysisExecutionTests.ExecutionFixture();
+        var prepared = fixture.Prepare();
+        using (var permit = fixture.Begin())
+        {
+            await AnalysisPublication.Publish(fixture.Root, fixture.Run, prepared, permit);
+            permit.Complete();
+        }
+        var published = fixture.Run;
+        AnalysisIntegrationReconciliation.Reconcile(fixture.Root, fixture.Store);
+        fixture.StartNext(published.CapabilityId);
+        fixture.Store.FinishExecution(fixture.Owner, fixture.Identity, 1, terminationConfirmed: true);
+        AnalysisIntegrationReconciliation.Reconcile(fixture.Root, fixture.Store);
+        Assert.Equal(published.RunId, Assert.Single(fixture.Store.ReadPublishedRuns()).RunId);
+        var cataloguePath = Path.Combine(fixture.Root, ".sandbox-cache", "integration-matches.json");
+        var previous = File.ReadAllBytes(cataloguePath);
+        File.AppendAllText(fixture.Destination(prepared.Repositories[0]), "\n");
+        AnalysisIntegrationReconciliation.TryReconcile(fixture.Root, fixture.Store);
+        Assert.Equal(previous, File.ReadAllBytes(cataloguePath));
+        Assert.Equal("done", fixture.Store.ReadRun(published.RunId).State);
+    }
+
+    [Fact]
+    public async Task Given_confirmed_publication_when_reconciling_then_a_separate_revision_bound_catalogue_is_written()
+    {
+        using var environment = new AnalysisExecutionTests.DatabaseEnvironment(null);
+        using var fixture = new AnalysisExecutionTests.ExecutionFixture();
+        var prepared = fixture.Prepare();
+        using (var permit = fixture.Begin())
+        {
+            await AnalysisPublication.Publish(fixture.Root, fixture.Run, prepared, permit);
+            permit.Complete();
+        }
+        AnalysisIntegrationReconciliation.Reconcile(fixture.Root, fixture.Store);
+        var path = Path.Combine(fixture.Root, ".sandbox-cache", "integration-matches.json");
+        Assert.True(File.Exists(path), "Confirmed analyses must produce a separate matching catalogue.");
+        using var catalogue = JsonDocument.Parse(File.ReadAllText(path));
+        var artifact = Assert.Single(catalogue.RootElement.GetProperty("inputs").EnumerateArray());
+        Assert.Equal(fixture.Run.RunId, artifact.GetProperty("runId").GetString());
+        Assert.Equal(fixture.Run.CapabilityId, artifact.GetProperty("capabilityId").GetString());
+        Assert.Equal("done", fixture.Store.ReadRun(fixture.Run.RunId).State);
+        Assert.Equal(Fixtures.Golden("web-ts/v1-base/_fixture_web.jsonl"), File.ReadAllText(fixture.Destination(prepared.Repositories[0])));
+    }
+
     [Fact]
     public async Task Given_existing_artifacts_when_publishing_then_staging_is_preserved_and_atomic_moves_share_artifact_storage()
     {

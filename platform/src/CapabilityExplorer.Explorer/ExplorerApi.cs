@@ -103,6 +103,8 @@ public static class ExplorerApi
     {
         var api = app.MapGroup("/api");
         api.MapArchitectureConnections();
+        api.MapIntegrationSuggestions();
+        api.MapAutomaticIntegrationConnections();
 
         // Cheap poll target: the client reloads when the generation changes (artifacts or capabilities on disk changed).
         api.MapGet("/generation", (ExplorerState state) => new { generation = state.Current.Generation });
@@ -235,6 +237,7 @@ public static class ExplorerApi
         {
             var capability = string.IsNullOrEmpty(cap) ? null : caps.Get(cap);
             var graph = Architecture.Build(index.View(view, caps.Scope(cap)), level ?? (capability is null ? "landscape" : "system"), focus, index.View(view), caps.List(), capability);
+            graph = new AutomaticIntegrationConnections(options.CapabilitiesFile).Apply(graph, index.View(view), caps.List(), capability?.Id);
             return new ArchitectureConnections(options.CapabilitiesFile).Apply(graph, caps.List());
         });
 

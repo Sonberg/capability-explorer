@@ -6,6 +6,94 @@ import playwright from "../../../../../spikes/likec4/node_modules/playwright/ind
 
 const { chromium } = playwright;
 
+for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+  test(`Inferred cluster at ${viewport.width}px opens contract details instead of route review`, async () => {
+    const browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport });
+    page.setDefaultTimeout(5000);
+    const capabilities = [{ id: "source", name: "Planning", repositories: ["source-repo"] },
+      { id: "target", name: "Reference", repositories: ["target-repo"] }];
+    const note = "Contract: incompatible. HTTP method differs: PUT versus PATCH. Gateway ownership is unverified.";
+    await page.route("**/api/**", async route => {
+      const url = new URL(route.request().url());
+      let payload: unknown = {};
+      if (url.pathname === "/api/meta") payload = { generation: 1, capabilities, githubAuth: { source: "host-only", hostManaged: true },
+        interpretation: { enabled: false, chat: false, provider: "none" }, similarity: { database: false }, revisions: [], defaultView: {},
+        artifacts: 2, problems: [], hasSource: false, hasEvaluation: false, nodeKinds: [] };
+      else if (url.pathname === "/api/generation") payload = { generation: 1 };
+      else if (url.pathname === "/api/architecture/connections") payload = { version: 0, connections: [] };
+      else if (url.pathname === "/api/binding-preview/recommendations") payload = { groups: [], owners: [], fingerprint: "fixture", algorithmVersion: "fixture", sourceView: "", targetView: "" };
+      else if (url.pathname === "/api/architecture") payload = { level: "landscape", title: "Landscape", breadcrumbs: [], notes: [],
+        nodes: capabilities.map(capability => ({ id: "cap:" + capability.id, category: "capability", label: capability.name, badges: [] })),
+        edges: [{ id: "automatic:cluster:target", from: "cap:source", to: "cap:target", kind: "http", label: "http (inferred)",
+          count: 4, certainty: "candidate", facts: [], note }] };
+      await route.fulfill({ json: payload });
+    });
+    try {
+      await page.goto(`${process.env.CE_GRAPH_TEST_URL ?? "http://127.0.0.1:5087"}/#/architecture?level=landscape`);
+      await page.locator('.architecture-canvas [data-status="ready"]').waitFor();
+      await page.locator(".architecture-canvas").getByText(/http \(inferred\)/).first().click();
+      await page.locator("aside").getByText(note, { exact: true }).waitFor();
+      assert.equal(await page.getByRole("region", { name: "HTTP capability recommendations" }).count(), 0);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+    } finally { await browser.close(); }
+  });
+}
+
+for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+  test(`LLM integration suggestions at ${viewport.width}px retain evidence without adopting connections`, async () => {
+    const browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport });
+    page.setDefaultTimeout(5000);
+    let manualWrites = 0;
+    const capabilities = [{ id: "source", name: "Planning", repositories: ["source-repo"] },
+      { id: "target", name: "Reference", repositories: ["target-repo"] }];
+    await page.route("**/api/**", async route => {
+      const request = route.request();
+      const url = new URL(request.url());
+      let payload: unknown = {};
+      if (url.pathname === "/api/meta") payload = { generation: 1, capabilities, githubAuth: { source: "host-only", hostManaged: true },
+        interpretation: { enabled: true, chat: true, provider: "fixture" }, similarity: { database: false }, revisions: [], defaultView: {},
+        artifacts: 2, problems: [], hasSource: true, hasEvaluation: false, nodeKinds: [] };
+      else if (url.pathname === "/api/generation") payload = { generation: 1 };
+      else if (url.pathname === "/api/architecture/connections") {
+        if (request.method() !== "GET") manualWrites++;
+        payload = { version: 0, connections: [] };
+      } else if (url.pathname === "/api/architecture/integration-suggestions") {
+        assert.equal(request.headers()["x-ce-integration-suggestions"], "1");
+        const body: unknown = request.postDataJSON();
+        assert.ok(body && typeof body === "object" && "sourceCapabilityId" in body && "targetCapabilityId" in body);
+        assert.equal(body.sourceCapabilityId, "source");
+        assert.equal(body.targetCapabilityId, "target");
+        payload = { status: "suggested", dependency: "observed", compatibility: "unverified", transport: "http", model: "fixture-model",
+          explanation: "Caller uses a gateway path; target identity is not independently established.", inputHash: "a".repeat(64), citations: [1, 2],
+          evidence: [{ id: 1, side: "source", repositoryId: "source-repo", commitSha: "a".repeat(40), path: "Caller.cs", startLine: 10, endLine: 11, text: "await client.PostAsync(url, body);" },
+            { id: 2, side: "target", repositoryId: "target-repo", commitSha: "b".repeat(40), path: "Endpoint.cs", startLine: 20, endLine: 21, text: "[HttpPost(\"query\")]" }] };
+      } else if (url.pathname === "/api/architecture") payload = { level: "landscape", title: "Landscape", breadcrumbs: [], notes: [], edges: [],
+        nodes: capabilities.map(capability => ({ id: "cap:" + capability.id, category: "capability", label: capability.name, badges: [] })) };
+      await route.fulfill({ json: payload });
+    });
+    try {
+      await page.goto(`${process.env.CE_GRAPH_TEST_URL ?? "http://127.0.0.1:5085"}/#/architecture?level=landscape`);
+      await page.getByRole("button", { name: "Validate integrations with model", exact: true }).click();
+      await page.getByLabel("Source capability", { exact: true }).selectOption("source");
+      await page.getByLabel("Target capability", { exact: true }).selectOption("target");
+      await page.getByLabel("Integration query", { exact: true }).fill("ArticleReferenceRepository");
+      await page.getByRole("button", { name: "Assess integration", exact: true }).click();
+      await page.getByText("Target compatibility: unverified", { exact: true }).waitFor();
+      await page.getByText("Source dependency: observed", { exact: true }).waitFor();
+      await page.getByText("Caller uses a gateway path; target identity is not independently established.", { exact: true }).waitFor();
+      assert.equal(manualWrites, 0);
+      assert.equal(await page.getByRole("button", { name: /adopt|confirm connection/i }).count(), 0);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+      await page.locator('.architecture-canvas [data-status="ready"]').waitFor();
+      const output = resolve("../../../../.sandbox-cache/integration-matching-evidence");
+      await mkdir(output, { recursive: true });
+      await page.screenshot({ path: resolve(output, `llm-inspector-${viewport.width}.png`), fullPage: true });
+    } finally { await browser.close(); }
+  });
+}
+
 interface Connection {
   id: string;
   fromCapabilityId: string;

@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using CapabilityExplorer.Binding;
+using CapabilityExplorer.Contracts;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
@@ -9,9 +11,97 @@ namespace CapabilityExplorer.Tests;
 
 public sealed class ArchitectureConnectionsTests : IDisposable
 {
-    private readonly string _root = Directory.CreateTempSubdirectory("ce-graph-connections-").FullName;
+    private readonly string _root = Directory.CreateTempSubdirectory("ce-graph-connections-").FullName
+        .Replace("/var/", "/private/var/", StringComparison.Ordinal);
     private readonly WebApplicationFactory<Program> _factory;
     private readonly HttpClient _client;
+
+    [Fact]
+    public async Task Given_shared_target_clusters_when_viewing_one_capability_then_only_its_incoming_and_outgoing_connections_are_shown()
+    {
+        var source = ArtifactValidator.Validate(Fixtures.Golden("api-cs/v1-base/Sales.Api.jsonl")).Artifact!;
+        var target = ArtifactValidator.Validate(Fixtures.Golden("forecast-cs/v1-base/Forecast.Api.jsonl")).Artifact!;
+        var other = ArtifactValidator.Validate(Fixtures.Golden("pricing-node/v1-base/_fixture_pricing.jsonl")).Artifact!;
+        var from = new BindingPreviewSource(source.Header.RepositoryId, source.Header.CommitSha, source.Header.Unit.Path, source.ContentSha256);
+        var to = new BindingPreviewSource(target.Header.RepositoryId, target.Header.CommitSha, target.Header.Unit.Path, target.ContentSha256);
+        var unrelated = new BindingPreviewSource(other.Header.RepositoryId, other.Header.CommitSha, other.Header.Unit.Path, other.ContentSha256);
+        var match = new IntegrationMatch("outgoing", "first", "second", "source-run", "target-run", from, to,
+            "observed-one", source.Nodes[0].SymbolKey, target.Nodes[0].SymbolKey, "REQUESTS", "http", "inferred",
+            "Caller cluster with unproven deployment identity.", [], [], ClusterId: "outgoing-cluster");
+        var store = new IntegrationMatchCatalogueStore(_root);
+        using (store.AcquireWriter()) store.Write(new(IntegrationMatching.AlgorithmVersion, new string('c', 64), DateTimeOffset.UtcNow,
+            [new("first", "source-run", from), new("second", "target-run", to), new("third", "other-run", unrelated)], 3, 3,
+            [match,
+             match with { Id = "unrelated", SourceCapabilityId = "third", SourceRunId = "other-run", Source = unrelated,
+                 SourceKey = other.Nodes[0].SymbolKey, ClusterId = "unrelated-cluster" },
+             match with { Id = "incoming", SourceCapabilityId = "third", SourceRunId = "other-run", Source = unrelated,
+                 SourceKey = other.Nodes[0].SymbolKey, TargetCapabilityId = "first", TargetRunId = "source-run", Target = from,
+                 TargetKey = source.Nodes[0].SymbolKey, ClusterId = "incoming-cluster" }]));
+        var view = $"api-cs:{source.Header.CommitSha},forecast-cs:{target.Header.CommitSha},pricing-node:{other.Header.CommitSha}";
+        var graph = await _client.GetFromJsonAsync<JsonElement>("/api/architecture?level=system&cap=first&view=" + view);
+        var edges = graph.GetProperty("edges").EnumerateArray().Where(edge => edge.GetProperty("id").GetString()!.StartsWith("automatic:", StringComparison.Ordinal)).ToList();
+        Assert.Contains(edges, edge => edge.GetProperty("id").GetString() == "automatic:outgoing-cluster:second");
+        Assert.Contains(edges, edge => edge.GetProperty("id").GetString() == "automatic:incoming-cluster:first");
+        Assert.DoesNotContain(edges, edge => edge.GetProperty("id").GetString() == "automatic:unrelated-cluster:second");
+    }
+
+    [Fact]
+    public async Task Given_an_inferred_cluster_when_projecting_then_one_candidate_edge_keeps_all_facts_and_contract_warnings()
+    {
+        var source = ArtifactValidator.Validate(Fixtures.Golden("api-cs/v1-base/Sales.Api.jsonl")).Artifact!;
+        var target = ArtifactValidator.Validate(Fixtures.Golden("forecast-cs/v1-base/Forecast.Api.jsonl")).Artifact!;
+        var from = new BindingPreviewSource(source.Header.RepositoryId, source.Header.CommitSha, source.Header.Unit.Path, source.ContentSha256);
+        var to = new BindingPreviewSource(target.Header.RepositoryId, target.Header.CommitSha, target.Header.Unit.Path, target.ContentSha256);
+        var contract = new IntegrationContractAssessment("incompatible", 2, 0, ["HTTP method differs: PUT versus PATCH."], ["Payload schema unavailable."]);
+        var match = new IntegrationMatch("cluster-call-one", "first", "second", "source-run", "target-run", from, to,
+            "observed-one", source.Nodes[0].SymbolKey, target.Nodes[0].SymbolKey, "REQUESTS", "http", "inferred",
+            "Clustered caller observations; contract differs.", [], [], ClusterId: "cluster-test", Contract: contract);
+        var store = new IntegrationMatchCatalogueStore(_root);
+        using (store.AcquireWriter()) store.Write(new(IntegrationMatching.AlgorithmVersion, new string('b', 64), DateTimeOffset.UtcNow,
+            [new("first", "source-run", from), new("second", "target-run", to)], 2, 2,
+            [match, match with { Id = "cluster-call-two", EdgeId = "observed-two" }]));
+        var view = $"api-cs:{source.Header.CommitSha},forecast-cs:{target.Header.CommitSha}";
+        var graph = await _client.GetFromJsonAsync<JsonElement>("/api/architecture?level=landscape&view=" + view);
+        var edges = graph.GetProperty("edges").EnumerateArray().Where(edge => edge.GetProperty("id").GetString()!.StartsWith("automatic:", StringComparison.Ordinal)).ToList();
+        var edge = Assert.Single(edges);
+        Assert.Equal("candidate", edge.GetProperty("certainty").GetString());
+        Assert.Equal(2, edge.GetProperty("count").GetInt32());
+        Assert.Equal(2, edge.GetProperty("facts").GetArrayLength());
+        Assert.Contains("incompatible", edge.GetProperty("note").GetString(), StringComparison.Ordinal);
+        Assert.All(edge.GetProperty("facts").EnumerateArray(), fact => Assert.Equal("candidate", fact.GetProperty("resolution").GetString()));
+        Assert.False(File.Exists(Path.Combine(_root, ".sandbox-cache", "architecture-connections.json")));
+    }
+
+    [Fact]
+    public async Task Given_automatic_results_when_inspecting_then_only_selected_revisions_connect_and_suggestions_remain_separate()
+    {
+        var source = ArtifactValidator.Validate(Fixtures.Golden("api-cs/v1-base/Sales.Api.jsonl")).Artifact!;
+        var target = ArtifactValidator.Validate(Fixtures.Golden("forecast-cs/v1-base/Forecast.Api.jsonl")).Artifact!;
+        var from = new BindingPreviewSource(source.Header.RepositoryId, source.Header.CommitSha, source.Header.Unit.Path, source.ContentSha256);
+        var to = new BindingPreviewSource(target.Header.RepositoryId, target.Header.CommitSha, target.Header.Unit.Path, target.ContentSha256);
+        var match = new IntegrationMatch("verified", "first", "second", "source-run", "target-run", from, to,
+            "observed-edge", source.Nodes[0].SymbolKey, target.Nodes[0].SymbolKey, "REQUESTS", "http", "matched",
+            "Exact declared endpoint identity.", [], []);
+        var store = new IntegrationMatchCatalogueStore(_root);
+        using (store.AcquireWriter()) store.Write(new(IntegrationMatching.AlgorithmVersion, new string('a', 64), DateTimeOffset.UtcNow,
+            [new("first", "source-run", from), new("second", "target-run", to)], 2, 1,
+            [match, match with { Id = "uncertain", Status = "suggested" }]));
+        var view = $"api-cs:{source.Header.CommitSha},forecast-cs:{target.Header.CommitSha}";
+        using var response = await _client.GetAsync("/api/architecture/integration-matches?view=" + view);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1, result.GetProperty("matched").GetInt32());
+        Assert.Equal(1, result.GetProperty("suggested").GetInt32());
+        var graph = await _client.GetFromJsonAsync<JsonElement>("/api/architecture?level=landscape&view=" + view);
+        Assert.Single(graph.GetProperty("edges").EnumerateArray(), edge => edge.GetProperty("id").GetString() == "automatic:verified");
+        Assert.DoesNotContain(graph.GetProperty("edges").EnumerateArray(), edge => edge.GetProperty("id").GetString() == "automatic:uncertain");
+        var changed = ArtifactValidator.Validate(Fixtures.Golden("forecast-cs/v2-contract/Forecast.Api.jsonl")).Artifact!;
+        var historical = await _client.GetFromJsonAsync<JsonElement>("/api/architecture/integration-matches?view=" +
+            $"api-cs:{source.Header.CommitSha},forecast-cs:{changed.Header.CommitSha}");
+        Assert.Equal(0, historical.GetProperty("matched").GetInt32());
+        Assert.False(File.Exists(Path.Combine(_root, ".sandbox-cache", "architecture-connections.json")));
+    }
 
     public ArchitectureConnectionsTests()
     {
@@ -22,6 +112,7 @@ public sealed class ArchitectureConnectionsTests : IDisposable
             {
                 new { id = "first", name = "First", repositories = new[] { new { id = "api-cs", kind = "local", location = Fixtures.RepoDirectory("api-cs"), @ref = "HEAD" } } },
                 new { id = "second", name = "Second", repositories = new[] { new { id = "forecast-cs", kind = "local", location = Fixtures.RepoDirectory("forecast-cs"), @ref = "HEAD" } } },
+                new { id = "third", name = "Third", repositories = new[] { new { id = "pricing-node", kind = "local", location = Fixtures.RepoDirectory("pricing-node"), @ref = "HEAD" } } },
             },
         }));
         _factory = new ExplorerFactory().WithWebHostBuilder(builder => builder

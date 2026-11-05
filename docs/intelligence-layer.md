@@ -60,3 +60,40 @@ Stage 6 starts with difference explanations. They are the narrowest task, becaus
 diff already holds the answer and the model only phrases it. That makes validation strict and
 evaluation easy against the fixture variants (calendar vs active weeks, rounding modes, null
 handling).
+
+## Integration assessments
+
+The file-backed architecture inspector now offers an optional integration
+assessment through the existing configured `IInterpretationModel`. This is a
+second-stage suggestion workflow, not a binding-adoption threshold and not an
+unattended worker-side model batch. The deterministic post-publication matcher
+remains available without a model.
+
+`POST /api/architecture/integration-suggestions` requires a local same-origin
+JSON request and `X-CE-Integration-Suggestions: 1`. It takes source and target
+capability IDs, an optional source repository/query, and the selected revision
+vector. No client-supplied source text or target node catalogue is trusted.
+The server retrieves bounded code pages from offline Git objects at the
+selected analyzed commits, favors concrete integration callers and receiver
+contracts, and excludes test fixtures.
+
+The structured result separates source dependency intent (`observed`,
+`not-observed`, `uncertain`) from target compatibility (`compatible`,
+`incompatible`, `unverified`). Every accepted model result cites supplied source
+and target pages; any returned node key must exist in the supplied catalogue.
+Invalid output abstains. The service will not present model-only compatibility
+as independently established when target identity is unproven. Even admissible
+results remain suggestions or incompatibility findings, never confirmed links.
+
+The evidence, model identity, prompt version and input hash make each result
+inspectable. Requests have a two-minute deadline; cancellation and stale UI
+selection changes discard pending results. Source/page and response byte budgets
+remain bounded. The inspector renders source as text, not executable markup.
+Assessments are returned to the caller, not automatically inserted into the
+proposed interpretation tables or durable graph facts. The live qualification
+receipt is owner-only and separate from settings/credentials.
+
+Citations establish input provenance, not that every model assertion is true.
+The live evaluation found unsupported compatibility claims despite valid
+citations, so deterministic validation and source review remain necessary. See
+[automatic matching evidence](evidence/automatic-integration-matching.md).

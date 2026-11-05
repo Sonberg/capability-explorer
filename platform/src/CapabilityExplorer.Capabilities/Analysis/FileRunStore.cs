@@ -107,6 +107,13 @@ public sealed partial class FileRunStore
         return string.Join('\n', text.Split('\n').TakeLast(maxLines));
     }
     public AnalysisRun ReadRun(string runId) => Load(runId);
+    public IReadOnlyList<AnalysisRun> ReadPublishedRuns() => All()
+        .Where(run => run.State == "done" && run.ManifestHash is not null && run.Effects is { Count: > 0 }
+            && run.Effects.All(effect => effect.State == "confirmed"))
+        .GroupBy(run => run.CapabilityId, StringComparer.Ordinal)
+        .Select(group => group.OrderByDescending(run => run.AcceptedAt)
+            .ThenByDescending(run => run.RunId, StringComparer.Ordinal).First())
+        .OrderBy(run => run.CapabilityId, StringComparer.Ordinal).ToArray();
     public IReadOnlyDictionary<string, AnalysisRun> ReadLatestRuns() => All()
         .GroupBy(run => run.CapabilityId, StringComparer.Ordinal)
         .ToDictionary(group => group.Key, group => group.OrderByDescending(run => run.AcceptedAt)
