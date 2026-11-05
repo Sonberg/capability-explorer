@@ -85,14 +85,17 @@ try {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(fixture(original, state)) });
     });
     for (const [nextState, label] of [
-      ['not-configured', /not configured/i], ['pending', /pending/i],
-      ['partial-failure', /partial.failure/i], ['stale', /stale/i], ['ready', /Embedding projection ready/i],
+      ['not-configured', 'Embeddings not configured'], ['pending', 'Embedding projection pending'],
+      ['partial-failure', 'Embedding projection partially failed'], ['stale', 'Embedding projection stale'],
+      ['ready', 'Embedding projection ready'],
     ]) {
       state = nextState;
-      await page.goto(`${base}/#/explore`);
+      if (state === 'not-configured') await page.goto(`${base}/#/explore`);
+      else await page.reload();
       await coreReady();
-      await panel.getByText(label).first().waitFor();
-      await panel.getByText('PostgreSQL similarity search unavailable', { exact: true }).waitFor();
+      await panel.getByText(label, { exact: true }).waitFor();
+      await panel.getByText(/^PostgreSQL similarity search unavailable\.?$/).waitFor();
+      await panel.getByText('Model identity and exact coverage context', { exact: true }).click();
       if (state !== 'not-configured') assert.match(await panel.innerText(), /synthetic-current-model/);
       if (state === 'stale') assert.match(await panel.innerText(), /synthetic-old-model/);
       if (!['ready', 'stale', 'partial-failure'].includes(state)) {
