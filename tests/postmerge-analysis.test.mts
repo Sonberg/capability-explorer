@@ -187,33 +187,41 @@ test('both make profiles export default and overridden analysis job limits to re
 });
 
 
-test('analysis wrappers pass literal arguments to the host coordinator without touching receipts',()=>{
+test('analysis wrappers pass qualified engines and literal arguments to the host coordinator without touching receipts',()=>{
 for(const [script,command,args,expected] of [
   ['analyze-all','analysis-all',['config with spaces.json'],['--capabilities','config with spaces.json']],
   ['analyze-worker','analysis-worker',[],['--capabilities','capabilities.json']],
   ['analyze','analysis-run',['one','config with spaces.json'],['--capability','one','--capabilities','config with spaces.json']]
- ] satisfies [string,string,string[],string[]][])fixture(root=>{
+ ] satisfies [string,string,string[],string[]][])for(const engine of ['docker','podman'])fixture(root=>{
   mkdirSync(join(root,'scripts/lib'),{recursive:true});
   copyFileSync(join(repository,'scripts',script),join(root,'scripts',script));
   copyFileSync(join(repository,'scripts/lib/container-engine.sh'),join(root,'scripts/lib/container-engine.sh'));
   write(root,'platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll','fixture');
-  write(root,'bin/dotnet','#!/usr/bin/env node\nrequire("fs").writeFileSync("args.json",JSON.stringify(process.argv.slice(2)));process.exit(23);\n');
+  write(root,'bin/dotnet','#!/usr/bin/env node\nrequire("fs").writeFileSync("args.json",JSON.stringify(process.argv.slice(2)));require("fs").writeFileSync("engine.txt",process.env.CE_CONTAINER_ENGINE);process.exit(23);\n');
   chmodSync(join(root,'bin/dotnet'),0o700);
   write(root,receiptPath,'preserve until ownership');
-  const result=spawnSync('bash',['scripts/'+script,...args],{cwd:root,encoding:'utf8',timeout:20000,env:{PATH:join(root,'bin')+':'+process.env.PATH,CE_CONTAINER_ENGINE:'docker'}});
+  const result=spawnSync('bash',['scripts/'+script,...args],{cwd:root,encoding:'utf8',timeout:20000,env:{PATH:join(root,'bin')+':'+process.env.PATH,CE_CONTAINER_ENGINE:engine}});
   assert.equal(result.status,23,result.stderr);
   assert.deepEqual(JSON.parse(readFileSync(join(root,'args.json'),'utf8')).slice(1),[command,...expected]);
+  assert.equal(readFileSync(join(root,'engine.txt'),'utf8'),engine);
   assert.equal(readFileSync(join(root,receiptPath),'utf8'),'preserve until ownership');
  });
 });
 
-test('analysis wrappers reject unqualified engines before invoking the host or changing receipts',()=>fixture(root=>{
+test('analysis wrappers reject invalid engine selections before invoking the host or changing receipts',()=>{
+for(const [script,args] of [['analyze',['one']],['analyze-all',[]],['analyze-worker',[]]] satisfies [string,string[]][])
+for(const engine of ['','invalid'])fixture(root=>{
  mkdirSync(join(root,'scripts/lib'),{recursive:true});
- copyFileSync(join(repository,'scripts/analyze-all'),join(root,'scripts/analyze-all'));
+ copyFileSync(join(repository,'scripts',script),join(root,'scripts',script));
  copyFileSync(join(repository,'scripts/lib/container-engine.sh'),join(root,'scripts/lib/container-engine.sh'));
  write(root,receiptPath,'preserved');
- const result=spawnSync('bash',['scripts/analyze-all'],{cwd:root,encoding:'utf8',timeout:20000,env:{PATH:process.env.PATH,CE_CONTAINER_ENGINE:'podman'}});
+ write(root,'platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll','fixture');
+ write(root,'bin/dotnet','#!/bin/sh\necho invoked > host-invoked\nexit 23\n');
+ chmodSync(join(root,'bin/dotnet'),0o700);
+ const result=spawnSync('bash',['scripts/'+script,...args],{cwd:root,encoding:'utf8',timeout:20000,env:{PATH:join(root,'bin')+':'+process.env.PATH,CE_CONTAINER_ENGINE:engine}});
  assert.equal(result.status,2);
- assert.match(result.stderr,/not qualified/);
+ assert.match(result.stderr,/CE_CONTAINER_ENGINE must be docker or podman/);
+ assert.equal(existsSync(join(root,'host-invoked')),false);
  assert.equal(readFileSync(join(root,receiptPath),'utf8'),'preserved');
-}));
+});
+});
