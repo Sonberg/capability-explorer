@@ -123,7 +123,7 @@ async function qualify(): Promise<void> {
   const feeds = join(probe, 'empty-host-feeds.json');
   writeJson(feeds, { feeds: [] });
   const env: NodeJS.ProcessEnv = { CE_CONTAINER_ENGINE: requested, GITHUB_AUTH: 'none', PACKAGES: '0',
-    ANALYZE_JOBS: '2', ANALYZE_WORKERS: '2', INCLUDE_TESTS: '0', LOCKED: '0', CE_PACKAGE_FEEDS_FILE: feeds,
+    ANALYZE_JOBS: '1', ANALYZE_WORKERS: '2', INCLUDE_TESTS: '0', LOCKED: '0', CE_PACKAGE_FEEDS_FILE: feeds,
     GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0',
     DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1' };
   for (const key of ['PATH', 'HOME', 'TMPDIR', 'DOCKER_HOST', 'DOCKER_CONTEXT', 'DOCKER_CONFIG', 'CE_PODMAN_CONNECTION', 'SANDBOX_EXTRA_CA_FILE']) {

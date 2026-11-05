@@ -239,7 +239,7 @@ analyze: build
 ARTIFACTS ?= fixtures/expected,.sandbox-cache/artifacts
 CAPABILITIES ?= capabilities.json
 GITHUB_AUTH ?= git
-ANALYZE_JOBS ?= 2
+ANALYZE_JOBS ?= 1
 export ANALYZE_JOBS
 PORT ?= 5080
 EXPLORER_SOURCE ?= files
