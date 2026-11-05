@@ -43,7 +43,7 @@ public sealed class DeprecationMigrationTests(PostgresFixture db)
             var applied = await Migrator.MigrateAsync(source);
             Assert.Contains("0008_deprecations.sql", applied);
             Assert.Contains("0009_model_products.sql", applied);
-            if (upgrade) Assert.Equal(2, applied.Count);
+            if (upgrade) Assert.Equal(3, applied.Count);
             Assert.Empty(await Migrator.MigrateAsync(source));
             var repository = new PostgresDeprecationRepository(source);
             var mark = await repository.UpsertAsync(new("group|http|Klarna", DeprecationStatus.Deprecated, "curated"));

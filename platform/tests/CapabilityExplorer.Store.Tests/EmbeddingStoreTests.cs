@@ -22,6 +22,19 @@ public sealed class EmbeddingStoreTests(PostgresFixture db)
     }
 
     [Fact]
+    public async Task Legacy_cache_rejects_incomplete_provider_batches_without_claiming_success()
+    {
+        await new ArtifactImporter(db.DataSource).ImportAsync(Fixtures.Golden("web-ts/v1-base/_fixture_web.jsonl"));
+        var store = new EmbeddingStore(db.DataSource);
+        var model = "malformed-" + Guid.NewGuid().ToString("N");
+        var pending = await store.PendingAsync(model);
+        Assert.NotEmpty(pending);
+        await Assert.ThrowsAsync<InvalidDataException>(() => store.EmbedPendingAsync(model,
+            (texts, _) => Task.FromResult(texts.Skip(1).Select(Fake).ToArray())));
+        Assert.Equal(pending.Count, (await store.PendingAsync(model)).Count);
+    }
+
+    [Fact]
     public async Task Embeds_functions_and_calculations_once_and_finds_the_nearest()
     {
         var importer = new ArtifactImporter(db.DataSource);

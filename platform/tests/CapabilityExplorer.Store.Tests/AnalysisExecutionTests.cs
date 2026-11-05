@@ -13,7 +13,7 @@ using Xunit;
 namespace CapabilityExplorer.Tests;
 
 [Collection(DatabaseCollection.Name)]
-public sealed class AnalysisExecutionTests(PostgresFixture database)
+public sealed partial class AnalysisExecutionTests(PostgresFixture database)
 {
     [Theory]
     [InlineData("CE_CONTAINER_ENGINE")]
@@ -182,8 +182,8 @@ public sealed class AnalysisExecutionTests(PostgresFixture database)
         var prepared = f.Prepare();
         using (var permit = f.Begin())
         {
-            await AnalysisPublication.Publish(f.Root, f.Run, prepared, permit);
-            Assert.NotNull(await new SnapshotStore(database.DataSource).GetPublishedAsync(f.Run.CapabilityId));
+            var confirmed = await AnalysisPublication.Publish(f.Root, f.Run, prepared, permit);
+            Assert.Equal((await new SnapshotStore(database.DataSource).GetPublishedAsync(f.Run.CapabilityId))!.Id, confirmed);
             // Fault boundary: actual effects committed, but terminal journal confirmation never happens.
         }
         var recorded = f.Store.ReadRun(f.Run.RunId);

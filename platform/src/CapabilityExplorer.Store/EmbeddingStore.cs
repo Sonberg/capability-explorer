@@ -95,14 +95,27 @@ public sealed partial class EmbeddingStore(NpgsqlDataSource dataSource)
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(embed);
+        ArgumentOutOfRangeException.ThrowIfLessThan(batchSize, 1);
         var pending = await PendingAsync(model, cancellationToken);
+        int? dimensions = null;
         foreach (var chunk in pending.Chunk(batchSize))
         {
             var vectors = await embed(chunk.Select(p => p.Text).ToList(), cancellationToken);
-            await UpsertAsync(model, chunk.Zip(vectors).ToList(), cancellationToken);
+            ValidateVectors(vectors, chunk.Length, dimensions);
+            dimensions ??= vectors[0].Length;
+            await UpsertAsync(model, chunk.Select((input, index) => (input, vectors[index])).ToList(), cancellationToken);
         }
 
         return pending.Count;
+    }
+
+    internal static void ValidateVectors(float[][] vectors, int count, int? dimensions)
+    {
+        if (vectors is null || vectors.Length != count || vectors.Any(v => v is null || v.Length is < 1 or > 16000))
+            throw new InvalidDataException("Invalid embedding cardinality or dimensions.");
+        var expected = dimensions ?? vectors[0].Length;
+        if (vectors.Any(v => v.Length != expected || v.Any(x => !float.IsFinite(x))))
+            throw new InvalidDataException("Invalid embedding dimensions or values.");
     }
 
     /// <summary>Nearest symbols to an already-embedded symbol. No model call: its stored vector is the query.</summary>

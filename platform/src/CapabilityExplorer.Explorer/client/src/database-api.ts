@@ -20,10 +20,77 @@ export interface DatabaseArtifact { id: number; repositoryId: string; commitSha:
 export interface DatabaseCalculation { artifactId: number; localId: string; key: string; name: string; repositoryId: string; commitSha: string; unit: string; language: string; irHash: string | null }
 export interface DatabaseEdge { artifactId: number; localId: string; from: string; to: string | null; relation: string; resolution: string; derivation: string }
 export interface DatabaseEvidence { id: string; repositoryId: string; commitSha: string; path: string; startLine: number; startColumn: number; endLine: number; endColumn: number }
+export type EmbeddingState = "not-configured" | "pending" | "partial-failure" | "stale" | "ready";
+export interface EmbeddingModelIdentity {
+  id: string;
+  fingerprint: string;
+  recipeVersion: string;
+}
+export interface EmbeddingStatus {
+  snapshotId: string;
+  generation: number;
+  capability: string;
+  selection: Record<string, string>;
+  state: EmbeddingState;
+  configuredModel: EmbeddingModelIdentity | null;
+  coverageModel: EmbeddingModelIdentity | null;
+  coverageScope: "selected-view";
+  similarityAvailable: boolean;
+  snapshotArtifactCount: number;
+  selectedArtifactCount: number;
+  coveredArtifactCount: number;
+  snapshotArtifactsSha256: string | null;
+  countsExact: boolean;
+  counts: { total: number; ready: number; pending: number; failed: number } | null;
+  lastSuccessfulCompletion: string | null;
+  reasonCode: string | null;
+}
+
 export function databaseUrl(endpoint: string, scope: string, values: Record<string, string> = {}) {
   const query = new URLSearchParams(scope);
   Object.entries(values).forEach(([key, value]) => query.set(key, value));
   return `/api/${endpoint}?${query}`;
+}
+
+function selectionIdentity(selection: Record<string, string>) {
+  return JSON.stringify(Object.entries(selection).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
+}
+
+/** Optional metadata never reloads the publication or blocks the core database requests. */
+export function useEmbeddingStatus(scope: string, meta: DatabaseMeta, selection: Record<string, string>) {
+  const [attempt, setAttempt] = useState(0);
+  const selected = selectionIdentity(selection);
+  const url = databaseUrl("embeddings/status", scope, { g: String(meta.generation) });
+  const identity = JSON.stringify([url, meta.snapshotId, meta.generation, meta.capability, selected, attempt]);
+  const [result, setResult] = useState<{
+    identity: string; data?: EmbeddingStatus; loading: boolean; error?: string; errorStatus?: number;
+  }>({ identity: "", loading: true });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setResult({ identity, loading: true });
+    request<EmbeddingStatus>(url, { signal: controller.signal }).then((data) => {
+      if (controller.signal.aborted) return;
+      if (data.snapshotId !== meta.snapshotId || data.generation !== meta.generation
+        || data.capability !== meta.capability || !data.selection || selectionIdentity(data.selection) !== selected) {
+        throw new ApiError("Embedding status does not match the pinned snapshot and selected revisions. Refresh status to retry.", 409, data);
+      }
+      if (!["not-configured", "pending", "partial-failure", "stale", "ready"].includes(data.state)
+        || data.coverageScope !== "selected-view") {
+        throw new Error("The server returned an unsupported embedding status.");
+      }
+      setResult({ identity, data, loading: false });
+    }).catch((error: Error) => {
+      if (!controller.signal.aborted) setResult({
+        identity, loading: false, error: error.message,
+        errorStatus: error instanceof ApiError ? error.status : undefined,
+      });
+    });
+    return () => controller.abort();
+  }, [identity, url, meta.snapshotId, meta.generation, meta.capability, selected]);
+
+  const active = result.identity === identity ? result : { identity, loading: true };
+  return { ...active, refresh: () => setAttempt((previous) => previous + 1) };
 }
 
 /** Retains one successful page and at most 20 continuation tokens, independent of corpus size.

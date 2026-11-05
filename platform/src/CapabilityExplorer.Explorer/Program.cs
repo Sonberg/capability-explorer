@@ -30,7 +30,9 @@ if (source == "files")
 
 // Optional intelligence layer: provider "none" unless configured (interpretation:provider = recorded | openai | foundry)
 // or saved from the Settings page / `make ollama` (modelSettings). Similarity search also needs the database (CE_DATABASE).
-var interpretation = builder.Configuration.GetSection("interpretation").Get<InterpretationOptions>() ?? new InterpretationOptions();
+var interpretation = source == "postgres" ? new InterpretationOptions()
+    : builder.Configuration.GetSection("interpretation").Get<InterpretationOptions>() ?? new InterpretationOptions();
+var embeddingOptions = EmbeddingHostConfiguration.CommandOptions(args);
 var database = builder.Configuration["database"] ?? Environment.GetEnvironmentVariable("CE_DATABASE");
 var dataSource = database is { Length: > 0 } ? NpgsqlDataSource.Create(database) : null;
 if (source == "postgres")
@@ -48,7 +50,11 @@ if (dataSource is not null)
     builder.Services.AddSingleton<DeprecationService>();
     builder.Services.AddSingleton<PostgresDeprecationRemovals>();
 }
-var intelligence = new Intelligence(interpretation, builder.Configuration["modelSettings"] ?? ModelSettings.DefaultPath, dataSource is null ? null : new EmbeddingStore(dataSource)) { DataSource = dataSource };
+var intelligence = new Intelligence(interpretation, builder.Configuration["modelSettings"] ?? ModelSettings.DefaultPath,
+    dataSource is null ? null : new EmbeddingStore(dataSource), metadataOnly: source == "postgres",
+    embeddingConfiguration: source == "postgres"
+        ? () => EmbeddingHostConfiguration.Resolve(embeddingOptions, configuration: key => builder.Configuration[key], contentRoot: builder.Environment.ContentRootPath)
+        : null) { DataSource = dataSource };
 builder.Services.AddSingleton(intelligence);
 builder.Services.AddSingleton(new PackageFeedSettingsStore(builder.Configuration["packageFeedCatalog"] ?? PackageFeedSettingsStore.DefaultPath));
 builder.Services.AddSingleton(new GlossaryReviewService(dataSource));

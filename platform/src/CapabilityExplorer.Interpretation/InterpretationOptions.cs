@@ -20,6 +20,9 @@ public sealed record InterpretationOptions
     /// <summary>Embedding model (similarity search); embeddings are off when unset.</summary>
     public string? EmbeddingModel { get; init; }
 
+    /// <summary>Operator-managed immutable revision identity; changing weights behind an unchanged alias is undetectable.</summary>
+    public string? EmbeddingRevision { get; init; }
+
     /// <summary>Name of the environment variable holding an API key. If it is unset, Entra ID (DefaultAzureCredential) is used for Azure hosts.</summary>
     public string ApiKeyVariable { get; init; } = "CE_FOUNDRY_API_KEY";
 

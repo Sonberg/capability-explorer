@@ -341,6 +341,18 @@ public sealed class OpenAiEmbeddingModelTests
         var model = new OpenAiEmbeddingModel(http, new Uri("https://res.services.ai.azure.com"), "emb", "k", null);
         await Assert.ThrowsAsync<InterpretationUnavailableException>(() => model.EmbedAsync(["a", "b"]));
     }
+
+    [Theory]
+    [InlineData("""{"data":[{"index":0,"embedding":[1]},{"index":0,"embedding":[2]},{"index":1,"embedding":[3]}]}""")]
+    [InlineData("""{"data":[{"index":0,"embedding":[1]},{"index":1,"embedding":[2]},{"index":2,"embedding":[3]}]}""")]
+    [InlineData("""{"data":[{"index":0,"embedding":[]},{"index":1,"embedding":[]}]}""")]
+    [InlineData("""{"data":[{"index":0,"embedding":[1]},{"index":1,"embedding":[1,2]}]}""")]
+    public async Task Malformed_provider_cardinality_indexes_or_dimensions_are_rejected(string body)
+    {
+        using var http = new HttpClient(new Handler(body));
+        var model = new OpenAiEmbeddingModel(http, new Uri("https://model.invalid/v1"), "fake", null, null);
+        await Assert.ThrowsAsync<InterpretationUnavailableException>(() => model.EmbedAsync(["a", "b"]));
+    }
 }
 
 public sealed class ModelSettingsTests

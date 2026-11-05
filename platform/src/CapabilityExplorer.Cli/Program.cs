@@ -18,7 +18,7 @@ using CapabilityExplorer.Cli;
 // The connection string defaults to the CE_DATABASE environment variable.
 const string Usage = """
     usage:
-      ce analysis-worker [--capabilities <file>]
+      ce analysis-worker [--capabilities <file>] [--model-config <shared.json> | --modelSettings <model.json>]
       ce analysis-run --capability <id> [--capabilities <file>]
       ce analysis-all [--capabilities <file>]
       ce collection-freshness --previous <input-vector.json> --current <input-vector.json> [--as-of <ISO-8601-offset-time> --policy <observation-policy.json>]
@@ -32,7 +32,8 @@ const string Usage = """
       ce import [--connection <connection string>] [--bindings <bindings.json>] [--collections <directory,...>] [artifact.jsonl...]  (native artifacts or validated model collections required)
       ce publish [--scope <capability-id|*>] [--view <repo:full-sha,...>] [--bindings <bindings.json>] [--collections <directory,...>] [--expected-generation <n>] [artifact.jsonl...]
       ce reconcile-publication --run <id> --attempt <id> [--connection <connection string>]  (read-only; never authorizes recovery)
-      ce embed [--connection <connection string>] [--settings <model.json>]  (model from CE_MODEL_ENDPOINT + CE_EMBEDDING_MODEL, else the saved settings: make ollama / explorer Settings)
+      ce embed [--snapshot <id> | --scope <capability-id|*>] [--connection <connection string>] [--model-config <shared.json>] [--modelSettings <model.json> | --settings <model.json>] [--interpretation:<option> <value>]
+        Embedding configuration shared by API, analysis and retry: appsettings[.environment].json, interpretation__* / modelSettings environment, then --model-config / CE_MODEL_CONFIG, then explicit options; CE_MODEL_SETTINGS selects the saved settings file. CE_MODEL_ENDPOINT + CE_EMBEDDING_MODEL retain final precedence.
       ce export (disabled: use the exclusive host analysis worker)
       ce evaluate --expected <dir> --actual <dir> [--config <evaluation.json>] [--repos <dir>] [--repository <id[,id]>] [--language <csharp,typescript,...>] [--json <report.json>] [--max-findings <n>]
     """;
@@ -44,7 +45,7 @@ if (args.Length == 0)
 }
 
 var command = args[0];
-var strictCollectionOptions = command is "collect" or "validate-collection" or "collection-freshness";
+var strictCollectionOptions = command is "collect" or "validate-collection" or "collection-freshness" or "embed";
 var options = new Dictionary<string, string>(StringComparer.Ordinal);
 var files = new List<string>();
 for (var i = 1; i < args.Length; i++)
@@ -163,32 +164,7 @@ switch (command)
     }
 
     case "embed":
-    {
-        // Environment first (CI, scripts), then what `make ollama` or the explorer's Settings page saved.
-        var endpoint = Environment.GetEnvironmentVariable("CE_MODEL_ENDPOINT");
-        var settings = endpoint is { Length: > 0 }
-            ? new ModelSettings(endpoint, null, Environment.GetEnvironmentVariable("CE_EMBEDDING_MODEL"), null)
-            : ModelSettings.Load(options.GetValueOrDefault("settings") ?? ModelSettings.DefaultPath);
-        if (settings?.ApplyTo(new InterpretationOptions()).CreateEmbeddingModel() is not { } model)
-        {
-            Console.Error.WriteLine("no embedding model: run `make ollama`, save one in the explorer (Settings), or set CE_MODEL_ENDPOINT and CE_EMBEDDING_MODEL");
-            return 2;
-        }
-
-        await using var db = OpenDatabase();
-        await Migrator.MigrateAsync(db);
-        try
-        {
-            var count = await new EmbeddingStore(db).EmbedPendingAsync(model.Id, (texts, ct) => model.EmbedAsync(texts, ct));
-            Console.WriteLine(count == 0 ? $"embeddings up to date ({model.Id})" : $"embedded {count} symbol(s) with {model.Id}");
-            return 0;
-        }
-        catch (InterpretationUnavailableException e)
-        {
-            Console.Error.WriteLine($"embed: {e.Message}");
-            return 1;
-        }
-    }
+        return await EmbeddingCommand.Run(options, files);
 
     case "export":
     {
