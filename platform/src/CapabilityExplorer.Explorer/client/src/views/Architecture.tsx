@@ -10,6 +10,8 @@ import { ResolutionPill, SymbolLink } from "../components/symbols";
 import { Button, ErrorBox, Key, Mono, Pill, type Tone } from "../components/ui";
 import { usePublishFocus } from "../focus";
 import { href, symbolHref, useApi, useSelection } from "../state";
+import { ArchitectureFilterControls, type ArchitectureKindFacet } from "../components/architecture-filter-controls";
+import { ArchitectureRecoveryLists } from "../components/architecture-recovery-lists";
 
 // ---------------------------------------------------------------- styling
 
@@ -86,6 +88,39 @@ const certaintyText: Record<ArchEdge["certainty"], { label: string; tone: Tone; 
   unresolved: { label: "unresolved", tone: "bad", title: "Target not statically known" },
 };
 
+const MAX_NODE_BUDGET = 100;
+const MAX_EDGE_BUDGET = 100;
+const MAX_PINS = 20;
+const MAX_OMITTED_NODES = 200;
+const DEFAULT_HIDDEN_KINDS = ["declares"];
+
+interface ArchitectureFilters {
+  nodeBudget: number;
+  edgeBudget: number;
+  query: string;
+  hideKinds: string[];
+  include: string[];
+}
+
+function sortedUnique(values: string[]): string[] {
+  return [...new Set(values)].sort();
+}
+
+function sameStrings(left: string[] | undefined, right: string[]): boolean {
+  return left !== undefined && JSON.stringify(sortedUnique(left)) === JSON.stringify(right);
+}
+
+function graphMatchesFilters(graph: Graph | undefined, filters: ArchitectureFilters): graph is Graph {
+  const budget = graph?.budget;
+  const applied = graph?.filters;
+  return !!budget && !!applied &&
+    budget.nodeBudget === filters.nodeBudget &&
+    budget.edgeBudget === filters.edgeBudget &&
+    (applied.query ?? "") === filters.query &&
+    sameStrings(applied.hideKinds, filters.hideKinds) &&
+    sameStrings(applied.include, filters.include);
+}
+
 // ---------------------------------------------------------------- view
 
 export function ArchitectureView({ params }: { params: URLSearchParams }) {
@@ -99,26 +134,108 @@ export function ArchitectureView({ params }: { params: URLSearchParams }) {
 
 type Selected = { type: "node"; node: ArchNode } | { type: "edge"; edge: ArchEdge } | null;
 
-let rememberedHidden = new Set<string>(["declares"]);
+let rememberedHidden = new Set<string>(DEFAULT_HIDDEN_KINDS);
 
 function Canvas({ level, focus }: { level: string; focus?: string }) {
   const { scope, setCapability, capability, meta } = useSelection();
-  const { data, error, loading, reload } = useApi<Graph>(`/api/architecture?level=${level}${focus ? `&focus=${encodeURIComponent(focus)}` : ""}&${scope}`);
   const connections = useApi<ManualConnectionSnapshot>("/api/architecture/connections");
   const [editor, setEditor] = useState<ConnectionDraft | null>(null);
   const [recommendationsOpen, setRecommendationsOpen] = useState(false);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
-  const [hidden, setHidden] = useState<Set<string>>(rememberedHidden);
+  const [queryInput, setQueryInput] = useState("");
+  const [nodeBudgetInput, setNodeBudgetInput] = useState(String(MAX_NODE_BUDGET));
+  const [edgeBudgetInput, setEdgeBudgetInput] = useState(String(MAX_EDGE_BUDGET));
+  const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(rememberedHidden);
+  const [pins, setPins] = useState<string[]>([]);
+  const [filters, setFilters] = useState<ArchitectureFilters>({
+    nodeBudget: MAX_NODE_BUDGET,
+    edgeBudget: MAX_EDGE_BUDGET,
+    query: "",
+    hideKinds: sortedUnique([...rememberedHidden]),
+    include: [],
+  });
+  const [filterError, setFilterError] = useState("");
+  const [awaitingRefresh, setAwaitingRefresh] = useState(false);
+  const [refreshStarted, setRefreshStarted] = useState(false);
   const [selected, setSelected] = useState<Selected>(null);
-  const graph = loading ? undefined : data;
-  const hiddenEdgeIds = useMemo(() => new Set(graph?.edges.filter(edge => hidden.has(edge.kind)).map(edge => edge.id) ?? []), [graph, hidden]);
+  const params = useMemo(() => {
+    const search = new URLSearchParams({ level, nodeBudget: String(filters.nodeBudget), edgeBudget: String(filters.edgeBudget) });
+    if (focus) search.set("focus", focus);
+    if (filters.query) search.set("q", filters.query);
+    for (const kind of filters.hideKinds) search.append("hideKind", kind);
+    for (const id of filters.include) search.append("include", id);
+    return `${search.toString()}&${scope}`;
+  }, [level, focus, scope, filters]);
+  const { data, error, loading, reload } = useApi<Graph>(`/api/architecture?${params}`);
+  const matchesAppliedFilters = graphMatchesFilters(data, filters);
+  const waitingForResponse = awaitingRefresh || loading || (!!data && !matchesAppliedFilters);
+  const graph = waitingForResponse ? undefined : data;
+  const budget = graph?.budget;
+  const requestError = error ?? (!awaitingRefresh && !loading && data && !matchesAppliedFilters
+    ? "The architecture response does not match the applied filters. Apply the filters again to retry."
+    : undefined);
   usePublishFocus(selected?.type === "node" && graph
     ? { kind: selected.node.category, label: selected.node.label, key: selected.node.symbolKey } : null);
   const lastClick = useRef({ id: "", at: 0 });
-  useEffect(() => { rememberedHidden = hidden; }, [hidden]);
-  const snapshotKey = `${scope}|${level}|${focus ?? ""}`;
+  useEffect(() => {
+    if (awaitingRefresh && loading) setRefreshStarted(true);
+    else if (awaitingRefresh && refreshStarted && !loading) {
+      setAwaitingRefresh(false);
+      setRefreshStarted(false);
+    }
+  }, [awaitingRefresh, loading, refreshStarted]);
+  const snapshotKey = JSON.stringify([scope, level, focus ?? "", filters.nodeBudget, filters.edgeBudget, filters.query, filters.hideKinds, filters.include]);
 
-  const kinds = useMemo(() => [...new Set(graph?.edges.map((e) => e.kind) ?? [])].sort(), [graph]);
+  const kinds: ArchitectureKindFacet[] = graph?.facets?.kinds ?? [];
+  const selectedNodeId = selected?.type === "node" ? selected.node.id : undefined;
+  const applyFilters = (extraPins: string[] = []) => {
+    const nodeBudget = Number(nodeBudgetInput);
+    const edgeBudget = Number(edgeBudgetInput);
+    const query = queryInput.trim();
+    const hideKinds = sortedUnique([...hiddenKinds]);
+    const include = sortedUnique([...pins, ...extraPins, ...(selectedNodeId ? [selectedNodeId] : [])]);
+    let validationError = "";
+    if (!Number.isInteger(nodeBudget) || nodeBudget < 1 || nodeBudget > MAX_NODE_BUDGET) {
+      validationError = `Node budget must be between 1 and ${MAX_NODE_BUDGET}.`;
+    } else if (!Number.isInteger(edgeBudget) || edgeBudget < 1 || edgeBudget > MAX_EDGE_BUDGET) {
+      validationError = `Edge budget must be between 1 and ${MAX_EDGE_BUDGET}.`;
+    } else if (query.length > 200) {
+      validationError = "Find elements must be 200 characters or fewer.";
+    } else if (hideKinds.length > 32) {
+      validationError = "Select no more than 32 hidden kinds.";
+    } else if (include.length > MAX_PINS || include.some(id => id.length > 4096)) {
+      validationError = `Use no more than ${MAX_PINS} pins, each with an ID of at most 4096 characters.`;
+    } else if (include.length > nodeBudget) {
+      validationError = "Node budget must be at least the number of pinned elements.";
+    }
+    if (validationError) {
+      setFilterError(validationError);
+      return;
+    }
+    setFilterError("");
+    setQueryInput(query);
+    setPins(include);
+    setFilters({ nodeBudget, edgeBudget, query, hideKinds, include });
+    rememberedHidden = new Set(hideKinds);
+    setAwaitingRefresh(true);
+    setRefreshStarted(false);
+    reload();
+  };
+  const resetFilters = () => {
+    const hideKinds = sortedUnique(DEFAULT_HIDDEN_KINDS);
+    const include = selectedNodeId ? [selectedNodeId] : [];
+    setQueryInput("");
+    setNodeBudgetInput(String(MAX_NODE_BUDGET));
+    setEdgeBudgetInput(String(MAX_EDGE_BUDGET));
+    setHiddenKinds(new Set(hideKinds));
+    setPins(include);
+    setFilterError("");
+    setFilters({ nodeBudget: MAX_NODE_BUDGET, edgeBudget: MAX_EDGE_BUDGET, query: "", hideKinds, include });
+    rememberedHidden = new Set(hideKinds);
+    setAwaitingRefresh(true);
+    setRefreshStarted(false);
+    reload();
+  };
   // Opening a capability selects it: the levels below are scoped by the selection, not by focus.
   const open = (to: { level: string; focus?: string }) => {
     if (to.level === "system" && to.focus) setCapability(to.focus);
@@ -178,27 +295,40 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
           ))}
         </nav>
         <Pill tone="info">{{ landscape: "1 · landscape", system: "2 · capability", repository: "3 · components", component: "4 · code", requests: "3 · requests" }[level] ?? level}</Pill>
-        <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-          {kinds.map((k) => (
-            <label key={k} className="flex cursor-pointer items-center gap-1">
-              <input
-                type="checkbox"
-                checked={!hidden.has(k)}
-                onChange={(e) => setHidden((h) => { const next = new Set(h); if (e.target.checked) next.delete(k); else next.add(k); return next; })}
-              />
-              <span className="inline-block h-0.5 w-4" style={{ background: kindColor[k] }} />
-              {kindLabel[k] ?? k}
-            </label>
-          ))}
-        </span>
       </div>
-      {error && <ErrorBox message={error} />}
+      <ArchitectureFilterControls
+        query={queryInput} onQueryChange={setQueryInput}
+        nodeBudget={nodeBudgetInput} onNodeBudgetChange={setNodeBudgetInput}
+        edgeBudget={edgeBudgetInput} onEdgeBudgetChange={setEdgeBudgetInput}
+        hiddenKinds={hiddenKinds} onHiddenKindsChange={setHiddenKinds}
+        kinds={kinds} pins={pins} selectedNodeId={selectedNodeId} error={filterError}
+        maxNodeBudget={MAX_NODE_BUDGET} maxEdgeBudget={MAX_EDGE_BUDGET}
+        onApply={() => applyFilters()} onReset={resetFilters}
+        onUnpin={id => setPins(current => current.filter(pin => pin !== id))}
+      />
+      {requestError && <ErrorBox message={requestError} />}
       <div className="architecture-panels grid min-h-0 flex-1 gap-3">
-        <div className="architecture-canvas relative min-h-[420px] min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-          {loading && !graph && <div className="absolute inset-0 grid place-items-center text-zinc-500">Laying out…</div>}
+        <div role="region" aria-label="Architecture graph" data-input-identity={snapshotKey}
+          data-node-budget={filters.nodeBudget} data-edge-budget={filters.edgeBudget}
+          data-query={filters.query} data-hide-kinds={JSON.stringify(filters.hideKinds)}
+          data-included-node-ids={JSON.stringify(filters.include)}
+          className="architecture-canvas relative min-h-[420px] min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+          {waitingForResponse && <div className="absolute inset-0 z-10 grid place-items-center bg-white/80 text-zinc-500 dark:bg-zinc-950/80">Preparing filtered graph…</div>}
           {graph && graph.nodes.length === 0 && <div className="absolute inset-0 grid place-items-center text-zinc-500">Nothing to draw at this level for the selected scope.</div>}
+          {budget && <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-x-3 rounded-md border border-zinc-300 bg-white/90 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-950/90" data-architecture-counts
+            data-total-nodes={budget.totalNodes} data-matched-nodes={budget.matchedNodes} data-shown-nodes={budget.shownNodes}
+            data-total-edges={budget.totalEdges} data-matched-edges={budget.matchedEdges} data-shown-edges={budget.shownEdges}>
+            <span>Nodes: {budget.totalNodes} total · {budget.matchedNodes} matched · {budget.shownNodes} shown</span>
+            <span>Edges: {budget.totalEdges} total · {budget.matchedEdges} matched · {budget.shownEdges} shown</span>
+          </div>}
+          {budget && (budget.nodesTruncated || budget.edgesTruncated) && <div className="absolute left-3 top-12 z-10 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-200">
+            {budget.nodesTruncated && "Some matching nodes are omitted; search, pin an omitted node, or drill down."}
+            {budget.nodesTruncated && budget.edgesTruncated && " "}
+            {budget.edgesTruncated && "Some matching relationships are omitted by the edge budget."}
+          </div>}
+          {graph?.budget?.missingPins.length ? <div className="absolute bottom-3 left-3 z-10 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-200">Pins not found in this graph: {graph.budget.missingPins.join(", ")}</div> : null}
           {graph && graph.nodes.length > 0 && <LiveArchitectureCanvas
-            graph={graph} hiddenEdgeIds={hiddenEdgeIds} snapshotKey={snapshotKey}
+            graph={graph} snapshotKey={snapshotKey}
             selectedId={selected?.type === "node" ? selected.node.id : selected?.edge.id}
             onNodeSelect={item => {
               const node = graph?.nodes.find(node => node.id === item.id);
@@ -222,7 +352,6 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
             }}
             onClearSelection={() => setSelected(null)}
           />}
-
         </div>
         <aside className="min-h-0 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-3 text-[13px] dark:border-zinc-800 dark:bg-zinc-900">
           {suggestionsOpen ? <IntegrationSuggestionInspector scope={scope} onClose={() => setSuggestionsOpen(false)} /> : recommendationsOpen ? <HttpRecommendationInspector scope={scope} focus={recommendationFocus} onClose={() => setRecommendationsOpen(false)} /> : editor ? <ArchitectureConnectionEditor key={editor.id ?? `${editor.fromCapabilityId}|${editor.sourceKey ?? "new"}`} draft={editor} capabilities={meta.capabilities}
@@ -249,6 +378,13 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
           {!editor && connections.error && <div role="alert" className="mt-3 break-words text-xs text-red-700 dark:text-red-300">{connections.error}</div>}
         </aside>
       </div>
+      {graph && <ArchitectureRecoveryLists
+        graph={graph} selectedNodeId={selectedNodeId} pins={pins}
+        maxPins={MAX_PINS} maxOmittedNodes={MAX_OMITTED_NODES}
+        onSelect={node => setSelected({ type: "node", node })}
+        onDrill={drill}
+        onPin={id => applyFilters([id])}
+      />}
     </div>
   );
 }

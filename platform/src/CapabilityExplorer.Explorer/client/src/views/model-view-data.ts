@@ -61,6 +61,10 @@ export function scopeFrom(value: { snapshot: string; generation: number; selecti
   return { snapshot: value.snapshot, generation: value.generation, selection: value.selection };
 }
 
+export function modelSelectionUpdates(id: string): Record<string, string | undefined> {
+  return { id, element: undefined, diagram: undefined };
+}
+
 export function scopedRequest(scope: string, snapshot: ModelScope, cursor?: string) {
   const query = new URLSearchParams(scope);
   query.set("snapshot", snapshot.snapshot);

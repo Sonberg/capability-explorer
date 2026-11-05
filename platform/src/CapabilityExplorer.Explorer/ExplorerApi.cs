@@ -1,3 +1,4 @@
+using System.Globalization;
 using CapabilityExplorer.Binding;
 using CapabilityExplorer.Capabilities;
 using CapabilityExplorer.Contracts;
@@ -106,15 +107,21 @@ public static class ExplorerApi
         api.MapIntegrationSuggestions();
         api.MapAutomaticIntegrationConnections();
 
-        // Cheap poll target: the client reloads when the generation changes (artifacts or capabilities on disk changed).
-        api.MapGet("/generation", (ExplorerState state) => new { generation = state.Current.Generation });
+        // Snapshot identity also changes on restart, when the numeric generation can still be zero.
+        api.MapGet("/generation", (ExplorerState state) =>
+        {
+            var current = state.Current;
+            return new { generation = current.Generation, snapshotId = current.ModelSnapshotId };
+        });
 
         api.MapGet("/meta", (ExplorerState state, InterpretationLayer interpretation, Intelligence intelligence) => SourceCheckApi.Respond(() =>
         {
-            var (index, capabilities, generation) = state.Current;
+            var current = state.Current;
+            var (index, capabilities, generation) = current;
             return Results.Ok(new
             {
                 generation,
+                snapshotId = current.ModelSnapshotId,
                 capabilities = capabilities.List().Select(c => new { c.Id, c.Name, repositories = c.Repositories.Select(r => r.Id) }),
                 githubAuth = new { source = "host-only", hostManaged = true },
                 interpretation = new { enabled = interpretation.Enabled, chat = interpretation.Chat is not null, provider = interpretation.Options.Provider, model = interpretation.Explanations?.ModelId },
@@ -132,8 +139,51 @@ public static class ExplorerApi
         // Every view can be scoped to a capability (cap=<id>): only its repositories, starting from its locked revisions.
         api.MapGet("/view", (ExplorerIndex index, CapabilityService caps, string? view, string? cap) => index.View(view, caps.Scope(cap)).Selection);
 
-        api.MapGet("/search", (ExplorerIndex index, CapabilityService caps, string? q, string? kind, string? repo, string? view, string? cap) =>
-            Queries.Search(index.View(view, caps.Scope(cap)), q, kind, repo));
+        api.MapGet("/search", (ExplorerState state, ExplorerQueryCursor cursors, string? q, string? kind, string? repo, string? view, string? cap, int? limit, string? cursor, Guid? snapshot) =>
+        {
+            var current = state.Current;
+            if (!string.IsNullOrEmpty(cap) && current.Capabilities.Get(cap) is null)
+                return Results.BadRequest(new { code = "unknown-capability", error = "unknown capability" });
+            var selected = current.Index.View(view, current.Capabilities.Scope(cap));
+            if (limit is null && cursor is null)
+            {
+                return Results.Ok(Queries.Search(selected, q, kind, repo));
+            }
+
+            var size = limit ?? 50;
+            if (size is < 1 or > 100)
+            {
+                return Results.BadRequest(new { error = "page limit must be 1 to 100" });
+            }
+
+            if (snapshot is not null && snapshot != current.ModelSnapshotId)
+                return Results.Conflict(new { code = "stale-snapshot", error = "Results changed. Reload the results to continue." });
+            if (cursor is not null && snapshot is null)
+                return Results.BadRequest(new { code = "invalid-cursor", error = "continuation requires snapshot" });
+
+            var context = new ExplorerQueryContext(current.ModelSnapshotId, cap ?? "", current.Generation, selected.Selection);
+            var filter = System.Text.Json.JsonSerializer.Serialize(new { endpoint = "file-search.v1", q = (q ?? "").Trim(), kind = kind ?? "", repo = repo ?? "", size });
+            var offset = 0;
+            try
+            {
+                var position = cursors.Decode(context, filter, cursor);
+                if (position is not null && (position.Length != 1
+                    || !int.TryParse(position[0], NumberStyles.None, CultureInfo.InvariantCulture, out offset) || offset < 0))
+                    return Results.BadRequest(new { code = "invalid-cursor", error = "invalid continuation cursor" });
+            }
+            catch (ArgumentException)
+            {
+                return Results.BadRequest(new { code = "invalid-cursor", error = "invalid or incompatible continuation cursor" });
+            }
+            var page = Queries.SearchSlice(selected, q, kind, repo, offset, size);
+            if (offset > page.Total)
+                return Results.BadRequest(new { code = "invalid-cursor", error = "cursor is outside the result set" });
+            var next = page.Items.Count + offset < page.Total
+                ? cursors.Encode(context, filter, (offset + page.Items.Count).ToString(CultureInfo.InvariantCulture))
+                : null;
+            return Results.Ok(new { items = page.Items, nextCursor = next, total = page.Total,
+                snapshotId = current.ModelSnapshotId, generation = current.Generation });
+        });
 
         // Similarity (pgvector): stored vectors of the configured embedding model, limited to what the view shows.
         api.MapGet("/similar", async (ExplorerIndex index, CapabilityService caps, Intelligence intelligence, string key, string? view, string? cap, int? k, CancellationToken ct) =>
@@ -233,12 +283,22 @@ public static class ExplorerApi
             GlossaryConcepts.Build(index.View(view, caps.Scope(cap)), Membership(caps)));
 
         // Layered architecture canvas: level = landscape | system | repository | component. The landscape ignores cap.
-        api.MapGet("/architecture", (ExplorerIndex index, CapabilityService caps, ExplorerOptions options, string? level, string? focus, string? view, string? cap) =>
+        api.MapGet("/architecture", (HttpRequest request, ExplorerIndex index, CapabilityService caps, ExplorerOptions explorerOptions, string? level, string? focus, string? view, string? cap) =>
         {
+            if (!ArchitectureBudgeting.TryParse(request.Query, out var budgetOptions, out var error))
+                return Results.BadRequest(new { error });
             var capability = string.IsNullOrEmpty(cap) ? null : caps.Get(cap);
-            var graph = Architecture.Build(index.View(view, caps.Scope(cap)), level ?? (capability is null ? "landscape" : "system"), focus, index.View(view), caps.List(), capability);
-            graph = new AutomaticIntegrationConnections(options.CapabilitiesFile).Apply(graph, index.View(view), caps.List(), capability?.Id);
-            return new ArchitectureConnections(options.CapabilitiesFile).Apply(graph, caps.List());
+            try
+            {
+                var graph = Architecture.Build(index.View(view, caps.Scope(cap)), level ?? (capability is null ? "landscape" : "system"), focus, index.View(view), caps.List(), capability,
+                    budgetOptions.NodeBudget, budgetOptions.EdgeBudget, budgetOptions.HideKinds, budgetOptions.Query, budgetOptions.Include);
+                graph = new AutomaticIntegrationConnections(explorerOptions.CapabilitiesFile).Apply(graph, index.View(view), caps.List(), capability?.Id);
+                return Results.Ok(new ArchitectureConnections(explorerOptions.CapabilitiesFile).Apply(graph, caps.List()));
+            }
+            catch (ArchitectureBudgetRejectedException e)
+            {
+                return Results.BadRequest(new { error = e.Message });
+            }
         });
 
         api.MapGet("/changes", (ExplorerIndex index, string repo, string from, string to) =>

@@ -97,3 +97,79 @@ Citations establish input provenance, not that every model assertion is true.
 The live evaluation found unsupported compatibility claims despite valid
 citations, so deterministic validation and source review remain necessary. See
 [automatic matching evidence](evidence/automatic-integration-matching.md).
+
+## Snapshot embedding projection status
+
+PostgreSQL embedding projections are optional derived data, not a condition of
+core snapshot publication. The confirmed publication ID pins enrichment; a
+later publication must not redirect an in-flight operation to another snapshot.
+The standalone `ce embed --snapshot <uuid>` path retries that same retained
+snapshot without changing its published generation.
+
+Status, automatic enrichment and standalone retry share lazy embedding
+configuration. Use the same `CE_MODEL_CONFIG` JSON file in all processes; its
+`interpretation` object contains model options, and its optional `modelSettings`
+path is relative to that JSON file. The same sources also support
+`appsettings[.<environment>].json`, `interpretation__*` environment values,
+`CE_MODEL_SETTINGS`, and explicit `--interpretation:<option>` /
+`--modelSettings` arguments. Repeat process-local arguments for independently
+started processes. `CE_MODEL_ENDPOINT` and `CE_EMBEDDING_MODEL` retain final
+precedence; `CE_EMBEDDING_REVISION` distinguishes revisions behind an alias.
+
+An authorized operator with `CE_DATABASE` configured can retry without
+republishing:
+
+```sh
+CE_MODEL_CONFIG=/absolute/path/embedding-host.json ce embed --snapshot <uuid>
+```
+
+Alternatively, supply `--connection` using the existing database credential
+mechanism. Explorer's **Refresh status / Retry status** buttons only read
+metadata; they never execute this command or invoke the provider.
+
+Projection identity includes the exact snapshot and a model fingerprint
+covering provider, canonical endpoint, deployment, explicit revision when
+available, and input recipe. Credentials are excluded from the fingerprint and
+status response. Changing provider weights behind an unchanged deployment alias
+cannot be detected: change its model/revision identity to distinguish the result.
+
+Vectors belong to snapshot occurrences `(artifact_id, node_local_id)`, not a
+mutable latest-per-symbol cache. A whole-snapshot writer records its membership
+digest and per-artifact enumeration seals/counters. Replaying a successful
+projection does not call the provider again or overwrite ready vectors; retrying
+failure cannot increment counters twice. Even artifacts with zero eligible
+occurrences must be explicitly enumerated and sealed.
+
+`GET /api/embeddings/status?cap=<scope>&snapshot=<uuid>&view=<repo:sha,...>`
+reports the pinned snapshot, effective selection,
+configured/covered model identities, coverage, completion time and counts.
+Reads inspect bounded projection/artifact metadata, never enumerate nodes or
+scan vectors. Selected-view readiness considers only the selected artifacts;
+an unrelated artifact failure does not invalidate their completed projection.
+`coveredArtifactCount` counts fully ready artifacts, not enumeration seals;
+a sealed artifact can still contain failed occurrences.
+
+| State | Meaning |
+|---|---|
+| `not-configured` | No embedding model is configured; core browsing remains available. |
+| `pending` | Matching work is absent or incomplete, or historical coverage is unknown. |
+| `partial-failure` | Relevant matching work has a recorded failure; standalone retry is available. |
+| `stale` | A completed historical projection covers the view, but not the configured model identity. |
+| `ready` | Every selected artifact is sealed and all its eligible occurrences are ready. |
+
+Counts are explicitly `null` until selected enumeration is complete, not
+silently zero. An absent projection cannot make an empty selection vacuously
+ready. Historical lookup considers only the indexed latest fully completed
+projection for the same snapshot; partial older model histories are not scanned
+to infer coverage. Unknown history remains `pending`. Invalid configuration and
+request failures remain explicit errors, distinct from missing configuration.
+
+**Projection ready is not similarity-search ready.** PostgreSQL similarity
+search remains unsupported; the status exposes `similarityAvailable: false`
+and Explorer says so. This endpoint neither starts enrichment nor changes core
+generation. The legacy file-mode/global cache behavior is unchanged and is not
+used to certify historical snapshot coverage.
+
+Retention removes owned projection metadata/vectors with snapshot membership
+or snapshot pruning. Retained snapshots keep their own immutable vectors.
+Functional status tests are not a latency or reference-envelope SLO claim.

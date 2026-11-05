@@ -15,13 +15,13 @@ No existing status was changed to produce this index.
 | Red | D: draft | Not yet ready for decision review; not a severity rating. |
 | Gray | H: historical | Rejected, deprecated or superseded; retain the decision and replacement links. |
 
-There are **35 local records: 1 scoped accepted, 34 proposed, 0 draft,
+There are **37 local records: 1 scoped accepted, 36 proposed, 0 draft,
 0 historical**. MADR-0016 is accepted for the **operator workflow only**.
 Both `0005` paths are distinct records, named `0005-G` and `0005-PR` below solely
 for navigation. No `0015` exists; this is a numbering gap, not a missing file
-invented by the index. No local `0035` record exists; that slot is left for the
-forthcoming SLO decision referenced by #81. MADR-0025 landed in owner-merged #55
-and remains proposed.
+invented by the index. MADR-0035 covers measurable SLOs, MADR-0036 covers
+configurable evidence retention, and MADR-0037 covers HTTP recommendations.
+MADR-0025 landed in owner-merged #55 and remains proposed.
 
 | ID | Title / record | Declared status and scope |
 |---|---|---|
@@ -59,7 +59,9 @@ and remains proposed.
 | 0032 | [Drive implementation with behavior scenarios and red-green-refactor tests](0032-tdd-bdd-delivery.md) | P: repository-wide adoption proposed; operator-directed TDD/BDD workflow, no new framework mandated |
 | 0033 | [Keep authored models, code candidates and collector authority separate](0033-bounded-model-and-collector-evidence.md) | P: bounded evidence and offline collection; no central deployment or business approval |
 | 0034 | [View revision-bound original models without granting execution authority](0034-revision-bound-read-only-model-views.md) | P: explicit source attachments, immutable scope and read-only viewer boundary; no hard CPU deadline or approval claim |
-| 0036 | [Recommend HTTP capabilities from observed route coverage without adopting bindings](0036-http-capability-recommendations.md) | P: bounded HTTP recommendations and explicit revision-bound review; route coverage is not confidence or deployment proof |
+| 0035 | [Require measurable objectives for performance and operational-quality issues](0035-measurable-service-level-objectives.md) | P: operator-directed SLO rule; quantitative targets and evidence required, not measured compliance |
+| 0036 | [Configure evidence retention and age-based historical resolution](0036-configurable-evidence-retention.md) | P: configurable minimum/default and coarser history; durations/central custody need owner approval, no cleanup or UI implemented |
+| 0037 | [Recommend HTTP capabilities from observed route coverage without adopting bindings](0037-http-capability-recommendations.md) | P: bounded HTTP recommendations and explicit revision-bound review; route coverage is not confidence or deployment proof |
 
 ## Relationship map
 
@@ -91,6 +93,8 @@ flowchart LR
     a30["0030 Cache lifecycle [P]"]:::proposed
     a31["0031 TypeScript 7 on touch [P]"]:::proposed
     a32["0032 TDD and BDD [P]"]:::proposed
+    a35["0035 Measurable SLOs [P]"]:::proposed
+    a36["0036 Evidence retention [P]"]:::proposed
   end
   subgraph Evidence_and_language
     a02["0002 Ubiquitous language [P]"]:::proposed
@@ -104,7 +108,7 @@ flowchart LR
     a25["0025 Frontend discovery [P]"]:::proposed
     a27["0027 Object and event assessment [P]"]:::proposed
     a28["0028 Portable decision ledger [P]"]:::proposed
-    a36["0036 HTTP capability candidates [P]"]:::proposed
+    a37["0037 HTTP capability candidates [P]"]:::proposed
   end
   subgraph Runtime_and_exchange
     a17["0017 PostgreSQL snapshots [P]"]:::proposed
@@ -160,8 +164,14 @@ flowchart LR
   a31 -.-> a30
   a32 -.-> a29
   a32 -.-> a31
-  a36 -->|preserves uncertainty| a10
-  a36 -->|extends revision review| a12
+  a35 -.-> a24
+  a35 -.-> a29
+  a35 -.-> a32
+  a36 -.-> a33
+  a36 -.-> a30
+  a36 -.-> a35
+  a37 -->|preserves uncertainty| a10
+  a37 -->|extends revision review| a12
   classDef accepted fill:#dcfce7,stroke:#166534,color:#14532d
   classDef proposed fill:#fef9c3,stroke:#854d0e,color:#713f12
   classDef draft fill:#fee2e2,stroke:#991b1b,color:#7f1d1d
@@ -205,7 +215,9 @@ referencing/extending/overriding record to its target.
 | 0030 | 0003, 0028, 0029 | Related metadata in the [record](0030-dependency-cache-lifecycle.md); upgrade housekeeping proposal, not cleanup authorization. |
 | 0031 | 0019, 0029, 0030 | Related metadata in the [record](0031-typescript7-on-touch.md); incremental migration rule, not completed compiler adoption. |
 | 0032 | 0029, 0031 | Related metadata in the [record](0032-tdd-bdd-delivery.md); behavior-driven test-first delivery, not existing feature-test evidence. |
-| 0036 | 0010, 0012 | [Decision outcome](0036-http-capability-recommendations.md#decision-outcome) explicitly preserves mapping uncertainty and extends revision-bound review; no automatic adoption. |
+| 0035 | 0024, 0029, 0032 | Related metadata in the [record](0035-measurable-service-level-objectives.md); issue applicability, measured optimization and behavioral guardrails, not measured compliance. |
+| 0036 | 0033, 0030, 0035 | Related metadata in the [record](0036-configurable-evidence-retention.md); collector custody, cache ownership and measurable lifecycle objectives, not deletion authority. |
+| 0037 | 0010, 0012 | [Decision outcome](0037-http-capability-recommendations.md#decision-outcome) explicitly preserves mapping uncertainty and extends revision-bound review; no automatic adoption. |
 
 ## Updating the ledger
 

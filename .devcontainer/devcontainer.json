@@ -1,0 +1,30 @@
+{
+  "name": "Capability Explorer PR 90",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+  "runArgs": ["--name=capability-explorer-pr90"],
+  "remoteUser": "node",
+  "updateRemoteUserUID": true,
+  "appPort": ["127.0.0.1:5080:5080"],
+  "forwardPorts": [5080, 5173],
+  "portsAttributes": {
+    "5080": {
+      "label": "Capability Explorer",
+      "onAutoForward": "openBrowser"
+    },
+    "5173": {
+      "label": "Explorer frontend",
+      "onAutoForward": "notify"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-dotnettools.csharp"],
+      "settings": {
+        "remote.autoForwardPorts": false
+      }
+    }
+  }
+}

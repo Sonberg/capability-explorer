@@ -16,6 +16,26 @@ history or imply that existing private package versions are product releases.
   explicit cross-capability destination revisions and stale-review protection.
   Candidate selection remains unreviewed; export never adopts a binding.
 
+- Proposed MADR-0036 describes interface-configurable evidence retention with
+  policy minimums/defaults, verified central custody, age-based historical
+  resolution and explicit archival/deletion safeguards. Numeric durations and
+  enforcement remain unimplemented pending policy-owner decisions.
+
+- Focused independent TypeScript collection-consumer acceptance for attempt
+  metadata versus immutable content identity and explicit optional partial
+  results. Existing producer failure/cleanup proof is mapped separately from
+  unproven mid-export cancellation and crash recovery.
+
+- Proposed MADR-0035 requires scoped quantitative SLOs for performance and
+  measurable operational-quality issues, with reproducible workloads, resource
+  envelopes, failure accounting and an optimization stop rule. Functional
+  correctness gates remain mandatory; policy is not measured compliance.
+
+- Pinned, non-root Node/.NET development container without a default engine
+  socket, credential mounts or automatic service provisioning. Trusted native
+  build/restore/frontend/backend goals work without an installed container
+  engine; sandbox and service engine requirements remain explicit.
+
 - Offline authored BPMN/DMN evidence and bounded, non-executable Roslyn
   process/decision candidates, separate from unchanged native `ce.v1`.
   Negotiated immutable collection, independent .NET/TypeScript consumers,
@@ -128,6 +148,17 @@ history or imply that existing private package versions are product releases.
 - Prevent model credentials or ambient Azure identity from silently following saved endpoint changes; restrict default model transport and create settings files exclusively with owner-only permissions.
 
 ### Fixed
+
+- Standard BPMN/DMN layout is distinguished from opaque extensions with an
+  explicit structural-retention disposition. Qualified incoming/outgoing
+  QNames validate local sequence-flow endpoints. DMN allowed values are
+  retained under content opt-in and displayed beside their columns.
+  Accessible grouped diagnostics retain counts and exact occurrence locators.
+- Overlong C# symbol keys use deterministic full SHA-256 identities within the
+  existing ce.v1 limit, consistently for declarations and references. Short
+  keys remain readable; oversized assembly segments are also bounded. Existing
+  build fingerprints prevent reuse of the previous extraction configuration.
+  Affected private-corpus acceptance remains unverified (#54/#23).
 
 - Normalize request header names so reviewed binding previews send one valid JSON Content-Type header.
 - HTTP request identities now separate absolute hosts from routes and exclude credentials, query values and fragments from derived URL metadata.

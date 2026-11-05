@@ -1,38 +1,159 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="workflow-definitions" targetNamespace="urn:example:workflow">
-  <bpmn:process id="order-process" isExecutable="false">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:ce="urn:capability-explorer:model-links:v1" id="workflow-definitions" targetNamespace="urn:example:workflow">
+  <bpmn:process id="order-process" name="Order fulfilment" isExecutable="false">
     <bpmn:laneSet id="order-lanes">
       <bpmn:lane id="review-lane" name="Review">
         <bpmn:flowNodeRef>start</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>review-task</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>evaluate-order</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>route-gateway</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>nested-work</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>call-child</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>finish</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>rejected</bpmn:flowNodeRef>
       </bpmn:lane>
     </bpmn:laneSet>
-    <bpmn:startEvent id="start"/>
-    <bpmn:userTask id="review-task"/>
-    <bpmn:exclusiveGateway id="route-gateway"/>
-    <bpmn:subProcess id="nested-work">
-      <bpmn:task id="nested-task"/>
+    <bpmn:startEvent id="start" name="Start"/>
+    <bpmn:userTask id="review-task" name="Review order"/>
+    <bpmn:businessRuleTask id="evaluate-order" name="Evaluate order decision" ce:decisionRef="decision-rich.dmn#order-decision"/>
+    <bpmn:exclusiveGateway id="route-gateway" name="Approved?" default="route-reject"/>
+    <bpmn:subProcess id="nested-work" name="Prepare order">
+      <bpmn:startEvent id="nested-start" name="Preparation started"/>
+      <bpmn:task id="nested-task" name="Reserve inventory"/>
+      <bpmn:endEvent id="nested-end" name="Order prepared"/>
+      <bpmn:sequenceFlow id="nested-start-task" sourceRef="nested-start" targetRef="nested-task"/>
+      <bpmn:sequenceFlow id="nested-task-end" sourceRef="nested-task" targetRef="nested-end"/>
     </bpmn:subProcess>
-    <bpmn:callActivity id="call-child" calledElement="child-process"/>
-    <bpmn:endEvent id="finish"/>
+    <bpmn:callActivity id="call-child" name="Create shipment" calledElement="child-process"/>
+    <bpmn:endEvent id="finish" name="Complete"/>
+    <bpmn:endEvent id="rejected" name="Rejected"/>
     <bpmn:sequenceFlow id="start-review" sourceRef="start" targetRef="review-task"/>
-    <bpmn:sequenceFlow id="review-route" sourceRef="review-task" targetRef="route-gateway">
+    <bpmn:sequenceFlow id="review-route" sourceRef="review-task" targetRef="evaluate-order"/>
+    <bpmn:sequenceFlow id="evaluate-route" sourceRef="evaluate-order" targetRef="route-gateway"/>
+    <bpmn:sequenceFlow id="route-call" sourceRef="route-gateway" targetRef="nested-work" name="Approved">
       <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="text/feel">approved = true</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id="route-call" sourceRef="route-gateway" targetRef="call-child"/>
+    <bpmn:sequenceFlow id="route-reject" sourceRef="route-gateway" targetRef="rejected"/>
+    <bpmn:sequenceFlow id="prepare-call" sourceRef="nested-work" targetRef="call-child"/>
     <bpmn:sequenceFlow id="call-finish" sourceRef="call-child" targetRef="finish"/>
     <bpmn:dataObject id="review-record"/>
     <bpmn:dataObjectReference id="review-record-ref" dataObjectRef="review-record"/>
   </bpmn:process>
-  <bpmn:process id="child-process">
-    <bpmn:task id="child-task"/>
+  <bpmn:process id="child-process" name="Shipment" isExecutable="false">
+    <bpmn:startEvent id="child-start" name="Shipment requested"/>
+    <bpmn:task id="child-task" name="Notify customer"/>
+    <bpmn:endEvent id="child-end" name="Customer notified"/>
+    <bpmn:sequenceFlow id="child-start-task" sourceRef="child-start" targetRef="child-task"/>
+    <bpmn:sequenceFlow id="child-task-end" sourceRef="child-task" targetRef="child-end"/>
   </bpmn:process>
-  <bpmn:collaboration id="order-collaboration">
-    <bpmn:participant id="order-participant" processRef="order-process"/>
-    <bpmn:participant id="child-participant" processRef="child-process"/>
-    <bpmn:messageFlow id="review-message" sourceRef="order-participant" targetRef="child-participant"/>
+  <bpmn:collaboration id="order-collaboration" name="Order fulfilment">
+    <bpmn:participant id="order-participant" name="Order fulfilment" processRef="order-process"/>
   </bpmn:collaboration>
+  <bpmndi:BPMNDiagram id="workflow-diagram">
+    <bpmndi:BPMNPlane id="workflow-plane" bpmnElement="order-collaboration">
+      <bpmndi:BPMNShape id="order-participant-shape" bpmnElement="order-participant" isHorizontal="true">
+        <dc:Bounds x="80" y="80" width="820" height="260"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="review-lane-shape" bpmnElement="review-lane" isHorizontal="true">
+        <dc:Bounds x="110" y="80" width="790" height="260"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="start-shape" bpmnElement="start">
+        <dc:Bounds x="150" y="190" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="review-task-shape" bpmnElement="review-task">
+        <dc:Bounds x="240" y="168" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="evaluate-order-shape" bpmnElement="evaluate-order">
+        <dc:Bounds x="340" y="95" width="170" height="65"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="route-gateway-shape" bpmnElement="route-gateway">
+        <dc:Bounds x="390" y="185" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="nested-work-shape" bpmnElement="nested-work" isExpanded="false">
+        <dc:Bounds x="490" y="168" width="170" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="call-child-shape" bpmnElement="call-child">
+        <dc:Bounds x="700" y="168" width="110" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="finish-shape" bpmnElement="finish">
+        <dc:Bounds x="840" y="190" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="rejected-shape" bpmnElement="rejected">
+        <dc:Bounds x="397" y="280" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="start-review-edge" bpmnElement="start-review">
+        <di:waypoint x="186" y="208"/>
+        <di:waypoint x="240" y="208"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="review-route-edge" bpmnElement="review-route">
+        <di:waypoint x="290" y="168"/>
+        <di:waypoint x="290" y="127"/>
+        <di:waypoint x="340" y="127"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="evaluate-route-edge" bpmnElement="evaluate-route">
+        <di:waypoint x="425" y="160"/>
+        <di:waypoint x="425" y="175"/>
+        <di:waypoint x="415" y="175"/>
+        <di:waypoint x="415" y="185"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="route-call-edge" bpmnElement="route-call">
+        <di:waypoint x="440" y="210"/>
+        <di:waypoint x="490" y="208"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="route-reject-edge" bpmnElement="route-reject">
+        <di:waypoint x="415" y="235"/>
+        <di:waypoint x="415" y="280"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="prepare-call-edge" bpmnElement="prepare-call">
+        <di:waypoint x="660" y="208"/>
+        <di:waypoint x="700" y="208"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="call-finish-edge" bpmnElement="call-finish">
+        <di:waypoint x="810" y="208"/>
+        <di:waypoint x="840" y="208"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+  <bpmndi:BPMNDiagram id="preparation-diagram">
+    <bpmndi:BPMNPlane id="preparation-plane" bpmnElement="nested-work">
+      <bpmndi:BPMNShape id="nested-start-shape" bpmnElement="nested-start">
+        <dc:Bounds x="180" y="182" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="nested-task-shape" bpmnElement="nested-task">
+        <dc:Bounds x="280" y="160" width="140" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="nested-end-shape" bpmnElement="nested-end">
+        <dc:Bounds x="484" y="182" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="nested-start-task-edge" bpmnElement="nested-start-task">
+        <di:waypoint x="216" y="200"/>
+        <di:waypoint x="280" y="200"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="nested-task-end-edge" bpmnElement="nested-task-end">
+        <di:waypoint x="420" y="200"/>
+        <di:waypoint x="484" y="200"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+  <bpmndi:BPMNDiagram id="shipment-diagram">
+    <bpmndi:BPMNPlane id="shipment-plane" bpmnElement="child-process">
+      <bpmndi:BPMNShape id="child-start-shape" bpmnElement="child-start">
+        <dc:Bounds x="180" y="182" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="child-task-shape" bpmnElement="child-task">
+        <dc:Bounds x="280" y="160" width="140" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="child-end-shape" bpmnElement="child-end">
+        <dc:Bounds x="484" y="182" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="child-start-task-edge" bpmnElement="child-start-task">
+        <di:waypoint x="216" y="200"/>
+        <di:waypoint x="280" y="200"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="child-task-end-edge" bpmnElement="child-task-end">
+        <di:waypoint x="420" y="200"/>
+        <di:waypoint x="484" y="200"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
 </bpmn:definitions>

@@ -7,6 +7,7 @@ export interface XmlNode {
   qualifiedName: string;
   localName: string;
   namespace: string;
+  namespaceBindings: Record<string, string>;
   attributes: Record<string, string>;
   text: string;
   children: XmlNode[];
@@ -88,6 +89,9 @@ export function parseXml(xml: string, limits = DEFAULT_XML_LIMITS): XmlNode {
       qualifiedName: element.originalName,
       localName,
       namespace,
+      namespaceBindings: Object.fromEntries(Object.entries(element.ns)
+        .filter(([name]) => name.endsWith("$uri"))
+        .map(([name, uri]) => [name === "xmlns$uri" ? "" : name.slice(0, -4), uri])),
       attributes: Object.fromEntries(entries.sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)),
       text: "",
       children: [],

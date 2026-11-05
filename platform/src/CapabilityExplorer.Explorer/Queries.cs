@@ -51,7 +51,10 @@ public sealed record ArtifactSummary(
 
 public static class Queries
 {
-    public static IReadOnlyList<SearchHit> Search(ViewIndex view, string? query, string? kind, string? repository, int limit = 100)
+    public static IReadOnlyList<SearchHit> Search(ViewIndex view, string? query, string? kind, string? repository, int limit = 100) =>
+        SearchSlice(view, query, kind, repository, 0, limit).Items;
+
+    public static (IReadOnlyList<SearchHit> Items, int Total) SearchSlice(ViewIndex view, string? query, string? kind, string? repository, int offset, int limit)
     {
         var q = (query ?? "").Trim();
         var hits = view.Nodes.Values.Select(list => list[0])
@@ -61,10 +64,13 @@ public static class Queries
             .Where(x => x.Rank > 0)
             .OrderByDescending(x => x.Rank)
             .ThenBy(x => x.o.Record.Name, StringComparer.OrdinalIgnoreCase)
-            .Take(limit);
-        return hits.Select(x => new SearchHit(
+            .ThenBy(x => x.o.Record.SymbolKey, StringComparer.Ordinal)
+            .ToArray();
+        var start = Math.Clamp(offset, 0, hits.Length);
+        var page = hits.Skip(start).Take(limit).Select(x => new SearchHit(
             x.o.Record.SymbolKey, x.o.Record.Name, x.o.Record.NodeKind, x.o.Artifact.RepositoryId, x.o.Artifact.Artifact.Header.Unit.Name,
             x.o.Record.Generated ?? false, view.Calculations.ContainsKey(x.o.Record.SymbolKey))).ToList();
+        return (page, hits.Length);
     }
 
     /// <summary>

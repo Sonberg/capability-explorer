@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<dmn:definitions xmlns:dmn="https://www.omg.org/spec/DMN/20191111/MODEL/" id="decision-definitions" name="Order Decision" namespace="urn:example:decision">
+<dmn:definitions xmlns:dmn="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/" xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/" xmlns:di="http://www.omg.org/spec/DMN/20180521/DI/" id="decision-definitions" name="Order Decision" namespace="urn:example:decision">
   <dmn:itemDefinition id="age-type" name="Age" typeRef="number"/>
   <dmn:inputData id="age-data" name="Age">
     <dmn:variable id="age-variable" name="age" typeRef="age-type"/>
@@ -60,4 +60,39 @@
       </dmn:rule>
     </dmn:decisionTable>
   </dmn:decision>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram id="order-decision-diagram">
+      <dmndi:DMNShape id="age-data-shape" dmnElementRef="age-data">
+        <dc:Bounds x="80" y="180" width="120" height="60"/>
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="base-decision-shape" dmnElementRef="base-decision">
+        <dc:Bounds x="300" y="60" width="150" height="80"/>
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="order-decision-shape" dmnElementRef="order-decision">
+        <dc:Bounds x="500" y="180" width="180" height="100"/>
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="threshold-policy-shape" dmnElementRef="threshold-policy">
+        <dc:Bounds x="300" y="360" width="160" height="80"/>
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="approval-policy-shape" dmnElementRef="approval-policy">
+        <dc:Bounds x="80" y="360" width="150" height="80"/>
+      </dmndi:DMNShape>
+      <dmndi:DMNEdge id="age-requirement-edge" dmnElementRef="age-requirement">
+        <di:waypoint x="200" y="210"/>
+        <di:waypoint x="500" y="220"/>
+      </dmndi:DMNEdge>
+      <dmndi:DMNEdge id="base-requirement-edge" dmnElementRef="base-requirement">
+        <di:waypoint x="450" y="100"/>
+        <di:waypoint x="560" y="180"/>
+      </dmndi:DMNEdge>
+      <dmndi:DMNEdge id="policy-requirement-edge" dmnElementRef="policy-requirement">
+        <di:waypoint x="380" y="360"/>
+        <di:waypoint x="560" y="280"/>
+      </dmndi:DMNEdge>
+      <dmndi:DMNEdge id="authority-requirement-edge" dmnElementRef="authority-requirement">
+        <di:waypoint x="230" y="390"/>
+        <di:waypoint x="500" y="270"/>
+      </dmndi:DMNEdge>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
 </dmn:definitions>

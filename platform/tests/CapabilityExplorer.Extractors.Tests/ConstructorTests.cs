@@ -143,7 +143,7 @@ public sealed class ConstructorTests : IDisposable
         var key = constructor.GetProperty("symbolKey").GetString()!;
 
         Assert.True(key.Length <= 2048, $"Constructor symbol key has {key.Length} characters; maximum is 2048.");
-        Assert.StartsWith(Ns + "sha256:", key);
+        Assert.StartsWith(Ns + "@sha256:", key);
         Assert.Contains(records, record => record.GetProperty("kind").GetString() == "edge"
             && record.GetProperty("relation").GetString() == "CALLS" && To(record) == key);
         Assert.Contains(records, record => record.GetProperty("kind").GetString() == "edge"
@@ -182,7 +182,7 @@ public sealed class ConstructorTests : IDisposable
             .Select(record => record.GetProperty("symbolKey").GetString()!).ToArray();
         Assert.Equal(2, keys.Length);
         Assert.Equal(2, keys.Distinct(StringComparer.Ordinal).Count());
-        Assert.All(keys, key => Assert.Matches(@"^cs\|synthetic\|Synthetic\|sha256:[a-f0-9]{64}$", key));
+        Assert.All(keys, key => Assert.Matches(@"^cs\|synthetic\|Synthetic\|@sha256:[a-f0-9]{64}$", key));
         foreach (var key in keys)
             Assert.Single(records, record => record.GetProperty("kind").GetString() == "edge"
                 && record.GetProperty("relation").GetString() == "CALLS" && To(record) == key);

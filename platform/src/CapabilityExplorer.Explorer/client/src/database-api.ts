@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { request } from "./api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ApiError, request } from "./api";
 import { useApi } from "./state";
 
 export interface DatabaseMeta {
@@ -20,10 +20,77 @@ export interface DatabaseArtifact { id: number; repositoryId: string; commitSha:
 export interface DatabaseCalculation { artifactId: number; localId: string; key: string; name: string; repositoryId: string; commitSha: string; unit: string; language: string; irHash: string | null }
 export interface DatabaseEdge { artifactId: number; localId: string; from: string; to: string | null; relation: string; resolution: string; derivation: string }
 export interface DatabaseEvidence { id: string; repositoryId: string; commitSha: string; path: string; startLine: number; startColumn: number; endLine: number; endColumn: number }
+export type EmbeddingState = "not-configured" | "pending" | "partial-failure" | "stale" | "ready";
+export interface EmbeddingModelIdentity {
+  id: string;
+  fingerprint: string;
+  recipeVersion: string;
+}
+export interface EmbeddingStatus {
+  snapshotId: string;
+  generation: number;
+  capability: string;
+  selection: Record<string, string>;
+  state: EmbeddingState;
+  configuredModel: EmbeddingModelIdentity | null;
+  coverageModel: EmbeddingModelIdentity | null;
+  coverageScope: "selected-view";
+  similarityAvailable: boolean;
+  snapshotArtifactCount: number;
+  selectedArtifactCount: number;
+  coveredArtifactCount: number;
+  snapshotArtifactsSha256: string | null;
+  countsExact: boolean;
+  counts: { total: number; ready: number; pending: number; failed: number } | null;
+  lastSuccessfulCompletion: string | null;
+  reasonCode: string | null;
+}
+
 export function databaseUrl(endpoint: string, scope: string, values: Record<string, string> = {}) {
   const query = new URLSearchParams(scope);
   Object.entries(values).forEach(([key, value]) => query.set(key, value));
   return `/api/${endpoint}?${query}`;
+}
+
+function selectionIdentity(selection: Record<string, string>) {
+  return JSON.stringify(Object.entries(selection).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
+}
+
+/** Optional metadata never reloads the publication or blocks the core database requests. */
+export function useEmbeddingStatus(scope: string, meta: DatabaseMeta, selection: Record<string, string>) {
+  const [attempt, setAttempt] = useState(0);
+  const selected = selectionIdentity(selection);
+  const url = databaseUrl("embeddings/status", scope, { g: String(meta.generation) });
+  const identity = JSON.stringify([url, meta.snapshotId, meta.generation, meta.capability, selected, attempt]);
+  const [result, setResult] = useState<{
+    identity: string; data?: EmbeddingStatus; loading: boolean; error?: string; errorStatus?: number;
+  }>({ identity: "", loading: true });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setResult({ identity, loading: true });
+    request<EmbeddingStatus>(url, { signal: controller.signal }).then((data) => {
+      if (controller.signal.aborted) return;
+      if (data.snapshotId !== meta.snapshotId || data.generation !== meta.generation
+        || data.capability !== meta.capability || !data.selection || selectionIdentity(data.selection) !== selected) {
+        throw new ApiError("Embedding status does not match the pinned snapshot and selected revisions. Refresh status to retry.", 409, data);
+      }
+      if (!["not-configured", "pending", "partial-failure", "stale", "ready"].includes(data.state)
+        || data.coverageScope !== "selected-view") {
+        throw new Error("The server returned an unsupported embedding status.");
+      }
+      setResult({ identity, data, loading: false });
+    }).catch((error: Error) => {
+      if (!controller.signal.aborted) setResult({
+        identity, loading: false, error: error.message,
+        errorStatus: error instanceof ApiError ? error.status : undefined,
+      });
+    });
+    return () => controller.abort();
+  }, [identity, url, meta.snapshotId, meta.generation, meta.capability, selected]);
+
+  const active = result.identity === identity ? result : { identity, loading: true };
+  return { ...active, refresh: () => setAttempt((previous) => previous + 1) };
 }
 
 /** Retains one successful page and at most 20 continuation tokens, independent of corpus size.
@@ -63,6 +130,118 @@ export function useDatabasePage<T>(base: string) {
     setRequested({ ...current, attempt: current.attempt + 1 });
   };
   return { ...shown, next, previous, retry, number: shown.position.number, hasPrevious: shown.position.back.length > 0 };
+}
+
+type InfiniteDatabaseState<T> = {
+  base: string;
+  data?: DatabasePage<T>;
+  loading: boolean;
+  loadingMore: boolean;
+  error?: string;
+  errorStatus?: number;
+  failedCursor?: string | null;
+};
+
+/** Appends cursor pages on one immutable database snapshot without limiting the result count. */
+export function useDatabaseInfinitePage<T>(base: string, meta: DatabaseMeta, reloadMeta: () => void) {
+  const [restart, setRestart] = useState(0);
+  const pendingMeta = useRef<{ meta: DatabaseMeta; base: string } | null>(null);
+  const [state, setState] = useState<InfiniteDatabaseState<T>>({ base: "", loading: true, loadingMore: false });
+  const generation = useRef(0);
+  const inFlight = useRef<{ controller: AbortController; token: number; cursor: string | null } | null>(null);
+  const active = state.base === base ? state : { base, loading: true, loadingMore: false } as InfiniteDatabaseState<T>;
+
+  const fetchPage = useCallback(async (cursor: string | null, token: number) => {
+    if (token !== generation.current || inFlight.current) return;
+    const controller = new AbortController();
+    inFlight.current = { controller, token, cursor };
+    setState((previous) => ({
+      ...previous,
+      base,
+      loading: cursor === null,
+      loadingMore: cursor !== null,
+      error: undefined,
+      errorStatus: undefined,
+    }));
+    const query = new URL(base, window.location.origin);
+    query.searchParams.set("limit", "50");
+    if (cursor) query.searchParams.set("cursor", cursor);
+    try {
+      const data = await request<DatabasePage<T>>(query.pathname + query.search, { signal: controller.signal });
+      if (token !== generation.current) return;
+      const expectedSnapshot = new URLSearchParams(query.search).get("snapshot");
+      if (expectedSnapshot && data.snapshotId !== expectedSnapshot) {
+        throw new ApiError("The database snapshot changed. Restart the search to continue.", 409, data);
+      }
+      setState((previous) => {
+        const current = previous.base === base ? previous.data : undefined;
+        const nextData = cursor === null || !current
+          ? data
+          : { ...data, items: [...current.items, ...data.items] };
+        return { base, data: nextData, loading: false, loadingMore: false };
+      });
+    } catch (error) {
+      if (controller.signal.aborted || token !== generation.current) return;
+      const failure = error as Error;
+      setState((previous) => ({
+        ...(previous.base === base ? previous : { base, loading: false, loadingMore: false }),
+        loading: false,
+        loadingMore: false,
+        error: failure.message,
+        errorStatus: failure instanceof ApiError ? failure.status : undefined,
+        failedCursor: cursor,
+      }));
+    } finally {
+      if (inFlight.current?.controller === controller) inFlight.current = null;
+    }
+  }, [base]);
+
+  useEffect(() => {
+    if (pendingMeta.current && pendingMeta.current.meta !== meta) {
+      const needsRestart = pendingMeta.current.base === base;
+      pendingMeta.current = null;
+      if (needsRestart) setRestart((previous) => previous + 1);
+    }
+  }, [base, meta]);
+
+  useEffect(() => {
+    const token = ++generation.current;
+    inFlight.current?.controller.abort();
+    inFlight.current = null;
+    setState({ base, loading: true, loadingMore: false });
+    void fetchPage(null, token);
+    return () => {
+      if (generation.current === token) {
+        generation.current++;
+        if (inFlight.current?.token === token) {
+          inFlight.current.controller.abort();
+          inFlight.current = null;
+        }
+      }
+    };
+  }, [base, fetchPage, restart]);
+
+  const loadMore = useCallback(() => {
+    if (!active.data?.nextCursor || active.loading || active.loadingMore || active.error || inFlight.current) return;
+    void fetchPage(active.data.nextCursor, generation.current);
+  }, [active, fetchPage]);
+
+  const retry = useCallback(() => {
+    if (!active.error || active.loading || active.loadingMore || inFlight.current) return;
+    if (active.errorStatus === 400 || active.errorStatus === 409) {
+      pendingMeta.current = { meta, base };
+      reloadMeta();
+      return;
+    }
+    void fetchPage(active.failedCursor ?? null, generation.current);
+  }, [active, base, fetchPage, meta, reloadMeta]);
+
+  return {
+    ...active,
+    loadMore,
+    retry,
+    hasMore: active.data?.nextCursor !== null && active.data?.nextCursor !== undefined,
+  };
 }
 
 export function useDebouncedText(value: string) {

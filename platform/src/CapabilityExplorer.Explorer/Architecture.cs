@@ -37,7 +37,7 @@ public sealed record ArchEdge(string Id, string From, string To, string Kind, st
 
 public sealed record Crumb(string Label, string Level, string? Focus);
 
-public sealed record ArchitectureGraph(string Level, string? Focus, string Title, IReadOnlyList<Crumb> Breadcrumbs, IReadOnlyList<ArchNode> Nodes, IReadOnlyList<ArchEdge> Edges, IReadOnlyList<string> Notes);
+public sealed record ArchitectureGraph(string Level, string? Focus, string Title, IReadOnlyList<Crumb> Breadcrumbs, IReadOnlyList<ArchNode> Nodes, IReadOnlyList<ArchEdge> Edges, IReadOnlyList<string> Notes, ArchitectureBudget? Budget = null, ArchitectureFilters? Filters = null, ArchitectureFacets? Facets = null, ArchitectureOmitted? Omitted = null);
 
 /// <summary>
 /// Builds the canvas at four levels of abstraction from the facts in a view:
@@ -54,12 +54,12 @@ public static class Architecture
 
     /// <param name="all">The unscoped view, used by the landscape (every capability).</param>
     /// <param name="capability">The capability the view is scoped to, if any: it names the level above the repositories.</param>
-    public static ArchitectureGraph Build(ViewIndex view, string level, string? focus, ViewIndex all, IReadOnlyList<CapabilityStatus> capabilities, CapabilityStatus? capability)
+    public static ArchitectureGraph Build(ViewIndex view, string level, string? focus, ViewIndex all, IReadOnlyList<CapabilityStatus> capabilities, CapabilityStatus? capability, int? nodeBudget = null, int? edgeBudget = null, IReadOnlyList<string>? hideKinds = null, string? query = null, IReadOnlyList<string>? include = null)
     {
         IReadOnlyList<Crumb> top = capability is null
             ? [new Crumb("Landscape", "landscape", null), new Crumb("System", "system", null)]
             : [new Crumb("Landscape", "landscape", null), new Crumb(capability.Name, "system", capability.Id)];
-        return level switch
+        var graph = level switch
         {
             "landscape" => Landscape(all, capabilities),
             "repository" when focus is not null => Repository(view, focus, top),
@@ -67,6 +67,8 @@ public static class Architecture
             "requests" when focus is not null => Requests(view, focus, top),
             _ => System(view, top, capability?.Name ?? "System"),
         };
+        // Filtering bounds browser layout input; construction above still builds the full graph.
+        return ArchitectureBudgeting.Apply(graph, nodeBudget, edgeBudget, hideKinds, query, include);
     }
 
     // ------------------------------------------------------------------ landscape

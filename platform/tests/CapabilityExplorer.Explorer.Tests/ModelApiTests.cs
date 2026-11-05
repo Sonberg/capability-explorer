@@ -57,7 +57,9 @@ public sealed class ModelApiTests
         var scope=Scope(first);
         var id=first.GetProperty("items")[0].GetProperty("id").GetString()!;
         await File.AppendAllTextAsync(fixture.CapabilitiesPath,"\n");
-        Assert.True(fixture.Services.GetRequiredService<ExplorerState>().Refresh());
+        var state=fixture.Services.GetRequiredService<ExplorerState>();
+        state.Refresh(); // the background poll may have applied the change first
+        Assert.True(state.Current.Generation>first.GetProperty("generation").GetInt64());
         await Status(client,$"/api/models/evidence?id={Q(id)}&{scope}",HttpStatusCode.Conflict);
         await Status(client,$"/api/models?limit=1&cursor={Q(first.GetProperty("nextCursor").GetString()!)}&{scope}",HttpStatusCode.Conflict);
     }

@@ -6,6 +6,26 @@ snapshot. Native `ce.v1` is unchanged. See [MADR-0033](adr/0033-bounded-model-an
 None of these profiles establishes business approval or executes a process,
 decision, expression or analyzed source.
 
+## Local fixture models
+
+`make explore` and `make dev` prepare the four known synthetic files under
+`fixtures/models` as a local, validated collection at a content-keyed path under
+`.sandbox-cache/model-fixtures/`. Extraction uses the bounded model
+CLI and preserves the original source only under an explicit `model-content`
+permission recorded in the collection plan. A deterministic synthetic Git
+revision binds the fixture bytes; both collection validators run before the
+Explorer starts. The content-keyed directory avoids replacing a prior immutable
+collection when a fixture or extraction recipe changes. Set `MODEL_COLLECTIONS`
+to another path under `.sandbox-cache/model-fixtures` to select the output
+location.
+
+The fixture path is limited to the named BPMN and DMN files in `fixtures/models`;
+it does not crawl local repositories, execute models, publish model products to
+PostgreSQL, or embed them. The normal artifact import/embed steps in `make dev`
+are unchanged. Run `make test-model-fixture-autoload` to verify both model kinds
+are listed and their captured evidence/source are viewable in the ordinary
+files-mode Explorer.
+
 ## Extract locally
 
 Use the existing pinned sandbox profiles and build preparation:
@@ -44,8 +64,9 @@ noncanonical base64 and mismatched or missing companions are rejected.
 No generated layout replaces the original. Older evidence does not gain
 original-source availability merely because it contains a source hash.
 The model CLI accepts BPMN/XML and DMN files, rejects unsafe XML and bounds
-bytes, structure and worker time/memory. Default structural output omits model
-text, but attributes may still contain source content; it is **not** an
+bytes, structure and worker time/memory. Default structural output omits
+free-form model/expression text but retains supported identifier references.
+Attributes may still contain source content; it is **not** an
 automatically safe external-export format.
 
 The qualified model profile is BPMN 2.0.2 plus fixture-qualified DMN 1.3, not all
@@ -58,12 +79,56 @@ The machine-readable construct census is `schema/models/support.json`; rich
 fixtures qualify lanes, nested processes/local calls and DMN input/BKM/
 knowledge dependencies, types, expression language and aggregation.
 
+Standard BPMNDI/DMNDI/DC/DI namespaces are distinguished from vendor extensions.
+The explicitly censused diagram, shape, bounds, edge and waypoint constructs
+are structurally retained, not diagram-conformance or layout-semantics
+validation. Other elements in those namespaces remain unsupported rather
+than mislabeled vendor extensions; unknown namespaces remain opaque/partial.
+Optional BPMN incoming/outgoing declarations are checked against local
+sequence-flow endpoints and never create flows. Dangling, contradictory and
+misplaced declarations reject the input rather than inventing relationships.
+DMN input/output allowed-value declarations retain raw text only with
+`model-content`; no FEEL expression is executed.
+
+The table view associates those declarations with their input/output columns.
+Missing declarations differ from present declarations with empty/uncaptured
+text; absent text does not establish a reason or an unrestricted business
+domain. Diagnostics group code, disposition and identified construct, show
+total occurrences and expose each original message/locator through native
+keyboard-accessible disclosures. A smaller diagnostic count is not evidence
+of business completeness. See the [current artifact flow](architecture/current.md)
+and [wiki synopsis](wiki/model-quality.md).
+
+Selected installed parser review confirmed `saxen@11.2.0`,
+`bpmn-moddle@10.3.1` and `dmn-moddle@12.2.1` against locked versions/integrity
+and their shipped MIT license files. Shipped descriptor comparison identifies
+the explicitly supported subset in the census, not full standard coverage;
+the subsequently qualified layout and declaration constructs above do not
+establish support for other types. This is a selected-package review, not a full transitive
+legal audit. The locked install verifies archive integrity; installed-file and
+descriptor hashes are retained in the qualification evidence.
+
+Focused XML cases cover malformed/truncated input and exact accepted/one-over
+byte, depth, element, attribute-count, UTF-8 attribute-byte and text-byte limits.
+The real `.bpmn20.xml` CLI path preserves BOM-inclusive source bytes. The worker
+deadline defaults to five seconds; a caller may only shorten it, not raise the
+cap. Timeout rejection awaits actual worker termination; termination failures
+remain explicit. This is worker/resource bounding, not OS isolation.
+
 Code candidates use the bounded synchronous, single-file intra-method recipe
 and reviewed scalar/orchestration fixtures in `fixtures/candidates`. Unsupported
 methods and other executable declarations make coverage partial. The scalar
 decision recipe is deliberately restricted to qualified integer/boolean
 predicates and literal results; this is not arbitrary C# or business-process
 equivalence. Candidate predicates/source locations are content-bearing.
+
+Current independent inspection found no semantic mismatch in the synthetic
+recipe. Follow-on tests cover exact length-10/11 boundaries, validation before
+eligibility, and retained exception constructor arguments. This is present-day
+qualification: the historical claim that expected outcomes were reviewed before
+extraction is unproven. Issue #75 remains open without evidence or an explicit
+acceptance-owner disposition; neither a commit message nor the oracle's status
+string independently proves that chronology.
 
 ## Seal and consume a snapshot
 
@@ -72,6 +137,10 @@ references, exact commit/tree, recipe/configuration/policy hashes and literal
 relative input paths with expected hashes, byte lengths and required/optional
 dispositions. Do not put credentials, personal Git author data or raw model XML
 into it. Paths resolve against the plan directory, not an arbitrary remote URI.
+Extraction changes require a fresh recipe/configuration digest; do not reuse an
+old immutable identity for different bytes. The executable dogfood recipe binds
+model/collection source, the support census, lockfile, image inputs and built
+producer/consumer assemblies; production callers own their exact input binding.
 
 ```sh
 scripts/sandbox --offline dotnet dotnet \
@@ -103,6 +172,11 @@ An identical, byte-verified target is reused; a conflicting or corrupted target
 is not replaced. Required failures do not produce a completed collection.
 Optional failures remain explicit partial dispositions. Attempt observation
 time/identity is not the immutable content hash, and validation is not publication.
+Focused TypeScript consumer cases validate changed attempt metadata against an
+unchanged content hash and explicit optional-failure dispositions. Existing .NET
+producer tests cover required-input failure, staging cleanup and pre-cancelled
+export. Pre-cancellation does not establish mid-export cancellation or arbitrary
+crash recovery; see the [acceptance mapping](plans/collector-handoff-acceptance.md).
 The manifest declares its profile-specific canonicalization recipe. Both
 consumers use ordinal keys and fully escaped UTF-16 code units, without Unicode
 normalization; artifact bytes remain unchanged. This is not an RFC 8785 claim.
@@ -139,6 +213,13 @@ shipped model, code-candidate and collection CLIs in separate offline pinned
 Node/.NET containers. It checks both consumers, repeat identity, a committed
 source mutation, denied content, tampered bytes, last-good preservation,
 policy expiry/last-successful references and freshness/argument failures.
+Candidate checks compare exact committed `git show` bytes, BOM-inclusive digest,
+revision/path and nested UTF-16 spans/predicates, before sealing and after
+collection. The denial case removes only `candidate-content`, keeping
+`model-content` permitted. Additional native transport probes test resealed
+permission/profile/revision/path/byte failures through both consumers.
+These are synthetic source-binding proofs, not a guarantee that arbitrary
+caller-declared commits belong to a trusted remote repository.
 It does not need a database, Explorer, Docker
 socket inside analysis containers or a central service. It runs in the existing
 canonical CI graph, not an additional hosted job. Its source hashes are part of

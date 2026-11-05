@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using CapabilityExplorer.Capabilities;
 using CapabilityExplorer.Capabilities.Analysis;
+using CapabilityExplorer.Interpretation;
 
 namespace CapabilityExplorer.Cli;
 
@@ -17,7 +18,8 @@ internal static class AnalysisWorkerCommand
         {
             if (command is not ("analysis-worker" or "analysis-run" or "analysis-all")) throw new ArgumentException("unsupported analysis command");
             foreach (var key in options.Keys)
-                if (key is not ("capability" or "capabilities" or "bindings" or "include-tests" or "packages" or "locked" or "github-auth" or "extraction-jobs"))
+                if (key is not ("capability" or "capabilities" or "bindings" or "include-tests" or "packages" or "locked" or "github-auth" or "extraction-jobs")
+                    && !EmbeddingHostConfiguration.IsOption(key))
                     throw new ArgumentException("unsupported analysis option");
             _ = ResolveEngine();
             var root = Path.GetFullPath(Environment.CurrentDirectory);
@@ -61,7 +63,7 @@ internal static class AnalysisWorkerCommand
                             continue;
                         }
                         var result = await AnalysisCapabilityScheduler.RunPending(store, owner, hostDefaults.CapabilityWorkers,
-                            run => Execute(root, store, owner, run, runtime, stop.Token), stop.Token);
+                            run => Execute(root, store, owner, run, runtime, options, stop.Token), stop.Token);
                         if (result != 0) return result;
                         await Task.Delay(300, stop.Token);
                     }
@@ -95,7 +97,7 @@ internal static class AnalysisWorkerCommand
                 var executionResult = await AnalysisCapabilityScheduler.RunAdmitted(store, owner, acceptedRuns,
                     acceptedRuns[0].Settings.CapabilityWorkers, async run =>
                     {
-                        var result = await Execute(root, store, owner, run, runtime, stop.Token);
+                        var result = await Execute(root, store, owner, run, runtime, options, stop.Token);
                         if (result == 0) completedRuns.Add(run.RunId);
                         return result;
                     }, stop.Token);
@@ -120,7 +122,8 @@ internal static class AnalysisWorkerCommand
         { Console.Error.WriteLine("analysis: host operation failed (" + e.GetType().Name + ")"); return 2; }
     }
 
-    private static async Task<int> Execute(string root, FileRunStore store, WorkerOwnership owner, AnalysisRun run, IAnalysisContainerRuntime runtime, CancellationToken stop)
+    private static async Task<int> Execute(string root, FileRunStore store, WorkerOwnership owner, AnalysisRun run,
+        IAnalysisContainerRuntime runtime, IReadOnlyDictionary<string, string> options, CancellationToken stop)
     {
         var attempt = new AttemptIdentity(run.RunId, run.AttemptId!);
         using var process = new AnalysisProcess(root, store, run, stop, runtime);
@@ -133,13 +136,14 @@ internal static class AnalysisWorkerCommand
             store.FinishExecution(owner, attempt, 0);
             process.CheckCancellation();
             AnalysisRun completed;
+            Guid? publishedSnapshot;
             await PublicationGate.WaitAsync(stop);
             try
             {
                 using var timing = process.Measure("publication");
                 process.CheckCancellation();
                 using var publication = store.BeginPublication(owner, attempt, manifest);
-                await AnalysisPublication.Publish(root, store.ReadRun(run.RunId), prepared, publication);
+                publishedSnapshot = await AnalysisPublication.Publish(root, store.ReadRun(run.RunId), prepared, publication);
                 completed = publication.Complete("Core artifacts published; optional enrichment pending.");
                 timing.Complete();
             }
@@ -159,7 +163,7 @@ internal static class AnalysisWorkerCommand
             { Console.Error.WriteLine("analysis: source cleanup incomplete; preserved attempt data for inspection"); }
             using (var timing = process.Measure("enrichment"))
             {
-                var enrichment = await AnalysisEnrichment.Run();
+                var enrichment = await AnalysisEnrichment.Run(publishedSnapshot, options, ct: stop);
                 store.RecordEnrichment(owner,attempt,enrichment.Outcome,enrichment.Detail);
                 if (enrichment.Outcome != "failed") timing.Complete();
             }

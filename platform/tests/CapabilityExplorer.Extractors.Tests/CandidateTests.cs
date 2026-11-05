@@ -78,6 +78,43 @@ public sealed class CandidateTests : IDisposable
     }
 
     [Theory]
+    [InlineData("1234567890", true, true, "True", "input,input,input,eligible,member,input", "Record")]
+    [InlineData("1234567890", false, true, "False", "input,input,input,eligible", "")]
+    [InlineData("12345678901", true, true, "ArgumentException", "input,input", "")]
+    [InlineData("12345678901", false, false, "ArgumentException", "input,input", "")]
+    [InlineData(null, false, false, "ArgumentNullException", "input", "")]
+    [InlineData("", false, false, "False", "input,input,input", "")]
+    public void Given_exact_length_boundaries_or_ineligible_input_then_validation_precedes_eligibility(
+        string? input, bool eligible, bool member, string outcome, string reads, string effects)
+    {
+        var process = Reviewed().Candidates.Single(c => c.Kind == "process");
+        var simulator = new CandidateOracle(process,
+            new() { ["input"] = input, ["eligible"] = eligible, ["member"] = member }, false);
+
+        Assert.Equal(outcome, simulator.Run()?.ToString());
+        Assert.Equal(reads, string.Join(",", simulator.Reads));
+        Assert.Equal(effects, string.Join(",", simulator.Effects));
+    }
+
+    [Fact]
+    public void Given_validation_exceptions_then_parameter_name_and_message_remain_constructor_arguments()
+    {
+        var process = Reviewed().Candidates.Single(c => c.Kind == "process");
+        var exceptions = Walk(process.Body).Where(n => n.Kind == "throw").ToArray();
+        foreach (var (type, argument) in new[]
+        {
+            ("System.ArgumentNullException", "input"),
+            ("System.ArgumentException", "invalid input")
+        })
+        {
+            var constructorArgument = Assert.Single(exceptions.Single(n => n.Type == type).Children);
+            Assert.Equal("constant", constructorArgument.Kind);
+            Assert.Equal("string", constructorArgument.Type);
+            Assert.Equal(argument, constructorArgument.Value);
+        }
+    }
+
+    [Theory]
     [InlineData("public static async System.Threading.Tasks.Task<int> M(int x) { await System.Threading.Tasks.Task.Yield(); return x; }")]
     [InlineData("public static int M(dynamic x) { return x; }")]
     [InlineData("public static int M(int x) { return M(x); }")]

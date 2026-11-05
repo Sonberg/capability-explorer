@@ -24,15 +24,22 @@ if (source == "files")
     var state = new ExplorerState(options);
     builder.Services.AddSingleton(state);
     builder.Services.AddHostedService(_ => state);
+    builder.Services.AddSingleton<IHealthDependencyCheck, FileExplorerHealthCheck>();
     builder.Services.AddTransient(_ => state.Current.Index);
     builder.Services.AddTransient(_ => state.Current.Capabilities);
 }
 
 // Optional intelligence layer: provider "none" unless configured (interpretation:provider = recorded | openai | foundry)
 // or saved from the Settings page / `make ollama` (modelSettings). Similarity search also needs the database (CE_DATABASE).
-var interpretation = builder.Configuration.GetSection("interpretation").Get<InterpretationOptions>() ?? new InterpretationOptions();
+var interpretation = source == "postgres" ? new InterpretationOptions()
+    : builder.Configuration.GetSection("interpretation").Get<InterpretationOptions>() ?? new InterpretationOptions();
+var embeddingOptions = EmbeddingHostConfiguration.CommandOptions(args);
 var database = builder.Configuration["database"] ?? Environment.GetEnvironmentVariable("CE_DATABASE");
 var dataSource = database is { Length: > 0 } ? NpgsqlDataSource.Create(database) : null;
+builder.Services.AddSingleton(HealthEndpointOptions.From(builder.Configuration));
+builder.Services.AddSingleton<HealthDiagnosticsService>();
+builder.Services.AddSingleton<HealthApplicationLifecycle>();
+builder.Services.AddSingleton<SourceIpRateLimiter>();
 if (source == "postgres")
 {
     if (dataSource is null) throw new InvalidOperationException("PostgreSQL source requires CE_DATABASE");
@@ -42,13 +49,18 @@ if (source == "postgres")
 if (dataSource is not null)
 {
     builder.Services.AddSingleton(dataSource);
+    builder.Services.AddSingleton<IHealthDependencyCheck>(_ => new DatabaseHealthCheck(dataSource, source == "postgres"));
     builder.Services.AddSingleton<IExplorerQueries, PostgresExplorerQueries>();
     builder.Services.AddSingleton(new DatabaseExplorerConfiguration(options));
     builder.Services.AddSingleton<IDeprecationRepository, PostgresDeprecationRepository>();
     builder.Services.AddSingleton<DeprecationService>();
     builder.Services.AddSingleton<PostgresDeprecationRemovals>();
 }
-var intelligence = new Intelligence(interpretation, builder.Configuration["modelSettings"] ?? ModelSettings.DefaultPath, dataSource is null ? null : new EmbeddingStore(dataSource)) { DataSource = dataSource };
+var intelligence = new Intelligence(interpretation, builder.Configuration["modelSettings"] ?? ModelSettings.DefaultPath,
+    dataSource is null ? null : new EmbeddingStore(dataSource), metadataOnly: source == "postgres",
+    embeddingConfiguration: source == "postgres"
+        ? () => EmbeddingHostConfiguration.Resolve(embeddingOptions, configuration: key => builder.Configuration[key], contentRoot: builder.Environment.ContentRootPath)
+        : null) { DataSource = dataSource };
 builder.Services.AddSingleton(intelligence);
 builder.Services.AddSingleton(new PackageFeedSettingsStore(builder.Configuration["packageFeedCatalog"] ?? PackageFeedSettingsStore.DefaultPath));
 builder.Services.AddSingleton(new GlossaryReviewService(dataSource));
@@ -65,6 +77,7 @@ if (builder.Configuration["urls"] is null && Environment.GetEnvironmentVariable(
 }
 
 var app = builder.Build();
+app.UseHealthRequestMetadata();
 app.Use(async (context, next) =>
 {
     if (!LocalRequestGuard.Allowed(context.Request))
@@ -80,7 +93,12 @@ app.Use(async (context, next) =>
 });
 app.UseResponseCompression();
 app.UseDefaultFiles();
-app.UseStaticFiles();
+var staticFiles = new StaticFileOptions
+{
+    OnPrepareResponse = context => context.Context.Response.Headers.CacheControl = "no-cache"
+};
+app.UseStaticFiles(staticFiles);
+app.MapHealthApi();
 app.MapDeprecationsApi();
 app.MapModelApi(source);
 if (source == "postgres") app.MapPostgresExplorerApi();
@@ -91,5 +109,5 @@ else
     app.MapGlossaryProposalApi();
     app.MapBindingPreviewApi();
 }
-app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html", staticFiles);
 app.Run();

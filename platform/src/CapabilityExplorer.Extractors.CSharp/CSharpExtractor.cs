@@ -512,27 +512,3 @@ internal static class JsonObjectExtensions
         return o;
     }
 }
-
-/// <summary>ce.v1 symbol keys for Roslyn symbols: documentation comment IDs, scoped to repository and assembly.</summary>
-internal sealed class SymbolKeys(string repositoryId, IReadOnlySet<string> repoAssemblies)
-{
-    private readonly Dictionary<string, string> _compacted = new(StringComparer.Ordinal);
-
-    public string Of(ISymbol symbol)
-    {
-        var original = symbol.OriginalDefinition;
-        var id = original.GetDocumentationCommentId() ?? $"?:{original.ToDisplayString()}";
-        var assembly = original.ContainingAssembly?.Name ?? "unknown";
-        var owner = repoAssemblies.Contains(assembly) && original.Locations.Any(location => location.IsInSource)
-            ? repositoryId : "@ext";
-        var prefix = $"cs|{owner}|{assembly}|";
-        var key = prefix + id;
-        if (key.Length <= 2048) return key;
-        var compact = prefix + "sha256:" + ArtifactBuilder.Sha256(key);
-        if (compact.Length > 2048) throw new InvalidOperationException("symbol identity scope exceeds the schema limit");
-        if (_compacted.TryGetValue(compact, out var existing) && existing != key)
-            throw new InvalidOperationException("compacted symbol identity collision");
-        _compacted[compact] = key;
-        return compact;
-    }
-}

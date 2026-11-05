@@ -159,6 +159,77 @@
       "elements": ["FEEL execution", "decision execution", "business outcome"],
       "status": "rejected",
       "evidence": "The extractor records authored text only; it performs no evaluation or business-soundness claim."
+    },
+    {
+      "id": "bpmn.flowDirectionReferences",
+      "family": "bpmn",
+      "namespace": "http://www.omg.org/spec/BPMN/20100524/MODEL",
+      "elements": ["incoming", "outgoing"],
+      "status": "semantic-evidence-supported",
+      "evidence": "Optional incoming/outgoing references are checked against explicit sequenceFlow endpoints; they never create relationships."
+    },
+    {
+      "id": "bpmn.diagramInterchange",
+      "family": "bpmn",
+      "namespace": "http://www.omg.org/spec/BPMN/20100524/DI",
+      "elements": ["BPMNDiagram", "BPMNPlane", "BPMNShape", "BPMNEdge"],
+      "status": "semantic-evidence-supported",
+      "disposition": "structural-retained-layout",
+      "evidence": "Pinned BPMN DI elements and provenance are retained structurally; diagram semantics and conformance are not validated."
+    },
+    {
+      "id": "bpmn.diagramCommon",
+      "family": "bpmn",
+      "namespace": "http://www.omg.org/spec/DD/20100524/DC",
+      "elements": ["Bounds"],
+      "status": "semantic-evidence-supported",
+      "disposition": "structural-retained-layout",
+      "evidence": "Pinned diagram-common bounds elements are retained structurally; layout semantics are not validated."
+    },
+    {
+      "id": "bpmn.diagramPrimitives",
+      "family": "bpmn",
+      "namespace": "http://www.omg.org/spec/DD/20100524/DI",
+      "elements": ["waypoint"],
+      "status": "semantic-evidence-supported",
+      "disposition": "structural-retained-layout",
+      "evidence": "Pinned diagram waypoint elements are retained structurally; layout semantics are not validated."
+    },
+    {
+      "id": "dmn.allowedValues",
+      "family": "dmn",
+      "namespace": "https://www.omg.org/spec/DMN/20191111/MODEL/",
+      "elements": ["inputValues", "outputValues"],
+      "status": "semantic-evidence-supported",
+      "capturesText": true,
+      "evidence": "Input and output allowed-value unary-test text is retained raw, in clause order, only with the model-content profile; it is never evaluated."
+    },
+    {
+      "id": "dmn.diagramInterchange",
+      "family": "dmn",
+      "namespace": "https://www.omg.org/spec/DMN/20191111/DMNDI/",
+      "elements": ["DMNDI", "DMNDiagram", "DMNShape", "DMNEdge"],
+      "status": "semantic-evidence-supported",
+      "disposition": "structural-retained-layout",
+      "evidence": "Pinned DMN DI elements and provenance are retained structurally; diagram semantics and conformance are not validated."
+    },
+    {
+      "id": "dmn.diagramCommon",
+      "family": "dmn",
+      "namespace": "http://www.omg.org/spec/DMN/20180521/DC/",
+      "elements": ["Bounds"],
+      "status": "semantic-evidence-supported",
+      "disposition": "structural-retained-layout",
+      "evidence": "Pinned DMN diagram-common bounds elements are retained structurally; layout semantics are not validated."
+    },
+    {
+      "id": "dmn.diagramPrimitives",
+      "family": "dmn",
+      "namespace": "http://www.omg.org/spec/DMN/20180521/DI/",
+      "elements": ["waypoint"],
+      "status": "semantic-evidence-supported",
+      "disposition": "structural-retained-layout",
+      "evidence": "Pinned DMN diagram waypoint elements are retained structurally; layout semantics are not validated."
     }
   ]
 }

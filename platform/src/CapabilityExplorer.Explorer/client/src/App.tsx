@@ -17,6 +17,7 @@ import { Explore } from "./views/Explore";
 import { BindingPreview } from "./views/BindingPreview";
 import { Integrations } from "./views/Integrations";
 import { Settings } from "./views/Settings";
+import { HealthStatus } from "./components/HealthStatus";
 
 // Load the shared LikeC4 canvas only when Architecture is opened.
 const ArchitectureView = lazy(() => import("./views/Architecture").then((m) => ({ default: m.ArchitectureView })));
@@ -39,7 +40,7 @@ const VIEWS = [
 
 export function App() {
   const meta = useApi<Meta | DatabaseMeta>("/api/meta");
-  useLiveReload(isDatabaseMeta(meta.data) ? undefined : meta.data?.generation, meta.reload);
+  useLiveReload(isDatabaseMeta(meta.data) ? undefined : meta.data, meta.reload);
   if (meta.error) return <main className="p-5"><ErrorBox message={meta.error} /></main>;
   if (!meta.data) return <main className="p-5"><Loading /></main>;
   if (isDatabaseMeta(meta.data)) return <DatabaseExplorer meta={meta.data} reload={meta.reload} />;
@@ -52,19 +53,20 @@ export function App() {
   );
 }
 
-/** Polls the server's load generation; when artifacts or capabilities changed on disk, metadata is refetched
- * and, because every scoped request carries the generation, so is everything on screen. */
-function useLiveReload(generation: number | undefined, reload: () => void) {
+/** Refetches scoped views when inputs change or a server restart replaces the snapshot. */
+function useLiveReload(meta: Meta | undefined, reload: () => void) {
+  const generation = meta?.generation;
+  const snapshotId = meta?.snapshotId;
   useEffect(() => {
     if (generation === undefined) return;
     const timer = window.setInterval(() => {
       if (document.hidden) return;
-      request<{ generation: number }>("/api/generation")
-        .then((g) => g.generation !== generation && reload())
+      request<{ generation: number; snapshotId: string }>("/api/generation")
+        .then((g) => (g.generation !== generation || g.snapshotId !== snapshotId) && reload())
         .catch(() => undefined); // server restarting: keep showing what we have
     }, 3000);
     return () => window.clearInterval(timer);
-  }, [generation, reload]);
+  }, [generation, snapshotId, reload]);
 }
 
 function Shell() {
@@ -135,6 +137,7 @@ function Shell() {
             <span className="hidden md:inline">Search</span>
             <kbd className="font-sans text-xs">{mac ? "⌘K" : "Ctrl K"}</kbd>
           </button>
+          <HealthStatus />
           <button
             type="button"
             onClick={() => setChat((c) => !c)}

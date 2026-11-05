@@ -21,6 +21,8 @@ export interface CapabilitySummary {
 export interface Meta {
   /** Increases whenever the server reloaded artifacts or capabilities from disk. */
   generation: number;
+  /** Immutable file-backed index snapshot used to keep paged searches consistent. */
+  snapshotId: string;
   capabilities: CapabilitySummary[];
   githubAuth: { source: string; hostManaged: boolean };
   interpretation: { enabled: boolean; chat: boolean; provider: string; model?: string };

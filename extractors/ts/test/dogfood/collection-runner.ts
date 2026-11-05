@@ -23,8 +23,19 @@ interface Repository {
 }
 interface Artifact {
   schema: string; repositoryId: string; commitSha: string; unitPath: string;
-  coverage?: { status: string }; elements?: unknown[]; candidates?: unknown[];
+  coverage?: { status: string }; elements?: unknown[]; candidates?: Candidate[];
   sourceSha256?: string; modelArtifactSha256?: string; sourceFormat?: string; sourceBytesBase64?: string;
+  recipe?: string; diagnostics?: { source?: CandidateSource }[];
+}
+interface CandidateSource {
+  unitPath: string; commitSha: string; sourceSha256: string;
+  start: number; length: number; startLine: number; startColumn: number; endLine: number; endColumn: number;
+}
+interface CandidateNode {
+  source: CandidateSource; children: CandidateNode[]; rawPredicate?: string;
+}
+interface Candidate {
+  reviewStatus: string; executable: boolean; contentProfile: string; source: CandidateSource; body: CandidateNode;
 }
 interface Input {
   repositoryId: string; profile: string; path: string; unitPath: string; sha256: string;
@@ -75,11 +86,48 @@ function input(file: string, profile: string, id: string, contentProfile: string
   assert.equal(artifact.repositoryId, id);
   assert.equal(artifact.commitSha, git(id, "rev-parse", "HEAD"));
   assert.ok(artifact.unitPath && !artifact.unitPath.startsWith("/"));
+  if (profile === "ce.candidates.v1") verifyCandidateSource(artifact);
   if (profile !== "ce.model-source.v1") assert.ok(["full", "partial"].includes(artifact.coverage!.status));
   return {
     repositoryId: id, profile, path: file, unitPath: artifact.unitPath,
     sha256: hash(bytes), byteLength: bytes.length, required: true, contentProfile
   };
+}
+function verifyCandidateSource(artifact: Artifact): void {
+  const original = spawnSync("git", ["show", `${artifact.commitSha}:${artifact.unitPath}`],
+    { cwd: join(directory, artifact.repositoryId), timeout: 60_000 });
+  assert.ifError(original.error);
+  assert.equal(original.status, 0, "candidate source must exist at the declared committed path");
+  assert.equal(hash(original.stdout), artifact.sourceSha256, "candidate digest must bind exact committed bytes");
+  assert.equal(artifact.recipe, "roslyn.scalar-guards.v1");
+  const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(original.stdout);
+  function position(offset: number): [number, number] {
+    const lines = text.slice(0, offset).split(/\r\n|\r|\n/);
+    return [lines.length, lines.at(-1)!.length + 1];
+  }
+  function verifySpan(source: CandidateSource): string {
+    for (const key of ["unitPath", "commitSha", "sourceSha256"] as const)
+      assert.equal(source[key], artifact[key], `candidate span ${key} crosslink`);
+    assert.ok(Number.isSafeInteger(source.start) && source.start >= 0);
+    assert.ok(Number.isSafeInteger(source.length) && source.length > 0 && source.start + source.length <= text.length);
+    assert.deepEqual([source.startLine, source.startColumn], position(source.start));
+    assert.deepEqual([source.endLine, source.endColumn], position(source.start + source.length));
+    return text.slice(source.start, source.start + source.length);
+  }
+  function verifyNode(node: CandidateNode): void {
+    const originalText = verifySpan(node.source);
+    if (node.rawPredicate !== undefined) assert.equal(node.rawPredicate, originalText, "predicate must retain source text");
+    node.children.forEach(verifyNode);
+  }
+  assert.ok((artifact.candidates?.length ?? 0) > 0);
+  for (const candidate of artifact.candidates!) {
+    assert.equal(candidate.reviewStatus, "UNREVIEWED");
+    assert.equal(candidate.executable, false);
+    assert.equal(candidate.contentProfile, "candidate-content");
+    verifySpan(candidate.source);
+    verifyNode(candidate.body);
+  }
+  for (const diagnostic of artifact.diagnostics ?? []) if (diagnostic.source) verifySpan(diagnostic.source);
 }
 function sourceRecipe(): string {
   const files: string[] = [];
@@ -93,6 +141,7 @@ function sourceRecipe(): string {
   visit(join(root, "extractors/ts/src/models"));
   visit(join(root, "extractors/ts/src/collection"));
   files.push(join(root, "extractors/ts/package-lock.json"), join(root, "config/runtime/images.env"),
+    join(root, "schema/models/support.json"),
     join(root, "platform/src/CapabilityExplorer.Extractors.CSharp/bin/Debug/net10.0/ce-cs.dll"),
     join(root, "platform/src/CapabilityExplorer.Contracts/bin/Debug/net10.0/CapabilityExplorer.Contracts.dll"));
   return hash(JSON.stringify(files.sort().map(file => [relative(root, file), hash(readFileSync(file))])));
@@ -141,7 +190,12 @@ function verifyPrivacy(bundle: string): void {
         "non-source evidence must retain its original no-raw-XML privacy boundary");
     }
     if (artifact.schema === "ce.models.v1") assert.ok((artifact.elements?.length ?? 0) > 0);
-    if (artifact.schema === "ce.candidates.v1") assert.ok((artifact.candidates?.length ?? 0) > 0);
+    if (artifact.schema === "ce.candidates.v1") {
+      assert.equal(item.contentProfile, "candidate-content");
+      assert.ok(manifest.content.repositories.find(repo => repo.repositoryId === item.repositoryId)!
+        .permittedContentProfiles.includes("candidate-content"));
+      verifyCandidateSource(artifact);
+    }
   }
 }
 
@@ -151,7 +205,7 @@ switch (process.argv[2]) {
       mkdirSync(join(directory, id));
       command("git", ["init", "--quiet", join(directory, id)]);
     }
-    writeFileSync(join(directory, "sales/Orchestrator.cs"), `
+    writeFileSync(join(directory, "sales/Orchestrator.cs"), `\uFEFF
 using System;
 public static class Pricing {
   public static string Classify(int amount, bool member) {
@@ -200,7 +254,9 @@ public static class Pricing {
         input("candidates.json", "ce.candidates.v1", "sales", "candidate-content")]
     };
     write("plan.json", plan);
-    write("denied-plan.json", { ...plan, repositories: plan.repositories.map(repo => ({ ...repo, permittedContentProfiles: [] })) });
+    write("denied-plan.json", { ...plan, repositories: plan.repositories.map(repo => ({
+      ...repo, permittedContentProfiles: repo.permittedContentProfiles.filter(profile => profile !== "candidate-content")
+    })) });
     const vector = {
       repositories: plan.repositories.map(repo => ({
         repositoryId: repo.repositoryId, commitSha: repo.commitSha, treeSha: repo.treeSha,
@@ -300,7 +356,7 @@ public static class Pricing {
     validateTypescript("changed-collection");
     verifyPrivacy("collection");
     verifyPrivacy("changed-collection");
-    console.log("DOGFOOD PASS: 2 sealed Git repositories, exact original source attachments and companion crosslinks, actual model/code/collector CLIs, .NET+TS consumers, repeat/mutate/deny/tamper/freshness/expiry/last-success.");
+    console.log("DOGFOOD PASS: 2 sealed Git repositories, exact committed candidate source/spans and original model-source attachments, actual model/code/collector CLIs, .NET+TS consumers, repeat/mutate/candidate-only-deny/tamper/freshness/expiry/last-success.");
     break;
   }
   case "cleanup":

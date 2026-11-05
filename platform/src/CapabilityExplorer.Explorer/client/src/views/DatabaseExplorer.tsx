@@ -1,9 +1,10 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useApi } from "../state";
 import { Card, ErrorBox, H1, Loading, Muted, Pill } from "../components/ui";
-import { databaseUrl, useDatabasePage, useDebouncedText, type DatabaseMeta, type DatabaseHit, type DatabaseArtifact, type DatabaseCalculation } from "../database-api";
+import { databaseUrl, useDatabaseInfinitePage, useDatabasePage, useDebouncedText, type DatabaseMeta, type DatabaseHit, type DatabaseArtifact, type DatabaseCalculation } from "../database-api";
 import { DatabaseInspector } from "./DatabaseInspector";
 import { DatabasePager } from "../components/DatabasePager";
+import { EmbeddingStatusPanel } from "../components/embedding-status";
 import { href, useRoute } from "../state";
 
 const ProcessesDecisions = lazy(() => import("./ProcessesDecisions").then((module) => ({ default: module.ProcessesDecisions })));
@@ -16,6 +17,7 @@ export function DatabaseExplorer({ meta, reload }: { meta: DatabaseMeta; reload:
   const [capability, setCapability] = useState("*");
   const scoped = useApi<DatabaseMeta>(capability === "*" ? null : `/api/meta?cap=${encodeURIComponent(capability)}`);
   const effective = capability === "*" ? meta : scoped.data?.capability === capability ? scoped.data : undefined;
+  const loadLatest = () => { reload(); if (capability !== "*") scoped.reload(); };
   return <>
     <header className="flex flex-wrap items-center gap-4 border-b border-zinc-200 bg-white px-5 py-3 dark:border-zinc-800 dark:bg-zinc-900">
       <span className="text-lg font-bold">Capability Explorer</span><Pill tone="info">PostgreSQL</Pill>
@@ -25,16 +27,16 @@ export function DatabaseExplorer({ meta, reload }: { meta: DatabaseMeta; reload:
           {meta.capabilities.map((cap) => <option key={cap.id} value={cap.id}>{cap.name}</option>)}
         </select>
       </label>
-      <button type="button" className={`${button} sm:ml-auto`} onClick={() => { reload(); if (capability !== "*") scoped.reload(); }}>Load latest snapshot</button>
+      <button type="button" className={`${button} sm:ml-auto`} onClick={loadLatest}>Load latest snapshot</button>
     </header>
     <main className="w-full min-w-0 space-y-4 p-3 sm:p-5">
       {scoped.error && capability !== "*" && <ErrorBox message={scoped.error} />}
-      {!effective ? <Loading what="Loading published snapshot" /> : <DatabaseWorkspace key={effective.snapshotId} meta={effective} route={route} />}
+      {!effective ? <Loading what="Loading published snapshot" /> : <DatabaseWorkspace key={effective.snapshotId} meta={effective} route={route} loadLatest={loadLatest} />}
     </main>
   </>;
 }
 
-function DatabaseWorkspace({ meta, route }: { meta: DatabaseMeta; route: { path: string; params: URLSearchParams } }) {
+function DatabaseWorkspace({ meta, route, loadLatest }: { meta: DatabaseMeta; route: { path: string; params: URLSearchParams }; loadLatest: () => void }) {
   const validTabs: Tab[] = ["explore", "calculations", "artifacts", "processes-decisions"];
   const tab: Tab = validTabs.includes(route.path as Tab) ? route.path as Tab : "explore";
   const [query, setQuery] = useState("");
@@ -56,6 +58,7 @@ function DatabaseWorkspace({ meta, route }: { meta: DatabaseMeta; route: { path:
         <RevisionChooser scope={scope} selection={selection} change={resetSelection} />
       </details>
     </div>
+    <EmbeddingStatusPanel scope={scope} meta={meta} selection={selection} />
     <Card><h2 className="font-semibold">Migration status</h2>
       <Muted>Available: bounded symbol search, symbol and evidence detail, adjacency, calculations and artifact metadata.</Muted>
       <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">Architecture, integrations, glossary, changes and binding review are not silently reconstructed from JSONL.</p>
@@ -71,7 +74,7 @@ function DatabaseWorkspace({ meta, route }: { meta: DatabaseMeta; route: { path:
           <input aria-label="Node kind" placeholder="Kind (optional)" className={input} value={kind} onChange={(event) => setKind(event.target.value)} />
           <select aria-label="Repository" className={input} value={repository} onChange={(event) => setRepository(event.target.value)}><option value="">All selected repositories</option>{Object.keys(selection).map((repo) => <option key={repo}>{repo}</option>)}</select>
         </div>}
-        {tab === "explore" && <SymbolPage key={`${scope}|${settled}|${kind}|${repository}`} scope={scope} query={settled} kind={kind} repository={repository} select={setKey} />}
+        {tab === "explore" && <SymbolPage key={`${scope}|${meta.generation}|${settled}|${kind}|${repository}`} scope={scope} meta={meta} loadLatest={loadLatest} query={settled} kind={kind} repository={repository} select={setKey} />}
         {tab === "calculations" && <CalculationPage key={scope} scope={scope} select={setKey} />}
         {tab === "artifacts" && <ArtifactPage key={scope} scope={scope} />}
       </section>
@@ -81,15 +84,37 @@ function DatabaseWorkspace({ meta, route }: { meta: DatabaseMeta; route: { path:
 }
 
 
-function SymbolPage({ scope, query, kind, repository, select }: { scope: string; query: string; kind: string; repository: string; select: (key: string) => void }) {
-  const page = useDatabasePage<DatabaseHit>(databaseUrl("search", scope, { q: query, kind, repo: repository }));
-  return <><DatabasePager page={page} /><div className="space-y-2" aria-busy={page.loading}>
-    {page.data?.items.map((hit) => <button type="button" disabled={page.loading} key={hit.key} onClick={() => select(hit.key)} className="block w-full rounded border border-zinc-200 bg-white p-3 text-left hover:border-blue-400 dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex flex-wrap items-center gap-2"><span className="font-semibold">{hit.name}</span><Pill>{hit.kind}</Pill>{hit.hasCalculation && <Pill tone="info">Calculation</Pill>}</div>
-      <div className="mt-1 text-xs text-zinc-500">{hit.repositoryId} · {hit.unit}</div><div className="mt-1 break-all font-mono text-xs text-zinc-500">{hit.key}</div>
-    </button>)}
-    {!page.loading && !page.data?.items.length && <Muted>No matching symbols in this selection.</Muted>}
-  </div></>;
+function SymbolPage({ scope, meta, loadLatest, query, kind, repository, select }: { scope: string; meta: DatabaseMeta; loadLatest: () => void; query: string; kind: string; repository: string; select: (key: string) => void }) {
+  const page = useDatabaseInfinitePage<DatabaseHit>(databaseUrl("search", scope, { q: query, kind, repo: repository }), meta, loadLatest);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const root = listRef.current;
+    const target = sentinelRef.current;
+    if (!root || !target || !page.hasMore || page.error) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) page.loadMore();
+    }, { root, rootMargin: "0px 0px 120px 0px", threshold: 0 });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [page.error, page.hasMore, page.loadMore]);
+  return <div ref={listRef} role="region" aria-label="Symbol results" tabIndex={0} data-testid="symbol-results" className="h-[calc(100dvh-300px)] min-h-0 min-w-0 flex-shrink overflow-y-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+    <div role="list" aria-busy={page.loading || page.loadingMore}>
+      {page.data?.items.map((hit) => <button type="button" role="listitem" data-symbol-key={hit.key} disabled={page.loading} key={hit.key} onClick={() => select(hit.key)} className="block w-full border-b border-zinc-200 bg-white p-3 text-left last:border-b-0 hover:border-blue-400 dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="flex flex-wrap items-center gap-2"><span className="font-semibold">{hit.name}</span><Pill>{hit.kind}</Pill>{hit.hasCalculation && <Pill tone="info">Calculation</Pill>}</div>
+        <div className="mt-1 text-xs text-zinc-500">{hit.repositoryId} · {hit.unit}</div><div className="mt-1 break-all font-mono text-xs text-zinc-500">{hit.key}</div>
+      </button>)}
+    </div>
+    {page.loading && !page.data && <div role="status" className="p-3 text-xs text-zinc-500">Loading symbols…</div>}
+    {page.error && <div className="flex items-center justify-between gap-2 p-3 text-xs text-red-600" role="alert">
+      <span><strong>{page.data?.items.length ? "Could not load more symbols." : "Could not load symbols."}</strong> {page.error}</span><button type="button" className={button} onClick={page.retry}>Retry</button>
+    </div>}
+    {!page.loading && !page.error && !page.data?.items.length && <Muted className="p-6 text-center">No matching symbols in this selection.</Muted>}
+    {page.loadingMore && <div role="status" className="p-3 text-center text-xs text-zinc-500">Loading more symbols…</div>}
+    {page.hasMore && !page.loadingMore && !page.error && <div className="p-2 text-center"><button type="button" className={button} onClick={page.loadMore}>Load more symbols</button></div>}
+    {!page.hasMore && !page.loading && !page.error && page.data?.items.length ? <div role="status" aria-live="polite" className="p-3 text-xs text-zinc-500">Loaded {page.data.items.length} symbols.</div> : null}
+    <div ref={sentinelRef} aria-hidden="true" className="h-px" />
+  </div>;
 }
 function CalculationPage({ scope, select }: { scope: string; select: (key: string) => void }) {
   const page = useDatabasePage<DatabaseCalculation>(databaseUrl("calculations", scope));

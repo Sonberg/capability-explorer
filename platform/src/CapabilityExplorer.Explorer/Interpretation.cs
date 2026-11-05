@@ -19,6 +19,8 @@ public sealed record InterpretationLayer(InterpretationOptions Options, Explanat
 public sealed partial class Intelligence
 {
     private readonly InterpretationOptions _configured;
+    private readonly bool _metadataOnly;
+    private readonly Func<EmbeddingConfiguration?>? _embeddingConfiguration;
     private volatile State _state;
 
     private sealed record State(InterpretationLayer Layer, OpenAiEmbeddingModel? Embeddings, ModelSettings? Saved);
@@ -26,11 +28,21 @@ public sealed partial class Intelligence
     /// <param name="configured">From configuration; used while nothing is saved, or when it names a provider explicitly.</param>
     /// <param name="settingsPath">Where the UI saves model settings (shared with <c>ce embed</c> and <c>make ollama</c>).</param>
     /// <param name="store">Similarity search; null without a database (CE_DATABASE).</param>
-    public Intelligence(InterpretationOptions configured, string settingsPath, EmbeddingStore? store)
+    /// <param name="metadataOnly">PostgreSQL browsing resolves identity lazily, without initializing optional model clients.</param>
+    /// <param name="embeddingConfiguration">The shared host resolver, evaluated only on optional projection paths.</param>
+    public Intelligence(InterpretationOptions configured, string settingsPath, EmbeddingStore? store, bool metadataOnly = false,
+        Func<EmbeddingConfiguration?>? embeddingConfiguration = null)
     {
         _configured = configured;
+        _metadataOnly = metadataOnly;
+        _embeddingConfiguration = embeddingConfiguration;
         SettingsPath = settingsPath;
         Store = store;
+        if (metadataOnly)
+        {
+            _state = new State(new InterpretationLayer(configured, null), null, null);
+            return;
+        }
         try
         {
             _state = Build(configured.Enabled ? null : ModelSettings.Load(settingsPath));
@@ -38,12 +50,12 @@ public sealed partial class Intelligence
         catch (Exception e) when (e is System.Text.Json.JsonException or InvalidOperationException or UriFormatException)
         {
             // A broken settings file must not stop the explorer: start without it; saving from the UI overwrites it.
-            Problem = $"{settingsPath}: {e.Message}";
-            _state = Build(null);
+            Problem = "Model configuration is invalid; optional intelligence is disabled.";
+            _state = new State(new InterpretationLayer(configured, null), null, null);
         }
     }
 
-    /// <summary>Why the saved settings were ignored at startup, if they were.</summary>
+    /// <summary>Why optional model configuration was disabled at startup, if it was.</summary>
     public string? Problem { get; private set; }
 
     public string SettingsPath { get; }
@@ -58,6 +70,9 @@ public sealed partial class Intelligence
     public OpenAiEmbeddingModel? Embeddings => _state.Embeddings;
 
     public ModelSettings? Saved => _state.Saved;
+
+    public EmbeddingConfiguration? ResolveEmbeddingConfiguration() =>
+        _embeddingConfiguration is not null ? _embeddingConfiguration() : EmbeddingConfiguration.Resolve(_configured, SettingsPath);
 
     /// <summary>Validates, saves and applies. A blank API key keeps the saved one.</summary>
     public string? Save(ModelSettingsRequest request)
@@ -115,6 +130,7 @@ public sealed partial class Intelligence
     private State Build(ModelSettings? saved)
     {
         var options = saved?.ApplyTo(_configured) ?? _configured;
+        if (_metadataOnly) return new State(new InterpretationLayer(options, null), null, saved);
         var model = options.CreateModel();
         var explanations = model is not null ? new ExplanationService(model, options.CacheDirectory) : null;
         return new State(new InterpretationLayer(options, explanations, model as IChatModel)

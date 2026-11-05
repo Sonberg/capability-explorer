@@ -59,7 +59,7 @@ Exact route semantics are deliberately the existing artifact-key semantics.
 Do not strip gateway prefixes, rewrite versions, decode reserved separators, or
 relax the binder. Source and target revisions must be explicit in review.
 
-The decision is recorded in [MADR-0036](../adr/0036-http-capability-recommendations.md).
+The decision is recorded in [MADR-0037](../adr/0037-http-capability-recommendations.md).
 Five warm real fixture-server HTTP requests measured 29.48, 33.22, 31.19,
 26.26 and 28.28 ms on this macOS host. All returned the same fingerprint. These
 include HTTP/serialization and are not an isolated matcher benchmark or SLO.

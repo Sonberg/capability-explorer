@@ -114,8 +114,8 @@ export function SelectionProvider({ meta, reloadMeta, children }: { meta: Meta; 
   const effective = known ? capability : "";
   const own = overrides[effective || "*"] ?? {};
   const spec = Object.entries(own).map(([r, s]) => `${r}:${s}`).join(",");
-  // The load generation is part of every scoped request, so new artifacts on the server refetch every view.
-  const scope = `view=${encodeURIComponent(spec)}${effective ? `&cap=${encodeURIComponent(effective)}` : ""}&g=${meta.generation}`;
+  // Generation detects changed inputs; snapshot identity also invalidates views after a server restart.
+  const scope = `view=${encodeURIComponent(spec)}${effective ? `&cap=${encodeURIComponent(effective)}` : ""}&g=${meta.generation}&instance=${encodeURIComponent(meta.snapshotId)}`;
   const resolved = useApi<Record<string, string>>(`/api/view?${scope}`);
 
   const setCapability = useCallback((id: string) => {

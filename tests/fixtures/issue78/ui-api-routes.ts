@@ -19,6 +19,10 @@ export async function installIssue78UiApiRoutes(page: any, config: {
   xmlById: Record<string, string>;
 }) {
   const { state, snapshot, revisionA, revisionB, selection, bpmnHash, items, evidenceById, xmlById } = config;
+  await page.route("**/health", (route: any) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ status: "healthy", uptime_seconds: 1, version: "test", timestamp: "2026-11-05T00:00:00Z" })
+  }));
   await page.route("**/api/**", async (route: any) => {
     const url = new URL(route.request().url());
     state.requests.push(`${url.pathname}${url.search}`);
@@ -29,7 +33,7 @@ export async function installIssue78UiApiRoutes(page: any, config: {
     if (url.pathname === "/api/meta") return json(state.databaseMode ? {
       source: "postgres", snapshotId: snapshot, generation: 3, capability: "cap-a",
       selection, capabilities: [{ id: "cap-a", name: "Capability A", repositories: ["repo-a"] }],
-      supported: ["models"], status: "ready"
+      supported: ["models", "embeddings/status"], status: "ready"
     } : {
       generation: 3,
       capabilities: [{ id: "cap-a", name: "Capability A", repositories: ["repo-a"] }],
@@ -39,6 +43,16 @@ export async function installIssue78UiApiRoutes(page: any, config: {
         { repositoryId: "repo-a", commitSha: revisionB, tags: [], label: "revision B" }
       ],
       defaultView: { "repo-a": revisionA }, artifacts: 0, problems: [], hasSource: true, hasEvaluation: false, nodeKinds: []
+    });
+    if (url.pathname === "/api/embeddings/status") return json({
+      snapshotId: url.searchParams.get("snapshot") ?? snapshot, generation: 3,
+      capability: url.searchParams.get("cap") ?? "cap-a",
+      selection: url.searchParams.get("view")?.includes(revisionB) ? { "repo-a": revisionB } : selection,
+      state: "not-configured", configuredModel: null, coverageModel: null,
+      coverageScope: "selected-view", similarityAvailable: false,
+      snapshotArtifactCount: 0, selectedArtifactCount: 0, coveredArtifactCount: 0,
+      snapshotArtifactsSha256: null, countsExact: false, counts: null,
+      lastSuccessfulCompletion: null, reasonCode: "model-not-configured"
     });
     if (url.pathname === "/api/view") {
       const alternate = url.searchParams.get("view")?.includes(revisionB);

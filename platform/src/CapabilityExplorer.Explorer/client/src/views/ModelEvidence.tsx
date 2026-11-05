@@ -1,81 +1,51 @@
 import type { ReactNode } from "react";
+import { buildModelIndex, elementName, lanesFor, relationshipName } from "../models/model-index";
 import type {
   AuthoredModelEvidence, CandidateArtifact, CandidateNode, CandidateSource, ModelEvidence,
   ModelScope, ModelSummary,
 } from "../models/contracts";
 
 const card = "rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900";
-const linkStyle = "text-blue-700 underline decoration-transparent underline-offset-2 hover:decoration-current focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-blue-300";
+const localTypeName = (type: string) => type.split(/[:/#}]/).at(-1)?.toLowerCase();
+const dmnNamespace = "https://www.omg.org/spec/DMN/20191111/MODEL/";
+const button = "rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800";
+const input = "rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900";
 
-export function ElementList({ elements, relationships, selected, renderedIds, onSelect }: {
-  elements: AuthoredModelEvidence["elements"];
-  relationships: AuthoredModelEvidence["relationships"];
-  selected: string;
-  renderedIds: string[];
-  onSelect: (id: string) => void;
+export function ModelRail(props: {
+  idPrefix: string; items: ModelSummary[]; allItems: ModelSummary[]; selectedId: string;
+  query: string; setQuery: (value: string) => void;
+  kind: "all" | "process" | "decision"; setKind: (value: "all" | "process" | "decision") => void;
+  selectModel: (id: string) => void; listLoading: boolean; deepLinkLoading: boolean;
+  cursor: string | null; pageBusy: boolean; appendPage: () => Promise<void>; candidateKindPending: boolean;
 }) {
-  const byIdentity = new Map(elements.map((element) => [element.identity, element]));
-  const ancestors = (element: AuthoredModelEvidence["elements"][number]) => {
-    const parents: AuthoredModelEvidence["elements"][number][] = [];
-    const seen = new Set<string>();
-    let parent = element.parent;
-    while (parent && !seen.has(parent) && parents.length < elements.length) {
-      seen.add(parent);
-      const owner = byIdentity.get(parent);
-      if (!owner) break;
-      parents.unshift(owner);
-      parent = owner.parent;
-    }
-    return parents;
-  };
-  const related = (identity: string, direction: "incoming" | "outgoing") =>
-    relationships.filter((relationship) => direction === "incoming" ? relationship.target === identity : relationship.source === identity);
-  const laneFor = (element: AuthoredModelEvidence["elements"][number]) => {
-    const lane = ancestors(element).reverse().find((owner) => /lane/i.test(owner.type));
-    return lane?.attributes.name || lane?.id;
-  };
-  return <div className="max-h-[70vh] overflow-auto p-3">
-    <h2 className="font-semibold">Text alternative from captured model evidence</h2>
-    <p className="mb-2 text-xs text-zinc-500">Items follow evidence order. Rendering status describes this viewer projection only; model identity is not a source line number.</p>
-    <ol className="space-y-1">
-      {elements.map((element) => {
-        const path = ancestors(element);
-        const lane = laneFor(element);
-        return <li key={element.identity} className="min-w-0 rounded border border-zinc-200 p-2 dark:border-zinc-800">
-          <button type="button" aria-pressed={selected === element.id} onClick={() => onSelect(element.id)} className={`w-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 ${selected === element.id ? "text-blue-800 dark:text-blue-200" : ""}`}>
-            <span className="font-medium">{element.attributes.name || element.id}</span> <span className="text-xs text-zinc-500">{element.type}</span>
-            <span className="block break-all font-mono text-[11px] text-zinc-500">{element.id}</span>
-            <span className="block text-xs text-zinc-500">{path.length ? `Parent: ${path.at(-1)?.attributes.name || path.at(-1)?.id}` : "Top-level"}</span>
-            <span className="block text-xs text-zinc-500">Lane: {lane ?? "not captured"}</span>
-            <span className="block text-xs text-zinc-500">Incoming: {related(element.identity, "incoming").map((relationship) => `${relationship.kind} from ${byIdentity.get(relationship.source)?.attributes.name || byIdentity.get(relationship.source)?.id || relationship.source}`).join("; ") || "none captured"} · Outgoing: {related(element.identity, "outgoing").map((relationship) => `${relationship.kind} to ${byIdentity.get(relationship.target)?.attributes.name || byIdentity.get(relationship.target)?.id || relationship.target}`).join("; ") || "none captured"}</span>
-            <span className={`block text-xs ${renderedIds.includes(element.id) ? "text-emerald-800 dark:text-emerald-200" : "text-amber-800 dark:text-amber-200"}`}>{renderedIds.includes(element.id) ? "Included in current viewer projection." : "Not rendered in current viewer projection."}</span>
-            {element.content?.text && <span className="block whitespace-pre-wrap text-xs">Expression/content ({element.content.language ?? "language not specified"}): {element.content.text}</span>}
-            {element.attributes.isExpanded === "false" && <span className="block text-xs text-amber-700">Not expanded by the viewer's current nested-process projection.</span>}
-          </button>
-          {path.length > 0 && <nav aria-label={`Breadcrumb for ${element.id}`} className="mt-1 text-xs text-zinc-500">
-            <ol className="flex flex-wrap gap-1">{path.map((parent, index) => <li key={parent.identity}>
-              {index > 0 && <span aria-hidden="true"> / </span>}
-              <button type="button" className={linkStyle} aria-label={`Navigate to ${parent.id}`} onClick={() => onSelect(parent.id)}>{parent.attributes.name || parent.id}</button>
-            </li>)}
-              <li><span aria-hidden="true"> / </span><span aria-current="location">{element.attributes.name || element.id}</span></li>
-            </ol>
-          </nav>}
-        </li>;
-      })}
-    </ol>
-    {relationships.length > 0 && <div className="mt-4">
-      <h3 className="font-semibold">Ordered relationships</h3>
-      <ol className="mt-1 space-y-1">
-        {[...relationships].sort((a, b) => a.order - b.order).map((relationship) => <li key={relationship.identity}>
-          <button type="button" aria-pressed={selected === relationship.identity} onClick={() => onSelect(relationship.identity)} className={`w-full rounded border p-2 text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 ${selected === relationship.identity ? "border-blue-500 bg-blue-50 dark:bg-blue-950/50" : "border-zinc-200 dark:border-zinc-800"}`}>
-            <span className="font-medium">{relationship.kind}</span>: {byIdentity.get(relationship.source)?.attributes.name || byIdentity.get(relationship.source)?.id || relationship.source} → {byIdentity.get(relationship.target)?.attributes.name || byIdentity.get(relationship.target)?.id || relationship.target}
-            {relationship.condition?.text && <span className="block whitespace-pre-wrap text-xs">Condition ({relationship.condition.language ?? "language not specified"}): {relationship.condition.text}</span>}
-            <span className="block break-all font-mono text-[10px] text-zinc-500">Relationship identity: {relationship.identity} · provenance locator: not supplied by this evidence schema.</span>
-          </button>
-        </li>)}
-      </ol>
-    </div>}
-  </div>;
+  const { idPrefix, items, allItems, selectedId, query, setQuery, kind, setKind, selectModel, listLoading, deepLinkLoading, cursor, pageBusy, appendPage, candidateKindPending } = props;
+  return <>
+    <label className="block text-xs font-semibold" htmlFor={`${idPrefix}-model-search`}>Search models</label>
+    <input id={`${idPrefix}-model-search`} className={`${input} mt-1 w-full`} value={query} onChange={(event) => setQuery(event.target.value)} />
+    <div className="mt-2 flex flex-wrap gap-1" role="group" aria-label="Filter processes and decisions">
+      {(["all", "process", "decision"] as const).map((value) => <button key={value} type="button" aria-pressed={kind === value} onClick={() => setKind(value)} className={`${button} px-2 py-1 text-xs`}>{value === "all" ? "All" : value === "process" ? "Processes" : "Decisions"}</button>)}
+    </div>
+    <h2 className="mt-4 font-semibold">Authored models</h2>
+    <ul className="mt-1 space-y-1">
+      {items.filter((item) => item.kind === "authored").map((item) => <ModelButton key={item.id} item={item} selected={item.id === selectedId} onClick={() => selectModel(item.id)} />)}
+    </ul>
+    <h2 className="mt-4 font-semibold">Code candidates</h2>
+    {candidateKindPending && kind !== "all" && <p className="mt-1 text-xs text-zinc-500">Candidate process/decision kind is not included in summaries. Select All to load candidate evidence before filtering its kind.</p>}
+    <ul className="mt-1 space-y-1">
+      {items.filter((item) => item.kind === "candidate").map((item) => <ModelButton key={item.id} item={item} selected={item.id === selectedId} onClick={() => selectModel(item.id)} />)}
+    </ul>
+    {(listLoading || deepLinkLoading) && <p role="status" className="mt-3 text-sm text-zinc-500">{deepLinkLoading ? "Finding linked model…" : "Loading bounded model summaries…"}</p>}
+    {!listLoading && allItems.length === 0 && <p className="mt-3 text-sm text-zinc-500">No model summaries are available in this scope.</p>}
+    {cursor && <button type="button" className={`${button} mt-3 w-full`} disabled={pageBusy || deepLinkLoading} onClick={() => void appendPage()}>{pageBusy ? "Loading…" : "Load next page"}</button>}
+  </>;
+}
+
+function ModelButton({ item, selected, onClick }: { item: ModelSummary; selected: boolean; onClick: () => void }) {
+  return <li><button type="button" aria-current={selected ? "true" : undefined} onClick={onClick} className={`w-full rounded-md border p-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 ${selected ? "border-blue-500 bg-blue-50 dark:bg-blue-950/50" : "border-zinc-200 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800"}`}>
+    <span className="flex items-center justify-between gap-2 font-medium"><span className="truncate">{item.unitPath.split("/").at(-1)}</span><span className="shrink-0 text-[11px] text-zinc-500">{item.coverage} extraction</span></span>
+    <span className="block truncate text-xs text-zinc-500">{item.repositoryId} · {item.modelKind}</span>
+    <span className="block truncate font-mono text-[10px] text-zinc-500">{item.unitPath}</span>
+  </button></li>;
 }
 
 export function DmnTables({ elements, selected, onSelect }: {
@@ -89,7 +59,7 @@ export function DmnTables({ elements, selected, onSelect }: {
   if (!tables.length) {
     return <div className="space-y-3 p-3">
       <h2 className="font-semibold">Authored literal expressions</h2>
-      {expressions.length ? expressions.map((expression) => <section key={expression.identity} className={card}>
+      {expressions.length ? expressions.map((expression) => <section id={`model-logic-${expression.id}`} key={expression.identity} className={card}>
         <h3>{expression.attributes.name || expression.id} · {byIdentity.get(expression.parent ?? "")?.attributes.name || byIdentity.get(expression.parent ?? "")?.id || "owning decision not captured"}</h3>
         <p className="mt-1 whitespace-pre-wrap font-mono text-sm">{expression.content?.text ?? "Expression text was not captured in this evidence profile."}</p>
         <p className="mt-1 text-xs text-zinc-500">Language: {expression.content?.language ?? "not specified"} · text only; not evaluated.</p>
@@ -103,6 +73,17 @@ export function DmnTables({ elements, selected, onSelect }: {
       const outputs = children.filter((element) => /(^|:)output$/i.test(element.type)).sort((a, b) => a.order - b.order);
       const rules = children.filter((element) => /(^|:)rule$/i.test(element.type)).sort((a, b) => a.order - b.order);
       const columns = [...inputs, ...outputs];
+      const declarationFor = (column: AuthoredModelEvidence["elements"][number], kind: "input" | "output") => {
+        const declarationName = `${kind}values`;
+        const declarations = elements.filter((element) =>
+          element.parent === column.identity && element.namespace === dmnNamespace &&
+          localTypeName(element.type) === declarationName
+        ).sort((a, b) => a.order - b.order);
+        if (!declarations.length) return "No standard DMN allowed-value declaration is present in this evidence. The reason is not established by this view.";
+        return declarations.map((declaration) => declaration.content?.text ||
+          "Declaration present; its text is empty or was not captured. The reason is not established by this view."
+        ).join("\n");
+      };
       const tableShapeValid = columns.length > 0 && rules.every((rule) => {
         const inputCells = (rule.cells ?? []).filter((cell) => cell.kind === "input").sort((a, b) => a.order - b.order);
         const outputCells = (rule.cells ?? []).filter((cell) => cell.kind === "output").sort((a, b) => a.order - b.order);
@@ -110,14 +91,22 @@ export function DmnTables({ elements, selected, onSelect }: {
           inputCells.every((cell, index) => index === 0 || inputCells[index - 1].order < cell.order) &&
           outputCells.every((cell, index) => index === 0 || outputCells[index - 1].order < cell.order);
       });
-      return <section key={table.identity} className="min-w-0">
+      return <section id={`model-logic-${table.id}`} key={table.identity} className={`min-w-0 ${selected === table.id ? "rounded outline outline-2 outline-blue-500" : ""}`}>
         <h2 className="font-semibold">{table.attributes.name || table.id}</h2>
         <p className="mb-2 text-xs text-zinc-500">Hit policy: {table.hitPolicy || "not captured"}{table.aggregation ? ` · aggregation: ${table.aggregation}` : ""}. Authored expressions are shown literally, never evaluated.</p>
         {!tableShapeValid && <p role="alert" className="mb-2 rounded border border-amber-400 p-2 text-sm text-amber-900 dark:text-amber-200">Rule cells do not match the captured ordered input/output columns. Values are not aligned or padded.</p>}
         <div className="overflow-x-auto">
           <table className="min-w-full border-collapse text-left text-sm">
             <caption className="sr-only">{table.attributes.name || table.id} authored decision table</caption>
-            <thead><tr>{columns.map((column) => <th key={column.identity} scope="col" className="border border-zinc-300 bg-zinc-100 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-800">{column.attributes.label || column.attributes.name || column.id}</th>)}</tr></thead>
+            <thead><tr>{columns.map((column, index) => {
+              const kind = index < inputs.length ? "input" : "output";
+              const declaration = declarationFor(column, kind);
+              return <th key={column.identity} scope="col" className="border border-zinc-300 bg-zinc-100 px-2 py-1 align-top dark:border-zinc-700 dark:bg-zinc-800">
+                <span className="block">{column.attributes.label || column.attributes.name || column.id}</span>
+                <span className="mt-1 block text-xs font-normal text-zinc-600 dark:text-zinc-300">{kind === "input" ? "Input allowed values" : "Output allowed values"} (literal, not evaluated)</span>
+                <span className="block whitespace-pre-wrap break-words font-mono text-xs font-normal">{declaration}</span>
+              </th>;
+            })}</tr></thead>
             <tbody>{tableShapeValid && rules.map((rule) => <tr key={rule.identity} className={selected === rule.id ? "bg-blue-50 outline outline-2 outline-blue-500 dark:bg-blue-950/60" : ""}>
               {columns.map((column, columnIndex) => {
                 const cells = (rule.cells ?? []).filter((cell) => cell.kind === (columnIndex < inputs.length ? "input" : "output")).sort((a, b) => a.order - b.order);
@@ -135,7 +124,7 @@ export function DmnTables({ elements, selected, onSelect }: {
     })}
     {expressions.length > 0 && <section>
       <h2 className="mb-2 font-semibold">Authored literal expressions</h2>
-      <div className="space-y-2">{expressions.map((expression) => <article key={expression.identity} className={card}>
+      <div className="space-y-2">{expressions.map((expression) => <article id={`model-logic-${expression.id}`} key={expression.identity} className={card}>
         <h3>{expression.attributes.name || expression.id}</h3>
         <p className="mt-1 whitespace-pre-wrap font-mono text-sm">{expression.content?.text ?? "Expression text was not captured in this evidence profile."}</p>
         <p className="mt-1 text-xs text-zinc-500">Language: {expression.content?.language ?? "not specified"} · text only; not evaluated.</p>
@@ -169,14 +158,80 @@ function SourceLocator({ source }: { source: CandidateSource }) {
   return <p className="break-all font-mono text-[10px] text-zinc-500">{source.unitPath} · {source.commitSha.slice(0, 12)} · lines {source.startLine}:{source.startColumn}–{source.endLine}:{source.endColumn} · UTF-16 span {source.start}+{source.length} · SHA-256 {source.sourceSha256}</p>;
 }
 
-export function Diagnostics({ diagnostics }: { diagnostics: Array<{ code: string; message: string; disposition?: string; source?: object }> }) {
+type DiagnosticRecord = { code: string; message: string; disposition?: string; source?: object };
+
+function sourceRecord(diagnostic: DiagnosticRecord): Record<string, unknown> | undefined {
+  return diagnostic.source && typeof diagnostic.source === "object"
+    ? diagnostic.source as Record<string, unknown>
+    : undefined;
+}
+
+function constructFor(diagnostic: DiagnosticRecord, elements: AuthoredModelEvidence["elements"]): string {
+  const source = sourceRecord(diagnostic);
+  const explicitNamespace = typeof source?.namespace === "string" ? source.namespace : undefined;
+  const explicitType = typeof source?.type === "string" ? source.type :
+    typeof source?.construct === "string" ? source.construct :
+      typeof source?.elementKind === "string" ? source.elementKind :
+        typeof source?.kind === "string" ? source.kind : undefined;
+  if (explicitNamespace || explicitType) return [explicitNamespace, explicitType].filter(Boolean).join(" · ");
+  const locator = source?.element;
+  const artifact = source?.artifact;
+  const element = elements.find((candidate) =>
+    (typeof artifact !== "string" || candidate.source.artifact === artifact) &&
+    (candidate.id === locator || candidate.identity === locator ||
+      (candidate.source.element === locator && candidate.source.artifact === artifact))
+  );
+  return element ? `${element.namespace} · ${element.type}` : "Construct not identified";
+}
+
+function compareText(a: string, b: string): number {
+  return a === b ? 0 : a < b ? -1 : 1;
+}
+
+export function groupModelDiagnostics(
+  diagnostics: DiagnosticRecord[],
+  elements: AuthoredModelEvidence["elements"] = []
+) {
+  const groups = new Map<string, { code: string; disposition: string; construct: string; items: DiagnosticRecord[] }>();
+  for (const diagnostic of diagnostics) {
+    const disposition = diagnostic.disposition ?? "not specified";
+    const construct = constructFor(diagnostic, elements);
+    const key = JSON.stringify([diagnostic.code, disposition, construct]);
+    const group = groups.get(key) ?? { code: diagnostic.code, disposition, construct, items: [] };
+    group.items.push(diagnostic);
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort((a, b) =>
+    compareText(a.code, b.code) || compareText(a.disposition, b.disposition) || compareText(a.construct, b.construct)
+  );
+}
+
+export function Diagnostics({ diagnostics, elements = [] }: {
+  diagnostics: DiagnosticRecord[];
+  elements?: AuthoredModelEvidence["elements"];
+}) {
   if (!diagnostics.length) return null;
+  const groups = groupModelDiagnostics(diagnostics, elements);
   return <section className={`${card} border-amber-300`} aria-label="Model diagnostics">
     <h2 className="font-semibold">Diagnostics ({diagnostics.length})</h2>
-    <ul className="mt-1 space-y-1">{diagnostics.map((diagnostic, index) => <li key={`${diagnostic.code}:${index}`} className="text-sm">
-      <span className="font-mono text-xs">{diagnostic.code}</span>{diagnostic.disposition && <span> · {diagnostic.disposition}</span>}
-      <p>{diagnostic.message}</p>
-      {diagnostic.source && <p className="break-all text-xs text-zinc-500">{Object.entries(diagnostic.source).map(([key, value]) => `${key}: ${String(value)}`).join(" · ")}</p>}
+    <ul className="mt-1 space-y-2">{groups.map((group) => <li key={JSON.stringify([group.code, group.disposition, group.construct])} className="rounded border border-amber-200 p-2 text-sm dark:border-amber-900">
+      <details>
+        <summary className="cursor-pointer rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600">
+          <span className="font-mono text-xs">{group.code}</span> · {group.disposition} · {group.construct} · {group.items.length} {group.items.length === 1 ? "occurrence" : "occurrences"}
+        </summary>
+        <ol className="mt-2 list-decimal space-y-2 pl-5">
+          {group.items.map((diagnostic, index) => <li key={`${group.code}:${group.construct}:${index}`} className="min-w-0">
+            <p className="whitespace-pre-wrap break-words">{diagnostic.message}</p>
+            {sourceRecord(diagnostic)
+              ? <dl className="mt-1 grid min-w-0 gap-x-2 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
+                {Object.entries(sourceRecord(diagnostic)!).map(([key, value]) => <div key={key} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-1">
+                  <dt>{key}:</dt><dd className="min-w-0 break-all font-mono">{String(value)}</dd>
+                </div>)}
+              </dl>
+              : <p className="mt-1 text-xs text-zinc-500">Source locator not supplied.</p>}
+          </li>)}
+        </ol>
+      </details>
     </li>)}</ul>
   </section>;
 }
@@ -186,6 +241,7 @@ export function Provenance({ summary, evidence, snapshot, selectedElement, sourc
   sourceVerified: boolean; renderStatus: string;
 }) {
   const authored = evidence?.schema === "ce.models.v1" ? evidence as AuthoredModelEvidence : undefined;
+  const index = authored && buildModelIndex(authored);
   const candidate = evidence?.schema === "ce.candidates.v1" ? evidence as CandidateArtifact : undefined;
   const selectedEvidenceElement = authored?.elements.find((element) => element.id === selectedElement);
   const selectedRelationship = authored?.relationships.find((relationship) => relationship.identity === selectedElement);
@@ -195,23 +251,28 @@ export function Provenance({ summary, evidence, snapshot, selectedElement, sourc
     sourceVerified ? renderStatus.startsWith("Rendered") ? "Authored evidence · original source verified · viewer projection rendered" :
       `Authored evidence · original source verified · viewer projection unavailable (${renderStatus || "not rendered"})` :
       `Authored evidence · original source not verified (${summary.source.status})`;
-  return <aside className={`${card} min-w-0 self-start`} aria-label="Model provenance">
-    <h2 className="font-semibold">Provenance</h2>
-    <dl className="mt-2 space-y-2 break-words text-sm">
-      <Field label="Status">{sourceStatus}</Field>
-      <Field label="Repository">{summary.repositoryId}</Field>
-      <Field label="Commit"><code className="font-mono text-xs">{summary.commitSha}</code></Field>
-      <Field label="Path"><code className="font-mono text-xs">{summary.unitPath}</code></Field>
-      <Field label="Evidence digest"><code className="font-mono text-xs">{evidence?.sourceSha256 ?? summary.source.sha256 ?? "not supplied"}</code></Field>
-      <Field label="Source access">{summary.source.status}{sourceVerified ? " · original UTF-8 bytes verified" : " · source bytes not verified"}</Field>
-      <Field label="Coverage">{summary.coverage}{authored?.contentProfile ? ` · ${authored.contentProfile}` : ""}{candidate ? ` · recipe ${candidate.recipe}` : ""}</Field>
-      <Field label="Diagnostics">{authored?.diagnostics.length ?? candidate?.diagnostics.length ?? summary.diagnosticCount} selected-evidence diagnostics</Field>
-      <Field label="Snapshot">{snapshot?.snapshot ?? "not loaded"}{snapshot ? ` · generation ${snapshot.generation}` : ""}</Field>
-      <Field label="Selected revisions">{Object.entries(snapshot?.selection ?? {}).map(([repo, sha]) => `${repo}@${sha.slice(0, 12)}`).join(", ") || "all repositories / server-resolved"}</Field>
-    </dl>
+  return <aside className={`${card} min-w-0 self-start`} aria-label="Model insights">
+    <h2 className="font-semibold">Insights</h2>
+    <p className="mt-1 text-xs text-zinc-500">Source provenance and selected model details.</p>
     {selectedEvidenceElement && <section className="mt-3 border-t border-zinc-200 pt-2 dark:border-zinc-800" aria-label="Selected element provenance">
       <h3 className="font-semibold">Selected element</h3>
+      <p className="font-medium">{selectedEvidenceElement.attributes.name || selectedEvidenceElement.id}</p>
       <p className="break-all font-mono text-xs">{selectedEvidenceElement.id} · {selectedEvidenceElement.type}</p>
+      <dl className="mt-2 space-y-2 text-sm">
+        <Field label="Parent">{authored?.elements.find(element => element.identity === selectedEvidenceElement.parent)?.attributes.name ||
+          authored?.elements.find(element => element.identity === selectedEvidenceElement.parent)?.id || "Top-level"}</Field>
+        <Field label="Lane (as authored)">{index && lanesFor(index, selectedEvidenceElement).map(elementName).join(", ") || "No lane membership captured"}</Field>
+        {(["incoming", "outgoing"] as const).map(direction => <Field key={direction} label={direction === "incoming" ? "Incoming captured relationships" : "Outgoing captured relationships"}>
+          {authored?.relationships.filter(relationship =>
+            (direction === "incoming" ? relationship.target : relationship.source) === selectedEvidenceElement.identity)
+            .map(relationship => {
+              const endpoint = authored.elements.find(element => element.identity === (direction === "incoming" ? relationship.source : relationship.target));
+              return `${index ? relationshipName(index, relationship) : relationship.kind}: ${elementName(endpoint)}`;
+            }).join(", ") || "None captured; not proof of no dependencies"}
+        </Field>)}
+        {selectedEvidenceElement.attributes.calledElement && <Field label="Called process">{selectedEvidenceElement.attributes.calledElement}</Field>}
+      </dl>
+      <p className="mt-2 text-xs text-zinc-500">Lane membership is not accountability. Business owner, approval and capability mapping are not supplied by this evidence.</p>
       <p className="break-all text-xs text-zinc-500">Namespace: {selectedEvidenceElement.namespace} · artifact: {selectedEvidenceElement.source.artifact} · element: {selectedEvidenceElement.source.element ?? "not supplied"}</p>
     </section>}
     {selectedRelationship && <section className="mt-3 min-w-0 max-w-full border-t border-zinc-200 pt-2 dark:border-zinc-800" aria-label="Selected relationship provenance">
@@ -225,8 +286,24 @@ export function Provenance({ summary, evidence, snapshot, selectedElement, sourc
         {relationshipTarget?.id ? ` (${relationshipTarget.id})` : ""}
         {" · evidence order "}{selectedRelationship.order} · element source locator not supplied.
       </p>
+      {selectedRelationship.condition && <p className="whitespace-pre-wrap text-sm">Condition ({selectedRelationship.condition.language || "language not specified"}): {selectedRelationship.condition.text ?? "Text not captured"}</p>}
       <p className="max-w-full break-all text-[10px] text-zinc-500">Source element identity: {selectedRelationship.source} · target element identity: {selectedRelationship.target}</p>
     </section>}
+    <details className="mt-3" open={!selectedEvidenceElement && !selectedRelationship}>
+      <summary className="cursor-pointer font-semibold">Source provenance</summary>
+      <dl className="mt-2 space-y-2 break-words text-sm">
+        <Field label="Status">{sourceStatus}</Field>
+        <Field label="Repository">{summary.repositoryId}</Field>
+        <Field label="Commit"><code className="font-mono text-xs">{summary.commitSha}</code></Field>
+        <Field label="Path"><code className="font-mono text-xs">{summary.unitPath}</code></Field>
+        <Field label="Evidence digest"><code className="font-mono text-xs">{evidence?.sourceSha256 ?? summary.source.sha256 ?? "not supplied"}</code></Field>
+        <Field label="Source access">{summary.source.status}{sourceVerified ? " · original UTF-8 bytes verified" : " · source bytes not verified"}</Field>
+        <Field label="Extraction coverage">{summary.coverage}{authored?.contentProfile ? ` · ${authored.contentProfile}` : ""}{candidate ? ` · recipe ${candidate.recipe}` : ""} · not business completeness, validity or approval</Field>
+        <Field label="Diagnostics">{authored?.diagnostics.length ?? candidate?.diagnostics.length ?? summary.diagnosticCount} selected-evidence diagnostics</Field>
+        <Field label="Snapshot">{snapshot?.snapshot ?? "not loaded"}{snapshot ? ` · generation ${snapshot.generation}` : ""}</Field>
+        <Field label="Selected revisions">{Object.entries(snapshot?.selection ?? {}).map(([repo, sha]) => `${repo}@${sha.slice(0, 12)}`).join(", ") || "all repositories / server-resolved"}</Field>
+      </dl>
+    </details>
     {summary.kind === "authored" && summary.source.status !== "available" && <p className="mt-3 text-sm text-amber-800 dark:text-amber-200">{summary.source.status === "denied" ? "Source access denied; no fallback is attempted." : "Source is missing from this snapshot. Evidence-only view remains available."}</p>}
   </aside>;
 }

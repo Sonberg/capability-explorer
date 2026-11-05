@@ -1,5 +1,24 @@
 # Handoff: remaining work
 
+## Authored models and static candidates: issues #12 and #75
+
+The owner selected both tracks. Merged #77 supplies bounded authored ingestion
+and non-executable code candidates; merged #79 supplies original-source
+attachments and read-only BPMN/DMN viewers, completing #78. See the
+[offline collection guide](model-collection.md) for profile, permission and
+consumer boundaries. This supersedes older scope-decision wording below.
+
+The follow-on qualification reconciles #12's package/notice, exact XML
+boundaries and worker-timeout evidence, and #75's independent synthetic oracle
+and real source/revision/content-permission transport proof. Existing parser
+success or viewer rendering is not unconditional acceptance of either issue.
+The independent review found no source-to-recipe semantic mismatch by inspection,
+but identified missing length-10/11, validation-precedence and exception-argument
+test coverage. A review now cannot establish that historical review preceded
+implementation; #75 remains open without evidence or an explicit acceptance-owner
+disposition of that criterion. No model execution, FEEL translation, authenticated
+central rights or full-standard conformance is claimed.
+
 ## Portable decision navigation and branch lifecycle
 
 [MADR-0028](adr/0028-portable-decision-ledger.md) proposes a bounded portable
@@ -184,7 +203,7 @@ Preserve private evidence outside the checkout and defer active worktrees until 
 
 Release notes: [changelog](CHANGELOG.md), [MADR-0006](adr/0006-keep-a-changelog.md).
 Compatibility/versioning: [MADR-0007](adr/0007-semantic-versioning.md).
-Current owner-review package: [cross-repository flow and reviewed glossary links](plans/cross-repository-value-flow.md), issue #4 layers 4 and 3. Implementation and validation are recorded in [the execution receipt](plans/glossary-flow-execution.md); see [MADR-0008](adr/0008-glossary-flow-and-reviewed-assertions.md). BPMN/DMN issue #12 still requires an owner scope decision. LikeC4 PRs #14/#15 are now merged into stage.
+Current owner-review package: [cross-repository flow and reviewed glossary links](plans/cross-repository-value-flow.md), issue #4 layers 4 and 3. Implementation and validation are recorded in [the execution receipt](plans/glossary-flow-execution.md); see [MADR-0008](adr/0008-glossary-flow-and-reviewed-assertions.md). BPMN/DMN issue #12 now has an implemented bounded scope; remaining acceptance qualification is described above. LikeC4 PRs #14/#15 are now merged into stage.
 
 ## Mapping fidelity workstream
 
@@ -386,7 +405,7 @@ Field-level value propagation, runtime traffic and inferred equivalence remain
 unimplemented. Synonym embeddings and work-item integration are deferred.
 Calls, bindings and shared term hubs must not be
 reported as proof of value equality. #6 extractor gaps, live LikeC4 integration,
-#13 settling performance and owner-controlled #12 BPMN/DMN scope remain separate.
+#13 settling performance and #12 BPMN/DMN acceptance qualification remain separate.
 The broad #4 acceptance is not closed by the optional proposal layer alone.
 See [execution evidence and commands](plans/glossary-flow-execution.md).
 

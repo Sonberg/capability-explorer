@@ -247,6 +247,9 @@ try {
     await tab.getByRole("button", { name: "Decision table", exact: true }).click();
     const table = tab.getByRole("table").first();
     await table.waitFor();
+    const headers = table.getByRole("columnheader");
+    assert.match(await headers.nth(0).innerText(), /Input allowed values[\s\S]*<18, \[18\.\.24\], -/);
+    assert.match(await headers.nth(1).innerText(), /Output allowed values[\s\S]*"deny", "manual", "approve"/);
     const rows = table.locator("tbody tr");
     assert.equal(await rows.count(), 3);
     for (const [index, value] of ["deny", "manual", "approve"].entries())

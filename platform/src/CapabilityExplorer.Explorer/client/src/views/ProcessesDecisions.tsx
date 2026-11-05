@@ -4,16 +4,20 @@ import {
   type ModelEvidence, type ModelEvidenceView, type ModelList, type ModelScope, type ModelSourceView,
   type ModelSummary, sameScope,
 } from "../models/contracts";
-import { createModelSandbox, loadTrustedViewerAssets, type ModelSandbox, type SandboxEvent } from "../models/viewer-sandbox";
-import { CandidateEvidence, Diagnostics, DmnTables, ElementList, Provenance } from "./ModelEvidence";
-import { failureDescription, getJson, scopeFrom, scopedRequest, validateEvidence, validateSource, validModelList } from "./model-view-data";
+import { CandidateEvidence, Diagnostics, DmnTables, ModelRail, Provenance } from "./ModelEvidence";
+import { buildModelIndex, type ModelDiagram } from "../models/model-index";
+import { ModelElements } from "./ModelElements";
+import { useModelViewer } from "./useModelViewer";
+import { DecisionReferences, useDecisionReferences } from "./DecisionReferences";
+import { useDecisionNavigation, type DecisionCaller } from "./useDecisionNavigation";
+import type { DecisionResolution } from "../models/decision-links";
+import { failureDescription, getJson, modelSelectionUpdates, scopeFrom, scopedRequest, validateEvidence, validateSource, validModelList } from "./model-view-data";
 import { href } from "../state";
 
 type Props = { scope: string; params: URLSearchParams; mode: "files" | "database" };
 type LoadState<T> = { data?: T; error?: string; loading: boolean; key?: string };
 type Tab = "diagram" | "elements" | "requirements" | "table";
 const button = "rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800";
-const input = "rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900";
 const card = "rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900";
 const linkStyle = "text-blue-700 underline decoration-transparent underline-offset-2 hover:decoration-current focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-blue-300";
 
@@ -30,7 +34,7 @@ export function ProcessesDecisions({ scope, params, mode }: Props) {
   const [sourceState, setSourceState] = useState<LoadState<ModelSourceView>>({ loading: false });
   const [problems, setProblems] = useState<string[]>([]);
   const [viewerReport, setViewerReport] = useState<{ key: string; status: string }>({ key: "", status: "" });
-  const [narrow, setNarrow] = useState(() => typeof matchMedia !== "undefined" && matchMedia("(max-width: 649px)").matches);
+  const picker = useRef<HTMLDetailsElement>(null);
   const listScope = useRef<ModelScope | undefined>(undefined);
   const loadedQuery = useRef("");
   const pageRequest = useRef<AbortController | null>(null);
@@ -38,7 +42,7 @@ export function ProcessesDecisions({ scope, params, mode }: Props) {
   const requestedTab = params.get("tab");
   const tab: Tab = requestedTab === "elements" || requestedTab === "table" || requestedTab === "requirements" || requestedTab === "diagram"
     ? requestedTab
-    : narrow ? "elements" : "diagram";
+    : "diagram";
   const selectedElement = params.get("element") ?? "";
   const updateRoute = (updates: Record<string, string | undefined>) => {
     const query = window.location.hash.split("?")[1] ?? "";
@@ -51,14 +55,6 @@ export function ProcessesDecisions({ scope, params, mode }: Props) {
   };
   const setTab = (next: Tab) => updateRoute({ tab: next });
   const setSelectedElement = (id: string) => updateRoute({ element: id || undefined });
-
-  useEffect(() => {
-    const media = matchMedia("(max-width: 649px)");
-    const update = () => setNarrow(media.matches);
-    update();
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -160,6 +156,7 @@ export function ProcessesDecisions({ scope, params, mode }: Props) {
   const scopeReady = loadedQuery.current === scope;
   const summaries = scopeReady ? listState.data?.items ?? [] : [];
   const selected = summaries.find((item) => item.id === selectedId);
+  const decisions = useDecisionNavigation({ scope, snapshot: listScope.current, selected, updateRoute });
 
   useEffect(() => {
     if (!selected || !listScope.current) {
@@ -210,7 +207,8 @@ export function ProcessesDecisions({ scope, params, mode }: Props) {
     (!query || `${item.repositoryId} ${item.unitPath} ${item.commitSha} ${item.modelKind}`.toLowerCase().includes(query.toLowerCase()))
   ), [summaries, kind, query, selectedId, currentEvidence.data]);
   const selectModel = (id: string) => {
-    updateRoute({ id, element: undefined });
+    if (picker.current) picker.current.open = false;
+    updateRoute(modelSelectionUpdates(id));
   };
 
   return <section className="space-y-4" aria-labelledby="processes-heading">
@@ -219,11 +217,13 @@ export function ProcessesDecisions({ scope, params, mode }: Props) {
       <p className="text-sm text-zinc-600 dark:text-zinc-400">Read-only evidence at selected revisions; nothing is executed or approved.</p>
     </header>
     {listState.error && <div role="alert" className={`${card} border-red-300 text-red-800 dark:border-red-900 dark:text-red-300`}>{listState.error} <button type="button" className={linkStyle} onClick={() => setListEpoch((value) => value + 1)}>Retry</button></div>}
-    {!listState.error && <div className="grid min-w-0 grid-cols-1 gap-4 min-[1024px]:grid-cols-[minmax(0,1fr)_clamp(300px,28vw,420px)] xl:grid-cols-[280px_minmax(0,1fr)_clamp(300px,20vw,420px)]">
+    {!listState.error && <div className={`grid min-w-0 grid-cols-1 gap-4 ${selected?.kind === "candidate"
+      ? "min-[1024px]:grid-cols-[minmax(0,1fr)_clamp(280px,24vw,360px)] xl:grid-cols-[clamp(210px,16vw,260px)_minmax(0,1fr)_clamp(250px,17vw,340px)]"
+      : "min-[1024px]:grid-cols-1 xl:grid-cols-[clamp(210px,16vw,260px)_minmax(0,1fr)]"}`}>
       <aside className={`${card} hidden min-w-0 xl:block`} aria-label="Model list">
         <ModelRail idPrefix="wide" items={filtered} allItems={summaries} selectedId={selectedId} query={query} setQuery={setQuery} kind={kind} setKind={setKind} selectModel={selectModel} listLoading={listState.loading || !scopeReady} deepLinkLoading={deepLinkLoading} cursor={cursor} pageBusy={pageBusy} appendPage={appendPage} candidateKindPending={kind !== "all" && summaries.some((item) => item.kind === "candidate" && item.id !== selectedId)} />
       </aside>
-      <details className="col-span-full xl:hidden">
+      <details ref={picker} className="col-span-full xl:hidden">
         <summary className={`${button} cursor-pointer`}>Model picker{selected ? ` · ${selected.unitPath.split("/").at(-1)}` : ""}</summary>
         <div className={`${card} mt-2 max-h-[60vh] overflow-y-auto`}>
           <ModelRail idPrefix="compact" items={filtered} allItems={summaries} selectedId={selectedId} query={query} setQuery={setQuery} kind={kind} setKind={setKind} selectModel={selectModel} listLoading={listState.loading || !scopeReady} deepLinkLoading={deepLinkLoading} cursor={cursor} pageBusy={pageBusy} appendPage={appendPage} candidateKindPending={kind !== "all" && summaries.some((item) => item.kind === "candidate" && item.id !== selectedId)} />
@@ -236,6 +236,15 @@ export function ProcessesDecisions({ scope, params, mode }: Props) {
               <ModelWorkspace
                 key={`${selected.id}:${listScope.current?.snapshot ?? ""}:${listScope.current?.generation ?? ""}`}
                 summary={selected}
+                scope={scope}
+                summaries={summaries}
+                onOpenDecision={decisions.open}
+                caller={decisions.caller}
+                onBack={decisions.back}
+                restore={decisions.restore}
+                onRestored={decisions.restored}
+                initialDiagram={params.get("diagram") || undefined}
+                initialInsights={decisions.restore?.insightsOpen ?? selected.id === decisions.destination}
                 evidence={currentEvidence}
                 source={currentSource}
                 snapshot={listScope.current}
@@ -248,58 +257,11 @@ export function ProcessesDecisions({ scope, params, mode }: Props) {
             </ModelViewErrorBoundary>
           : <div className={card}><p className="font-semibold">Select a model</p><p className="mt-1 text-sm text-zinc-500">{selectedId ? deepLinkLoading ? "Finding the selected model in this immutable snapshot…" : "This ID is not in the loaded pages. Continue loading summaries or return to the list." : "Choose an authored model or a separately labelled code candidate."}</p></div>}
       </div>
-      {selected && <ModelViewErrorBoundary key={`provenance:${selected.id}:${scope}:${listEpoch}`} onRetry={() => setListEpoch((value) => value + 1)}>
+      {selected?.kind === "candidate" && <ModelViewErrorBoundary key={`provenance:${selected.id}:${scope}:${listEpoch}`} onRetry={() => setListEpoch((value) => value + 1)}>
         <Provenance summary={selected} evidence={currentEvidence.data} snapshot={listScope.current} selectedElement={selectedElement} sourceVerified={!!currentSource.data} renderStatus={viewerReport.key === selectedKey ? viewerReport.status : "not rendered"} />
       </ModelViewErrorBoundary>}
     </div>}
   </section>;
-}
-
-function ModelRail(props: {
-  idPrefix: string;
-  items: ModelSummary[];
-  allItems: ModelSummary[];
-  selectedId: string;
-  query: string;
-  setQuery: (value: string) => void;
-  kind: "all" | "process" | "decision";
-  setKind: (value: "all" | "process" | "decision") => void;
-  selectModel: (id: string) => void;
-  listLoading: boolean;
-  deepLinkLoading: boolean;
-  cursor: string | null;
-  pageBusy: boolean;
-  appendPage: () => Promise<void>;
-  candidateKindPending: boolean;
-}) {
-  const { idPrefix, items, allItems, selectedId, query, setQuery, kind, setKind, selectModel, listLoading, deepLinkLoading, cursor, pageBusy, appendPage, candidateKindPending } = props;
-  return <>
-    <label className="block text-xs font-semibold" htmlFor={`${idPrefix}-model-search`}>Search models</label>
-    <input id={`${idPrefix}-model-search`} className={`${input} mt-1 w-full`} value={query} onChange={(event) => setQuery(event.target.value)} />
-    <div className="mt-2 flex flex-wrap gap-1" role="group" aria-label="Filter processes and decisions">
-      {(["all", "process", "decision"] as const).map((value) => <button key={value} type="button" aria-pressed={kind === value} onClick={() => setKind(value)} className={`${button} px-2 py-1 text-xs`}>{value === "all" ? "All" : value === "process" ? "Processes" : "Decisions"}</button>)}
-    </div>
-    <h2 className="mt-4 font-semibold">Authored models</h2>
-    <ul className="mt-1 space-y-1">
-      {items.filter((item) => item.kind === "authored").map((item) => <ModelButton key={item.id} item={item} selected={item.id === selectedId} onClick={() => selectModel(item.id)} />)}
-    </ul>
-    <h2 className="mt-4 font-semibold">Code candidates</h2>
-    {candidateKindPending && kind !== "all" && <p className="mt-1 text-xs text-zinc-500">Candidate process/decision kind is not included in summaries. Select All to load candidate evidence before filtering its kind.</p>}
-    <ul className="mt-1 space-y-1">
-      {items.filter((item) => item.kind === "candidate").map((item) => <ModelButton key={item.id} item={item} selected={item.id === selectedId} onClick={() => selectModel(item.id)} />)}
-    </ul>
-    {(listLoading || deepLinkLoading) && <p role="status" className="mt-3 text-sm text-zinc-500">{deepLinkLoading ? "Finding linked model…" : "Loading bounded model summaries…"}</p>}
-    {!listLoading && allItems.length === 0 && <p className="mt-3 text-sm text-zinc-500">No model summaries are available in this scope.</p>}
-    {cursor && <button type="button" className={`${button} mt-3 w-full`} disabled={pageBusy || deepLinkLoading} onClick={() => void appendPage()}>{pageBusy ? "Loading…" : "Load next page"}</button>}
-  </>;
-}
-
-function ModelButton({ item, selected, onClick }: { item: ModelSummary; selected: boolean; onClick: () => void }) {
-  return <li><button type="button" aria-current={selected ? "true" : undefined} onClick={onClick} className={`w-full rounded-md border p-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 ${selected ? "border-blue-500 bg-blue-50 dark:bg-blue-950/50" : "border-zinc-200 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800"}`}>
-    <span className="flex items-center justify-between gap-2 font-medium"><span className="truncate">{item.unitPath.split("/").at(-1)}</span><span className="shrink-0 text-[11px] text-zinc-500">{item.coverage}</span></span>
-    <span className="block truncate text-xs text-zinc-500">{item.repositoryId} · {item.modelKind}</span>
-    <span className="block truncate font-mono text-[10px] text-zinc-500">{item.unitPath}</span>
-  </button></li>;
 }
 
 class ModelViewErrorBoundary extends Component<{ children: ReactNode; onRetry: () => void }, { failed: boolean }> {
@@ -321,7 +283,16 @@ class ModelViewErrorBoundary extends Component<{ children: ReactNode; onRetry: (
 }
 
 function ModelWorkspace(props: {
+  scope: string;
   summary: ModelSummary;
+  summaries: ModelSummary[];
+  onOpenDecision(resolution: DecisionResolution, caller: DecisionCaller): Promise<void>;
+  caller?: DecisionCaller;
+  onBack(): void;
+  restore?: DecisionCaller;
+  onRestored(): void;
+  initialDiagram?: string;
+  initialInsights?: boolean;
   evidence: LoadState<ModelEvidence>;
   source: LoadState<ModelSourceView>;
   snapshot?: ModelScope;
@@ -334,155 +305,178 @@ function ModelWorkspace(props: {
   const { summary, evidence, source, snapshot, tab, setTab, selectedElement, setSelectedElement, onViewerState } = props;
   const authored = evidence.data?.schema === "ce.models.v1" ? evidence.data as AuthoredModelEvidence : undefined;
   const candidate = evidence.data?.schema === "ce.candidates.v1" ? evidence.data as CandidateArtifact : undefined;
-  const frameHost = useRef<HTMLDivElement>(null);
-  const sandbox = useRef<ModelSandbox | undefined>(undefined);
-  const [frameStatus, setFrameStatus] = useState("idle");
-  const [frameError, setFrameError] = useState("");
-  const [renderedIds, setRenderedIds] = useState<string[]>([]);
-  const onViewerStateRef = useRef(onViewerState);
-  onViewerStateRef.current = onViewerState;
-  const selectedElementRef = useRef(selectedElement);
-  selectedElementRef.current = selectedElement;
+  const workspace = useRef<HTMLElement>(null);
+  const insightsButton = useRef<HTMLButtonElement>(null);
+  const [navigationNotice, setNavigationNotice] = useState("");
+  const [insightsOpen, setInsightsOpen] = useState(!!props.initialInsights);
+  const index = useMemo(() => authored && buildModelIndex(authored), [authored]);
+  const [importDiagram, setImportDiagram] = useState<string | undefined>(props.initialDiagram);
+  const [activeDiagram, setActiveDiagram] = useState<string | undefined>(props.initialDiagram);
+  const diagramId = activeDiagram || importDiagram || index?.diagrams[0]?.id;
+  const decisionRefs = useDecisionReferences({ source: source.data, summary, summaries: props.summaries,
+    scope: props.scope, snapshot,
+    getSandbox: () => sandbox.current, diagramId, insightsOpen, onOpen: props.onOpenDecision,
+    select: id => { setSelectedElement(id); setInsightsOpen(true); } });
+  const { frameHost, sandbox, frameStatus, frameError, renderedIds, measured } = useModelViewer({
+    summary, source: source.data, snapshot, authored, index, diagramId: importDiagram, selectedElement, setSelectedElement,
+    decisionLinks: decisionRefs.overlays, onDecisionReference: decisionRefs.activate,
+    onDecisionPreview: decisionRefs.preview,
+    restore: props.restore, onRestored: props.onRestored,
+    onViewerState, onDiagramRoot(rootId) {
+      const diagram = index?.diagrams.find(item => item.rootId === rootId);
+      if (diagram) setActiveDiagram(diagram.id);
+    }, onNotice(message) { setNavigationNotice(message); setInsightsOpen(true); },
+  });
+  const isDmn = summary.modelKind === "dmn";
+  const activeTab = isDmn && tab === "diagram" ? "requirements" : !isDmn && (tab === "requirements" || tab === "table") ? "diagram" : tab;
 
   useEffect(() => {
-    const verifiedSource = source.data;
-    if (!frameHost.current || summary.kind !== "authored" || !verifiedSource || !snapshot) return;
-    const controller = new AbortController();
-    let live = true;
-    let instance: ModelSandbox | undefined;
-    let unsubscribe: (() => void) | undefined;
-    setFrameError("");
-    setRenderedIds([]);
-    setFrameStatus("Loading trusted read-only viewer assets…");
-    onViewerStateRef.current("Loading trusted read-only viewer assets…");
-    void loadTrustedViewerAssets(controller.signal).then((assets) => {
-      if (!live || !frameHost.current) return;
-      instance = createModelSandbox(frameHost.current, assets);
-      sandbox.current = instance;
-      unsubscribe = instance.subscribe((event: SandboxEvent) => {
-        if (!event.acceptedByParent || event.sourceId !== summary.id || event.generation !== snapshot.generation || event.scope !== snapshot.snapshot) return;
-        if (event.status === "rendered") {
-          setFrameError("");
-          setRenderedIds(event.renderedIds ?? []);
-          setFrameStatus(`Rendered ${event.renderedCount ?? 0} diagram elements`);
-          onViewerStateRef.current(`Rendered ${event.renderedCount ?? 0} diagram elements`);
-          if (selectedElementRef.current) {
-            const relationship = authored?.relationships.find((item) => item.identity === selectedElementRef.current);
-            const sourceId = relationship && authored?.elements.find((item) => item.identity === relationship.source)?.id;
-            const targetId = relationship && authored?.elements.find((item) => item.identity === relationship.target)?.id;
-            if (sourceId && targetId) instance?.selectRelationship(sourceId, targetId);
-            else instance?.selectElement(selectedElementRef.current);
-          }
-        } else if (event.status === "selection" && event.elementId) {
-          const matches = authored?.relationships.filter((relationship) => {
-            const from = authored.elements.find((element) => element.identity === relationship.source)?.id;
-            const to = authored.elements.find((element) => element.identity === relationship.target)?.id;
-            return from === event.relationshipSourceId && to === event.relationshipTargetId;
-          }) ?? [];
-          setSelectedElement(matches.length === 1 ? matches[0].identity : event.elementId);
-        } else if (event.status === "selection-result") {
-          setFrameError(event.relationshipMatchCount === 1 ? "" :
-            "Text relationship selection could not be matched to exactly one viewer connection; textual selection remains available.");
-        }
-        else if (event.status !== "accepted" && event.status !== "import-started") {
-          setFrameError(`${event.status}: ${event.message ?? "The read-only renderer could not display this source."}`);
-          setFrameStatus("Import failed");
-          onViewerStateRef.current(`${event.status}: ${event.message ?? "The read-only renderer could not display this source."}`);
-        }
-      });
-      setFrameStatus("Loading read-only viewer…");
-      instance.render({
-        kind: summary.modelKind as "bpmn" | "dmn",
-        source: verifiedSource.xml,
-        scope: snapshot.snapshot,
-        generation: snapshot.generation,
-        sourceId: summary.id,
-      });
-    }).catch((error: Error) => {
-      if (live && error.name !== "AbortError") {
-        setFrameStatus("Viewer unavailable");
-        setFrameError(`Trusted viewer assets could not be loaded: ${error.message}`);
-        onViewerStateRef.current(`Viewer assets unavailable: ${error.message}`);
+    if (!source.data || (activeTab !== "diagram" && activeTab !== "requirements")) return;
+    const align = () => {
+      if (innerWidth < 1280 && workspace.current && workspace.current.getBoundingClientRect().top > 56) {
+        workspace.current.scrollIntoView({ block: "start" });
       }
-    });
-    return () => {
-      live = false;
-      controller.abort();
-      unsubscribe?.();
-      instance?.dispose();
-      if (sandbox.current === instance) sandbox.current = undefined;
     };
-  }, [summary.id, summary.modelKind, source.data?.sha256, snapshot?.snapshot, snapshot?.generation]);
+    const frame = requestAnimationFrame(align);
+    window.addEventListener("resize", align);
+    return () => { cancelAnimationFrame(frame); window.removeEventListener("resize", align); };
+  }, [source.data?.sha256, activeTab, insightsOpen]);
+
+  useEffect(() => {
+    if (!insightsOpen) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setInsightsOpen(false); insightsButton.current?.focus(); }
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [insightsOpen]);
+
 
   const elements = authored?.elements ?? [];
   const orderedElements = useMemo(() => [...elements].sort((a, b) => a.order - b.order), [elements]);
-  const isDmn = summary.modelKind === "dmn";
-  const activeTab = isDmn && tab === "diagram" ? "requirements" : !isDmn && (tab === "requirements" || tab === "table") ? "diagram" : tab;
   const availableTabs: Array<[Tab, string]> = isDmn
-    ? [["requirements", "Requirements"], ["table", "Decision table"], ["elements", "Elements"]]
+    ? [["requirements", "Decision requirements"], ["table", "Decision table"], ["elements", "Elements"]]
     : [["diagram", "Diagram"], ["elements", "Elements"]];
 
   const selectElement = (id: string) => {
     setSelectedElement(id);
+    setInsightsOpen(true);
+    setNavigationNotice("");
     const relationship = authored?.relationships.find((item) => item.identity === id);
-    if (relationship) {
+    if (relationship && relationship.kind !== "reference") {
       const sourceId = authored?.elements.find((item) => item.identity === relationship.source)?.id;
       const targetId = authored?.elements.find((item) => item.identity === relationship.target)?.id;
       if (sourceId && targetId) sandbox.current?.selectRelationship(sourceId, targetId);
       else sandbox.current?.selectElement(id);
-    } else sandbox.current?.selectElement(id);
+    } else if (index?.occurrences.has(id)) sandbox.current?.selectElement(id);
     const element = authored?.elements.find((item) => item.id === id);
     if (isDmn && element?.type.toLowerCase().includes("decisiontable")) setTab("table");
   };
+  const openDiagram = (diagram: ModelDiagram, id = "") => {
+    setNavigationNotice("");
+    setActiveDiagram(diagram.id);
+    setImportDiagram(diagram.id);
+    setSelectedElement(id);
+    setTab(isDmn ? "requirements" : "diagram");
+    if (diagram.id === importDiagram || !importDiagram && diagram.id === index?.diagrams[0]?.id) {
+      if (id) sandbox.current?.selectElement(id);
+      sandbox.current?.zoom("fit");
+    }
+  };
+  const openLogic = (id: string) => { setSelectedElement(id); setTab("table"); setInsightsOpen(false); };
+  useEffect(() => {
+    if (activeTab === "diagram" || activeTab === "requirements") {
+      const frame = requestAnimationFrame(() => sandbox.current?.zoom("fit"));
+      return () => cancelAnimationFrame(frame);
+    }
+    if (activeTab === "table" && selectedElement) {
+      const frame = requestAnimationFrame(() => document.getElementById(`model-logic-${selectedElement}`)?.scrollIntoView({ block: "nearest" }));
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [activeTab]);
 
-  return <article className="min-w-0 space-y-3">
+  return <article className="flex min-w-0 flex-col gap-3">
+    {index && <header className="min-w-0 space-y-1">
+      <h2 className="text-lg font-semibold">{index.title}</h2>
+      <p className="break-all text-xs text-zinc-500">Effective model source: {summary.repositoryId} @ {summary.commitSha.slice(0, 12)} · {summary.unitPath}. Bound to this model snapshot, not a deployment record.</p>
+      {summary.repositoryId === "synthetic-model-fixtures" && <p className="text-xs font-medium">Synthetic test example · not an organisational process or policy.</p>}
+      <p className="text-xs text-zinc-500">Business owner / capability mapping / approval: not supplied by this evidence.</p>
+    </header>}
     {summary.kind === "candidate" && <div role="alert" className="rounded-lg border-2 border-amber-500 bg-amber-50 p-3 text-amber-950 dark:bg-amber-950 dark:text-amber-100">
       <strong>Code candidate · UNREVIEWED · not approved · not executable</strong>
       <p>Recipe: {candidate?.recipe ?? "Candidate evidence not loaded"}. This is bounded static evidence, not authored BPMN/DMN and not an evaluated decision.</p>
     </div>}
-    <div className={card}>
+    <div className={`${card} order-last`}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-semibold">{summary.kind === "candidate" ? "Static candidate evidence" : summary.modelKind === "bpmn" ? "BPMN model evidence" : "DMN model evidence"}</span>
-        <span className={`rounded-full border px-2 py-0.5 text-xs ${summary.coverage === "full" ? "border-zinc-300 text-zinc-700 dark:border-zinc-700 dark:text-zinc-300" : "border-amber-400 text-amber-800 dark:text-amber-200"}`}>{summary.coverage} coverage</span>
+        <span className={`rounded-full border px-2 py-0.5 text-xs ${summary.coverage === "full" ? "border-zinc-300 text-zinc-700 dark:border-zinc-700 dark:text-zinc-300" : "border-amber-400 text-amber-800 dark:text-amber-200"}`}>{summary.coverage} extraction coverage</span>
         {authored?.contentProfile === "structural" && <span className="text-xs text-zinc-500">Structural profile · expressions may be omitted</span>}
         {summary.kind === "authored" && <a className={`${linkStyle} ml-auto text-xs`} href={`${import.meta.env.BASE_URL}licenses/bpmn-io-viewers.txt`} target="_blank" rel="noreferrer">bpmn.io viewer license and attribution</a>}
       </div>
+      <p className="text-xs text-zinc-500">Extraction coverage is not diagram coverage, business completeness, validity or approval.</p>
       {authored?.coverage.limitations.map((limitation) => <p key={limitation} className="mt-1 text-xs text-amber-800 dark:text-amber-200">{limitation}</p>)}
     </div>
     {evidence.loading && <p role="status" className={card}>Loading selected model evidence…</p>}
     {evidence.error && <p role="alert" className={`${card} text-red-700 dark:text-red-300`}>{evidence.error}</p>}
-    {authored && <section className="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-      <nav aria-label="Model evidence" className="flex flex-wrap gap-1 border-b border-zinc-200 p-2 dark:border-zinc-800">
+    {authored && index && <section ref={workspace} className="model-workspace scroll-mt-14 rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800">
+        <label htmlFor="model-diagram" className="shrink-0 font-medium">Diagram {Math.max(0, index.diagrams.findIndex(item => item.id === diagramId) + 1)} of {index.diagrams.length}</label>
+        <select id="model-diagram" className="min-w-0 flex-1 rounded border border-zinc-300 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-900" value={diagramId || ""} disabled={!index.diagrams.length}
+          onChange={event => { const target = index.diagrams.find(item => item.id === event.target.value); if (target) openDiagram(target); }}>
+          {!index.diagrams.length && <option value="">No diagram placement captured</option>}
+          {index.diagrams.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </select>
+      </div>
+      <nav aria-label="Model evidence" className="flex items-center gap-1 overflow-x-auto whitespace-nowrap border-b border-zinc-200 p-2 dark:border-zinc-800">
         {availableTabs.map(([id, label]) => <button key={id} type="button" aria-pressed={activeTab === id} onClick={() => setTab(id)} className={`${button} ${activeTab === id ? "border-blue-500 bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-200" : ""}`}>{label}</button>)}
-        {!isDmn && <div className="ml-auto flex gap-1">
+        <div className="ml-auto flex shrink-0 gap-1">
+          <button ref={insightsButton} type="button" className={`${button} ${insightsOpen ? "border-blue-500 bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-200" : ""}`}
+            aria-expanded={insightsOpen} aria-controls={insightsOpen ? "model-insights-panel" : undefined} onClick={() => setInsightsOpen((open) => !open)}>
+            Insights
+          </button>
           <button type="button" className={button} aria-label="Fit diagram" onClick={() => sandbox.current?.zoom("fit")}>Fit</button>
-          <button type="button" className={button} aria-label="Zoom out" onClick={() => sandbox.current?.zoom("out")}>−</button>
-          <button type="button" className={button} aria-label="Reset zoom" onClick={() => sandbox.current?.zoom("reset")}>100%</button>
-          <button type="button" className={button} aria-label="Zoom in" onClick={() => sandbox.current?.zoom("in")}>+</button>
-        </div>}
+          <button type="button" className={`${button} hidden sm:inline-flex`} aria-label="Zoom out" onClick={() => sandbox.current?.zoom("out")}>−</button>
+          <button type="button" className={`${button} hidden sm:inline-flex`} aria-label="Reset zoom" onClick={() => sandbox.current?.zoom("reset")}>100%</button>
+          <button type="button" className={`${button} hidden sm:inline-flex`} aria-label="Zoom in" onClick={() => sandbox.current?.zoom("in")}>+</button>
+        </div>
       </nav>
-      <p id="diagram-help" className="sr-only">Read-only diagram. Use the Elements tab for a complete keyboard-accessible text alternative. No model commands are available.</p>
-      <div className={activeTab === "diagram" || activeTab === "requirements" ? "block" : "hidden"}>
-        <p className="px-3 pt-2 text-xs text-zinc-500">
-          {source.data && frameStatus.startsWith("Rendered")
-            ? "Original source SHA-256 verified; the viewer rendered its authored DI. This projection does not replace source evidence."
-            : source.data
-              ? "Original source SHA-256 verified; viewer geometry is unavailable or unverified. No generated layout replaces source evidence."
-              : "No verified original XML is displayed; only separately validated textual evidence may be available."}
-        </p>
+      <p id="diagram-help" className="sr-only">Read-only diagram. Select a box for insights. Activate its plus button or double-click to open nested content or a local called process. Return using breadcrumbs or Back to the caller. The Elements tab provides a keyboard-accessible text alternative. No model editing commands are available.</p>
+      <div className="relative">
+      {props.caller && <nav aria-label="Decision caller navigation"
+        className="model-drill-navigation">
+        <button type="button" title={`Back to ${props.caller.label}`}
+          onClick={props.onBack}>Back to {props.caller.label}</button>
+        <span title={`Decision model: ${index.title}`}>Decision model: {index.title}</span>
+      </nav>}
+      <div aria-hidden={activeTab !== "diagram" && activeTab !== "requirements"}
+        className={activeTab === "diagram" || activeTab === "requirements" ? "relative" : "invisible pointer-events-none absolute inset-x-0 top-0"}>
         {source.loading && <p role="status" className="p-3 text-sm text-zinc-500">Loading and verifying permitted original XML…</p>}
         {source.error && <p role="alert" className="p-3 text-sm text-red-700 dark:text-red-300">{source.error}</p>}
         {!source.data && !source.loading && !source.error && <p className="p-3 text-sm text-zinc-500">Original source is unavailable. Showing only separately validated textual evidence.</p>}
         <div ref={frameHost} className={`model-viewer-frame ${source.data ? "" : "hidden"}`} role="region" aria-label={isDmn ? "DMN requirements diagram" : "BPMN process diagram"} aria-describedby="diagram-help" />
         {frameStatus !== "idle" && <p className="px-3 py-1 text-xs text-zinc-500" role="status">{frameStatus}</p>}
+        <p className="px-3 pb-2 text-xs text-zinc-500">{source.data
+          ? "Original source SHA-256 verified. Viewer projection does not replace source evidence."
+          : "Original XML is not verified; only separately validated textual evidence is available."}</p>
         {frameError && <p className="mx-3 mb-3 rounded border border-amber-400 bg-amber-50 p-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100" role="alert">{frameError}</p>}
-        {isDmn && activeTab === "requirements" && <p className="px-3 pb-3 text-xs text-zinc-500">Requirements diagram is read-only. Complete decision rules and expressions are available in the Decision table and Elements tabs.</p>}
+        {isDmn && activeTab === "requirements" && <p className="px-3 pb-3 text-xs text-zinc-500">Decision requirements diagram (DRD): dependencies, not execution flow. Captured rules and expressions are available in Decision table and Elements; profile limitations still apply.</p>}
       </div>
-      {activeTab === "elements" && <ElementList elements={orderedElements} relationships={authored.relationships} selected={selectedElement} renderedIds={renderedIds} onSelect={selectElement} />}
+      <div className={props.caller && (activeTab === "elements" || activeTab === "table") ? "pt-24 sm:pt-16" : ""}>
+      {activeTab === "elements" && <ModelElements index={index} diagramId={diagramId} selected={selectedElement} renderedIds={renderedIds} measured={measured} onSelect={selectElement} onOpen={openDiagram} onLogic={openLogic} />}
       {activeTab === "table" && <DmnTables elements={orderedElements} selected={selectedElement} onSelect={(id) => { setSelectedElement(id); sandbox.current?.selectElement(id); }} />}
+      </div>
+      <div id="model-insights-panel" hidden={!insightsOpen}
+        className="model-insights-panel fixed inset-x-2 bottom-2 z-30 max-h-[55dvh] overflow-y-auto overscroll-contain rounded-lg shadow-xl sm:absolute sm:bottom-auto sm:left-auto sm:right-2 sm:top-2 sm:w-[min(360px,calc(100%-1rem))]">
+        <button type="button" className={`${button} absolute right-2 top-2 bg-white dark:bg-zinc-900`} aria-label="Close model insights"
+          onClick={() => { setInsightsOpen(false); insightsButton.current?.focus(); }}>Close</button>
+        {navigationNotice && <p role="status" className="rounded border border-amber-300 bg-amber-50 p-3 pr-20 text-sm text-amber-900">{navigationNotice}</p>}
+        <DecisionReferences state={decisionRefs} selected={selectedElement} />
+        <Provenance summary={summary} evidence={evidence.data} snapshot={snapshot} selectedElement={selectedElement} sourceVerified={!!source.data} renderStatus={frameStatus} />
+      </div>
+      </div>
     </section>}
     {candidate && <CandidateEvidence candidate={candidate} />}
-    {authored && <Diagnostics diagnostics={authored.diagnostics} />}
+    {authored && <Diagnostics diagnostics={authored.diagnostics} elements={authored.elements} />}
     {candidate && <Diagnostics diagnostics={candidate.diagnostics} />}
   </article>;
 }
