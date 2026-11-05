@@ -98,6 +98,14 @@ async function apply(page, previousIdentity, action) {
   return { graph, identity };
 }
 
+async function openRecoveryList(page, label) {
+  const summary = page.getByLabel(label, { exact: true });
+  if (await summary.evaluate(element => !element.parentElement.open)) {
+    await summary.focus();
+    await summary.press('Enter');
+  }
+}
+
 async function recovery(page) {
   const component = receipt.census.largestComponent;
   assert.ok(component);
@@ -112,6 +120,8 @@ async function recovery(page) {
   await page.goto(route);
   const first = await (await firstResponse).json();
   let identity = await waitReady(page);
+  assert.equal(await page.locator('[data-architecture-node-id]').count(), 0, 'Closed recovery lists must not mount rows');
+  await openRecoveryList(page, 'Show omitted elements');
   const omitted = page.getByLabel('Omitted architecture elements', { exact: true });
   const firstOmitted = first.omitted.nodes[0];
   assert.ok(firstOmitted);
@@ -126,6 +136,7 @@ async function recovery(page) {
   assert.ok(pinned.graph.budget.pinned.includes(firstOmitted.id));
   assert.ok(pinned.graph.nodes.some(node => node.id === firstOmitted.id));
   identity = pinned.identity;
+  await openRecoveryList(page, 'Show shown elements');
   const shown = page.getByLabel('Shown architecture elements', { exact: true });
   const nodeButton = shown.locator('[data-architecture-node-id]').first();
   const selected = await nodeButton.getAttribute('data-architecture-node-id');
@@ -161,6 +172,7 @@ async function recovery(page) {
   assert.equal(filtered.graph.budget.matchedEdges, 0);
   assert.equal(filtered.graph.edges.length, 0);
   ({ identity } = await apply(page, filtered.identity, () => page.getByRole('button', { name: 'Reset filters', exact: true }).click()));
+  await openRecoveryList(page, 'Show shown elements');
   const drill = page.getByLabel('Shown architecture elements', { exact: true }).getByRole('button', { name: /^Open component$/ }).first();
   await drill.focus();
   const drilled = await apply(page, identity, () => drill.press('Enter'));
@@ -200,6 +212,9 @@ try {
     receipt.census = await census(censusPage);
     assert.equal(receipt.census.largest.nodes, 2400);
     await censusContext.close();
+    const recoveryContext = await browser.newContext({ viewport: receipt.environment.viewport });
+    await recovery(await recoveryContext.newPage());
+    await recoveryContext.close();
     for (let index = 0; index < 20; index++) {
       const context = await browser.newContext({ viewport: receipt.environment.viewport });
       const page = await context.newPage();
@@ -259,9 +274,6 @@ try {
       if (index === 0) await page.screenshot({ path: `${output}/maximum-budget.png`, fullPage: true });
       await context.close();
     }
-    const recoveryContext = await browser.newContext({ viewport: receipt.environment.viewport });
-    await recovery(await recoveryContext.newPage());
-    await recoveryContext.close();
     const sorted = receipt.samples.map(sample => sample.readyMs).sort((a, b) => a - b);
     const sortedApply = receipt.samples.map(sample => sample.apply.readyMs).sort((a, b) => a - b);
     receipt.summary = {
