@@ -141,7 +141,11 @@ public sealed class HealthApiTests
         using var disabledMetrics = await unavailableClient.GetAsync("/metrics");
         Assert.Equal(HttpStatusCode.ServiceUnavailable, disabledMetrics.StatusCode);
 
-        using var factory = new HealthApiFactory();
+        using var factory = new HealthApiFactory(services =>
+        {
+            services.RemoveAll<IHealthDependencyCheck>();
+            services.AddSingleton<IHealthDependencyCheck>(new FakeHealthCheck("database", critical: true, _ => Task.CompletedTask));
+        });
         using var client = factory.CreateClient();
         using var absent = await client.GetAsync("/internal/health");
         Assert.Equal(HttpStatusCode.Unauthorized, absent.StatusCode);
@@ -164,9 +168,9 @@ public sealed class HealthApiTests
         Assert.True(memory.TryGetProperty("heap_total_mb", out _));
         Assert.True(memory.TryGetProperty("rss_mb", out _));
         Assert.True(body.TryGetProperty("checks", out var checks));
-        Assert.True(checks.TryGetProperty("explorer", out var explorer));
-        Assert.Equal("critical", explorer.GetProperty("criticality").GetString());
-        Assert.True(explorer.TryGetProperty("latency_ms", out _));
+        Assert.True(checks.TryGetProperty("database", out var database));
+        Assert.Equal("critical", database.GetProperty("criticality").GetString());
+        Assert.True(database.TryGetProperty("latency_ms", out _));
     }
 
     [Fact]
