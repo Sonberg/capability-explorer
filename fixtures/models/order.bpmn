@@ -1,14 +1,35 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="defs-order" targetNamespace="urn:example:orders">
-  <bpmn:process id="order-process" isExecutable="false">
-    <bpmn:startEvent id="start"/>
-    <bpmn:task id="review"/>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="defs-order" targetNamespace="urn:example:orders">
+  <bpmn:process id="order-process" name="Order review" isExecutable="false">
+    <bpmn:startEvent id="start" name="Start order review"/>
+    <bpmn:task id="review" name="Review order"/>
     <bpmn:sequenceFlow id="flow-review" sourceRef="start" targetRef="review">
       <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="text/plain">approved</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
   </bpmn:process>
   <bpmn:collaboration id="order-collaboration">
-    <bpmn:participant id="order-participant" processRef="order-process"/>
+    <bpmn:participant id="order-participant" name="Order review" processRef="order-process"/>
     <bpmn:messageFlow id="review-message" sourceRef="start" targetRef="review"/>
   </bpmn:collaboration>
+  <bpmndi:BPMNDiagram id="order-diagram">
+    <bpmndi:BPMNPlane id="order-plane" bpmnElement="order-collaboration">
+      <bpmndi:BPMNShape id="order-participant-shape" bpmnElement="order-participant" isHorizontal="true">
+        <dc:Bounds x="80" y="80" width="420" height="180"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="start-shape" bpmnElement="start">
+        <dc:Bounds x="140" y="150" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="review-shape" bpmnElement="review">
+        <dc:Bounds x="280" y="128" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="flow-review-edge" bpmnElement="flow-review">
+        <di:waypoint x="176" y="168"/>
+        <di:waypoint x="280" y="168"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="review-message-edge" bpmnElement="review-message">
+        <di:waypoint x="176" y="150"/>
+        <di:waypoint x="280" y="150"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
 </bpmn:definitions>

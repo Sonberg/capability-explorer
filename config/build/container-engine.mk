@@ -4,7 +4,7 @@ CE_CONTAINER_ENGINE ?= auto
 ifeq ($(CE_CONTAINER_ENGINE),auto)
 CE_SELECTED_CONTAINER_ENGINE := $(shell if command -v docker >/dev/null 2>&1; then printf docker; elif command -v podman >/dev/null 2>&1; then printf podman; else printf none; fi)
 ifeq ($(CE_SELECTED_CONTAINER_ENGINE),none)
-CE_ENGINE_FREE_GOALS := help container-engine-doctor
+CE_ENGINE_FREE_GOALS := help container-engine-doctor explore
 ifeq ($(EXECUTION),native)
 CE_ENGINE_FREE_GOALS += build frontend backend restore restore-dotnet restore-ts restore-ui ui
 endif

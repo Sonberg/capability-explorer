@@ -61,6 +61,15 @@ public sealed class ExplorerApiTests(ExplorerFactory factory) : IClassFixture<Ex
     }
 
     [Fact]
+    public async Task Live_reload_exposes_snapshot_identity_even_when_restart_generation_is_unchanged()
+    {
+        var meta = await Get("/api/meta");
+        var poll = await Get("/api/generation");
+        Assert.Equal(meta.GetProperty("generation").GetInt64(), poll.GetProperty("generation").GetInt64());
+        Assert.Equal(meta.GetProperty("snapshotId").GetGuid(), poll.GetProperty("snapshotId").GetGuid());
+    }
+
+    [Fact]
     public async Task Search_finds_implementations_across_repositories()
     {
         var hits = await Get("/api/search?q=averagePerActiveWeek");
@@ -272,17 +281,21 @@ public sealed class ExplorerApiTests(ExplorerFactory factory) : IClassFixture<Ex
     public async Task Artifacts_and_ui_are_served()
     {
         Assert.Equal(18, (await Get("/api/artifacts")).GetArrayLength());
-        var index = await _client.GetStringAsync(new Uri("/", UriKind.Relative));
+        using var indexResponse = await _client.GetAsync(new Uri("/", UriKind.Relative));
+        Assert.True(indexResponse.Headers.CacheControl?.NoCache);
+        var index = await indexResponse.Content.ReadAsStringAsync();
         Assert.Contains("<title>Capability Explorer</title>", index, StringComparison.Ordinal);
         Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync(new Uri("/api/evaluation", UriKind.Relative))).StatusCode);
 
-        // The UI is a built React bundle: index.html references hashed assets that must be served, within sane size.
+        // Stable asset URLs must revalidate so a refreshed page does not mix UI protocol versions.
         var assets = System.Text.RegularExpressions.Regex.Matches(index, "(?:src|href)=\"(/assets/[^\"]+)\"").Select(m => m.Groups[1].Value).ToList();
         Assert.Contains(assets, a => a.EndsWith(".js", StringComparison.Ordinal));
         Assert.Contains(assets, a => a.EndsWith(".css", StringComparison.Ordinal));
         foreach (var asset in assets)
         {
-            var bytes = await _client.GetByteArrayAsync(new Uri(asset, UriKind.Relative));
+            using var response = await _client.GetAsync(new Uri(asset, UriKind.Relative));
+            Assert.True(response.Headers.CacheControl?.NoCache);
+            var bytes = await response.Content.ReadAsByteArrayAsync();
             Assert.InRange(bytes.Length, 1_000, 600_000);
         }
     }

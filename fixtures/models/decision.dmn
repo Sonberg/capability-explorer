@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="definitions" name="Eligibility" namespace="urn:example:eligibility">
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/" xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/" xmlns:di="http://www.omg.org/spec/DMN/20180521/DI/" id="definitions" name="Eligibility" namespace="urn:example:eligibility">
   <decision id="eligibility" name="Eligibility">
     <decisionTable id="eligibility-table" hitPolicy="FIRST">
       <input id="age-input" label="Age"><inputExpression id="age-expression" typeRef="number"><text>age</text></inputExpression></input>
@@ -14,4 +14,11 @@
       </rule>
     </decisionTable>
   </decision>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram id="eligibility-diagram">
+      <dmndi:DMNShape id="eligibility-shape" dmnElementRef="eligibility">
+        <dc:Bounds x="160" y="100" width="180" height="100"/>
+      </dmndi:DMNShape>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
 </definitions>

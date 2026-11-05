@@ -219,9 +219,9 @@ test("Given the bounded BPMN profile, extraction relates lanes, nested subproces
     [...byId.values()].find(element => element.identity === relation.source)?.id,
     [...byId.values()].find(element => element.identity === relation.target)?.id,
   ]);
-  const reviewRouteIndex = endpoints.findIndex(([kind, source, target]) =>
-    kind === "sequenceFlow" && source === "review-task" && target === "route-gateway");
-  const reviewRoute = evidence.relationships[reviewRouteIndex];
+  const approvalRouteIndex = endpoints.findIndex(([kind, source, target]) =>
+    kind === "sequenceFlow" && source === "route-gateway" && target === "nested-work");
+  const approvalRoute = evidence.relationships[approvalRouteIndex];
   const expectedSupported = support.constructs.filter((item: { family: string; status: string; elements: string[] }) =>
     item.family === "bpmn" && item.status === "semantic-evidence-supported"
     && item.elements.some((type: string) => evidence.elements.some(element => element.type === type)))
@@ -230,12 +230,24 @@ test("Given the bounded BPMN profile, extraction relates lanes, nested subproces
   assert.ok(byId.get("nested-task")?.parent === byId.get("nested-work")?.identity);
   assert.ok(endpoints.some(([kind, source, target]) => kind === "reference" && source === "review-lane" && target === "start"));
   assert.ok(endpoints.some(([kind, source, target]) => kind === "reference" && source === "call-child" && target === "child-process"));
-  assert.ok(endpoints.some(([kind, source, target]) => kind === "sequenceFlow" && source === "review-task" && target === "route-gateway"));
-  assert.ok(endpoints.some(([kind, source, target]) => kind === "messageFlow" && source === "order-participant" && target === "child-participant"));
+  assert.ok(endpoints.some(([kind, source, target]) => kind === "sequenceFlow" && source === "review-task" && target === "evaluate-order"));
+  assert.ok(endpoints.some(([kind, source, target]) => kind === "sequenceFlow" && source === "evaluate-order" && target === "route-gateway"));
+  assert.equal(byId.get("evaluate-order")?.attributes["ce:decisionRef"], "decision-rich.dmn#order-decision");
+  assert.equal(byId.has("child-participant"), false);
+  assert.equal(endpoints.some(([kind]) => kind === "messageFlow"), false);
+  assert.equal(byId.get("shipment-plane")?.attributes.bpmnElement, "child-process");
   assert.ok(endpoints.some(([kind, source, target]) => kind === "reference" && source === "review-record-ref" && target === "review-record"));
-  assert.deepEqual(reviewRoute?.condition, {
+  assert.deepEqual(approvalRoute?.condition, {
     text: "approved = true", language: "text/feel",
   });
+  for (const [source, target] of [
+    ["route-gateway", "nested-work"], ["nested-work", "call-child"], ["call-child", "finish"],
+    ["nested-start", "nested-task"], ["nested-task", "nested-end"],
+    ["child-start", "child-task"], ["child-task", "child-end"],
+  ]) {
+    assert.ok(endpoints.some(([kind, from, to]) => kind === "sequenceFlow" && from === source && to === target));
+    assert.equal(byId.get(source)?.parent, byId.get(target)?.parent, "Sequence flows must stay within their process scope");
+  }
   assert.equal(evidence.coverage.status, "full");
   assert.deepEqual([...new Set(evidence.coverage.supported)].sort(), [...new Set(expectedSupported)].sort());
 });

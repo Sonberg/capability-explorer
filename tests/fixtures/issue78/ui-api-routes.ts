@@ -19,6 +19,10 @@ export async function installIssue78UiApiRoutes(page: any, config: {
   xmlById: Record<string, string>;
 }) {
   const { state, snapshot, revisionA, revisionB, selection, bpmnHash, items, evidenceById, xmlById } = config;
+  await page.route("**/health", (route: any) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ status: "healthy", uptime_seconds: 1, version: "test", timestamp: "2026-11-05T00:00:00Z" })
+  }));
   await page.route("**/api/**", async (route: any) => {
     const url = new URL(route.request().url());
     state.requests.push(`${url.pathname}${url.search}`);

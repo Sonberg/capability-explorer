@@ -8,7 +8,7 @@ NODE   := node
 NPM    := npm
 NODE_PLATFORM := $(shell $(NODE) -p "process.platform + '-' + process.arch + '-abi' + process.versions.modules" 2>/dev/null || echo unavailable)
 
-.PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
+.PHONY: help ci test fixtures fixtures-lock fixtures-compile model-fixtures test-model-fixture-autoload golden golden-check \
         restore restore-dotnet restore-ts restore-ui ui frontend backend build test-ts test-contracts test-evaluation test-extractors test-explorer test-store evaluate evaluate-golden \
 		analyze-all extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze analyze-worker explore ollama postgres dev dev-data dev-down clean local-check pr-check install-git-hooks actions-audit test-local-ci test-package-feeds security-check
 
@@ -31,6 +31,7 @@ help:
 	@echo "make golden          regenerate fixtures/expected from fixtures/golden/facts"
 	@echo "make fixtures-compile  check every fixture revision compiles (or fails) as intended"
 	@echo "make explore [ARTIFACTS=dir] [EVALUATION=report.json] [CAPABILITIES=file] [PORT=5080]"
+	@echo "     known BPMN/DMN fixtures are validated and listed automatically (MODEL_COLLECTIONS=dir to override)"
 	@echo "     browse the model at http://127.0.0.1:5080"
 	@echo "     private source checks and acquisition credentials belong to make analyze-worker, not Explorer"
 	@echo "     optional LLM: make ollama (local, no key), the Settings page (gear icon), or INTERPRETATION=foundry FOUNDRY_ENDPOINT=... FOUNDRY_DEPLOYMENT=..."
@@ -86,6 +87,18 @@ fixtures-compile: fixtures
 	scripts/compile-fixtures.sh restore-node
 	scripts/compile-fixtures.sh build-dotnet
 	scripts/compile-fixtures.sh build-node
+
+MODEL_COLLECTIONS ?= .sandbox-cache/model-fixtures/collection-$(shell node scripts/prepare-model-fixtures.mjs --collection-key)
+model-fixtures: build
+	@set -e; trap 'rm -rf .sandbox-cache/model-fixtures/staging' EXIT; \
+	  $(NODE) scripts/prepare-model-fixtures.mjs --check-output "$(MODEL_COLLECTIONS)"; \
+	  $(NODE) scripts/prepare-model-fixtures.mjs; \
+	  $(DOTNET) $(CE) collect --plan .sandbox-cache/model-fixtures/staging/plan.json --out "$(MODEL_COLLECTIONS)"; \
+	  $(DOTNET) $(CE) validate-collection "$(MODEL_COLLECTIONS)"; \
+	  $(NODE) --experimental-strip-types extractors/ts/src/collection/cli.ts validate "$(MODEL_COLLECTIONS)"
+
+test-model-fixture-autoload: model-fixtures
+	MODEL_COLLECTIONS=$(MODEL_COLLECTIONS) $(NODE) --experimental-strip-types tests/model-fixture-autoload.ts
 
 golden: fixtures
 	$(NODE) fixtures/golden/build.mjs
@@ -203,13 +216,14 @@ GITHUB_AUTH ?= git
 ANALYZE_JOBS ?= 2
 export ANALYZE_JOBS
 PORT ?= 5080
+BIND_ADDRESS ?= 127.0.0.1
 EXPLORER_SOURCE ?= files
 # Human-maintained service map that binds @unbound hints (see schema/README.md). Used by explore and by the optional import in analyze.
 BINDINGS ?= $(wildcard bindings.json)
-explore: fixtures build
+explore: fixtures build model-fixtures
 	@echo "Capability Explorer: http://127.0.0.1:$(PORT)"
-	ASPNETCORE_URLS="http://127.0.0.1:$(PORT)" $(NODE) scripts/explorer-host.mjs platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll \
-	  --source $(EXPLORER_SOURCE) --artifacts $(ARTIFACTS) --repos fixtures/.repos $(if $(EVALUATION),--evaluation $(EVALUATION)) \
+	ASPNETCORE_URLS="http://$(BIND_ADDRESS):$(PORT)" $(NODE) scripts/explorer-host.mjs platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll \
+	  --source $(EXPLORER_SOURCE) --artifacts $(ARTIFACTS) --collections "$(MODEL_COLLECTIONS)" --repos fixtures/.repos $(if $(EVALUATION),--evaluation $(EVALUATION)) \
 	  --capabilities $(CAPABILITIES) --workspace .sandbox-cache/sources $(if $(BINDINGS),--bindings $(BINDINGS)) \
 	  $(if $(INTERPRETATION),--interpretation:provider $(INTERPRETATION) --interpretation:cacheDirectory .sandbox-cache/interpretations) \
 	  $(if $(FOUNDRY_ENDPOINT),--interpretation:endpoint $(FOUNDRY_ENDPOINT)) \

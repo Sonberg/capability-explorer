@@ -6,6 +6,26 @@ snapshot. Native `ce.v1` is unchanged. See [MADR-0033](adr/0033-bounded-model-an
 None of these profiles establishes business approval or executes a process,
 decision, expression or analyzed source.
 
+## Local fixture models
+
+`make explore` and `make dev` prepare the four known synthetic files under
+`fixtures/models` as a local, validated collection at a content-keyed path under
+`.sandbox-cache/model-fixtures/`. Extraction uses the bounded model
+CLI and preserves the original source only under an explicit `model-content`
+permission recorded in the collection plan. A deterministic synthetic Git
+revision binds the fixture bytes; both collection validators run before the
+Explorer starts. The content-keyed directory avoids replacing a prior immutable
+collection when a fixture or extraction recipe changes. Set `MODEL_COLLECTIONS`
+to another path under `.sandbox-cache/model-fixtures` to select the output
+location.
+
+The fixture path is limited to the named BPMN and DMN files in `fixtures/models`;
+it does not crawl local repositories, execute models, publish model products to
+PostgreSQL, or embed them. The normal artifact import/embed steps in `make dev`
+are unchanged. Run `make test-model-fixture-autoload` to verify both model kinds
+are listed and their captured evidence/source are viewable in the ordinary
+files-mode Explorer.
+
 ## Extract locally
 
 Use the existing pinned sandbox profiles and build preparation:

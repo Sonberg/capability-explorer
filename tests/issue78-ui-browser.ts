@@ -255,11 +255,13 @@ try {
   assert.match(await page.getByRole("button", { name: /Task_Review/ }).getAttribute("aria-pressed") ?? "", /true/);
   assert.match(page.url(), /tab=elements/);
   assert.match(page.url(), /element=Task_Review/);
-  assert(await page.getByText("Lane: Applicant lane").isVisible());
-  assert(await page.getByText(/Incoming: sequenceFlow from Application received/).isVisible());
-  assert(await page.getByText(/Outgoing: messageFlow to Assess eligibility/).isVisible());
-  assert(await page.getByText("model.xml · element: Task_Review").isVisible());
-  assert(await page.getByText(/Not rendered in current viewer projection/).count() > 0);
+  const elementProvenance = page.getByLabel("Selected element provenance");
+  assert(await elementProvenance.getByText("Applicant lane", { exact: true }).isVisible());
+  assert(await elementProvenance.getByText(/sequenceFlow: Application received/).isVisible());
+  assert(await elementProvenance.getByText("messageFlow: Assess eligibility", { exact: true }).isVisible());
+  assert(await elementProvenance.getByText(/artifact: model.xml · element: Task_Review/).isVisible());
+  await page.getByRole("button", { name: "All captured source evidence", exact: true }).click();
+  await page.getByText(/Included in the active viewer scope; may be off-screen/).first().waitFor();
   await page.evaluate(() => {
     const target = window as Window & { __issue78SelectionResults?: unknown[] };
     target.__issue78SelectionResults = [];
@@ -268,9 +270,11 @@ try {
     });
   });
   await page.getByRole("button", { name: /Task_Nested/ }).click();
-  assert.match(await page.getByRole("navigation", { name: "Breadcrumb for Task_Nested" }).innerText(), /Application\s*\/\s*Eligibility check\s*\/\s*Nested decision task/);
-  await page.getByRole("button", { name: "Navigate to SubProcess_Check" }).click();
+  const nestedBreadcrumb = page.getByRole("navigation", { name: "Breadcrumb for Task_Nested" });
+  assert.match(await nestedBreadcrumb.innerText(), /Application[\s\S]*Eligibility check/);
+  await nestedBreadcrumb.getByRole("button", { name: "Eligibility check", exact: true }).click();
   assert.match(page.url(), /element=SubProcess_Check/);
+  await bpmnFrame.locator('.djs-element[data-element-id="SubProcess_Check"].issue78-selected').waitFor({ state: "attached" });
   assert.match(await bpmnFrame.locator('.djs-element[data-element-id="SubProcess_Check"]').getAttribute("class") ?? "", /issue78-selected/);
   await page.getByRole("button", { name: /Task_Review/ }).click();
   const flowRow = page.getByRole("button", { name: /sequenceFlow: Application received →/ });
@@ -278,7 +282,7 @@ try {
   await flowRow.click();
   await page.waitForFunction(() => window.location.hash.includes("element=rel-flow-start-review") &&
     [...document.querySelectorAll("button")].some((button) =>
-      button.textContent?.includes("Relationship identity: rel-flow-start-review") && button.getAttribute("aria-pressed") === "true"));
+      button.textContent?.includes("sequenceFlow: Application received") && button.getAttribute("aria-pressed") === "true"));
   await page.waitForFunction(() => (window as Window & { __issue78SelectionResults?: unknown[] }).__issue78SelectionResults?.length, undefined, { timeout: 3000 });
   const selectionResult = await page.evaluate(() => (window as Window & { __issue78SelectionResults?: Array<{ relationshipMatchCount?: number; message?: string }> }).__issue78SelectionResults?.at(-1));
   assert.equal(selectionResult?.relationshipMatchCount, 1, JSON.stringify(selectionResult));
@@ -324,7 +328,7 @@ try {
   await page.emulateMedia({ colorScheme: "light" });
   assertions.push("Repeated diagnostics retain total and group counts, start collapsed, disclose exact messages and long locators by keyboard, and stay viewport-bounded in light/dark/mobile views.");
   assert(await page.getByText(/element source locator not supplied/).isVisible());
-  const relationshipProvenance = page.getByRole("complementary", { name: "Model provenance" }).getByLabel("Selected relationship provenance");
+  const relationshipProvenance = page.getByRole("complementary", { name: "Model insights" }).getByLabel("Selected relationship provenance");
   const relationshipOverflow = await page.evaluate(() => ({
     viewport: window.innerWidth,
     document: document.documentElement.scrollWidth,
@@ -407,15 +411,18 @@ try {
 
   await page.getByRole("button", { name: "Load next page" }).click();
   await page.getByRole("button", { name: /denied\.bpmn\.json/ }).click();
+  await page.getByRole("button", { name: "Insights", exact: true }).click();
   await page.getByText("Source access denied; no fallback is attempted.").waitFor();
   assert(!sourceRequestIds.includes("model-denied"));
   assert(await page.getByText(/Authored evidence · original source not verified \(denied\)/).isVisible());
   await page.getByRole("button", { name: /missing\.bpmn\.json/ }).click();
+  await page.getByRole("button", { name: "Insights", exact: true }).click();
   await page.getByText("Original source is unavailable. Showing only separately validated textual evidence.").waitFor();
   assert(!sourceRequestIds.includes("model-missing"), "missing authored source must not call the source endpoint");
   await page.getByText(/Authored evidence · original source not verified \(missing\)/).waitFor();
   await page.getByRole("button", { name: /no-di\.bpmn\.json/ }).click();
-  await page.getByText("Original source SHA-256 verified; viewer geometry is unavailable or unverified. No generated layout replaces source evidence.").waitFor();
+  await page.getByRole("button", { name: "Insights", exact: true }).click();
+  await page.getByText(/Authored evidence · original source verified · viewer projection unavailable/).waitFor();
   await page.getByRole("alert").filter({ hasText: "BPMN source has no BPMNDiagram DI" }).waitFor();
   assert(!await page.locator(".model-viewer-frame").innerText().then((text) => text.includes("authored DI")));
   assertions.push("Opaque cursor extends the bounded list; denied source status is explicit and triggers no source request.");
@@ -442,14 +449,14 @@ try {
   await page.setViewportSize({ width: 1100, height: 900 });
   assert(await page.getByText("Model picker", { exact: false }).isVisible());
   const stageRect = await page.locator(".model-viewer-frame").boundingBox();
-  const provenanceRect = await page.getByRole("complementary", { name: "Model provenance" }).boundingBox();
-  assert(stageRect && provenanceRect && provenanceRect.x >= stageRect.x + stageRect.width && provenanceRect.x + provenanceRect.width <= 1100);
+  await page.getByRole("button", { name: "Insights", exact: true }).click();
+  const provenanceRect = await page.getByRole("complementary", { name: "Model insights" }).boundingBox();
+  assert(stageRect && provenanceRect && provenanceRect.x >= stageRect.x && provenanceRect.x + provenanceRect.width <= stageRect.x + stageRect.width);
+  await page.getByRole("button", { name: "Close model insights", exact: true }).click();
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ colorScheme: "dark" });
-  await page.waitForFunction(() => [...document.querySelectorAll('button[aria-pressed="true"]')].some((button) => button.textContent?.trim() === "Elements"));
-  assert.equal(await page.getByRole("button", { name: "Elements", exact: true }).getAttribute("aria-pressed"), "true");
-  await page.getByRole("button", { name: "Diagram", exact: true }).click();
+  assert.equal(await page.getByRole("button", { name: "Diagram", exact: true }).getAttribute("aria-pressed"), "true");
   await watermark.waitFor({ state: "visible" });
   assert.equal(await bpmnFrame.locator("body").evaluate((node) => getComputedStyle(node).backgroundColor), "rgb(255, 255, 255)");
   await page.locator(".model-viewer-frame").scrollIntoViewIfNeeded();
@@ -457,7 +464,7 @@ try {
   assert(mobileWatermarkRect && mobileWatermarkRect.x >= 0 && mobileWatermarkRect.y >= 0 && mobileWatermarkRect.x + mobileWatermarkRect.width <= 390 && mobileWatermarkRect.y + mobileWatermarkRect.height <= 844);
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await page.locator(".model-viewer-frame iframe").screenshot({ path: resolve(artifacts, "issue78-ui-production-mobile-dark.png") });
-  assertions.push("Tablet picker and side inspector, narrow dark white notation paper, and viewport-bounded unobscured watermark are verified.");
+  assertions.push("Tablet picker and floating insights, stable narrow-screen diagram tab, dark white notation paper, and viewport-bounded unobscured watermark are verified.");
   const revision = page.getByLabel("Revision of repo-a");
   const revisionRequest = page.waitForRequest((request) => {
     const url = new URL(request.url());
