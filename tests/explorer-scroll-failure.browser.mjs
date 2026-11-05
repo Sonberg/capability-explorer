@@ -63,10 +63,14 @@ try {
   fault = 'stale';
   await root.evaluate(element => { element.scrollTop = element.scrollHeight; });
   await root.getByText('Injected 409 for acceptance').waitFor();
-  const beforeRestart = requests.length;
+  const restartedRequest = page.waitForRequest(request => {
+    const url = new URL(request.url());
+    return url.pathname === '/api/search' && !url.searchParams.has('cursor');
+  });
   await root.getByRole('button', { name: /reload|restart|retry/i }).click();
+  const restarted = await restartedRequest;
   await page.waitForFunction(() => document.querySelectorAll('[data-symbol-key]').length >= 50);
-  assert.equal(requests[beforeRestart].cursor, null);
+  assert.equal(new URL(restarted.url()).searchParams.get('cursor'), null);
   receipt.assertions.push('stale continuation restarts without incompatible cursor');
   fault = 'late';
   const responseHeld = new Promise(resolve => { held = resolve; });
