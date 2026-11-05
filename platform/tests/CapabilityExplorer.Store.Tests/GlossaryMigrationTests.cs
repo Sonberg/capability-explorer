@@ -38,7 +38,7 @@ public sealed class GlossaryMigrationTests(PostgresFixture db)
             }
 
             var applied = await Migrator.MigrateAsync(source);
-            Assert.Equal(upgrade ? 6 : 9, applied.Count);
+            Assert.Equal(upgrade ? 7 : 10, applied.Count);
             Assert.Contains("0009_model_products.sql", applied);
             Assert.Contains("0006_glossary_proposal_review.sql", applied);
             Assert.Contains("0005_analysis_snapshots.sql", applied);
