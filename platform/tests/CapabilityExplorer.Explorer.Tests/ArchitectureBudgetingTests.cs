@@ -106,8 +106,25 @@ public sealed class ArchitectureBudgetingTests
     public void Requested_pins_and_automatic_focus_cannot_exceed_budget()
     {
         var source = Graph([Node("a"), Node("b")], [], "a");
-        Assert.Throws<ArgumentException>(() => ArchitectureBudgeting.Apply(source, 1, include: ["b"]));
-        Assert.Throws<ArgumentException>(() => ArchitectureBudgeting.Apply(source, 1, include: ["missing-a", "missing-b"]));
+        Assert.Throws<ArchitectureBudgetRejectedException>(() => ArchitectureBudgeting.Apply(source, 1, include: ["b"]));
+        Assert.Throws<ArchitectureBudgetRejectedException>(() => ArchitectureBudgeting.Apply(source, 1, include: ["missing-a", "missing-b"]));
+    }
+
+    [Fact]
+    public void Node_budget_omissions_do_not_report_edge_budget_truncation()
+    {
+        var source = Graph([Node("a"), Node("b"), Node("c")],
+            [Edge("ab", "a", "b"), Edge("ac", "a", "c"), Edge("bc", "b", "c")]);
+        var g = ArchitectureBudgeting.Apply(source, 2, 800);
+        Assert.Equal(2, g.Nodes.Count);
+        Assert.Single(g.Edges);
+        Assert.Equal(3, g.Budget!.TotalNodes);
+        Assert.Equal(3, g.Budget.MatchedNodes);
+        Assert.Equal(3, g.Budget.TotalEdges);
+        Assert.Equal(3, g.Budget.MatchedEdges);
+        Assert.True(g.Budget.NodesTruncated);
+        Assert.False(g.Budget.EdgesTruncated);
+        Assert.True(g.Budget.Truncated);
     }
 
     [Fact]

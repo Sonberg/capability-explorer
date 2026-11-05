@@ -12,6 +12,8 @@ public sealed record ArchitectureOmitted(IReadOnlyList<ArchitectureOmittedNode> 
 
 internal sealed record ArchitectureRequest(int NodeBudget, int EdgeBudget, IReadOnlyList<string> HideKinds, string? Query, IReadOnlyList<string> Include);
 
+internal sealed class ArchitectureBudgetRejectedException(string message) : Exception(message);
+
 internal static class ArchitectureBudgeting
 {
     internal const int MaxNodes = 400;
@@ -65,12 +67,12 @@ internal static class ArchitectureBudgeting
         var edges = Math.Clamp(edgeBudget ?? MaxEdges, 1, MaxEdges);
         var filters = new ArchitectureFilters(Normalize(hideKinds ?? []),
             string.IsNullOrWhiteSpace(query) ? null : query.Trim(), Normalize(include ?? []));
-        if (filters.Include.Count > nodes) throw new ArgumentException("Requested pins exceed nodeBudget.", nameof(include));
+        if (filters.Include.Count > nodes) throw new ArchitectureBudgetRejectedException("Requested pins exceed nodeBudget.");
         var ids = graph.Nodes.Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
         var pins = filters.Include.Where(ids.Contains).ToHashSet(StringComparer.Ordinal);
         if (graph.Focus is { } focus)
             pins.UnionWith(graph.Nodes.Where(n => n.Id == focus || n.SymbolKey == focus || n.Id == $"repo:{focus}").Select(n => n.Id));
-        if (pins.Count > nodes) throw new ArgumentException("Focus and requested pins exceed nodeBudget.", nameof(include));
+        if (pins.Count > nodes) throw new ArchitectureBudgetRejectedException("Focus and requested pins exceed nodeBudget.");
         var matched = graph.Nodes.Where(n => pins.Contains(n.Id) || Matches(n, filters.Query)).ToList();
         var matchedIds = matched.Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
         var hidden = filters.HideKinds.ToHashSet(StringComparer.Ordinal);
@@ -83,11 +85,12 @@ internal static class ArchitectureBudgeting
             .ThenByDescending(n => degree.GetValueOrDefault(n.Id)).ThenBy(n => n.Id, StringComparer.Ordinal).ToList();
         var shown = ranked.Take(nodes).ToList();
         var keep = shown.Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
-        var shownEdges = matchedEdges.Where(e => keep.Contains(e.From) && keep.Contains(e.To))
+        var inducedEdges = matchedEdges.Where(e => keep.Contains(e.From) && keep.Contains(e.To)).ToList();
+        var shownEdges = inducedEdges
             .OrderByDescending(e => pins.Contains(e.From) || pins.Contains(e.To)).ThenByDescending(e => e.Count)
             .ThenBy(e => e.Id, StringComparer.Ordinal).Take(edges).ToList();
         var nodesTruncated = shown.Count < matched.Count;
-        var edgesTruncated = shownEdges.Count < matchedEdges.Count;
+        var edgesTruncated = inducedEdges.Count > edges;
         var omitted = ranked.Skip(nodes).Select(n => new ArchitectureOmittedNode(n.Id, n.Label, n.Category, degree.GetValueOrDefault(n.Id))).Take(200).ToList();
         var matchedEdgeIds = matchedEdges.Select(e => e.Id).ToHashSet(StringComparer.Ordinal);
         return graph with

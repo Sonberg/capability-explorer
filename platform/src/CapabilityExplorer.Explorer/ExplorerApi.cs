@@ -286,7 +286,7 @@ public static class ExplorerApi
                 return Results.Ok(Architecture.Build(index.View(view, caps.Scope(cap)), level ?? (capability is null ? "landscape" : "system"), focus, index.View(view), caps.List(), capability,
                     options.NodeBudget, options.EdgeBudget, options.HideKinds, options.Query, options.Include));
             }
-            catch (ArgumentException e)
+            catch (ArchitectureBudgetRejectedException e)
             {
                 return Results.BadRequest(new { error = e.Message });
             }

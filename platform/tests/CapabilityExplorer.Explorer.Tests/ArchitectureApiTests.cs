@@ -130,6 +130,17 @@ public sealed class ArchitectureApiTests(ExplorerFactory factory) : IClassFixtur
     }
 
     [Fact]
+    public async Task Api_rejects_resolved_pin_plus_automatic_focus_exceeding_node_budget()
+    {
+        const string focus = "cs|forecast-cs|Forecast.Api|T:Forecast.Api.Forecasting.StrategyLoader";
+        const string pin = "mem:cs|forecast-cs|Forecast.Api|M:Forecast.Api.Forecasting.StrategyLoader.Resolve(System.IServiceProvider,System.String)";
+        using var response = await _client.GetAsync($"/api/architecture?level=component&focus={Uri.EscapeDataString(focus)}&include={Uri.EscapeDataString(pin)}&nodeBudget=1");
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Focus and requested pins exceed nodeBudget.", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
     public async Task Api_kind_and_text_filters_keep_honest_counts_and_metadata()
     {
         var g = await Graph("level=system&hideKind=http&hideKind=call&q=FORECAST&include=repo%3Aweb-ts");
