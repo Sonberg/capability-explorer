@@ -4,6 +4,7 @@ import { Card, ErrorBox, H1, Loading, Muted, Pill } from "../components/ui";
 import { databaseUrl, useDatabaseInfinitePage, useDatabasePage, useDebouncedText, type DatabaseMeta, type DatabaseHit, type DatabaseArtifact, type DatabaseCalculation } from "../database-api";
 import { DatabaseInspector } from "./DatabaseInspector";
 import { DatabasePager } from "../components/DatabasePager";
+import { EmbeddingStatusPanel } from "../components/embedding-status";
 import { href, useRoute } from "../state";
 
 const ProcessesDecisions = lazy(() => import("./ProcessesDecisions").then((module) => ({ default: module.ProcessesDecisions })));
@@ -57,6 +58,7 @@ function DatabaseWorkspace({ meta, route, loadLatest }: { meta: DatabaseMeta; ro
         <RevisionChooser scope={scope} selection={selection} change={resetSelection} />
       </details>
     </div>
+    <EmbeddingStatusPanel scope={scope} meta={meta} selection={selection} />
     <Card><h2 className="font-semibold">Migration status</h2>
       <Muted>Available: bounded symbol search, symbol and evidence detail, adjacency, calculations and artifact metadata.</Muted>
       <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">Architecture, integrations, glossary, changes and binding review are not silently reconstructed from JSONL.</p>
