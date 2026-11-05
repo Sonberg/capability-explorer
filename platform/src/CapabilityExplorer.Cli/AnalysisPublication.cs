@@ -11,7 +11,7 @@ internal static class AnalysisPublication
     internal static Func<CancellationToken,Task>? BeforeHostConfirmationForTests { get; set; }
     internal static Func<Task>? BeforeDatabaseImportForTests { get; set; }
 
-    internal static async Task Publish(string root, AnalysisRun run, PreparedAnalysis prepared, PublicationPermit permit)
+    internal static async Task<Guid?> Publish(string root, AnalysisRun run, PreparedAnalysis prepared, PublicationPermit permit)
     {
         permit.RequireIdentity(new AttemptIdentity(run.RunId,run.AttemptId!),run.AcceptedInputsHash,run.ManifestHash!);
         prepared = AnalysisPublicationBinding.Validate(root,run,prepared);
@@ -56,7 +56,7 @@ internal static class AnalysisPublication
             }
             // Preserve the previous directory as crash evidence. No unguarded cleanup/retry.
         }
-        if (Environment.GetEnvironmentVariable("CE_DATABASE") is not { Length: > 0 } connection) return;
+        if (Environment.GetEnvironmentVariable("CE_DATABASE") is not { Length: > 0 } connection) return null;
         permit.Intent("postgres",run.CapabilityId);
         await using var database = NpgsqlDataSource.Create(connection);
         await Migrator.MigrateAsync(database);
@@ -99,6 +99,7 @@ internal static class AnalysisPublication
             await barrier(CancellationToken.None);
         permit.Confirm("postgres",run.CapabilityId,AnalysisWorkerCommand.HashText(
             run.AcceptedInputsHash + ":" + run.ManifestHash + ":" + receipt.CandidateSnapshotId + ":" + receipt.CandidateInputIdentity));
+        return receipt.CandidateSnapshotId;
     }
 
     private static void AssertFiles(string directory, Dictionary<string,string> expected)

@@ -131,19 +131,20 @@ internal static class AnalysisWorkerCommand
             store.FinishExecution(owner, attempt, 0);
             process.CheckCancellation();
             AnalysisRun completed;
+            Guid? publishedSnapshot;
             await PublicationGate.WaitAsync(stop);
             try
             {
                 process.CheckCancellation();
                 using var publication = store.BeginPublication(owner, attempt, manifest);
-                await AnalysisPublication.Publish(root, store.ReadRun(run.RunId), prepared, publication);
+                publishedSnapshot = await AnalysisPublication.Publish(root, store.ReadRun(run.RunId), prepared, publication);
                 completed = publication.Complete("Core artifacts published; optional enrichment pending.");
             }
             finally { PublicationGate.Release(); }
             try { AnalysisSourceCleanup.AfterPublication(store,completed,prepared); }
             catch (Exception cleanupError) when (cleanupError is IOException or InvalidOperationException or UnauthorizedAccessException)
             { Console.Error.WriteLine("analysis: source cleanup incomplete; preserved attempt data for inspection"); }
-            var enrichment = await AnalysisEnrichment.Run();
+            var enrichment = await AnalysisEnrichment.Run(publishedSnapshot, stop);
             store.RecordEnrichment(owner,attempt,enrichment.Outcome,enrichment.Detail);
             Console.WriteLine($"analysis {run.RunId}/{run.AttemptId}: done");
             return 0;

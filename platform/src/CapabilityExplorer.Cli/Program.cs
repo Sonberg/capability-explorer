@@ -32,7 +32,7 @@ const string Usage = """
       ce import [--connection <connection string>] [--bindings <bindings.json>] [--collections <directory,...>] [artifact.jsonl...]  (native artifacts or validated model collections required)
       ce publish [--scope <capability-id|*>] [--view <repo:full-sha,...>] [--bindings <bindings.json>] [--collections <directory,...>] [--expected-generation <n>] [artifact.jsonl...]
       ce reconcile-publication --run <id> --attempt <id> [--connection <connection string>]  (read-only; never authorizes recovery)
-      ce embed [--connection <connection string>] [--settings <model.json>]  (model from CE_MODEL_ENDPOINT + CE_EMBEDDING_MODEL, else the saved settings: make ollama / explorer Settings)
+      ce embed [--snapshot <id> | --scope <capability-id|*>] [--connection <connection string>] [--settings <model.json>]  (whole-snapshot projection; model from environment or saved settings)
       ce export (disabled: use the exclusive host analysis worker)
       ce evaluate --expected <dir> --actual <dir> [--config <evaluation.json>] [--repos <dir>] [--repository <id[,id]>] [--language <csharp,typescript,...>] [--json <report.json>] [--max-findings <n>]
     """;
@@ -44,7 +44,7 @@ if (args.Length == 0)
 }
 
 var command = args[0];
-var strictCollectionOptions = command is "collect" or "validate-collection" or "collection-freshness";
+var strictCollectionOptions = command is "collect" or "validate-collection" or "collection-freshness" or "embed";
 var options = new Dictionary<string, string>(StringComparer.Ordinal);
 var files = new List<string>();
 for (var i = 1; i < args.Length; i++)
@@ -164,28 +164,35 @@ switch (command)
 
     case "embed":
     {
-        // Environment first (CI, scripts), then what `make ollama` or the explorer's Settings page saved.
-        var endpoint = Environment.GetEnvironmentVariable("CE_MODEL_ENDPOINT");
-        var settings = endpoint is { Length: > 0 }
-            ? new ModelSettings(endpoint, null, Environment.GetEnvironmentVariable("CE_EMBEDDING_MODEL"), null)
-            : ModelSettings.Load(options.GetValueOrDefault("settings") ?? ModelSettings.DefaultPath);
-        if (settings?.ApplyTo(new InterpretationOptions()).CreateEmbeddingModel() is not { } model)
-        {
-            Console.Error.WriteLine("no embedding model: run `make ollama`, save one in the explorer (Settings), or set CE_MODEL_ENDPOINT and CE_EMBEDDING_MODEL");
-            return 2;
-        }
-
-        await using var db = OpenDatabase();
-        await Migrator.MigrateAsync(db);
         try
         {
-            var count = await new EmbeddingStore(db).EmbedPendingAsync(model.Id, (texts, ct) => model.EmbedAsync(texts, ct));
-            Console.WriteLine(count == 0 ? $"embeddings up to date ({model.Id})" : $"embedded {count} symbol(s) with {model.Id}");
+            if (files.Count > 0 || options.Keys.Any(key => key is not ("snapshot" or "scope" or "connection" or "settings"))
+                || options.ContainsKey("snapshot") && options.ContainsKey("scope"))
+                throw new ArgumentException("invalid embed options");
+            var configuration = EmbeddingConfiguration.Resolve(new InterpretationOptions(), options.GetValueOrDefault("settings") ?? ModelSettings.DefaultPath);
+            if (configuration is null)
+            {
+                Console.Error.WriteLine("no embedding model: save one in Settings or set CE_MODEL_ENDPOINT and CE_EMBEDDING_MODEL");
+                return 2;
+            }
+            var model = configuration.Options.CreateEmbeddingModel()!;
+            var connection = options.GetValueOrDefault("connection") ?? Environment.GetEnvironmentVariable("CE_DATABASE")
+                ?? throw new InvalidOperationException("PostgreSQL connection is required");
+            await using var db = NpgsqlDataSource.Create(connection);
+            var store = new SnapshotEmbeddingStore(db, connection);
+            var snapshot = options.TryGetValue("snapshot", out var pinned)
+                ? Guid.TryParse(pinned, out var id) ? id : throw new ArgumentException("invalid snapshot")
+                : await store.ResolvePublishedAsync(options.GetValueOrDefault("scope") ?? "*");
+            var identity = configuration.Identity;
+            var count = await store.EmbedAsync(snapshot, new(identity.Id, identity.Fingerprint, identity.RecipeVersion),
+                (texts, ct) => model.EmbedAsync(texts, ct));
+            Console.WriteLine($"Embedding projection ready for snapshot {snapshot}: embedded {count} occurrence(s) ({identity.Id}); PostgreSQL similarity search remains unavailable.");
             return 0;
         }
-        catch (InterpretationUnavailableException e)
+        catch (Exception e) when (e is EmbeddingConfigurationException or EmbeddingProjectionBusyException or EmbeddingProjectionFailedException
+            or InterpretationUnavailableException or NpgsqlException or InvalidOperationException or ArgumentException or IOException)
         {
-            Console.Error.WriteLine($"embed: {e.Message}");
+            Console.Error.WriteLine($"embed: failed ({e.GetType().Name}); verify configuration and retry the same snapshot");
             return 1;
         }
     }

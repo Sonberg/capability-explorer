@@ -7,7 +7,7 @@ namespace CapabilityExplorer.Explorer;
 /// <summary>Opt-in bounded database API. It never falls back to file indexes.</summary>
 public static class PostgresExplorerApi
 {
-    private static readonly string[] Supported = ["meta", "generation", "view", "revisions", "search", "symbol", "symbol/edges", "symbol/evidence", "artifacts", "calculations", "calculation", "source", "integrations", "deprecations"];
+    private static readonly string[] Supported = ["meta", "generation", "view", "revisions", "search", "symbol", "symbol/edges", "symbol/evidence", "artifacts", "calculations", "calculation", "source", "integrations", "deprecations", "embeddings/status"];
 
     public static void MapPostgresExplorerApi(this IEndpointRouteBuilder app)
     {
@@ -35,6 +35,10 @@ public static class PostgresExplorerApi
                         capabilities = definitions.Capabilities.Select(c => new { c.Id, c.Name, repositories = c.Repositories.Select(r => r.Id).ToArray() }).ToArray(),
                     });
                     case "generation": return Json(new { context.Generation, context.SnapshotId });
+                    case "embeddings/status": return Json(await EmbeddingStatus.Read(context,
+                        http.RequestServices.GetRequiredService<Intelligence>(),
+                        http.RequestServices.GetRequiredService<NpgsqlDataSource>(),
+                        Supported.Contains("similar", StringComparer.Ordinal), cancellationToken));
                     case "view": return Json(context.Selection);
                     case "revisions": return Json(await queries.RevisionsAsync(context, page, cancellationToken));
                     case "artifacts": return Json(await queries.ArtifactsAsync(context, page, cancellationToken));
@@ -53,6 +57,8 @@ public static class PostgresExplorerApi
                 }
             }
             catch (ArgumentException) { return Json(new { error = "invalid query, selection or continuation cursor; restart pagination if necessary" }, 400); }
+            catch (CapabilityExplorer.Store.SnapshotConflictException) { return Json(new { error = "snapshot is unavailable; restart pagination", source = "postgres" }, 409); }
+            catch (CapabilityExplorer.Interpretation.EmbeddingConfigurationException) { return Json(new { error = "embedding configuration is invalid", reasonCode = "invalid-model-configuration" }, 503); }
             catch (System.Text.Json.JsonException) { return Json(new { error = "capability configuration is invalid" }, 503); }
             catch (IOException) { return Json(new { error = "capability configuration or source is temporarily unavailable" }, 503); }
             catch (NpgsqlException) { return Json(new { error = "database unavailable or query budget exceeded" }, 503); }

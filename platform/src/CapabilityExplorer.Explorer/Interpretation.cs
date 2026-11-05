@@ -58,6 +58,9 @@ public sealed partial class Intelligence
 
     public ModelSettings? Saved => _state.Saved;
 
+    public EmbeddingConfiguration? ResolveEmbeddingConfiguration() =>
+        EmbeddingConfiguration.Resolve(_configured, SettingsPath);
+
     /// <summary>Validates, saves and applies. A blank API key keeps the saved one.</summary>
     public string? Save(ModelSettingsRequest request)
     {
