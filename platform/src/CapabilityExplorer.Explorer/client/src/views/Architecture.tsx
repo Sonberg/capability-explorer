@@ -319,7 +319,7 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
         maxPins={MAX_PINS} maxOmittedNodes={MAX_OMITTED_NODES}
         onSelect={node => setSelected({ type: "node", node })}
         onDrill={drill}
-        onPin={id => { setPins(current => sortedUnique([...current, id])); applyFilters([id]); }}
+        onPin={id => applyFilters([id])}
       />}
     </div>
   );
