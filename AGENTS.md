@@ -7,6 +7,19 @@ These are the shared workflow and rationale, not a particular agent framework.
 The checklist below makes their coordination requirements discoverable.
 Their recorded repository-wide adoption status remains proposed.
 
+## Writing issues and responses
+
+Read and apply [the shared communication guide](docs/communication-style.md)
+when writing issues, comments, chat responses, PRs, reviews, handoffs or documentation.
+Use plain technical English without changing the meanings in
+[the project glossary](docs/ubiquitous-language.md). State blocked or partial results
+explicitly. Preserve evidence, uncertainty, conditions and approval boundaries.
+This is STE-informed project guidance, not a claim of ASD-STE100 compliance.
+Keep existing issue history, identifiers and quoted evidence unchanged; do not
+publish private information. The guide does not authorize actions or override
+higher-priority instructions. Contributors must load these instructions in their
+own tools; this file does not configure other sessions automatically.
+
 ## Before the first write, and when resuming
 
 1. Read `docs/HANDOFF.md`, the selected GitHub issue's current comments,
@@ -48,8 +61,10 @@ Their recorded repository-wide adoption status remains proposed.
 ## Publication and policy changes
 
 Use authorized feature branches and PRs targeting **`main` only**. Follow the
-unchanged full local pre-push CI and `make pr-check` gates in MADR-0005; urgency
-and documentation-only changes do not bypass them. Install the local hook with
+local pre-push CI and `make pr-check` gates in MADR-0005. The approved
+Markdown-only profile checks documentation without application builds; mixed,
+code and configuration changes still require full CI. Do not bypass either
+profile because of urgency. Install the local hook with
 `make install-git-hooks`. Merge authority remains with the authorized human.
 
 Propose workflow changes through reviewed changes to these tracked instructions

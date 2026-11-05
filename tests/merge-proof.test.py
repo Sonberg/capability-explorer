@@ -128,6 +128,20 @@ class MergeProofTests(unittest.TestCase):
             mode = proof.select({"action": "edited", "changes": {"body": {}}}, "owner/repo")[0]
             self.assertEqual("metadata", mode)
 
+    def test_given_docs_only_pr_or_main_push_then_select_docs_without_remote_proof(self):
+        events = [
+            ("pull_request", {"pull_request": {"base": {"sha": "b" * 40},
+                                               "head": {"sha": "h" * 40}}}),
+            ("push", {"ref": "refs/heads/main", "before": "b" * 40, "after": "h" * 40}),
+        ]
+        for name, event in events:
+            with self.subTest(event=name), patch.dict(
+                    os.environ, {"GITHUB_EVENT_NAME": name}, clear=True), patch.object(
+                    proof, "command", return_value=b"docs\n"), patch.object(
+                    proof, "git", return_value="h" * 40), patch.object(
+                    proof, "api", side_effect=AssertionError("unexpected network")):
+                self.assertEqual("docs", proof.select(event, "owner/repo")[0])
+
     def test_given_protection_api_denied_then_cli_explicitly_falls_back_to_full(self):
         with tempfile.TemporaryDirectory() as directory:
             event = Path(directory) / "event.json"
@@ -138,7 +152,8 @@ class MergeProofTests(unittest.TestCase):
                    "GITHUB_REPOSITORY": "owner/repo", "GITHUB_OUTPUT": str(output)}
             with patch.dict(os.environ, env, clear=True), patch.object(
                     proof, "git", return_value="a" * 40), patch.object(
-                    proof, "api", side_effect=proof.EvidenceUnavailable("HTTP403")), patch(
+                    proof, "api", side_effect=proof.EvidenceUnavailable("HTTP403")), patch.object(
+                    proof, "command", return_value=b"full\n"), patch(
                     "sys.argv", ["merge-proof.py", "select"]):
                 proof.main()
             self.assertEqual("mode=full\n", output.read_text())
@@ -183,7 +198,7 @@ class MergeProofTests(unittest.TestCase):
                     {"workflow_runs": [self.run]},
                 f"git/commits/{'m' * 40}": commit,
             }[path]
-        with patch.dict(os.environ, {"GITHUB_EVENT_NAME": "push"}, clear=True), patch.object(
+        with patch.object(proof, "command", return_value=b"full\n"), patch.dict(os.environ, {"GITHUB_EVENT_NAME": "push"}, clear=True), patch.object(
                 proof, "git", side_effect=git), patch.object(proof, "api", side_effect=api), patch.object(
                 proof, "artifact_receipt", return_value=self.receipt):
             self.assertEqual("verified", proof.select(event, "owner/repo")[0])

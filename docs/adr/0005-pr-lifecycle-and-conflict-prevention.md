@@ -101,6 +101,13 @@ that overlaps a worker claim is sequenced or explicitly handed over first.
 
 ### Target-branch alignment and validation sequence
 
+The 2026-11-05 operator-authorized Markdown-only profile in
+[MADR-0003](0003-local-ci-before-push.md#markdown-only-exception-authorized-on-2026-11-05)
+replaces unconditional application builds for its exact allowlist. The same
+pre-push and `make pr-check` entrypoints select and validate that profile.
+All mixed/code/configuration changes still run full CI. No hook bypass, skipped
+required result, stale target receipt or new merge authority is permitted.
+
 Run from a clean feature worktree; preserve unrelated contributor changes.
 
 ```sh
@@ -108,7 +115,7 @@ git fetch origin main
 git merge origin/main
 # Resolve any conflicts semantically, test them, then commit the resolution.
 # Once the intended source is committed and clean:
-git push -u origin <feature-branch>  # installed hook runs full local CI
+git push -u origin <feature-branch>  # installed hook runs the approved CI profile
 make pr-check
 # Only then create a PR with the explicit target:
 gh pr create --base main
@@ -117,7 +124,7 @@ gh pr create --base main
 
 `local-check` fetches main and requires it in HEAD before CI, fetches again afterward,
 and records exact HEAD/target-name/target-SHA on success. Code pushes to existing PRs are gated by
-that same pre-push hook; `make pr-check` then verifies the receipt before review
+that same pre-push hook; `make pr-check` then verifies the receipt and profile before review
 handoff. It also runs immediately before PR creation or base/metadata changes
 that affect review. Routine issue/PR discussion comments do not require a CI run.
 

@@ -1,0 +1,54 @@
+name: Report a bug
+description: Describe an observed defect and the result you expected.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use plain technical English. Keep defined project terms and distinguish observations from suspected causes.
+        Read [the communication guide](https://github.com/Sonberg/capability-explorer/blob/main/docs/communication-style.md).
+        Do not include secrets, private URLs, sensitive source code or unredacted logs. Use synthetic examples where possible.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is wrong, and who or what does it affect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Give ordered steps and public-safe inputs. If reproduction is not known, say so.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Observed behavior
+      description: State what you observed. Keep a suspected cause separate from the observation.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: State the correct observable result and any conditions that limit it.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment and revision
+      description: Include relevant versions and the source revision if known. Do not include credentials or private paths.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance checks
+      description: How can a reviewer verify the fix? Preserve uncertainty and mark undecided targets explicitly.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Safe evidence, scope and dependencies
+      description: Add sanitized evidence, exclusions or related issues when relevant. Label redacted excerpts. Do not upload sensitive logs.

@@ -133,6 +133,12 @@ def select(event, repo):
         return "full", "local act always executes the complete canonical gate"
     if metadata_only(os.environ.get("GITHUB_EVENT_NAME"), event):
         return "metadata", "title/body-only edit; preserve previous full-ci check"
+    if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
+        pull = event["pull_request"]
+        base, head = pull["base"]["sha"], pull["head"]["sha"]
+        profile = command("python3", "scripts/ci/docs-check.py", "mode", base, head).decode().strip()
+        if profile == "docs":
+            return "docs", "only approved regular Markdown additions/edits"
     if os.environ.get("GITHUB_EVENT_NAME") != "push":
         return "full", "pre-merge source/base change requires full CI"
     if event.get("ref") != "refs/heads/main":
@@ -140,6 +146,9 @@ def select(event, repo):
     before, after = event.get("before", ""), event.get("after", "")
     if not before or before == "0" * 40 or after != git("HEAD"):
         return "full", "no exact single-push source identity"
+    profile = command("python3", "scripts/ci/docs-check.py", "mode", before, after).decode().strip()
+    if profile == "docs":
+        return "docs", "main push contains only approved Markdown additions/edits"
     protection = api(repo, "branches/main/protection")
     if not protected(protection):
         return "full", "strict required ci/admin enforcement is not proven"

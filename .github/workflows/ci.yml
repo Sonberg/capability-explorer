@@ -36,17 +36,25 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Test merge-evidence policy
-        run: PYTHONDONTWRITEBYTECODE=1 python3 tests/merge-proof.test.py
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 tests/merge-proof.test.py
+          PYTHONDONTWRITEBYTECODE=1 python3 tests/docs-ci.test.py
       - name: Select complete CI or verified post-merge check
         id: proof
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/ci/merge-proof.py select
       - name: Require current main in the PR head
-        if: ${{ !env.ACT && github.event_name == 'pull_request' && steps.proof.outputs.mode == 'full' }}
+        if: ${{ !env.ACT && github.event_name == 'pull_request' && steps.proof.outputs.mode != 'metadata' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/ci/merge-proof.py aligned
+      - name: Validate Markdown without building applications
+        if: ${{ steps.proof.outputs.mode == 'docs' }}
+        env:
+          DOCS_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          DOCS_HEAD: ${{ github.event.pull_request.head.sha || github.event.after }}
+        run: python3 scripts/ci/docs-check.py check "$DOCS_BASE" "$DOCS_HEAD"
       # Builds and tests run inside scripts/sandbox containers; the runner only needs Docker.
       - name: Cache sandbox packages
         if: ${{ !env.ACT && steps.proof.outputs.mode == 'full' }}
