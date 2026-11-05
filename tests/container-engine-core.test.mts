@@ -473,8 +473,8 @@ const timeout=setTimeout(()=>{watcher.close();console.error('development worker 
   const overrides = join(f.dir, 'dev-overrides.mk');
   writeFileSync(overrides, `explore:\n\t@node "${wait}"\n`);
   const result = spawnSync(make, ['-f', 'Makefile', '-f', overrides, '--no-print-directory',
-    '-o', 'dev-data', '-o', 'build', '-o', 'fixtures', 'EXECUTION=native',
-    `MAKE=${make} -f Makefile -f ${overrides} -o dev-data -o build -o fixtures`, 'dev'], {
+    '-o', 'dev-data', '-o', 'build', '-o', 'fixtures', '-o', 'model-fixtures', 'EXECUTION=native',
+    `MAKE=${make} -f Makefile -f ${overrides} -o dev-data -o build -o fixtures -o model-fixtures`, 'dev'], {
     cwd: f.root, env: { ...f.env, CE_CONTAINER_ENGINE: engine, TEST_WORKER_READY: ready }, encoding: 'utf8', timeout: 10000,
   });
   passed(result);
