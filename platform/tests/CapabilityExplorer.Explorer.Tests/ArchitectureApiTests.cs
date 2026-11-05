@@ -51,10 +51,40 @@ public sealed class ArchitectureApiTests(ExplorerFactory factory) : IClassFixtur
                                          && e.GetProperty("to").GetString() == "comp:cs|forecast-cs|Forecast.Api|T:Forecast.Api.Data.Repository`1");
         Assert.Equal(2, calls.GetProperty("count").GetInt32()); // ListAsync and AddAsync
         var type = g.GetProperty("nodes").EnumerateArray().Single(n => n.GetProperty("id").GetString() == "comp:cs|forecast-cs|Forecast.Api|T:Forecast.Api.Endpoints.ForecastEndpoints");
-        Assert.Equal("src/Forecast.Api/Endpoints/ForecastEndpoints.cs", type.GetProperty("group").GetString());
+        Assert.Equal("Forecast.Api.Endpoints", type.GetProperty("group").GetString());
         var iface = Edges(g).Single(e => e.GetProperty("to").GetString() == "comp:cs|forecast-cs|Forecast.Api|T:Forecast.Api.Forecasting.IForecastStrategy" && e.GetProperty("kind").GetString() == "call");
         Assert.Equal("static", iface.GetProperty("certainty").GetString()); // interface dispatch
         Assert.Contains(Edges(g), e => e.GetProperty("kind").GetString() == "http" && e.GetProperty("to").GetString() == "repo:api-cs");
+    }
+
+    [Fact]
+    public async Task Repository_level_groups_CSharp_types_by_namespace_to_reduce_source_containers()
+    {
+        var graph = await Graph("level=repository&focus=forecast-cs");
+        var types = graph.GetProperty("nodes").EnumerateArray()
+            .Where(node => node.TryGetProperty("symbolKey", out var key)
+                && key.GetString() is { } symbolKey
+                && symbolKey.StartsWith("cs|forecast-cs|", StringComparison.Ordinal)
+                && symbolKey.Split('|')[3].StartsWith("T:", StringComparison.Ordinal))
+            .ToList();
+        var groups = types.Select(node => node.GetProperty("group").GetString()).Distinct(StringComparer.Ordinal).Count();
+        var namespaceGroups = types.Select(node =>
+        {
+            var typeName = node.GetProperty("symbolKey").GetString()!.Split('|')[3][2..];
+            var separator = typeName.LastIndexOf('.');
+            return separator < 0 ? "(global namespace)" : typeName[..separator];
+        }).Distinct(StringComparer.Ordinal).Count();
+
+        Assert.NotEmpty(types);
+    Assert.True(groups < types.Count, $"Expected {types.Count} C# types to collapse into fewer namespace groups, found {groups}.");
+    Assert.Equal(namespaceGroups, groups);
+        foreach (var node in types)
+        {
+            var typeName = node.GetProperty("symbolKey").GetString()!.Split('|')[3][2..];
+            var separator = typeName.LastIndexOf('.');
+            var expectedNamespace = separator < 0 ? "(global namespace)" : typeName[..separator];
+            Assert.Equal(expectedNamespace, node.GetProperty("group").GetString());
+        }
     }
 
     [Fact]
@@ -70,7 +100,7 @@ public sealed class ArchitectureApiTests(ExplorerFactory factory) : IClassFixtur
     }
 
     [Fact]
-    public void Given_a_compacted_member_when_grouped_then_its_declaring_type_and_source_are_preserved()
+    public void Given_a_compacted_member_when_grouped_then_its_declaring_type_uses_its_namespace_container()
     {
         const string type = "cs|forecast-cs|Forecast.Api|T:Forecast.Api.Forecasting.StrategyLoader";
         var fixture = Fixtures.GoldenFiles.First(path => path.StartsWith("forecast-cs/", StringComparison.Ordinal)
@@ -110,7 +140,7 @@ public sealed class ArchitectureApiTests(ExplorerFactory factory) : IClassFixtur
             Assert.Contains(graph.Nodes, node => node.SymbolKey == compact);
             var repository = Architecture.Build(view, "repository", "forecast-cs", view, [], null);
             Assert.Contains(repository.Nodes, node => node.SymbolKey == type
-                && node.Group == "src/Forecast.Api/Forecasting/StrategyLoader.cs");
+                && node.Group == "Forecast.Api.Forecasting");
         }
         finally
         {

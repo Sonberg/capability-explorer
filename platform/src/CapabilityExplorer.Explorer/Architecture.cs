@@ -340,7 +340,7 @@ public static class Architecture
 
         b.SameNameLinks();
         return b.Graph("repository", repo, repo, [.. top, new Crumb(repo, "repository", repo)],
-            ["C# types are grouped by declaration source file; TypeScript modules and SQL objects retain their unit grouping.", "Calls into external libraries are shown one level down."]);
+            ["C# types are grouped by namespace; TypeScript modules and SQL objects retain their unit grouping.", "Calls into external libraries are shown one level down."]);
     }
 
     private static ArchNode ExternalRepo(ViewIndex view, string repo) => RepoNode(view, repo) with { Category = "external", Group = "Other systems" };
@@ -610,8 +610,33 @@ public static class Architecture
 
         var declared = view.Node(key);
         var calcs = view.Calculations.Keys.Count(k => ComponentKeyFast(k) == key);
+        var group = seg[0] == "cs" ? CSharpNamespace(view, key) : null;
         return new ComponentInfo(key, new ArchNode($"comp:{key}", category, declared?.Record.Name ?? label!, declared?.Record.NodeKind ?? (category == "module" ? "module" : "type"),
-            SourcePathResolver.ForCSharpComponent(view, key) ?? unit, key, repo, new Drill("component", key), calcs > 0 ? [$"{calcs} calculation{(calcs == 1 ? "" : "s")}"] : []));
+            group ?? SourcePathResolver.ForCSharpComponent(view, key) ?? unit, key, repo, new Drill("component", key), calcs > 0 ? [$"{calcs} calculation{(calcs == 1 ? "" : "s")}"] : []));
+    }
+
+    private static string? CSharpNamespace(ViewIndex view, string key)
+    {
+        var segments = key.Split('|');
+        if (segments.Length < 4 || segments[0] != "cs" || !segments[3].StartsWith("T:", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var typeName = segments[3][2..];
+        while (typeName.LastIndexOf('.') is var separator && separator > 0)
+        {
+            var enclosingType = $"cs|{segments[1]}|{segments[2]}|T:{typeName[..separator]}";
+            if (view.Node(enclosingType)?.Record.NodeKind == "Type")
+            {
+                typeName = typeName[..separator];
+                continue;
+            }
+
+            return typeName[..separator];
+        }
+
+        return "(global namespace)";
     }
 
     /// <summary>Component key from a symbol key alone (used for counting).</summary>
