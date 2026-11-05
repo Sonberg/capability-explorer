@@ -125,8 +125,8 @@ public sealed class ArchitectureApiTests(ExplorerFactory factory) : IClassFixtur
         Assert.Equal(node.GetProperty("id").GetString(), Assert.Single(budget.GetProperty("pinned").EnumerateArray()).GetString());
 
         var capped = (await Graph("level=system&nodeBudget=2000&edgeBudget=8000")).GetProperty("budget");
-        Assert.Equal(400, capped.GetProperty("nodeBudget").GetInt32());
-        Assert.Equal(800, capped.GetProperty("edgeBudget").GetInt32());
+        Assert.Equal(100, capped.GetProperty("nodeBudget").GetInt32());
+        Assert.Equal(100, capped.GetProperty("edgeBudget").GetInt32());
     }
 
     [Fact]

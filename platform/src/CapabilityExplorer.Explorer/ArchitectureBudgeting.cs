@@ -16,8 +16,8 @@ internal sealed class ArchitectureBudgetRejectedException(string message) : Exce
 
 internal static class ArchitectureBudgeting
 {
-    internal const int MaxNodes = 400;
-    internal const int MaxEdges = 800;
+    internal const int MaxNodes = 100;
+    internal const int MaxEdges = 100;
 
     internal static bool TryParse(IQueryCollection parameters, out ArchitectureRequest request, out string? error)
     {

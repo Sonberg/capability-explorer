@@ -52,14 +52,14 @@ public sealed class ArchitectureBudgetingTests
         Assert.True(source.Edges.Count > 8000);
         var g = ArchitectureBudgeting.Apply(source, 2000, 8000);
         var budget = g.Budget!;
-        Assert.Equal(400, g.Nodes.Count);
-        Assert.Equal(800, g.Edges.Count);
+        Assert.Equal(100, g.Nodes.Count);
+        Assert.Equal(100, g.Edges.Count);
         Assert.Equal(650, budget.TotalNodes);
         Assert.Equal(650, budget.MatchedNodes);
         Assert.Equal(15600, budget.TotalEdges);
         Assert.Equal(15600, budget.MatchedEdges);
         Assert.True(budget.NodesTruncated && budget.EdgesTruncated && budget.Truncated);
-        Assert.Equal(250, g.Omitted!.NodeCount);
+        Assert.Equal(550, g.Omitted!.NodeCount);
         Assert.Equal(200, g.Omitted.Listed);
         Assert.Equal(200, g.Omitted.Nodes.Count);
         Assert.All(g.Edges, e =>
@@ -69,6 +69,9 @@ public sealed class ArchitectureBudgetingTests
             Assert.Contains(e, source.Edges);
         });
         Assert.Equal("original evidence note", g.Notes[0]);
+        var defaults = ArchitectureBudgeting.Apply(source);
+        Assert.Equal(g.Nodes, defaults.Nodes);
+        Assert.Equal(g.Edges, defaults.Edges);
     }
 
     [Fact]
@@ -154,7 +157,7 @@ public sealed class ArchitectureBudgetingTests
         });
         Assert.True(ArchitectureBudgeting.TryParse(parameters, out var options, out var error));
         Assert.Null(error);
-        Assert.Equal(400, options.NodeBudget);
+        Assert.Equal(100, options.NodeBudget);
         Assert.Equal(1, options.EdgeBudget);
         Assert.Equal("data", Assert.Single(options.HideKinds));
         Assert.Equal(20, options.Include.Count);
