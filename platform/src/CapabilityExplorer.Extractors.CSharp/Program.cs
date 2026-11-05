@@ -1,3 +1,4 @@
+using System.Text.Json;
 using CapabilityExplorer.Contracts;
 using CapabilityExplorer.Extractors.CSharp;
 
@@ -79,13 +80,25 @@ if (args.FirstOrDefault() != "extract" || Arg("source") is not { } source || Arg
 
 var packs = Arg("packs") ?? Path.GetFullPath(Path.Combine(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", "..", "packs"));
 var packages = Arg("packages") is { } p && Directory.Exists(p) ? Path.GetFullPath(p) : null;
-var extractor = new CSharpExtractor(new ExtractorOptions(Path.GetFullPath(source), repo, commit, packages, packs, Arg("lock") is { } lockPath ? PackageLock.Load(lockPath) : null, Has("include-tests")));
+var options = new ExtractorOptions(Path.GetFullPath(source), repo, commit, packages, packs, Arg("lock") is { } lockPath ? PackageLock.Load(lockPath) : null, Has("include-tests"))
+{
+    Timing = timing => Console.WriteLine("-- cs-timing: " + JsonSerializer.Serialize(new
+    {
+        schema = "ce.csharp.timing.v1", stage = timing.Stage, unit = timing.Unit,
+        elapsedMilliseconds = timing.ElapsedMilliseconds, outcome = timing.Outcome
+    }))
+};
+var extractor = new CSharpExtractor(options);
 var results = extractor.Extract();
 Directory.CreateDirectory(outDir);
 var failed = 0;
-foreach (var r in results)
+for (var index = 0; index < results.Count; index++)
 {
+    var r = results[index];
+    using var validation = options.Measure("cs.validate",index);
     var report = ArtifactValidator.Validate(r.Jsonl);
+    if (report.IsValid) validation.Complete();
+    validation.Dispose();
     var file = Path.Combine(outDir, $"{string.Concat(r.UnitName.Select(c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_' ? c : '_'))}.jsonl");
     if (!report.IsValid)
     {
@@ -95,7 +108,11 @@ foreach (var r in results)
         continue;
     }
 
-    File.WriteAllText(file, r.Jsonl);
+    using (var writing = options.Measure("cs.write",index))
+    {
+        File.WriteAllText(file, r.Jsonl);
+        writing.Complete();
+    }
     var a = report.Artifact!;
     Console.WriteLine($"{a.Complete.Status,-7} {r.UnitPath}: {a.Nodes.Count} nodes, {a.Edges.Count} edges, {a.Diagnostics.Count} diagnostics");
 }

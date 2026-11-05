@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json.Nodes;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -5,7 +6,11 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CapabilityExplorer.Extractors.CSharp;
 
-public sealed record ExtractorOptions(string SourceRoot, string RepositoryId, string CommitSha, string? PackagesRoot, string ReferencePacks, PackageLock? Lock = null, bool IncludeTests = false);
+public sealed record ExtractorOptions(string SourceRoot, string RepositoryId, string CommitSha, string? PackagesRoot, string ReferencePacks, PackageLock? Lock = null, bool IncludeTests = false)
+{
+    public Action<ExtractionTiming>? Timing { get; init; }
+    internal ExtractionTimer Measure(string stage, int? unit = null) => new(Timing,stage,unit);
+}
 
 public sealed record UnitResult(string UnitPath, string UnitName, string Jsonl);
 
@@ -35,7 +40,11 @@ public sealed class CSharpExtractor(ExtractorOptions options)
 
     public IReadOnlyList<UnitResult> Extract()
     {
+        using var total = options.Measure("cs.total");
+        using var discovery = options.Measure("cs.projects");
         var projects = ProjectModel.Discover(options.SourceRoot, options.IncludeTests);
+        discovery.Complete();
+        discovery.Dispose();
         var compilations = new Dictionary<string, Unit>(StringComparer.Ordinal);
 
         Unit Build(ProjectModel p, HashSet<string> visiting)
@@ -46,6 +55,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             }
 
             visiting.Add(p.FullPath);
+            using var referenceTiming = options.Measure("cs.references");
             var references = new List<MetadataReference>();
             var issues = new List<ResolutionIssue>(p.ResolutionIssues);
             var frameworkFiles = ReferenceSelection.FrameworkFiles(options.ReferencePacks, p, issues);
@@ -57,6 +67,8 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             issues.AddRange(resolution.Issues);
             var (packageAssemblies, missingPackages) = (resolution.Assemblies, resolution.Missing);
             references.AddRange(ReferenceSelection.FileReferences(packageAssemblies, issues));
+            referenceTiming.Complete();
+            referenceTiming.Dispose();
             var missingProjects = new List<ProjectRef>();
             var projectReferenceInputs = new List<string>();
             foreach (var r in p.ProjectReferences)
@@ -89,6 +101,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
                     || x is PortableExecutableReference pe && !dep.FrameworkPaths.Contains(pe.FilePath!) && packageAssemblies.All(a => a != pe.FilePath)));
             }
 
+            using var parseTiming = options.Measure("cs.parse");
             var parse = new CSharpParseOptions(LanguageVersion.Latest);
             var trees = p.SourceFiles.Select(f => CSharpSyntaxTree.ParseText(File.ReadAllText(f), parse, path: f)).ToList();
             var usings = p.ImplicitNamespaces();
@@ -97,24 +110,36 @@ public sealed class CSharpExtractor(ExtractorOptions options)
                 trees.Add(CSharpSyntaxTree.ParseText(string.Concat(usings.Select(u => $"global using global::{u};\n")), parse, path: "<implicit-usings>"));
             }
 
+            parseTiming.Complete();
+            parseTiming.Dispose();
+            using var resolutionTiming = options.Measure("cs.reference-resolution");
             var distinctReferences = ReferenceSelection.Resolve(references, frameworkPaths, issues);
+            resolutionTiming.Complete();
+            resolutionTiming.Dispose();
             var compilation = CSharpCompilation.Create(p.AssemblyName, trees, distinctReferences,
                 new CSharpCompilationOptions(p.IsExecutable ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: p.Nullable ? NullableContextOptions.Enable : NullableContextOptions.Disable, checkOverflow: p.CheckedArithmetic));
             var decisions = string.Join("\n", issues.Distinct().OrderBy(i => i.Code, StringComparer.Ordinal).ThenBy(i => i.Message, StringComparer.Ordinal).Select(i => $"{i.Code}:{i.Message}"));
+            using var referenceFingerprintTiming = options.Measure("cs.reference-fingerprint");
             var referenceFingerprint = ArtifactBuilder.Sha256($"{ReferenceSelection.Fingerprint(references, frameworkFiles.Concat(packageAssemblies))}|frameworkPackages={frameworkPackages.Fingerprint}|packages={resolution.InputFingerprint}|{string.Join("\n", projectReferenceInputs.Order(StringComparer.Ordinal))}|{decisions}");
+            referenceFingerprintTiming.Complete();
             var unit = new Unit(p, compilation, missingPackages, missingProjects, resolution.Resolved, issues, frameworkPaths, referenceFingerprint) { UnselectedPackages = resolution.Unselected };
             compilations[p.FullPath] = unit;
             visiting.Remove(p.FullPath);
             return unit;
         }
 
+        using var compilationTiming = options.Measure("cs.compilations");
         var units = projects.Select(p => Build(p, [])).ToList();
+        compilationTiming.Complete();
+        compilationTiming.Dispose();
         var repoAssemblies = units.Select(u => u.Project.AssemblyName).ToHashSet(StringComparer.Ordinal);
         var context = new RuleContext(options, units, repoAssemblies);
-        return units.Select(u => ExtractUnit(u, context)).ToList();
+        var results = units.Select((unit,index) => ExtractUnit(unit,context,index)).ToList();
+        total.Complete();
+        return results;
     }
 
-    private UnitResult ExtractUnit(Unit unit, RuleContext context)
+    private UnitResult ExtractUnit(Unit unit, RuleContext context, int unitIndex)
     {
         var p = unit.Project;
         var b = new ArtifactBuilder(options.RepositoryId, options.CommitSha, Tool);
@@ -153,6 +178,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
         // Source generators are not run (that would execute package code), so code that relies on them
         // (e.g. [LoggerMessage] partial methods) reports missing implementations. That is not a gap in the
         // analysed code: note it once, and do not count it against coverage.
+        using var diagnosticTiming = options.Measure("cs.diagnostics",unitIndex);
         var errors = unit.Compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error && d.Location.IsInSource && d.Location.SourceTree!.FilePath is { Length: > 0 } and not "<implicit-usings>").ToList();
         // Roslyn's synthesized tree (the implicit entry point of top-level statements) has no path, so its errors, typically
         // CS0518 for a missing core library, belong to the project, not to a file.
@@ -160,6 +186,8 @@ public sealed class CSharpExtractor(ExtractorOptions options)
         {
             b.Diagnostic("warning", $"COMPILER_{d.Id}", d.GetMessage(System.Globalization.CultureInfo.InvariantCulture), null, false);
         }
+        diagnosticTiming.Complete();
+        diagnosticTiming.Dispose();
 
         var generated = errors.Where(d => GeneratorDependent.Contains(d.Id)).ToList();
         if (generated.Count > 0)
@@ -194,6 +222,8 @@ public sealed class CSharpExtractor(ExtractorOptions options)
         }
 
         var calculations = new CalculationExtractor(b, keys, FileOf, () => context.Trees().Select(t => (t.Tree, t.Model)), p.CheckedArithmetic);
+        using var walkTiming = options.Measure("cs.walk",unitIndex);
+        var calculationTime = TimeSpan.Zero;
         foreach (var tree in unit.Compilation.SyntaxTrees.Where(t => t.FilePath != "<implicit-usings>"))
         {
             var file = FileOf(tree)!;
@@ -204,20 +234,30 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             {
                 if (file.Model.GetDeclaredSymbol(decl) is IMethodSymbol method && b.HasNode(keys.Of(method)))
                 {
+                    var started = Stopwatch.GetTimestamp();
                     calculations.Extract(file, decl, method);
+                    calculationTime += Stopwatch.GetElapsedTime(started);
                 }
             }
         }
 
-        var rules = new Rules(context, unit, b, keys, Relative);
+        walkTiming.Complete();
+        walkTiming.Dispose();
+        options.Timing?.Invoke(new("cs.calculations",unitIndex,Math.Round(calculationTime.TotalMilliseconds,3),"completed"));
+        var rules = new Rules(context, unit, b, keys, Relative,unitIndex);
         rules.Apply();
 
+        using var fingerprintTiming = options.Measure("cs.fingerprint",unitIndex);
         var inputHash = ArtifactBuilder.Sha256(string.Concat(p.SourceFiles.Append(p.FullPath).Order(StringComparer.Ordinal)
             .Select(f => $"{Relative(f)}\0{ArtifactBuilder.Sha256(File.ReadAllText(f))}\n")));
         // The exact package set is part of the configuration: a different set is a different analysis, never silently different bytes.
         var packageSet = string.Concat(unit.ResolvedPackages.Select(r => $"{r.Id.ToLowerInvariant()}@{r.Version.ToLowerInvariant()}\n"));
         var configHash = ArtifactBuilder.Sha256($"{Tool.Name}/{Tool.Version}|build={Build}|target={p.TargetFramework}|references={unit.ReferenceFingerprint}|includeTests={options.IncludeTests}|packages={(options.PackagesRoot is null ? "none" : options.Lock is null ? "folder" : "lock")}\n{packageSet}");
+        fingerprintTiming.Complete();
+        fingerprintTiming.Dispose();
+        using var serializationTiming = options.Measure("cs.serialize",unitIndex);
         var jsonl = b.ToJsonl(p.RelativePath, p.AssemblyName, "csharp", Rules.Tools, configHash, inputHash, p.SourceFiles.Count);
+        serializationTiming.Complete();
         return new UnitResult(p.RelativePath, p.AssemblyName, jsonl);
     }
 

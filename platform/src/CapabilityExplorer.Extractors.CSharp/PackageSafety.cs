@@ -15,13 +15,19 @@ internal static class PackageSafety
     {
         if (!Id(id) || !Version(version)) throw new InvalidDataException("Invalid package ID or exact version; paths are prohibited");
     }
-    public static void NoLinks(string root, string path)
+    public static void NoLinks(string root, string path, Action? inspect = null)
     {
         var boundary = Path.GetFullPath(root);
         for (var current = Path.GetFullPath(path); current is not null; current = Path.GetDirectoryName(current))
         {
-            if ((File.Exists(current) || Directory.Exists(current)) && (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
-                throw new InvalidDataException("Symbolic links in package paths are prohibited");
+            inspect?.Invoke();
+            try
+            {
+                if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidDataException("Symbolic links in package paths are prohibited");
+            }
+            catch (FileNotFoundException) { }
+            catch (DirectoryNotFoundException) { }
             if (current == boundary) return;
         }
         throw new InvalidDataException("Package path escapes cache root");

@@ -21,7 +21,7 @@ internal sealed class RuleContext(ExtractorOptions options, IReadOnlyList<CSharp
         units.SelectMany(u => u.Compilation.SyntaxTrees.Where(t => t.FilePath != "<implicit-usings>").Select(t => (t, u.Compilation.GetSemanticModel(t), u)));
 }
 
-internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit unit, ArtifactBuilder b, SymbolKeys keys, Func<string, string> relative)
+internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit unit, ArtifactBuilder b, SymbolKeys keys, Func<string, string> relative, int? unitIndex = null)
 {
     public static readonly Tool Routes = new("aspnetcore.routes", "1");
     public static readonly Tool Di = new("dotnet.di", "1");
@@ -76,12 +76,19 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
     public void Apply()
     {
         var files = Files().ToList();
-        AspNet(files);
-        DependencyInjection(files);
-        EntityFramework(files);
-        DapperSql(files);
-        ServiceBusChannels(files);
-        HttpClients(files);
+        ApplyRule("cs.rules.routes",() => AspNet(files));
+        ApplyRule("cs.rules.di",() => DependencyInjection(files));
+        ApplyRule("cs.rules.ef",() => EntityFramework(files));
+        ApplyRule("cs.rules.dapper",() => DapperSql(files));
+        ApplyRule("cs.rules.servicebus",() => ServiceBusChannels(files));
+        ApplyRule("cs.rules.http",() => HttpClients(files));
+    }
+
+    private void ApplyRule(string stage, Action apply)
+    {
+        using var timing = context.Options.Measure(stage,unitIndex);
+        apply();
+        timing.Complete();
     }
 
     // ---------------------------------------------------------------- shared helpers

@@ -637,3 +637,151 @@ to use the exact same instrumented binary as the assertion-red snapshot.
 
 No JavaScript, dependency, CI-command, concurrency or cache-retention policy was
 changed. Full Docker CI and database/embedding performance remain unmeasured.
+
+## Third iteration: C# extraction
+
+On 2026-11-05 the requested extraction investigation added safe stage profiling,
+measured the real Kraken workload, and optimized its dominant package/reference
+setup path. It did not assume the initially suspected rule scans or duplicate
+compiler diagnostic calls were the largest cost.
+
+### Profile and measured change
+
+| C# stage | Detailed control | Optimized fresh attempt | Optimized warm |
+| --- | ---: | ---: | ---: |
+| Package/reference preparation | 25.827 s | 24.192 s | 20.106 s |
+| Source parsing | 2.246 s | 0.933 s | 1.056 s |
+| Assembly conflict resolution | 1.958 s | 1.486 s | 1.716 s |
+| Reference fingerprints | 0.579 s | 0.642 s | 0.726 s |
+| **Compilation setup, inclusive** | **30.831 s** | **27.465 s** | **23.813 s** |
+| Compiler diagnostics | 1.084 s | 0.947 s | 1.008 s |
+| Syntax/semantic walk | 1.441 s | 1.677 s | 1.347 s |
+| Route rules | 7.445 s | 8.589 s | 7.209 s |
+| **Whole C# job** | **48.460 s** | **46.383 s** | **42.325 s** |
+
+The initial broad profile had already identified compilation setup at 30.666 s
+of a 52.390 s C# job. The detailed control narrowed that to package/reference
+preparation, rather than diagnostics (about one second), calculations (about
+0.02 seconds), serialization or assembly-conflict handling.
+
+The two optimized C# jobs averaged **44.354 s**, an observed **8.473% reduction**
+against the detailed 48.460 s control. The warm observation alone was about 12.7%
+lower. These are a small number of elapsed-time observations with cache/filesystem
+variation, not a universal or statistically isolated speedup guarantee.
+
+Compilation setup includes the reference, parsing and fingerprint stages above;
+do not sum it with its children. The `cs.calculations` measurement is similarly
+nested inside the semantic walk. The whole job also includes sandbox/runtime
+startup, validation and writing, beyond the library's `cs.total` timer.
+
+### The optimization
+
+[Package path validation](../../platform/src/CapabilityExplorer.Extractors.CSharp/PackageSafety.cs)
+previously called `File.Exists`, then `Directory.Exists`, then `File.GetAttributes`
+for each existing directory ancestor. Existing package paths therefore required
+up to three filesystem inspections per ancestor, multiplied across package
+resolution and projects. On the host/VM shared filesystem this is repeated I/O,
+not useful additional validation.
+
+It now performs one attribute lookup per ancestor. Reparse-point rejection and
+the cache-root containment boundary remain intact. Missing files/directories
+continue to permit subsequent safe acquisition; other I/O/access errors are not
+silently treated as successful validation. Tests cover existing and dangling
+linked ancestors, missing package paths and path escape, alongside the full
+package-security regression suite.
+
+No package tree safety walk, fingerprint, extraction rule, coverage diagnostic,
+source selection or dependency-resolution policy was removed. Shared repository
+indexes, semantic-model caching, diagnostics reuse and unchanged-artifact caching
+were not implemented in this increment: the measured setup bottleneck was tackled
+first. Route rules remain a visible secondary target at roughly 7-9 seconds.
+
+### Profiling contract
+
+[Extraction timing](../../platform/src/CapabilityExplorer.Extractors.CSharp/ExtractionTiming.cs)
+uses monotonic stopwatches. The CLI emits `-- cs-timing: ` JSON records with
+schema `ce.csharp.timing.v1`, fixed stage names, optional numeric unit indexes,
+elapsed milliseconds and completion/failure outcome. Timing records contain no
+source text, source paths or credentials and stay outside artifact bytes.
+
+Measured stages cover discovery, compilation setup, package/reference preparation,
+parsing, assembly resolution, reference fingerprints, diagnostics, semantic walks,
+calculation analysis, each rule family, input fingerprints, serialization,
+validation and writing. The host already retains child stdout in its private run
+log, so these records survive real analyses without changing artifact schemas.
+
+### Source-bound real-run verification
+
+| Run | Run ID | Whole C# job | Active analysis total |
+| --- | --- | ---: | ---: |
+| Initial broad profile | `96b9d33d995a49de95f04736cbe650cb` | 52.390 s | 152.829 s |
+| Detailed setup control | `207d6d65563c4688a5b9cdd0b604eace` | 48.460 s | 146.522 s |
+| Optimized fresh attempt | `a9844770d66c4733907dc5a0930e35a0` | 46.383 s | 137.002 s |
+| Optimized warm | `6a63d7530fb64d1ca86dcbd1d1920c44` | 42.325 s | 101.259 s |
+
+All four runs use the same source revision/content, package content, feed policy
+and npm coverage, with confirmed local publication. The repository had changed
+since the older iteration's run `28bd5e617811430fb3414535903fb78d`; that mismatch
+was detected and that older run was excluded from this iteration's comparisons.
+The end-to-end cold/warm difference includes package reuse and is not credited
+solely to faster extraction.
+
+Changing extractor code intentionally changes its recorded build-dependent
+`header.configHash`. Verification therefore checked every bound manifest and
+artifact hash first, then compared all parsed artifact records while normalizing
+**only `header.configHash`**. Every node, edge, calculation, diagnostic, evidence
+record, input identity, count and coverage record in all five artifacts matched
+across the four runs. No fact or evidence field was excluded. The two optimized
+runs, using the same build, were additionally byte-for-byte identical.
+
+Both optimized runs retained full package acquisition and extraction. The warm
+run reports zero downloads, 197 already present and zero unavailable packages.
+PostgreSQL and embeddings were disabled for controlled performance measurements.
+
+### Executable verification and source identities
+
+The CLI acceptance test
+`ProjectReferencesTests.Given_project_references_when_the_cli_extracts_then_stage_timings_preserve_artifact_bytes`
+first failed because timing records were absent, after its library-versus-CLI
+artifact-byte checks passed. It then passed with structured timing records.
+The later deeper-setup assertion failed with expected two records, actual zero,
+before the corresponding stage scopes were added.
+
+The optimization test
+`PackageSecurityTests.Given_an_existing_package_path_when_checked_then_each_ancestor_requires_one_filesystem_inspection`
+used a diagnostic callback to count operations in the unchanged algorithm. It
+failed with **expected 3, actual 9** for three ancestors. After the change it
+passed with three inspections. The test source remained unchanged; existing and
+dangling link rejection and missing-path cases also passed.
+
+Commands from `platform`:
+
+```sh
+dotnet test tests/CapabilityExplorer.Extractors.Tests/CapabilityExplorer.Extractors.Tests.csproj --filter FullyQualifiedName~Given_project_references_when_the_cli_extracts --no-restore --verbosity minimal
+dotnet test tests/CapabilityExplorer.Extractors.Tests/CapabilityExplorer.Extractors.Tests.csproj --filter 'FullyQualifiedName~Given_an_existing_package_path|FullyQualifiedName~Given_a_linked_package_ancestor|FullyQualifiedName~Given_a_missing_package_path' --no-restore --verbosity minimal
+dotnet test tests/CapabilityExplorer.Extractors.Tests/CapabilityExplorer.Extractors.Tests.csproj --filter 'FullyQualifiedName~PackageSecurityTests|FullyQualifiedName~ProjectReferencesTests' --no-restore --verbosity minimal
+dotnet test tests/CapabilityExplorer.Extractors.Tests/CapabilityExplorer.Extractors.Tests.csproj --no-restore --verbosity minimal
+```
+
+The final focused batch passed 23/23; the **full extractor suite passed 221/221**,
+exit 0. An initial missing test-helper compilation error was fixed before the
+meaningful red run; it is not counted as behavioral red evidence. Test editor
+discovery found no tests, so the existing .NET/VSTest runner was used.
+
+Local snapshots under `.sandbox-cache/analysis-performance-evidence`:
+
+| Snapshot | SHA-256 |
+| --- | --- |
+| Broad profiling red: `csharp-profile-red-source.tgz` | `06c729c487b992310c79f3a19e2c6e291c1b95b92e46bec26bf8c3d4ddfc8956` |
+| Setup profiling red: `csharp-setup-red-source.tgz` | `a9c2c050beb31e5158f43c24b2c6cbc4ee62900523a302dda746ea50dadf4278` |
+| Inspection-count red: `csharp-inspection-red-source.tgz` | `22e0dc57d6a545e0a0ec898a023bba7f4cf108bf8cafce3eeb6062bce6d51a17` |
+| Final source: `csharp-green-source.tgz` | `75c3ca8f3e640cf6a8160382fda5841214ae7680eea44e7109850c8c3210216e` |
+
+The package-security test source SHA-256 is unchanged between its assertion-red
+and final green:
+`88bbc88ffb129f58d4642f41468f02fde28e9fec3f3a3d270b3b8c50c01a1c33`.
+
+The idle worker was stopped for controlled runs and restored afterward; Explorer
+remained running. No active run was interrupted or reconciled. Full Docker CI,
+other private capabilities and database/embedding performance were not qualified
+in this increment. No JavaScript, dependency or concurrency policy was changed.

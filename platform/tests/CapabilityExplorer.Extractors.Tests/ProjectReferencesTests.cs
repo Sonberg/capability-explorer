@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using CapabilityExplorer.Extractors.CSharp;
 using Xunit;
@@ -116,6 +117,48 @@ public sealed class ProjectReferencesTests : IDisposable
         Assert.Contains("Unrelated", diagnostic.GetProperty("message").GetString());
         Assert.Equal("partial", Complete(a).GetProperty("status").GetString());
         AssertAllFull(units.Where(u => u.UnitName != "A"));
+    }
+
+    [Fact]
+    public async Task Given_project_references_when_the_cli_extracts_then_stage_timings_preserve_artifact_bytes()
+    {
+        Project("B","namespace B; public static class Api { public static int Read() => 7; }");
+        Project("A","namespace A; public static class Api { public static int Read() => B.Api.Read(); }","B");
+        var expected = Extract();
+        var output = Path.Combine(_root,"out");
+        var start = new ProcessStartInfo("dotnet")
+        {
+            UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        var repository = new DirectoryInfo(AppContext.BaseDirectory);
+        while (!File.Exists(Path.Combine(repository.FullName,"platform/global.json")))
+            repository = repository.Parent ?? throw new InvalidOperationException("repository root not found");
+        var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
+        start.ArgumentList.Add(Path.Combine(repository.FullName,
+            "platform/src/CapabilityExplorer.Extractors.CSharp/bin",configuration,"net10.0/ce-cs.dll"));
+        foreach (var argument in new[] { "extract", "--source", _root, "--repository", "projects", "--commit", Sha, "--out", output })
+            start.ArgumentList.Add(argument);
+        using var child = Process.Start(start)!;
+        var stdout = child.StandardOutput.ReadToEndAsync();
+        var stderr = child.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        await child.WaitForExitAsync(timeout.Token);
+        Assert.True(child.ExitCode == 0,await stderr);
+        foreach (var unit in expected)
+            Assert.Equal(unit.Jsonl,File.ReadAllText(Path.Combine(output,unit.UnitName + ".jsonl")));
+        var timings = (await stdout).Split('\n').Where(line => line.StartsWith("-- cs-timing: ",StringComparison.Ordinal))
+            .Select(line => JsonDocument.Parse(line[14..]).RootElement.Clone()).ToArray();
+        foreach (var stage in new[] { "cs.projects", "cs.compilations", "cs.total" })
+            Assert.Single(timings,entry => entry.GetProperty("stage").GetString() == stage);
+        foreach (var stage in new[] { "cs.references", "cs.parse", "cs.reference-resolution", "cs.reference-fingerprint", "cs.diagnostics", "cs.walk", "cs.calculations", "cs.rules.routes", "cs.rules.di", "cs.rules.ef", "cs.rules.dapper", "cs.rules.servicebus", "cs.rules.http", "cs.serialize", "cs.validate", "cs.write" })
+            Assert.Equal(2,timings.Count(entry => entry.GetProperty("stage").GetString() == stage));
+        Assert.All(timings,entry =>
+        {
+            Assert.Equal("ce.csharp.timing.v1",entry.GetProperty("schema").GetString());
+            Assert.Equal("completed",entry.GetProperty("outcome").GetString());
+            Assert.True(entry.GetProperty("elapsedMilliseconds").GetDouble() >= 0);
+            Assert.DoesNotContain(_root,entry.GetRawText(),StringComparison.Ordinal);
+        });
     }
 
     private void Project(string name, string source, params string[] references)
