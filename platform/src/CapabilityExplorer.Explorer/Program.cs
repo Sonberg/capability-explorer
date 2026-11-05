@@ -24,6 +24,7 @@ if (source == "files")
     var state = new ExplorerState(options);
     builder.Services.AddSingleton(state);
     builder.Services.AddHostedService(_ => state);
+    builder.Services.AddSingleton<IHealthDependencyCheck, FileExplorerHealthCheck>();
     builder.Services.AddTransient(_ => state.Current.Index);
     builder.Services.AddTransient(_ => state.Current.Capabilities);
 }
@@ -35,6 +36,9 @@ var interpretation = source == "postgres" ? new InterpretationOptions()
 var embeddingOptions = EmbeddingHostConfiguration.CommandOptions(args);
 var database = builder.Configuration["database"] ?? Environment.GetEnvironmentVariable("CE_DATABASE");
 var dataSource = database is { Length: > 0 } ? NpgsqlDataSource.Create(database) : null;
+builder.Services.AddSingleton(HealthEndpointOptions.From(builder.Configuration));
+builder.Services.AddSingleton<HealthDiagnosticsService>();
+builder.Services.AddSingleton<SourceIpRateLimiter>();
 if (source == "postgres")
 {
     if (dataSource is null) throw new InvalidOperationException("PostgreSQL source requires CE_DATABASE");
@@ -44,6 +48,7 @@ if (source == "postgres")
 if (dataSource is not null)
 {
     builder.Services.AddSingleton(dataSource);
+    builder.Services.AddSingleton<IHealthDependencyCheck>(_ => new DatabaseHealthCheck(dataSource, source == "postgres"));
     builder.Services.AddSingleton<IExplorerQueries, PostgresExplorerQueries>();
     builder.Services.AddSingleton(new DatabaseExplorerConfiguration(options));
     builder.Services.AddSingleton<IDeprecationRepository, PostgresDeprecationRepository>();
@@ -71,6 +76,7 @@ if (builder.Configuration["urls"] is null && Environment.GetEnvironmentVariable(
 }
 
 var app = builder.Build();
+app.UseHealthRequestMetadata();
 app.Use(async (context, next) =>
 {
     if (!LocalRequestGuard.Allowed(context.Request))
@@ -87,6 +93,7 @@ app.Use(async (context, next) =>
 app.UseResponseCompression();
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.MapHealthApi();
 app.MapDeprecationsApi();
 app.MapModelApi(source);
 if (source == "postgres") app.MapPostgresExplorerApi();

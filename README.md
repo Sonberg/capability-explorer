@@ -148,6 +148,25 @@ in `platform/src/CapabilityExplorer.Explorer/client`. `make ui` builds it into `
 output and not committed. `make frontend` serves it with hot reload and proxies the API to a host-native
 `make backend`. Both bind to `127.0.0.1` only.
 
+The Explorer exposes lightweight, unauthenticated `/health`, `/health/live`,
+`/health/ready`, and `/health/startup` endpoints. They retain the existing
+`LocalRequestGuard` boundary and are not remote-service authentication. Readiness
+runs only fixed in-process and configured database checks, in parallel, with a
+2-second per-check timeout and a 5-second overall bound; critical failures return
+503, while noncritical failures are reported as degraded. Detailed results at
+`/internal/health` and Prometheus text at `/metrics` are disabled unless
+`EXPLORER_INTERNAL_HEALTH_TOKEN` (or `internalHealth:token`) is configured, and
+require an `Authorization` header with that bearer token. The internal result cache defaults to
+4 seconds; `internalHealth:cacheSeconds` accepts values from 3 through 5.
+Health responses are non-cacheable, include a request UUID and UTC timestamp,
+and are bounded to 16 KiB. Public and internal health routes have independent
+source-IP limits of 60 and 30 requests per second, respectively.
+
+These application endpoints do not establish TLS, mTLS, ingress exclusion,
+remote binding safety, or cascading-orchestrator alerting. Keep the Explorer on
+its supported loopback binding; any deployment-facing controls must be provided
+and verified by the deployment platform.
+
 - **Capability selector**: a capability is a named set of repositories, given as GitHub URLs or local
   paths, that are checked together. Selecting one scopes every view to its repositories at their locked
   revisions. Manage them on the **Capabilities** page or in `capabilities.json`. See below.
