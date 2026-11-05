@@ -2,11 +2,18 @@ import assert from 'node:assert/strict';
 import { access, mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '../spikes/likec4/node_modules/playwright/index.mjs';
 
-const [base = 'http://localhost:5132', mode = 'ui-fixtures', head] = process.argv.slice(2);
+const [base = 'http://localhost:5132', mode = 'ui-fixtures', head, run = String(Date.now())] = process.argv.slice(2);
 assert.equal(new URL(base).hostname, 'localhost');
 assert.ok(['ui-fixtures', 'real-switch'].includes(mode));
 assert.match(head ?? '', /^[a-f0-9]{40}$/);
-const output = `.sandbox-cache/enrichment59/${mode}`;
+assert.match(run, /^[a-z0-9-]+$/);
+const output = `.sandbox-cache/enrichment59/${mode}/${run}`;
+try {
+  await access(output);
+  throw new Error('Use a new run identifier; existing evidence must not be overwritten');
+} catch (error) {
+  if (error.code !== 'ENOENT') throw error;
+}
 await mkdir(output, { recursive: true });
 const receipt = {
   head, mode, at: new Date().toISOString(), assertions: [],
@@ -34,7 +41,7 @@ async function coreReady() {
 async function metadata(capability) {
   const url = new URL('/api/meta', base);
   url.hostname = 'host.docker.internal';
-  url.searchParams.set('capability', capability);
+  url.searchParams.set('cap', capability);
   const response = await page.request.get(url.href, { headers: { host: new URL(base).host } });
   assert.equal(response.status(), 200);
   const { snapshotId, generation } = await response.json();
