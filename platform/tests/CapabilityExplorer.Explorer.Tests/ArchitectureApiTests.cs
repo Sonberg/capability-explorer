@@ -79,6 +79,81 @@ public sealed class ArchitectureApiTests(ExplorerFactory factory) : IClassFixtur
         Assert.Equal(budget.GetProperty("shownNodes").GetInt32(), g.GetProperty("nodes").GetArrayLength());
         Assert.Contains(g.GetProperty("notes").EnumerateArray().Select(n => n.GetString()), note => note!.Contains("Showing 2 of", StringComparison.Ordinal));
     }
+
+    [Theory]
+    [InlineData("nodeBudget=no")]
+    [InlineData("edgeBudget=1.5")]
+    [InlineData("edgeBudget=")]
+    [InlineData("nodeBudget=2&nodeBudget=3")]
+    [InlineData("q=one&q=two")]
+    [InlineData("hideKind=Call")]
+    [InlineData("hideKind=call%2Cdata")]
+    [InlineData("include=")]
+    [InlineData("nodeBudget=1&include=a&include=b")]
+    public async Task Invalid_architecture_parameters_are_bad_requests(string query)
+    {
+        using var response = await _client.GetAsync($"/api/architecture?{query}");
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Architecture_rejects_oversized_and_excess_repeated_filters()
+    {
+        foreach (var query in new[]
+        {
+            $"q={new string('x', 201)}",
+            $"include={new string('x', 4097)}",
+            string.Join("&", Enumerable.Repeat("hideKind=call", 33)),
+            string.Join("&", Enumerable.Range(0, 21).Select(i => $"include=node{i}")),
+        })
+        {
+            using var response = await _client.GetAsync($"/api/architecture?{query}");
+            Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task Api_filters_pin_focus_and_report_missing_ids_with_clamped_budgets()
+    {
+        var g = await Graph("level=component&focus=cs%7Cforecast-cs%7CForecast.Api%7CT%3AForecast.Api.Forecasting.StrategyLoader&q=no-such-match&include=missing&nodeBudget=1&edgeBudget=-1");
+        var node = Assert.Single(g.GetProperty("nodes").EnumerateArray());
+        Assert.Equal("cs|forecast-cs|Forecast.Api|T:Forecast.Api.Forecasting.StrategyLoader", node.GetProperty("symbolKey").GetString());
+        var budget = g.GetProperty("budget");
+        Assert.Equal(1, budget.GetProperty("matchedNodes").GetInt32());
+        Assert.Equal(1, budget.GetProperty("edgeBudget").GetInt32());
+        Assert.Equal("missing", Assert.Single(budget.GetProperty("missingPins").EnumerateArray()).GetString());
+        Assert.Equal(node.GetProperty("id").GetString(), Assert.Single(budget.GetProperty("pinned").EnumerateArray()).GetString());
+
+        var capped = (await Graph("level=system&nodeBudget=2000&edgeBudget=8000")).GetProperty("budget");
+        Assert.Equal(100, capped.GetProperty("nodeBudget").GetInt32());
+        Assert.Equal(100, capped.GetProperty("edgeBudget").GetInt32());
+    }
+
+    [Fact]
+    public async Task Api_rejects_resolved_pin_plus_automatic_focus_exceeding_node_budget()
+    {
+        const string focus = "cs|forecast-cs|Forecast.Api|T:Forecast.Api.Forecasting.StrategyLoader";
+        const string pin = "mem:cs|forecast-cs|Forecast.Api|M:Forecast.Api.Forecasting.StrategyLoader.Resolve(System.IServiceProvider,System.String)";
+        using var response = await _client.GetAsync($"/api/architecture?level=component&focus={Uri.EscapeDataString(focus)}&include={Uri.EscapeDataString(pin)}&nodeBudget=1");
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Focus and requested pins exceed nodeBudget.", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task Api_kind_and_text_filters_keep_honest_counts_and_metadata()
+    {
+        var g = await Graph("level=system&hideKind=http&hideKind=call&q=FORECAST&include=repo%3Aweb-ts");
+        Assert.DoesNotContain(Edges(g), e => e.GetProperty("kind").GetString() is "http" or "call");
+        Assert.Contains(g.GetProperty("nodes").EnumerateArray(), n => n.GetProperty("id").GetString() == "repo:web-ts");
+        Assert.Equal(["call", "http"], g.GetProperty("filters").GetProperty("hideKinds").EnumerateArray().Select(v => v.GetString()));
+        Assert.Equal("FORECAST", g.GetProperty("filters").GetProperty("query").GetString());
+        Assert.Equal(0, g.GetProperty("facets").GetProperty("kinds").EnumerateArray().Single(k => k.GetProperty("value").GetString() == "http").GetProperty("matched").GetInt32());
+        var budget = g.GetProperty("budget");
+        Assert.True(budget.GetProperty("matchedNodes").GetInt32() < budget.GetProperty("totalNodes").GetInt32());
+        Assert.Equal(g.GetProperty("nodes").GetArrayLength(), budget.GetProperty("shownNodes").GetInt32());
+        Assert.Equal(g.GetProperty("edges").GetArrayLength(), budget.GetProperty("shownEdges").GetInt32());
+    }
 }
 
 public sealed class VendorTests

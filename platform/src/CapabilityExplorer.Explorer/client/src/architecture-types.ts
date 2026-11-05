@@ -54,10 +54,30 @@ export interface Graph {
   notes: string[];
   budget?: {
     nodeBudget: number;
+    edgeBudget: number;
     totalNodes: number;
+    matchedNodes: number;
     shownNodes: number;
     totalEdges: number;
+    matchedEdges: number;
     shownEdges: number;
     truncated: boolean;
+    nodesTruncated: boolean;
+    edgesTruncated: boolean;
+    pinned: string[];
+    missingPins: string[];
+  };
+  filters?: {
+    hideKinds: string[];
+    query: string | null;
+    include: string[];
+  };
+  facets?: {
+    kinds: { value: string; total: number; matched: number }[];
+  };
+  omitted?: {
+    nodes: { id: string; label: string; category: string; degree: number }[];
+    nodeCount: number;
+    listed: number;
   };
 }
