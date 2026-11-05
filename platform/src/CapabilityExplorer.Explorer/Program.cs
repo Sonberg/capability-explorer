@@ -48,7 +48,8 @@ if (dataSource is not null)
     builder.Services.AddSingleton<DeprecationService>();
     builder.Services.AddSingleton<PostgresDeprecationRemovals>();
 }
-var intelligence = new Intelligence(interpretation, builder.Configuration["modelSettings"] ?? ModelSettings.DefaultPath, dataSource is null ? null : new EmbeddingStore(dataSource)) { DataSource = dataSource };
+var intelligence = new Intelligence(interpretation, builder.Configuration["modelSettings"] ?? ModelSettings.DefaultPath,
+    dataSource is null ? null : new EmbeddingStore(dataSource), metadataOnly: source == "postgres") { DataSource = dataSource };
 builder.Services.AddSingleton(intelligence);
 builder.Services.AddSingleton(new PackageFeedSettingsStore(builder.Configuration["packageFeedCatalog"] ?? PackageFeedSettingsStore.DefaultPath));
 builder.Services.AddSingleton(new GlossaryReviewService(dataSource));

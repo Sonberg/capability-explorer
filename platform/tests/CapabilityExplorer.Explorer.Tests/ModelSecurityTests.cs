@@ -8,6 +8,20 @@ public sealed class ModelSecurityTests : IDisposable
 {
     private readonly string root = Path.Combine(Path.GetTempPath(), "ce-model-security-" + Guid.NewGuid().ToString("N"));
     [Fact]
+    public void Invalid_configured_embedding_is_disabled_without_blocking_startup_or_exposing_credentials()
+    {
+        var model = new Intelligence(new InterpretationOptions
+        {
+            Provider = "openai", Endpoint = "https://user:private-canary@model.invalid/v1", EmbeddingModel = "fake",
+        }, Path.Combine(root, "settings.json"), null);
+        Assert.False(model.Layer.Enabled);
+        Assert.Null(model.Embeddings);
+        Assert.NotNull(model.Problem);
+        Assert.DoesNotContain("private-canary", model.Problem, StringComparison.Ordinal);
+        Assert.Throws<EmbeddingConfigurationException>(() => model.ResolveEmbeddingConfiguration());
+    }
+
+    [Fact]
     public void Changing_endpoint_does_not_reuse_another_services_key()
     {
         var model = new Intelligence(new(), Path.Combine(root, "settings.json"), null);

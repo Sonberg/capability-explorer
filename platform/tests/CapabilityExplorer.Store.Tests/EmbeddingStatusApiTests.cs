@@ -2,6 +2,8 @@ using System.Net;
 using System.Text.Json;
 using CapabilityExplorer.Interpretation;
 using CapabilityExplorer.Store;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace CapabilityExplorer.Tests;
@@ -70,6 +72,36 @@ public sealed class EmbeddingStatusApiTests(PostgresFixture db)
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("invalid-model-configuration", body, StringComparison.Ordinal);
         Assert.DoesNotContain("secret", body, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Optional_model_configuration_is_lazy_at_startup_and_core_queries_remain_available(bool invalid)
+    {
+        var scope = "embedding-startup-" + Guid.NewGuid().ToString("N");
+        var snapshots = new SnapshotStore(db.DataSource);
+        var snapshot = await snapshots.PublishAsync((await snapshots.CreateAsync(scope, "facts", [await SnapshotEmbeddingTests.Import(db)])).Id, 0);
+        using var owner = new DatabaseApiFactory(db.ConnectionString, scope);
+        using var factory = owner.WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("interpretation:provider", "openai");
+            builder.UseSetting("interpretation:endpoint", invalid ? "https://userinfo-canary:private-canary@model.invalid/v1?query-canary=token" : "https://model.invalid/v1");
+            builder.UseSetting("interpretation:embeddingModel", "fake");
+        });
+        using var client = factory.CreateClient();
+        var intelligence = factory.Services.GetRequiredService<CapabilityExplorer.Explorer.Intelligence>();
+        Assert.Null(intelligence.Embeddings);
+        Assert.Null(intelligence.Layer.Chat);
+        Assert.Null(intelligence.Layer.Explanations);
+        Assert.Equal(1, (await Read(client, $"/api/meta?cap={scope}")).GetProperty("generation").GetInt64());
+        await Read(client, $"/api/search?cap={scope}&q=week");
+        using var status = await client.GetAsync(new Uri($"/api/embeddings/status?cap={scope}&snapshot={snapshot.Id}", UriKind.Relative));
+        Assert.Equal(invalid ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.OK, status.StatusCode);
+        var body = await status.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("canary", body, StringComparison.Ordinal);
+        if (!invalid) Assert.Contains("\"state\":\"pending\"", body, StringComparison.Ordinal);
+        Assert.Null(intelligence.Embeddings);
     }
 
     private static async Task<JsonElement> Read(HttpClient client, string path)
