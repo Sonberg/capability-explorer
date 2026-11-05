@@ -61,12 +61,19 @@ public sealed class OpenAiEmbeddingModel
             {
                 using var doc = JsonDocument.Parse(text);
                 var vectors = new float[inputs.Count][];
+                var seen = new HashSet<int>();
                 foreach (var item in doc.RootElement.GetProperty("data").EnumerateArray())
                 {
-                    vectors[item.GetProperty("index").GetInt32()] = item.GetProperty("embedding").EnumerateArray().Select(v => v.GetSingle()).ToArray();
+                    var index = item.GetProperty("index").GetInt32();
+                    if (index < 0 || index >= vectors.Length || !seen.Add(index))
+                        throw new InterpretationUnavailableException("model response has invalid embedding indexes");
+                    vectors[index] = item.GetProperty("embedding").EnumerateArray().Select(v => v.GetSingle()).ToArray();
                 }
 
-                return vectors.Any(v => v is null) ? throw new InterpretationUnavailableException("model response is missing embeddings") : vectors;
+                if (vectors.Any(v => v is null || v.Length is < 1 or > 16000 || v.Any(x => !float.IsFinite(x)))
+                    || vectors.Any(v => v.Length != vectors[0].Length))
+                    throw new InterpretationUnavailableException("model response has invalid embeddings");
+                return vectors;
             }
             catch (Exception e) when (e is JsonException or KeyNotFoundException or IndexOutOfRangeException or InvalidOperationException)
             {
