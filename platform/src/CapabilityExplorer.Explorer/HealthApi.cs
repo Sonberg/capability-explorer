@@ -9,24 +9,29 @@ internal static class HealthApi
         app.MapGet("/health", (HttpContext http, HealthDiagnosticsService health, SourceIpRateLimiter limits) =>
         {
             if (!limits.TryAcquire(http, internalRoute: false)) return RateLimited(http, health);
-            return Json(http, health, new { status = "healthy", scope = "process" });
+            return PublicHealth(http, health, "healthy");
         });
         app.MapGet("/health/live", (HttpContext http, HealthDiagnosticsService health, SourceIpRateLimiter limits) =>
         {
             if (!limits.TryAcquire(http, internalRoute: false)) return RateLimited(http, health);
-            return Json(http, health, new { status = "healthy", live = true });
+            return PublicHealth(http, health, "healthy");
         });
-        app.MapGet("/health/startup", (HttpContext http, HealthDiagnosticsService health, IHostApplicationLifetime lifetime, SourceIpRateLimiter limits) =>
+        app.MapGet("/health/startup", (HttpContext http, HealthDiagnosticsService health, HealthApplicationLifecycle lifecycle, SourceIpRateLimiter limits) =>
         {
             if (!limits.TryAcquire(http, internalRoute: false)) return RateLimited(http, health);
-            var started = lifetime.ApplicationStarted.IsCancellationRequested;
-            return Json(http, health, new { status = started ? "healthy" : "unhealthy", started }, started ? 200 : 503);
+            var started = lifecycle.HasStarted;
+            return PublicHealth(http, health, started ? "healthy" : "unhealthy", started ? 200 : 503);
         });
-        app.MapGet("/health/ready", async (HttpContext http, HealthDiagnosticsService health, SourceIpRateLimiter limits) =>
+        app.MapGet("/health/ready", async (HttpContext http, HealthDiagnosticsService health, HealthApplicationLifecycle lifecycle, SourceIpRateLimiter limits) =>
         {
             if (!limits.TryAcquire(http, internalRoute: false)) return RateLimited(http, health);
+            if (!lifecycle.IsReady)
+                return PublicHealth(http, health, "unhealthy", 503);
             var snapshot = await health.CheckAsync(http.RequestAborted);
-            return Json(http, health, new { status = snapshot.Status, ready = snapshot.Ready }, snapshot.Ready ? 200 : 503);
+            if (snapshot.FailureCause == "timeout") return TimeoutResponse();
+            if (!lifecycle.IsReady)
+                return PublicHealth(http, health, "unhealthy", 503);
+            return PublicHealth(http, health, snapshot.Status, snapshot.Ready ? 200 : 503);
         });
         app.MapGet("/internal/health", async (HttpContext http, HealthDiagnosticsService health, HealthEndpointOptions options,
             SourceIpRateLimiter limits) =>
@@ -37,13 +42,8 @@ internal static class HealthApi
             if (!HealthToken.IsAuthorized(http.Request, options))
                 return Json(http, health, new { status = "unauthorized", error = "authorization required" }, 401);
             var snapshot = await health.CheckAsync(http.RequestAborted);
-            return Json(http, health, new
-            {
-                status = snapshot.Status,
-                ready = snapshot.Ready,
-                checkedAt = snapshot.CheckedAt,
-                results = snapshot.Results
-            }, snapshot.Ready ? 200 : 503);
+            if (snapshot.FailureCause == "timeout") return TimeoutResponse();
+            return InternalHealth(http, health, snapshot, snapshot.Ready ? 200 : 503);
         });
         app.MapGet("/metrics", (HttpContext http, HealthDiagnosticsService health, HealthEndpointOptions options,
             SourceIpRateLimiter limits) =>
@@ -84,20 +84,64 @@ internal static class HealthApi
         });
     }
 
+    private static BoundedJsonResult PublicHealth(HttpContext http, HealthDiagnosticsService health, string status, int statusCode = 200)
+    {
+        var result = new Dictionary<string, object?>
+        {
+            ["status"] = status,
+            ["version"] = HealthDiagnosticsService.Version,
+            ["uptime_seconds"] = Math.Round(health.UptimeSeconds, 3),
+            ["timestamp"] = DateTimeOffset.UtcNow,
+        };
+        return new BoundedJsonResult(result, statusCode, HealthEndpointOptions.MaximumResponseBytes);
+    }
+
+    private static BoundedJsonResult InternalHealth(HttpContext http, HealthDiagnosticsService health,
+        HealthCheckSnapshot snapshot, int statusCode)
+    {
+        using var process = Process.GetCurrentProcess();
+        var memory = GC.GetGCMemoryInfo();
+        var result = new Dictionary<string, object?>
+        {
+            ["status"] = snapshot.Status,
+            ["version"] = HealthDiagnosticsService.Version,
+            ["uptime_seconds"] = Math.Round(health.UptimeSeconds, 3),
+            ["timestamp"] = DateTimeOffset.UtcNow,
+            ["failure_cause"] = snapshot.FailureCause ?? "none",
+            ["memory"] = new
+            {
+                heap_used_mb = Math.Round(GC.GetTotalMemory(false) / 1048576d, 2),
+                heap_total_mb = Math.Round(memory.TotalAvailableMemoryBytes / 1048576d, 2),
+                rss_mb = Math.Round(process.WorkingSet64 / 1048576d, 2),
+            },
+            ["checks"] = snapshot.Checks,
+        };
+        return new BoundedJsonResult(result, statusCode, HealthEndpointOptions.MaximumResponseBytes);
+    }
+
+    private static IResult TimeoutResponse() =>
+        Results.Json(new { status = "unhealthy", reason = "timeout" }, statusCode: 503);
+
+    private static BoundedJsonResult RateLimited(HttpContext http, HealthDiagnosticsService health) =>
+        PublicHealth(http, health, "unhealthy", 429);
+
     private static BoundedJsonResult Json(HttpContext http, HealthDiagnosticsService health, object fields, int statusCode = 200)
     {
         var result = new Dictionary<string, object?>
         {
-            ["timestamp"] = DateTimeOffset.UtcNow,
-            ["uptimeSeconds"] = Math.Round(health.UptimeSeconds, 3),
+            ["status"] = "unhealthy",
             ["version"] = HealthDiagnosticsService.Version,
-            ["requestId"] = http.Response.Headers["X-Request-Id"].ToString(),
+            ["uptime_seconds"] = Math.Round(health.UptimeSeconds, 3),
+            ["timestamp"] = DateTimeOffset.UtcNow,
         };
         foreach (var property in fields.GetType().GetProperties())
             result[property.Name] = property.GetValue(fields);
         return new BoundedJsonResult(result, statusCode, HealthEndpointOptions.MaximumResponseBytes);
     }
+}
 
-    private static BoundedJsonResult RateLimited(HttpContext http, HealthDiagnosticsService health) =>
-        Json(http, health, new { status = "rate_limited", error = "request rate exceeded" }, 429);
+internal sealed class HealthApplicationLifecycle(IHostApplicationLifetime lifetime)
+{
+    public bool HasStarted => lifetime.ApplicationStarted.IsCancellationRequested;
+    public bool IsReady => HasStarted && !lifetime.ApplicationStopping.IsCancellationRequested;
 }

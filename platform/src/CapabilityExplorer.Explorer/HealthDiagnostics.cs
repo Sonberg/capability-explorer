@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Npgsql;
+using System.Text.Json.Serialization;
 
 namespace CapabilityExplorer.Explorer;
 
@@ -55,8 +56,13 @@ internal sealed class DatabaseHealthCheck(NpgsqlDataSource dataSource, bool crit
     }
 }
 
-public sealed record HealthDependencyResult(string Name, bool Critical, string Status, double DurationMs, string? Error);
-public sealed record HealthCheckSnapshot(DateTimeOffset CheckedAt, string Status, bool Ready, IReadOnlyList<HealthDependencyResult> Results);
+public sealed record HealthDependencyResult(
+    [property: JsonPropertyName("status")] string Status,
+    [property: JsonPropertyName("criticality")] string Criticality,
+    [property: JsonPropertyName("latency_ms")] double LatencyMs,
+    [property: JsonPropertyName("error")] string? Error);
+public sealed record HealthCheckSnapshot(DateTimeOffset CheckedAt, string Status, bool Ready,
+    IReadOnlyDictionary<string, HealthDependencyResult> Checks, string? FailureCause);
 
 internal sealed class HealthDiagnosticsService(
     IEnumerable<IHealthDependencyCheck> checks,
@@ -93,23 +99,29 @@ internal sealed class HealthDiagnosticsService(
             using var totalTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             totalTimeout.CancelAfter(HealthEndpointOptions.TotalTimeout);
             var tasks = _checks.Select(check => Task.Run(() => RunCheck(check, totalTimeout.Token), CancellationToken.None)).ToArray();
-            HealthDependencyResult[] results;
+            HealthCheckRun[] checkRuns;
             try
             {
-                results = await Task.WhenAll(tasks).WaitAsync(totalTimeout.Token);
+                checkRuns = await Task.WhenAll(tasks).WaitAsync(totalTimeout.Token);
             }
             catch (OperationCanceledException)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                results = await Task.WhenAll(tasks.Select((task, index) => task.IsCompleted
-                    ? task : Task.FromResult(new HealthDependencyResult(SafeName(_checks[index].Name), _checks[index].Critical,
-                        "unhealthy", HealthEndpointOptions.TotalTimeout.TotalMilliseconds, "timeout"))));
+                checkRuns = await Task.WhenAll(tasks.Select((task, index) => task.IsCompleted
+                    ? task : Task.FromResult(new HealthCheckRun(_checks[index].Name,
+                        new HealthDependencyResult("unhealthy", _checks[index].Critical ? "critical" : "noncritical",
+                            HealthEndpointOptions.TotalTimeout.TotalMilliseconds, "timeout")))));
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            var ready = results.Where(result => result.Critical).All(result => result.Status == "healthy");
-            var status = results.All(result => result.Status == "healthy") ? "healthy" : ready ? "degraded" : "unhealthy";
-            var snapshot = new HealthCheckSnapshot(DateTimeOffset.UtcNow, status, ready, results);
+            var checksByDependency = checkRuns.GroupBy(pair => SafeName(pair.Name), StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.Last().Result, StringComparer.Ordinal);
+            var ready = checksByDependency.Values.Where(result => result.Criticality == "critical")
+                .All(result => result.Status == "healthy");
+            var status = checksByDependency.Values.All(result => result.Status == "healthy") ? "healthy" : ready ? "degraded" : "unhealthy";
+            var failureCause = checksByDependency.Values.Any(result => result.Criticality == "critical" && result.Error == "timeout") ? "timeout"
+                : checksByDependency.Values.Any(result => result.Error is not null) ? "dependency_unavailable" : null;
+            var snapshot = new HealthCheckSnapshot(DateTimeOffset.UtcNow, status, ready, checksByDependency, failureCause);
             lock (_cacheLock)
             {
                 _cached = snapshot;
@@ -125,7 +137,7 @@ internal sealed class HealthDiagnosticsService(
 
     public void Dispose() => _refreshLock.Dispose();
 
-    private static async Task<HealthDependencyResult> RunCheck(IHealthDependencyCheck check, CancellationToken totalToken)
+    private static async Task<HealthCheckRun> RunCheck(IHealthDependencyCheck check, CancellationToken totalToken)
     {
         var timer = Stopwatch.StartNew();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(totalToken);
@@ -136,19 +148,19 @@ internal sealed class HealthDiagnosticsService(
             await task.WaitAsync(timeout.Token);
             var elapsed = timer.Elapsed.TotalMilliseconds;
             HealthMetrics.RecordDependency(SafeName(check.Name), elapsed);
-            return new(SafeName(check.Name), check.Critical, "healthy", elapsed, null);
+            return new(check.Name, new HealthDependencyResult("healthy", check.Critical ? "critical" : "noncritical", elapsed, null));
         }
         catch (OperationCanceledException)
         {
             var elapsed = timer.Elapsed.TotalMilliseconds;
             HealthMetrics.RecordDependency(SafeName(check.Name), elapsed);
-            return new(SafeName(check.Name), check.Critical, "unhealthy", elapsed, "timeout");
+            return new(check.Name, new HealthDependencyResult("unhealthy", check.Critical ? "critical" : "noncritical", elapsed, "timeout"));
         }
         catch (Exception)
         {
             var elapsed = timer.Elapsed.TotalMilliseconds;
             HealthMetrics.RecordDependency(SafeName(check.Name), elapsed);
-            return new(SafeName(check.Name), check.Critical, "unhealthy", elapsed, "unavailable");
+            return new(check.Name, new HealthDependencyResult("unhealthy", check.Critical ? "critical" : "noncritical", elapsed, "unavailable"));
         }
     }
 
@@ -216,11 +228,11 @@ internal sealed class HealthMetrics
     public static void RecordRequest(HttpContext context, double durationSeconds)
     {
         var method = context.Request.Method is "GET" or "POST" or "PUT" or "DELETE" ? context.Request.Method : "OTHER";
-        var path = context.Request.Path.Value;
-        var route = path is "/health" or "/health/live" or "/health/ready" or "/health/startup"
-            or "/internal/health" or "/metrics" ? path : path?.StartsWith("/api/", StringComparison.Ordinal) == true ? "/api" : "/other";
+        var path = context.Request.Path.Value is "/health" or "/health/live" or "/health/ready" or "/health/startup"
+            or "/internal/health" or "/metrics" ? context.Request.Path.Value
+            : context.Request.Path.StartsWithSegments("/api") ? "/api" : "/other";
         var status = Math.Clamp(context.Response.StatusCode, 100, 599).ToString(CultureInfo.InvariantCulture);
-        Requests.GetOrAdd($"{method}\n{route}\n{status}", static _ => new Histogram()).Observe(durationSeconds);
+        Requests.GetOrAdd($"{method}\n{status}\n{path}", static _ => new Histogram()).Observe(durationSeconds);
     }
 
     public static void RecordDependency(string name, double durationMs)
@@ -232,19 +244,21 @@ internal sealed class HealthMetrics
     public static string Export(double uptimeSeconds)
     {
         var builder = new StringBuilder(4096);
-        builder.AppendLine("# HELP explorer_http_requests_total Total Explorer HTTP requests.")
-            .AppendLine("# TYPE explorer_http_requests_total counter");
-        AppendHistograms(builder, "explorer_http_request_duration_seconds", Requests, "method", "route", "status");
-        builder.AppendLine("# HELP explorer_dependency_check_duration_seconds Dependency health-check duration.")
-            .AppendLine("# TYPE explorer_dependency_check_duration_seconds histogram");
-        AppendHistograms(builder, "explorer_dependency_check_duration_seconds", Dependencies, "dependency");
+        builder.AppendLine("# HELP http_requests_total Total Explorer HTTP requests.")
+            .AppendLine("# TYPE http_requests_total counter")
+            .AppendLine("# HELP http_request_duration_seconds Explorer HTTP request duration.")
+            .AppendLine("# TYPE http_request_duration_seconds histogram");
+        AppendHistograms(builder, "http_request_duration_seconds", Requests, "method", "status", "path");
+        builder.AppendLine("# HELP dependency_check_duration_seconds Dependency health-check duration.")
+            .AppendLine("# TYPE dependency_check_duration_seconds histogram");
+        AppendHistograms(builder, "dependency_check_duration_seconds", Dependencies, "dependency");
         using var process = Process.GetCurrentProcess();
-        builder.AppendLine("# HELP explorer_process_uptime_seconds Explorer process uptime.")
-            .AppendLine("# TYPE explorer_process_uptime_seconds gauge")
-            .Append("explorer_process_uptime_seconds ").AppendLine(Fmt(uptimeSeconds));
-        builder.AppendLine("# HELP explorer_process_resident_memory_bytes Explorer resident memory.")
-            .AppendLine("# TYPE explorer_process_resident_memory_bytes gauge")
-            .Append("explorer_process_resident_memory_bytes ").AppendLine(process.WorkingSet64.ToString(CultureInfo.InvariantCulture));
+        builder.AppendLine("# HELP process_uptime_seconds Explorer process uptime.")
+            .AppendLine("# TYPE process_uptime_seconds gauge")
+            .Append("process_uptime_seconds ").AppendLine(Fmt(uptimeSeconds));
+        builder.AppendLine("# HELP process_resident_memory_bytes Explorer resident memory.")
+            .AppendLine("# TYPE process_resident_memory_bytes gauge")
+            .Append("process_resident_memory_bytes ").AppendLine(process.WorkingSet64.ToString(CultureInfo.InvariantCulture));
         return builder.ToString();
     }
 
@@ -260,8 +274,8 @@ internal sealed class HealthMetrics
             builder.Append(metric).Append("_bucket{").Append(suffix).Append(",le=\"+Inf\"} ").AppendLine(snapshot.Count.ToString(CultureInfo.InvariantCulture));
             builder.Append(metric).Append("_sum{").Append(suffix).Append("} ").AppendLine(Fmt(snapshot.Sum));
             builder.Append(metric).Append("_count{").Append(suffix).Append("} ").AppendLine(snapshot.Count.ToString(CultureInfo.InvariantCulture));
-            if (metric == "explorer_http_request_duration_seconds")
-                builder.Append("explorer_http_requests_total{").Append(suffix).Append("} ").AppendLine(snapshot.Count.ToString(CultureInfo.InvariantCulture));
+            if (metric == "http_request_duration_seconds")
+                builder.Append("http_requests_total{").Append(suffix).Append("} ").AppendLine(snapshot.Count.ToString(CultureInfo.InvariantCulture));
         }
     }
 
@@ -295,6 +309,8 @@ internal sealed class HealthMetrics
 
     private sealed record HistogramSnapshot((string Bound, long Count)[] Buckets, long Count, double Sum);
 }
+
+internal sealed record HealthCheckRun(string Name, HealthDependencyResult Result);
 
 internal static class HealthToken
 {

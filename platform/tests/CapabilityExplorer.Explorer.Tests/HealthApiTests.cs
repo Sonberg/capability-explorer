@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace CapabilityExplorer.Tests;
@@ -34,6 +35,23 @@ public sealed class HealthApiFactory(Action<IServiceCollection>? configureServic
 
 public sealed class HealthApiTests
 {
+    [Fact]
+    public void Startup_remains_started_after_shutdown_begins_while_readiness_goes_false()
+    {
+        using var lifetime = new TestApplicationLifetime();
+        var state = new HealthApplicationLifecycle(lifetime);
+        Assert.False(state.HasStarted);
+        Assert.False(state.IsReady);
+
+        lifetime.MarkStarted();
+        Assert.True(state.HasStarted);
+        Assert.True(state.IsReady);
+
+        lifetime.StopApplication();
+        Assert.True(state.HasStarted);
+        Assert.False(state.IsReady);
+    }
+
     [Theory]
     [InlineData("3", 3)]
     [InlineData("4", 4)]
@@ -62,11 +80,36 @@ public sealed class HealthApiTests
             Assert.InRange(bytes.Length, 1, HealthEndpointOptions.MaximumResponseBytes);
             using var body = JsonDocument.Parse(bytes);
             var root = body.RootElement;
-            Assert.Equal(id.ToString("D"), root.GetProperty("requestId").GetString());
+            Assert.Equal(new[] { "status", "timestamp", "uptime_seconds", "version" },
+                root.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
             Assert.Equal(TimeSpan.Zero, DateTimeOffset.Parse(root.GetProperty("timestamp").GetString()!, CultureInfo.InvariantCulture).Offset);
-            Assert.True(root.GetProperty("uptimeSeconds").GetDouble() >= 0);
+            Assert.True(root.GetProperty("uptime_seconds").GetDouble() >= 0);
             Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("version").GetString()));
+            Assert.NotEqual(Guid.Empty, id);
         }
+    }
+
+    [Fact]
+    public async Task Lightweight_health_does_not_run_dependency_probes()
+    {
+        var probes = 0;
+        using var factory = new HealthApiFactory(services =>
+        {
+            services.RemoveAll<IHealthDependencyCheck>();
+            services.AddSingleton<IHealthDependencyCheck>(new FakeHealthCheck("database", critical: true, _ =>
+            {
+                Interlocked.Increment(ref probes);
+                return Task.CompletedTask;
+            }));
+        });
+        using var client = factory.CreateClient();
+        using (var warmup = await client.GetAsync("/health"))
+            Assert.Equal(HttpStatusCode.OK, warmup.StatusCode);
+        var timer = Stopwatch.StartNew();
+        using var response = await client.GetAsync("/health");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(timer.Elapsed < TimeSpan.FromMilliseconds(50), $"lightweight health took {timer.Elapsed}");
+        Assert.Equal(0, Volatile.Read(ref probes));
     }
 
     [Fact]
@@ -93,6 +136,17 @@ public sealed class HealthApiTests
         authorized.Headers.Authorization = new("Bearer", HealthApiFactory.Token);
         using var accepted = await client.SendAsync(authorized);
         Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+        using var acceptedJson = JsonDocument.Parse(await accepted.Content.ReadAsStringAsync());
+        var body = acceptedJson.RootElement;
+        Assert.True(body.TryGetProperty("failure_cause", out _));
+        Assert.True(body.TryGetProperty("memory", out var memory));
+        Assert.True(memory.TryGetProperty("heap_used_mb", out _));
+        Assert.True(memory.TryGetProperty("heap_total_mb", out _));
+        Assert.True(memory.TryGetProperty("rss_mb", out _));
+        Assert.True(body.TryGetProperty("checks", out var checks));
+        Assert.True(checks.TryGetProperty("explorer", out var explorer));
+        Assert.Equal("critical", explorer.GetProperty("criticality").GetString());
+        Assert.True(explorer.TryGetProperty("latency_ms", out _));
     }
 
     [Fact]
@@ -114,8 +168,12 @@ public sealed class HealthApiTests
         Assert.DoesNotContain("InvalidOperationException", content, StringComparison.Ordinal);
         using var json = JsonDocument.Parse(content);
         Assert.Equal("degraded", json.RootElement.GetProperty("status").GetString());
-        Assert.True(json.RootElement.GetProperty("ready").GetBoolean());
-        Assert.Equal("unavailable", json.RootElement.GetProperty("results")[0].GetProperty("error").GetString());
+        Assert.Equal("noncritical", json.RootElement.GetProperty("checks").GetProperty("database").GetProperty("criticality").GetString());
+        Assert.Equal("unavailable", json.RootElement.GetProperty("checks").GetProperty("database").GetProperty("error").GetString());
+        using var readiness = await client.GetAsync("/health/ready");
+        Assert.Equal(HttpStatusCode.OK, readiness.StatusCode);
+        using var publicJson = JsonDocument.Parse(await readiness.Content.ReadAsStringAsync());
+        Assert.Equal("degraded", publicJson.RootElement.GetProperty("status").GetString());
     }
 
     [Fact]
@@ -137,8 +195,11 @@ public sealed class HealthApiTests
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
         Assert.True(timer.Elapsed < TimeSpan.FromSeconds(4), $"checks did not run in parallel or exceed their bound: {timer.Elapsed}");
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal("timeout", json.RootElement.GetProperty("results")[0].GetProperty("error").GetString());
-        Assert.Equal("healthy", json.RootElement.GetProperty("results")[1].GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Object, json.RootElement.ValueKind);
+        Assert.Equal(new[] { "reason", "status" }, json.RootElement.EnumerateObject()
+            .Select(property => property.Name).Order(StringComparer.Ordinal));
+        Assert.Equal("timeout", json.RootElement.GetProperty("reason").GetString());
+        Assert.Equal("unhealthy", json.RootElement.GetProperty("status").GetString());
     }
 
     [Fact]
@@ -159,7 +220,9 @@ public sealed class HealthApiTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.InRange(bytes.Length, 1, HealthEndpointOptions.MaximumResponseBytes);
         using var json = JsonDocument.Parse(bytes);
-        Assert.Equal(HealthEndpointOptions.MaximumChecks, json.RootElement.GetProperty("results").GetArrayLength());
+        var checks = json.RootElement.GetProperty("checks");
+        Assert.InRange(checks.EnumerateObject().Count(), 1, HealthEndpointOptions.MaximumChecks);
+        Assert.True(checks.TryGetProperty("other", out _));
     }
 
     [Fact]
@@ -199,11 +262,12 @@ public sealed class HealthApiTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.StartsWith("text/plain", response.Content.Headers.ContentType?.ToString(), StringComparison.Ordinal);
         var text = await response.Content.ReadAsStringAsync();
-        Assert.Contains("# TYPE explorer_http_requests_total counter", text, StringComparison.Ordinal);
-        Assert.Contains("explorer_http_request_duration_seconds_bucket{", text, StringComparison.Ordinal);
-        Assert.Contains("explorer_dependency_check_duration_seconds_bucket{", text, StringComparison.Ordinal);
-        Assert.Contains("explorer_process_uptime_seconds ", text, StringComparison.Ordinal);
-        Assert.Contains("explorer_process_resident_memory_bytes ", text, StringComparison.Ordinal);
+        Assert.Contains("# TYPE http_requests_total counter", text, StringComparison.Ordinal);
+        Assert.Contains("http_requests_total{method=\"GET\",status=\"200\",path=\"/health/ready\"}", text, StringComparison.Ordinal);
+        Assert.Contains("http_request_duration_seconds_bucket{method=\"GET\",status=\"200\",path=\"/health/ready\"", text, StringComparison.Ordinal);
+        Assert.Contains("dependency_check_duration_seconds_bucket{", text, StringComparison.Ordinal);
+        Assert.Contains("process_uptime_seconds ", text, StringComparison.Ordinal);
+        Assert.Contains("process_resident_memory_bytes ", text, StringComparison.Ordinal);
     }
 
     private sealed class FakeHealthCheck(string name, bool critical, Func<CancellationToken, Task> check) : IHealthDependencyCheck
@@ -211,6 +275,24 @@ public sealed class HealthApiTests
         public string Name { get; } = name;
         public bool Critical { get; } = critical;
         public Task CheckAsync(CancellationToken cancellationToken) => check(cancellationToken);
+    }
+
+    private sealed class TestApplicationLifetime : IHostApplicationLifetime, IDisposable
+    {
+        private readonly CancellationTokenSource _started = new();
+        private readonly CancellationTokenSource _stopping = new();
+        private readonly CancellationTokenSource _stopped = new();
+        public CancellationToken ApplicationStarted => _started.Token;
+        public CancellationToken ApplicationStopping => _stopping.Token;
+        public CancellationToken ApplicationStopped => _stopped.Token;
+        public void MarkStarted() => _started.Cancel();
+        public void StopApplication() => _stopping.Cancel();
+        public void Dispose()
+        {
+            _started.Dispose();
+            _stopping.Dispose();
+            _stopped.Dispose();
+        }
     }
 
     private static void AssertNoStore(string? value)

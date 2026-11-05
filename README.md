@@ -149,18 +149,30 @@ output and not committed. `make frontend` serves it with hot reload and proxies 
 `make backend`. Both bind to `127.0.0.1` only.
 
 The Explorer exposes lightweight, unauthenticated `/health`, `/health/live`,
-`/health/ready`, and `/health/startup` endpoints. They retain the existing
-`LocalRequestGuard` boundary and are not remote-service authentication. Readiness
-runs only fixed in-process and configured database checks, in parallel, with a
-2-second per-check timeout and a 5-second overall bound; critical failures return
-503, while noncritical failures are reported as degraded. Detailed results at
-`/internal/health` and Prometheus text at `/metrics` are disabled unless
+`/health/ready`, and `/health/startup` endpoints. Their JSON uses `status`,
+`version`, `uptime_seconds`, and UTC `timestamp`; `/health` is in-process only.
+Startup becomes true once the host has started and remains true during shutdown;
+readiness returns 503 until startup and while shutdown is in progress. Readiness
+also checks configured fixed dependencies, in parallel, with a 2-second
+per-check timeout and a 5-second overall bound; only critical failures return
+503. These routes retain the existing `LocalRequestGuard` boundary and are not
+remote-service authentication. Detailed results at `/internal/health` and
+Prometheus text at `/metrics` are disabled unless
 `EXPLORER_INTERNAL_HEALTH_TOKEN` (or `internalHealth:token`) is configured, and
 require an `Authorization` header with that bearer token. The internal result cache defaults to
 4 seconds; `internalHealth:cacheSeconds` accepts values from 3 through 5.
-Health responses are non-cacheable, include a request UUID and UTC timestamp,
-and are bounded to 16 KiB. Public and internal health routes have independent
-source-IP limits of 60 and 30 requests per second, respectively.
+Internal health includes sanitized failure cause, process/heap memory statistics,
+and per-dependency status, criticality and latency. Critical timeout responses
+use exactly `{"status":"unhealthy","reason":"timeout"}`. Metrics include
+`process_uptime_seconds`, `process_resident_memory_bytes`, HTTP request counters
+labelled by method/status/path, and `http_request_duration_seconds` histograms.
+Health responses are non-cacheable, carry a UUID request header, and are bounded
+to 16 KiB. Public and internal health routes have independent source-IP limits
+of 60 and 30 requests per second, respectively.
+
+No p95 threshold or circuit-breaker interaction is implemented: this service
+has no established latency baseline or breaker contract from which to define
+those policies safely.
 
 These application endpoints do not establish TLS, mTLS, ingress exclusion,
 remote binding safety, or cascading-orchestrator alerting. Keep the Explorer on

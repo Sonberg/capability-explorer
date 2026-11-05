@@ -38,6 +38,7 @@ var database = builder.Configuration["database"] ?? Environment.GetEnvironmentVa
 var dataSource = database is { Length: > 0 } ? NpgsqlDataSource.Create(database) : null;
 builder.Services.AddSingleton(HealthEndpointOptions.From(builder.Configuration));
 builder.Services.AddSingleton<HealthDiagnosticsService>();
+builder.Services.AddSingleton<HealthApplicationLifecycle>();
 builder.Services.AddSingleton<SourceIpRateLimiter>();
 if (source == "postgres")
 {
