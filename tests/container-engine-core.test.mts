@@ -435,7 +435,12 @@ process.exit(Number(process.env.TEST_HOST_CLI_EXIT ?? 0));
   }
 });
 
-for (const script of ['scripts/local-check', 'scripts/pr-check', 'scripts/security-collect']) test(`${script} rejects the unqualified Podman legacy path`, t => {
+for (const script of ['scripts/local-check', 'scripts/pr-check']) test(`${script} rejects an incomplete checkout before using any engine`, t => {
+  const f = fixture(t), r = f.run(script, [], { CE_CONTAINER_ENGINE: 'podman' }, '/bin/bash', 1500);
+  refused(r, /workflow.*missing|working tree must be clean/i); assert.equal(f.calls().length, 0);
+});
+
+for (const script of ['scripts/security-collect']) test(`${script} rejects the unqualified Podman legacy path`, t => {
   const f = fixture(t), r = f.run(script, [], { CE_CONTAINER_ENGINE: 'podman' }, '/bin/bash', 1500);
   refused(r, /not qualified|unsupported|not supported/i); assert.equal(f.calls().length, 0);
 });

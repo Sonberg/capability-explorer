@@ -438,6 +438,21 @@ contains 'receipt CI profile does not match' "$scratch/output"
 pass 'PR check rejects a mismatched documentation receipt profile'
 
 new_repo
+export CE_CONTAINER_ENGINE=podman
+expect_failure scripts/local-check
+contains 'not qualified' "$scratch/output"
+not_run
+unset CE_CONTAINER_ENGINE
+scripts/local-check > "$scratch/output" 2>&1
+rm -f "$ACT_TEST_LOG"
+export CE_CONTAINER_ENGINE=podman
+expect_failure scripts/pr-check
+contains 'not qualified' "$scratch/output"
+not_run
+unset CE_CONTAINER_ENGINE
+pass 'full-profile local and PR checks still refuse unqualified Podman'
+
+new_repo
 mkdir -p docs
 printf '# Example\n\n[Missing](missing.md)\n' > docs/example.md
 git add docs/example.md
