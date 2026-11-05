@@ -224,6 +224,16 @@ public sealed class AnalysisPackageTests
             Assert.Equal(variation == "tampered" ? "tampered" : variation == "symlink" ? "preserve" : "fixture",File.ReadAllText(original));
             if (reuse)
             {
+                var telemetry = (store.ReadLog(second.Run.RunId) ?? "").Split('\n')
+                    .Where(line => line.StartsWith("-- telemetry: ",StringComparison.Ordinal))
+                    .Select(line => JsonDocument.Parse(line[14..]).RootElement.Clone()).ToArray();
+                foreach (var stage in new[] { "packages.reuse.verify", "packages.reuse.copy", "packages.reuse.verify-copy", "packages.reuse.verify-source" })
+                {
+                    var entry = Assert.Single(telemetry,value => value.GetProperty("stage").GetString() == stage);
+                    Assert.Equal("completed",entry.GetProperty("outcome").GetString());
+                    Assert.True(entry.GetProperty("elapsedMilliseconds").GetDouble() >= 0);
+                }
+                Assert.Single(telemetry,value => value.GetProperty("stage").GetString() == "packages.reuse.inventory");
                 File.WriteAllText(Path.Combine(second.Packages,"fixture/1.0.0/fixture.nuspec"),"independent-copy");
                 Assert.Equal("fixture",File.ReadAllText(original));
             }

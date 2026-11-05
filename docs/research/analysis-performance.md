@@ -529,3 +529,111 @@ Local source-bound evidence under `.sandbox-cache/analysis-performance-evidence`
 Editor diagnostics and focused build/tests passed. Full Docker CI and
 database-backed performance qualification remain unexecuted; no such pass or
 database speedup is claimed.
+
+## Second iteration: reuse verification overhead
+
+On 2026-11-05 the next requested iteration split package reuse into initial
+verification, copying, destination verification and source re-verification, then
+measured a real Kraken cold/warm pair before changing the algorithm.
+
+### Profile and adjustment
+
+The profiled warm run spent 38.949 s in reuse:
+
+| Reuse substage | Profiled control | Optimized warm | Optimized warm repeat |
+| --- | ---: | ---: | ---: |
+| Initial verification | 20.709 s | 9.647 s | 4.350 s |
+| Copying | 7.497 s | 7.798 s | 3.796 s |
+| Destination verification | 6.257 s | 10.847 s | 6.444 s |
+| Source re-verification | 4.446 s | 3.757 s | 2.992 s |
+| **Total reuse** | **38.949 s** | **32.065 s** | **17.593 s** |
+| **Total active analysis** | **122.635 s** | **111.415 s** | **101.559 s** |
+
+Verification was the largest initial reuse cost. The code first enumerated and
+validated the package tree for the copy list, then enumerated and validated it
+again inside the hashing function. The optimization returns the hashing pass's
+verified file inventory for copying, removing that duplicate full tree walk.
+
+No hash, link rejection, file-size/entry bound, source matching, runtime matching
+or post-copy integrity pass was removed. Copied files remain independent. Normal
+package acquisition, all extractor jobs and publication remain enabled.
+
+The first optimized warm run records one initial inventory taking 3.926 s; its
+repeat records one taking 2.354 s. Initial inventory is nested inside verification
+and must not be added again when totaling the stages.
+
+The two optimized warm runs averaged **106.487 s**, an observed **13.167% reduction**
+against this iteration's 122.635 s profiled control. Whole-process wall times were
+128.760 s for the control and 118.219/106.706 s for the optimized warm runs.
+
+This is one control and two optimized observations, not a randomized benchmark.
+Filesystem/cache warmth clearly contributes to variation, and the earlier
+iteration's 111.740 s warm run was already close to the first optimized result.
+Do not attribute the entire elapsed-time reduction to the removed walk or promise
+a universal 13% improvement. The deterministic change is one initial inventory
+instead of two per accepted candidate; the measured warm range is 101.6-111.4 s.
+
+### Real-run identities and equivalence
+
+| Run | Run ID | Active execution |
+| --- | --- | ---: |
+| Profiling build, fresh attempt | `d32f6edb0a4a4cf1bd73267ed5d0a09a` | 199.247 s |
+| Profiling build, verified reuse | `af7916c175f24c7590836e84e5d2bc9e` | 122.635 s |
+| Single-inventory build, fresh attempt | `6d1f61a203e44356ae7e22f7c466b8a7` | 153.965 s |
+| Single-inventory build, verified reuse | `e7ef2f73f80e4fd5bee7b9cdd6ea4af8` | 111.415 s |
+| Single-inventory build, warm repeat | `28bd5e617811430fb3414535903fb78d` | 101.559 s |
+
+Both cold runs intentionally miss because the runtime identity changed. Their
+different download timings are not evidence of this warm-path optimization.
+
+Verification compared these five runs with the prior iteration's warm run
+`139794ac6fb14af6957bc6e5d0b1ddeb`. Every resolved-manifest hash and staged artifact
+hash matched its journal binding. All six runs had identical source revision,
+source content identity, package content identity, feed policy and npm coverage;
+all **five artifact files were byte-for-byte identical**. Every run ended `done`
+with confirmed local publication. The two optimized warm runs had `0:197:0`
+NuGet coverage and exactly one initial-inventory telemetry record each.
+
+The background worker was stopped while idle for these controlled runs, then
+restored using the development database settings. Explorer was left running.
+There was no journal reset, cache purge or target lockfile/credential change.
+
+### Tests and source evidence
+
+The existing reuse scenario now requires all four substage timing records. It
+first failed because those records were absent, then passed after instrumentation.
+For the algorithmic optimization, a diagnostic-only inventory counter was added
+without changing the original two-pass algorithm. The matching scenario then
+failed `Assert.Single`: **two** initial-inventory records were present. Returning
+the hashed inventory for copying made the same assertion pass with **one** record.
+The seven existing invalid-cache cases remained passing.
+
+Commands from `platform`, unchanged selectors:
+
+```sh
+dotnet test tests/CapabilityExplorer.Store.Tests/CapabilityExplorer.Store.Tests.csproj --filter FullyQualifiedName~Given_retained_packages --no-restore --verbosity minimal
+dotnet test tests/CapabilityExplorer.Store.Tests/CapabilityExplorer.Store.Tests.csproj --filter 'FullyQualifiedName~AnalysisParallelTests|FullyQualifiedName~AnalysisPackageTests|FullyQualifiedName~AnalysisDependencyTests|FullyQualifiedName~AnalysisCapabilityConcurrencyTests|FullyQualifiedName~LocalPublicationTests' --no-restore --verbosity minimal
+```
+
+Focused profiling/reuse verification passed 8/8; final directly affected
+regressions passed **48/48**, exit 0. No wall-clock threshold was used as a flaky
+unit-test substitute for the deterministic duplicate-work assertion. The actual
+performance comparison uses the real package-enabled command recorded above.
+
+Source snapshots under `.sandbox-cache/analysis-performance-evidence`:
+
+| Snapshot | SHA-256 |
+| --- | --- |
+| Missing-substage assertion red: `reuse-profile-red-source.tgz` | `02109df47094bd13abace4fcf0bf158667e7fa25139e2bc27a84ee4ab307c97e` |
+| Two-inventory assertion red: `inventory-red-source.tgz` | `d13283e791fb8d80d71cde4e57f50c7cdeb58cff8796a8c14971eba94cd56454` |
+| Final implementation: `inventory-green-source.tgz` | `46af22d8d3b302e2be5d7aab1460c89d9f81557b29ffa905ee3454906ee9099c` |
+
+The duplicate-inventory regression source was unchanged between its assertion-red
+and final green, SHA-256
+`d96fc7dd084751e9625dcc581eac0bf297e8690d308fcc5f8aa98dbe4367253e`.
+The profiling runs predate the diagnostic inventory counter; their algorithm is
+unchanged from the measured two-pass implementation, but they are not claimed
+to use the exact same instrumented binary as the assertion-red snapshot.
+
+No JavaScript, dependency, CI-command, concurrency or cache-retention policy was
+changed. Full Docker CI and database/embedding performance remain unmeasured.

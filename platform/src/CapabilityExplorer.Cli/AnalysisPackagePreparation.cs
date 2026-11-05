@@ -32,7 +32,7 @@ internal static class AnalysisPackagePreparation
         inputs["package-feed-policy"] = AnalysisWorkerCommand.HashText(JsonSerializer.Serialize(descriptors));
         using (var timing = process.Measure("packages.reuse"))
         {
-            var reused = AnalysisPackageReuse.Seed(root,run,repositories,packageDir,inputs["package-feed-policy"]);
+            var reused = AnalysisPackageReuse.Seed(root,run,repositories,packageDir,inputs["package-feed-policy"],process);
             inputs["nuget-reuse"] = reused is null ? "miss" : "verified";
             if (reused is not null) inputs["nuget-reuse-source"] = reused;
             timing.Complete();

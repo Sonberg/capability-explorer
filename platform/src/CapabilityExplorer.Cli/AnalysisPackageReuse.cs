@@ -9,12 +9,13 @@ internal static class AnalysisPackageReuse
     private sealed record Candidate(string RunId, string Directory, string Hash, string[] Files);
 
     internal static string? Seed(string root, AnalysisRun run, IReadOnlyList<AnalysisRepository> repositories,
-        string packageDir, string feedPolicy)
+        string packageDir, string feedPolicy, AnalysisProcess process)
     {
         var store = new FileRunStore(Path.Combine(root,".sandbox-cache/requests"));
         if (Path.GetFullPath(packageDir) != Path.Combine(store.AttemptDirectory(new(run.RunId,run.AttemptId!)),"packages")) return null;
         AnalysisPreparation.RejectLinks(packageDir);
         if (Directory.EnumerateFileSystemEntries(packageDir).Any()) return null;
+        using var verification = process.Measure("packages.reuse.verify");
         var runtime = run.Settings.RuntimeIdentity ?? AnalysisPreparation.RuntimeIdentity(root);
         Dictionary<string,string>? sources = null;
         var candidates = new List<AnalysisRun>();
@@ -53,27 +54,51 @@ internal static class AnalysisPackageReuse
                     !resolved.Inputs.TryGetValue("revision:" + repository.Id,out var revision) || revision != repository.Sha ||
                     !resolved.Inputs.TryGetValue("source:" + repository.Id,out var source) || source != sources[repository.Id])) continue;
                 var packages = Path.Combine(store.AttemptDirectory(new(previous.RunId,previous.AttemptId!)),"packages");
-                var files = AnalysisPreparation.CheckedFiles(packages).Order(StringComparer.Ordinal).ToArray();
-                if (files.Length == 0 || Identity(packages) != expected) continue;
+                var actual = Identity(packages,out var files,process);
+                if (files.Length == 0 || actual != expected) continue;
                 candidate = new(previous.RunId,packages,expected,files);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or ArgumentException or KeyNotFoundException) { continue; }
-            foreach (var file in candidate.Files)
+            verification.Complete();
+            verification.Dispose();
+            using (var timing = process.Measure("packages.reuse.copy"))
             {
-                AnalysisPreparation.RejectLinks(file);
-                var target = Path.Combine(packageDir,Path.GetRelativePath(candidate.Directory,file));
-                AnalysisPreparation.RejectLinks(target);
-                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                File.Copy(file,target,overwrite:false);
+                foreach (var file in candidate.Files)
+                {
+                    AnalysisPreparation.RejectLinks(file);
+                    var target = Path.Combine(packageDir,Path.GetRelativePath(candidate.Directory,file));
+                    AnalysisPreparation.RejectLinks(target);
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    File.Copy(file,target,overwrite:false);
+                }
+                timing.Complete();
             }
-            if (Identity(packageDir) != candidate.Hash || Identity(candidate.Directory) != candidate.Hash)
-                throw new InvalidDataException("retained package content changed during verified reuse");
+            using (var timing = process.Measure("packages.reuse.verify-copy"))
+            {
+                if (Identity(packageDir) != candidate.Hash) throw new InvalidDataException("retained package content changed during verified reuse");
+                timing.Complete();
+            }
+            using (var timing = process.Measure("packages.reuse.verify-source"))
+            {
+                if (Identity(candidate.Directory) != candidate.Hash) throw new InvalidDataException("retained package content changed during verified reuse");
+                timing.Complete();
+            }
             return candidate.RunId;
         }
+        verification.Complete();
         return null;
     }
 
-    private static string Identity(string directory) => AnalysisWorkerCommand.HashText(string.Join('\n',
-        AnalysisPreparation.CheckedFiles(directory).Order(StringComparer.Ordinal)
+    private static string Identity(string directory) => Identity(directory,out _);
+
+    private static string Identity(string directory, out string[] files, AnalysisProcess? process = null)
+    {
+        using (var inventory = process?.Measure("packages.reuse.inventory"))
+        {
+            files = AnalysisPreparation.CheckedFiles(directory).Order(StringComparer.Ordinal).ToArray();
+            inventory?.Complete();
+        }
+        return AnalysisWorkerCommand.HashText(string.Join('\n',files
             .Select(file => Path.GetRelativePath(directory,file) + ":" + AnalysisWorkerCommand.HashFile(file))));
+    }
 }
