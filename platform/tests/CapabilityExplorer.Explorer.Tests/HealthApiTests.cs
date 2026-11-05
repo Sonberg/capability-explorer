@@ -113,6 +113,25 @@ public sealed class HealthApiTests
     }
 
     [Fact]
+    public async Task Public_readiness_does_not_run_dependency_probes()
+    {
+        var probes = 0;
+        using var factory = new HealthApiFactory(services =>
+        {
+            services.RemoveAll<IHealthDependencyCheck>();
+            services.AddSingleton<IHealthDependencyCheck>(new FakeHealthCheck("database", critical: true, _ =>
+            {
+                Interlocked.Increment(ref probes);
+                return Task.CompletedTask;
+            }));
+        });
+        using var client = factory.CreateClient();
+        using var response = await client.GetAsync("/health/ready");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(0, Volatile.Read(ref probes));
+    }
+
+    [Fact]
     public async Task Internal_routes_fail_closed_and_require_bearer_authentication()
     {
         using var unavailableFactory = new HealthApiFactory(configureToken: false);
@@ -139,6 +158,7 @@ public sealed class HealthApiTests
         using var acceptedJson = JsonDocument.Parse(await accepted.Content.ReadAsStringAsync());
         var body = acceptedJson.RootElement;
         Assert.True(body.TryGetProperty("failure_cause", out _));
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("failure_cause").ValueKind);
         Assert.True(body.TryGetProperty("memory", out var memory));
         Assert.True(memory.TryGetProperty("heap_used_mb", out _));
         Assert.True(memory.TryGetProperty("heap_total_mb", out _));
@@ -173,7 +193,7 @@ public sealed class HealthApiTests
         using var readiness = await client.GetAsync("/health/ready");
         Assert.Equal(HttpStatusCode.OK, readiness.StatusCode);
         using var publicJson = JsonDocument.Parse(await readiness.Content.ReadAsStringAsync());
-        Assert.Equal("degraded", publicJson.RootElement.GetProperty("status").GetString());
+        Assert.Equal("healthy", publicJson.RootElement.GetProperty("status").GetString());
     }
 
     [Fact]
@@ -195,11 +215,10 @@ public sealed class HealthApiTests
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
         Assert.True(timer.Elapsed < TimeSpan.FromSeconds(4), $"checks did not run in parallel or exceed their bound: {timer.Elapsed}");
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(JsonValueKind.Object, json.RootElement.ValueKind);
-        Assert.Equal(new[] { "reason", "status" }, json.RootElement.EnumerateObject()
-            .Select(property => property.Name).Order(StringComparer.Ordinal));
-        Assert.Equal("timeout", json.RootElement.GetProperty("reason").GetString());
+        Assert.Equal("database", json.RootElement.GetProperty("failure_cause").GetString());
         Assert.Equal("unhealthy", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal("timeout", json.RootElement.GetProperty("checks").GetProperty("database").GetProperty("error").GetString());
+        Assert.Equal("healthy", json.RootElement.GetProperty("checks").GetProperty("explorer").GetProperty("status").GetString());
     }
 
     [Fact]

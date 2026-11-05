@@ -119,8 +119,11 @@ internal sealed class HealthDiagnosticsService(
             var ready = checksByDependency.Values.Where(result => result.Criticality == "critical")
                 .All(result => result.Status == "healthy");
             var status = checksByDependency.Values.All(result => result.Status == "healthy") ? "healthy" : ready ? "degraded" : "unhealthy";
-            var failureCause = checksByDependency.Values.Any(result => result.Criticality == "critical" && result.Error == "timeout") ? "timeout"
-                : checksByDependency.Values.Any(result => result.Error is not null) ? "dependency_unavailable" : null;
+            var failureCause = checksByDependency
+                .Where(pair => pair.Value.Status == "unhealthy")
+                .Select(pair => pair.Key)
+                .Order(StringComparer.Ordinal)
+                .FirstOrDefault();
             var snapshot = new HealthCheckSnapshot(DateTimeOffset.UtcNow, status, ready, checksByDependency, failureCause);
             lock (_cacheLock)
             {

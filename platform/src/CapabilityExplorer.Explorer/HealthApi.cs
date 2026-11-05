@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace CapabilityExplorer.Explorer;
 
@@ -22,16 +23,10 @@ internal static class HealthApi
             var started = lifecycle.HasStarted;
             return PublicHealth(http, health, started ? "healthy" : "unhealthy", started ? 200 : 503);
         });
-        app.MapGet("/health/ready", async (HttpContext http, HealthDiagnosticsService health, HealthApplicationLifecycle lifecycle, SourceIpRateLimiter limits) =>
+        app.MapGet("/health/ready", (HttpContext http, HealthDiagnosticsService health, HealthApplicationLifecycle lifecycle, SourceIpRateLimiter limits) =>
         {
             if (!limits.TryAcquire(http, internalRoute: false)) return RateLimited(http, health);
-            if (!lifecycle.IsReady)
-                return PublicHealth(http, health, "unhealthy", 503);
-            var snapshot = await health.CheckAsync(http.RequestAborted);
-            if (snapshot.FailureCause == "timeout") return TimeoutResponse();
-            if (!lifecycle.IsReady)
-                return PublicHealth(http, health, "unhealthy", 503);
-            return PublicHealth(http, health, snapshot.Status, snapshot.Ready ? 200 : 503);
+            return PublicHealth(http, health, lifecycle.IsReady ? "healthy" : "unhealthy", lifecycle.IsReady ? 200 : 503);
         });
         app.MapGet("/internal/health", async (HttpContext http, HealthDiagnosticsService health, HealthEndpointOptions options,
             SourceIpRateLimiter limits) =>
@@ -107,7 +102,7 @@ internal static class HealthApi
             ["version"] = HealthDiagnosticsService.Version,
             ["uptime_seconds"] = Math.Round(health.UptimeSeconds, 3),
             ["timestamp"] = DateTimeOffset.UtcNow,
-            ["failure_cause"] = snapshot.FailureCause ?? "none",
+            ["failure_cause"] = JsonSerializer.SerializeToElement(snapshot.FailureCause),
             ["memory"] = new
             {
                 heap_used_mb = Math.Round(GC.GetTotalMemory(false) / 1048576d, 2),
