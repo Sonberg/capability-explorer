@@ -69,6 +69,27 @@ later publication must not redirect an in-flight operation to another snapshot.
 The standalone `ce embed --snapshot <uuid>` path retries that same retained
 snapshot without changing its published generation.
 
+Status, automatic enrichment and standalone retry share lazy embedding
+configuration. Use the same `CE_MODEL_CONFIG` JSON file in all processes; its
+`interpretation` object contains model options, and its optional `modelSettings`
+path is relative to that JSON file. The same sources also support
+`appsettings[.<environment>].json`, `interpretation__*` environment values,
+`CE_MODEL_SETTINGS`, and explicit `--interpretation:<option>` /
+`--modelSettings` arguments. Repeat process-local arguments for independently
+started processes. `CE_MODEL_ENDPOINT` and `CE_EMBEDDING_MODEL` retain final
+precedence; `CE_EMBEDDING_REVISION` distinguishes revisions behind an alias.
+
+An authorized operator with `CE_DATABASE` configured can retry without
+republishing:
+
+```sh
+CE_MODEL_CONFIG=/absolute/path/embedding-host.json ce embed --snapshot <uuid>
+```
+
+Alternatively, supply `--connection` using the existing database credential
+mechanism. Explorer's **Refresh status / Retry status** buttons only read
+metadata; they never execute this command or invoke the provider.
+
 Projection identity includes the exact snapshot and a model fingerprint
 covering provider, canonical endpoint, deployment, explicit revision when
 available, and input recipe. Credentials are excluded from the fingerprint and
@@ -82,7 +103,8 @@ projection does not call the provider again or overwrite ready vectors; retrying
 failure cannot increment counters twice. Even artifacts with zero eligible
 occurrences must be explicitly enumerated and sealed.
 
-`GET /api/embeddings/status` reports the pinned snapshot, effective selection,
+`GET /api/embeddings/status?cap=<scope>&snapshot=<uuid>&view=<repo:sha,...>`
+reports the pinned snapshot, effective selection,
 configured/covered model identities, coverage, completion time and counts.
 Reads inspect bounded projection/artifact metadata, never enumerate nodes or
 scan vectors. Selected-view readiness considers only the selected artifacts;
