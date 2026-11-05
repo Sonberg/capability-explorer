@@ -123,6 +123,7 @@ internal static class AnalysisWorkerCommand
     {
         var attempt = new AttemptIdentity(run.RunId, run.AttemptId!);
         using var process = new AnalysisProcess(root, store, run, stop, runtime);
+        using var totalTiming = process.Measure("analysis.total");
         try
         {
             var prepared = await AnalysisPreparation.Prepare(root, store, run, process, stop);
@@ -134,18 +135,30 @@ internal static class AnalysisWorkerCommand
             await PublicationGate.WaitAsync(stop);
             try
             {
+                using var timing = process.Measure("publication");
                 process.CheckCancellation();
                 using var publication = store.BeginPublication(owner, attempt, manifest);
                 await AnalysisPublication.Publish(root, store.ReadRun(run.RunId), prepared, publication);
                 completed = publication.Complete("Core artifacts published; optional enrichment pending.");
+                timing.Complete();
             }
             finally { PublicationGate.Release(); }
-            try { AnalysisSourceCleanup.AfterPublication(store,completed,prepared); }
+            try
+            {
+                using var timing = process.Measure("cleanup");
+                AnalysisSourceCleanup.AfterPublication(store,completed,prepared);
+                timing.Complete();
+            }
             catch (Exception cleanupError) when (cleanupError is IOException or InvalidOperationException or UnauthorizedAccessException)
             { Console.Error.WriteLine("analysis: source cleanup incomplete; preserved attempt data for inspection"); }
-            var enrichment = await AnalysisEnrichment.Run();
-            store.RecordEnrichment(owner,attempt,enrichment.Outcome,enrichment.Detail);
+            using (var timing = process.Measure("enrichment"))
+            {
+                var enrichment = await AnalysisEnrichment.Run();
+                store.RecordEnrichment(owner,attempt,enrichment.Outcome,enrichment.Detail);
+                if (enrichment.Outcome != "failed") timing.Complete();
+            }
             Console.WriteLine($"analysis {run.RunId}/{run.AttemptId}: done");
+            totalTiming.Complete();
             return 0;
         }
         catch (Exception e)

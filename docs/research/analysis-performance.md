@@ -2,8 +2,13 @@
 
 Report date: 2026-11-05. Evidence: eight successful local analysis runs from
 2026-11-04, using Podman with package acquisition enabled and no PostgreSQL
-publication. This is a read-only retrospective investigation, not a new benchmark
-or a pipeline change.
+publication. The initial investigation was read-only, not a new benchmark.
+The follow-up below records subsequent timing instrumentation and npm diagnosis.
+
+**Measured improvement, 2026-11-05:** verified NuGet package reuse reduced a real
+Kraken analysis from 179.8 s to 111.7 s (37.9%). A same-build fresh-attempt control
+took 171.9 s, making the directly comparable warm-run reduction 35.0%. All five
+artifact files were byte-for-byte identical. See the measured optimization below.
 
 ## Executive conclusion
 
@@ -90,9 +95,11 @@ when they do not contribute production analysis units.
 
 Unavailable installations are counted but do not by themselves fail the entire
 analysis. A run can finish successfully while producing partial semantic coverage.
-The retained evidence does not establish whether these failures were authentication,
-package availability, TLS, retry exhaustion or timeout failures. Package helper
-output is deliberately not persisted because remote errors may expose secrets.
+The initial run receipts did not establish whether these failures were authentication,
+package availability, TLS, retry exhaustion or timeout failures. A later sanitized
+inspection of retained npm debug logs confirms authentication failures and one
+lockfile mismatch; see the follow-up below. Package helper output is deliberately
+not copied into the analysis log because remote errors may expose secrets.
 Do not treat the near-minute-scale durations as proof of a particular timeout.
 
 ### 2. NuGet packages are downloaded into fresh attempt-owned directories
@@ -265,7 +272,260 @@ Limitations:
 - Glufs and unsuccessful/reconciled attempts are excluded. This report does not
   quantify total time lost to earlier failures and operator recovery.
 
-Validation for this documentation-only investigation checks all eight terminal
+Validation for the initial documentation-only investigation checked all eight terminal
 states and local effect confirmations, ordered boundaries, stage-sum agreement,
 coverage totals and the report's local Markdown links. No production behavior was
-changed, so no artificial red/green test is claimed.
+changed in that initial investigation; its checks are not red/green tests.
+
+## First implementation increment
+
+Implemented on 2026-11-05, following approval to start with measurement and npm
+failure diagnosis. No cache, concurrency, retry, credential or target-lockfile
+policy was changed. No new private capability analysis was launched.
+
+### Confirmed npm findings
+
+A read-only, sanitized inspection found these records in the existing sandbox
+npm debug cache. Only fixed error codes, registry families, durations and a
+lockfile-mismatch flag were extracted. Raw errors, package names, source paths,
+URLs and credentials were not copied into this report.
+
+| Capability | npm log start (UTC, 2026-11-04) | Observed log window | Confirmed finding |
+| --- | --- | ---: | --- |
+| APT | 20:17:50.822 | 731.7 s | `E401`, six HTTP 401 results from GitHub Packages |
+| APT | 20:30:02.745 | 0.4 s | `EUSAGE`, package manifest and lockfile out of sync |
+| Squid | 21:01:40.076 | 680.6 s | `E401`, six HTTP 401 results from GitHub Packages |
+| Squid | 21:13:46.251 | 86.6 s | `E401`, two HTTP 401 results from GitHub Packages |
+| ASQ | 21:35:05.329 | 537.5 s | `E401`, two HTTP 401 results from GitHub Packages |
+
+Log windows are filename start time to final file modification, not a new npm
+benchmark. Individual denied requests in these logs lasted about 1.6-6.1 seconds;
+they do not explain every second of the much longer installation windows.
+The logs prove authentication failure, not whether the token was missing, expired,
+insufficiently authorized or overridden by another credential source.
+
+The immediate operational correction is to verify the configured GitHub Packages
+credential and any matching host npm token override, including package access and
+organization authorization where applicable. Secret values must be entered via
+the existing private credential configuration, not chat or durable analysis logs.
+APT's manifest/lockfile mismatch needs correction in its owning repository;
+silently switching from `npm ci` to an unlocked install would weaken reproducibility.
+
+### Durable measurements
+
+[The telemetry scope](../../platform/src/CapabilityExplorer.Cli/AnalysisTelemetryStage.cs)
+uses a monotonic stopwatch and appends one `-- telemetry: ` JSON record to the
+existing private run log. Records have schema `ce.analysis.telemetry.v1`, run and
+attempt IDs, stage, optional repository/language, elapsed milliseconds and outcome.
+Package records also contain coverage counts and fixed failure categories.
+
+Instrumented stages:
+
+- `analysis.total`: execution through cleanup and the enrichment check, excluding
+  admission, queue waiting and Make startup.
+- `sources.check` and per-repository `sources.export`.
+- `hashing.sources.before` and `hashing.dependencies.before`.
+- Per-repository `packages.nuget` and aggregate `packages.npm`.
+- `extraction` and per-repository/language `extraction.job`.
+- `integrity.final`, `publication`, `cleanup` and `enrichment`.
+
+Timers default to `failed` until completion is recorded. Package coverage with
+unavailable dependencies is `partial`, not a false complete-coverage result.
+An enrichment failure does not alter the already-published core analysis state.
+Completed timing scopes can include partial analysis artifacts; timing outcome
+does not replace artifact coverage or the journal's publication state.
+
+Nested scopes overlap: do not sum `analysis.total`, `extraction` and extraction
+jobs as independent costs. Logging retains the existing 16 MiB run-log bound and
+0600 creation mode. No timings enter deterministic artifact/config identities.
+
+Npm stderr is captured privately and bounded in memory. Only allowlisted error-code
+categories reach durable telemetry: authentication, authorization, package missing,
+TLS, timeout/network, dependency conflict, usage/lockfile, or unknown. Unknown
+errors never fall back to logging their messages. These are diagnostic hints from
+untrusted helper output, not proof of a particular credential defect.
+
+This increment does not yet provide per-npm-project timing, failed-helper stderr
+for a nonzero helper exit, HTTP retry counts, download-byte/cache-hit statistics,
+or separate database import and embedding substage profiles. It does not claim a
+measured speedup; it establishes the evidence needed for the next optimization.
+
+### Acceptance and test evidence
+
+| Scenario | Executable test | Observed pre-change failure | Green |
+| --- | --- | --- | --- |
+| Given npm fails, when package acquisition ends, then timings and safe failure categories persist without secrets or raw output | `AnalysisPackageTests.Package_credentials_and_untrusted_fetch_output_do_not_enter_run_evidence_or_offline_children`, seven error-code cases | All seven failed `Assert.Contains`: telemetry collection empty | 7/7 |
+| Given serial extractor jobs, when they complete or the first fails, then each started job and the aggregate have truthful timings | `AnalysisParallelTests.Offline_jobs_run_serially_and_merge_isolated_outputs_even_for_older_parallel_settings` and `Failing_first_serial_job_leaves_later_jobs_unstarted_without_merging_or_erasing_uncertainty` | All four failed `Assert.Single`: telemetry collection empty | 4/4 |
+| Given a complete local analysis, when it finishes, then each major stage has durable private timing | `AnalysisParallelTests.Given_a_complete_local_analysis_when_it_finishes_then_each_major_stage_has_private_durable_timing` | Actual local export/publication completed; `Assert.Single` found only extraction records, not lifecycle stages | 1/1 |
+
+Commands run from the repository root, each with `cd platform` first:
+
+```sh
+dotnet test tests/CapabilityExplorer.Store.Tests/CapabilityExplorer.Store.Tests.csproj --filter FullyQualifiedName~AnalysisPackageTests --no-restore --verbosity minimal
+dotnet test tests/CapabilityExplorer.Store.Tests/CapabilityExplorer.Store.Tests.csproj --filter 'FullyQualifiedName~Offline_jobs_run_serially|FullyQualifiedName~Failing_first_serial_job' --no-restore --verbosity minimal
+dotnet test tests/CapabilityExplorer.Store.Tests/CapabilityExplorer.Store.Tests.csproj --filter FullyQualifiedName~Given_a_complete_local_analysis --no-restore --verbosity minimal
+dotnet test tests/CapabilityExplorer.Store.Tests/CapabilityExplorer.Store.Tests.csproj --filter 'FullyQualifiedName~Given_a_complete_local_analysis|FullyQualifiedName~Offline_jobs_run_serially|FullyQualifiedName~Failing_first_serial_job|FullyQualifiedName~AnalysisPackageTests' --no-restore --verbosity minimal
+dotnet test tests/CapabilityExplorer.Store.Tests/CapabilityExplorer.Store.Tests.csproj --filter 'FullyQualifiedName~AnalysisParallelTests|FullyQualifiedName~AnalysisPackageTests|FullyQualifiedName~AnalysisDependencyTests|FullyQualifiedName~AnalysisCapabilityConcurrencyTests|FullyQualifiedName~LocalPublicationTests' --no-restore --verbosity minimal
+```
+
+The first three selectors each had an assertion-failing red run, then passed after
+their corresponding production change. Combined focused verification passed
+12/12; directly affected regressions passed 40/40, exit 0. Test editor discovery
+returned no tests, so the existing .NET/VSTest runner was used. Earlier fixture
+compilation and permission errors were corrected before the meaningful red runs;
+they are not counted as behavioral failures.
+
+Immutable source snapshots are retained locally under
+`.sandbox-cache/analysis-performance-evidence`, with these SHA-256 identities:
+
+| Snapshot | SHA-256 |
+| --- | --- |
+| Package red: `red-source.tgz` | `3f29ffc1faff5e33a32aa03db280f92497dc25a9a42b57af38dd2d1e2b1db372` |
+| Extraction red: `extraction-red-source.tgz` | `e0311037a9a2c7d555e3d30cdf8ed14aa5b2921191bf451c7c30a2a1a6b56925` |
+| Lifecycle red: `lifecycle-red-source.tgz` | `270b708f7ad639a5f44d8b6433f901236b3faa3b94eae754634812fac9e63352` |
+| Final implementation/tests: `green-source.tgz` | `d924567e0a88638a326320a8e69f8766c22608fc4b2804f0a3069cfa561017fb` |
+
+The package regression source is unchanged between its assertion-red and final
+green (`d9fe226e037502adb9c6999eb554ae39fa69c3c5a59a84b9efee6d1c5450cc00`).
+Extraction and lifecycle regression versions are preserved in their respective
+snapshots; subsequent additions did not weaken their assertions.
+
+No JavaScript file was modified, no new test framework or dependency was added,
+and CI commands were not changed. Full hosted/local Docker CI and database-backed
+publication/embedding qualification were not run for this increment. The focused
+local-worker test uses real fixture Git export and local artifact publication,
+with a fake extractor/runtime so it does not depend on private feeds or Docker.
+
+## Measured package-reuse optimization
+
+Following the request to run, measure and adjust until speed improves, three real
+Kraken analyses were completed on 2026-11-05. All used Podman, `PACKAGES=1`, Git
+authentication, the same capability/bindings configuration, offline extraction
+and confirmed local publication. PostgreSQL publication and embeddings were
+disabled for these controlled runs. This was not a reduced-coverage comparison.
+
+### Observed result
+
+| Run | Total active execution | NuGet acquisition | Verified reuse/copy | Downloaded / already present / unavailable |
+| --- | ---: | ---: | ---: | --- |
+| Original baseline | 179.842 s | 108.739 s | Not implemented | 197 / 0 / 0 |
+| Optimized build, fresh attempt | 171.939 s | 107.021 s | 0.066 s, miss | 197 / 0 / 0 |
+| Optimized build, verified reuse | 111.740 s | 12.865 s | 36.824 s, hit | 0 / 197 / 0 |
+
+- Against the original baseline: **68.103 s saved, 37.868% less active time**.
+- Against the same optimized build's fresh-attempt control: **60.199 s saved,
+  35.012% less active time**.
+- Package preparation, including reuse verification and copying, fell from
+  approximately 107.1 s to 49.7 s in the same-build comparison. The 36.8 s spent
+  verifying/copying retained packages is included, not hidden from the result.
+- The supervised optimized runs also recorded whole-process wall times:
+  **175.025 s fresh versus 114.658 s warm**. The original baseline's outer wall
+  time was not independently recorded, so its comparison uses persisted active
+  execution timers consistently.
+
+The cold control means a fresh attempt-owned package directory, not purged machine,
+image, DNS or registry caches. Extraction also varied between runs (57.5, 51.8
+and 45.8 seconds). Therefore do not attribute every second of total improvement
+solely to package copying. The measured package-stage reduction itself is about
+57.4 seconds in the same-build comparison.
+
+### Equivalence and publication proof
+
+| Run | Run ID |
+| --- | --- |
+| Original baseline | `20a854fccc9043cba688606ac0339923` |
+| Optimized fresh attempt | `15f68bcdbfe34ed3aa0f7194fc5b84e8` |
+| Optimized verified reuse | `139794ac6fb14af6957bc6e5d0b1ddeb` |
+
+A read-only verification of the three run directories checked:
+
+- Every run ended `done`, with only confirmed local-artifact publication effects.
+- Each resolved manifest's bytes match its bound SHA-256 journal receipt.
+- Source revision, source content identity, feed policy, npm coverage and package
+  content identity are equal across all three runs.
+- Every staged artifact's bytes match its bound hash, and all **five artifact
+  hashes are exactly equal across all three runs**, including their coverage
+  diagnostics and configuration identities.
+- The optimized control and warm runs have the same frozen runtime identity.
+- Warm-run provenance identifies the optimized control as its package source,
+  and dependency coverage is `0:197:0`, versus `197:0:0` in the control.
+
+All assertions passed. No source, package coverage, extraction rule or artifact
+validation was skipped to obtain the speedup.
+
+### Implementation and safety boundary
+
+[Verified package reuse](../../platform/src/CapabilityExplorer.Cli/AnalysisPackageReuse.cs)
+seeds a new attempt's empty package directory from existing retained evidence.
+Only a completed run of the same capability with confirmed effects can qualify.
+Its source membership/revisions/content, include-tests policy, allowed NuGet
+origins, public feed policy and full runtime identity must match. The resolved
+manifest is size-bounded, read once, hashed against the completed journal receipt
+and parsed from those same bytes. Its recorded package-tree identity must match
+the retained files before copying.
+
+Packages are ordinary independent copies into the new attempt, not symlinks or
+shared writable trees. Both the new copy and retained source are rehashed after
+copying; a mutation during materialization fails rather than silently accepting a
+partially seeded tree. Normal NuGet resolution and fetching still execute, so
+missing packages can be downloaded and floating versions retain their existing
+resolution behavior. Npm installation behavior is unchanged.
+
+There is no new machine-global cache, cache purge or automatic retirement policy.
+Reuse only consumes already-retained, workspace-owned attempt evidence; each new
+attempt still owns its package files, as before. Existing rollback/evidence data
+is not deleted or rewritten. Runtime/source/feed changes cause a cold miss. The
+first run after this code change was deliberately cold because old runtime
+identities are not accepted as compatible.
+
+Scope limitation: these results establish faster repeated Kraken analysis with
+matching inputs. They do not prove a speedup for first-time analysis, changed
+sources, different runtimes or npm-authentication failures. The unrelated GitHub
+Packages credential and APT lockfile issues remain unresolved.
+
+### Executable verification
+
+Acceptance scenario:
+`AnalysisPackageTests.Given_retained_packages_when_another_attempt_starts_then_only_bound_matching_completed_content_is_reused`.
+Eight cases cover matching evidence, changed runtime, changed source, changed
+feeds, altered manifest bytes, altered package bytes, package symlinks and an
+unknown prior run. The matching case also proves writes to the new copy do not
+change the retained package source.
+
+Run from the repository root:
+
+```sh
+cd platform
+dotnet test tests/CapabilityExplorer.Store.Tests/CapabilityExplorer.Store.Tests.csproj --filter FullyQualifiedName~Given_retained_packages --no-restore --verbosity minimal
+dotnet test tests/CapabilityExplorer.Store.Tests/CapabilityExplorer.Store.Tests.csproj --filter 'FullyQualifiedName~AnalysisParallelTests|FullyQualifiedName~AnalysisPackageTests|FullyQualifiedName~AnalysisDependencyTests|FullyQualifiedName~AnalysisCapabilityConcurrencyTests|FullyQualifiedName~LocalPublicationTests' --no-restore --verbosity minimal
+```
+
+Before implementation the matching case failed with expected `0:1:0`, actual
+`1:0:0`; the seven rejection cases already passed. After implementation all eight
+passed, and the directly affected regression batch passed **48/48**, exit 0.
+The same reuse test source was used for red and green, SHA-256
+`d84dc2e4b24d839031e79b91f9c59da86e1850c91cb8285c50bc432b3d50e63b`.
+
+Real-run command, from the repository root, executed once for the original
+baseline and twice serially after the optimized build:
+
+```sh
+CE_CONTAINER_ENGINE=podman CE_DATABASE= PACKAGES=1 GITHUB_AUTH=git BINDINGS=bindings.json scripts/analyze kraken capabilities.json
+```
+
+The initial baseline launch was blocked by the idle development worker's exclusive
+lock, not an analysis failure. That idle worker was stopped for the controlled
+runs; Explorer was left running. The background analysis worker was restored
+after verification with the development PostgreSQL settings. No active or unknown
+run was reset or reconciled, and no benchmark request remains queued.
+
+Local source-bound evidence under `.sandbox-cache/analysis-performance-evidence`:
+
+| Snapshot | SHA-256 |
+| --- | --- |
+| `reuse-red-source.tgz` | `3cbb1df457826987e95fc534b9cc2d0c26a43f4311263dd62bc6ed742ac1b271` |
+| `reuse-green-source.tgz` | `3cfbe1793e236dea4d71326a7c897725f3499048a473b56277d7f7adcfcdff11` |
+
+Editor diagnostics and focused build/tests passed. Full Docker CI and
+database-backed performance qualification remain unexecuted; no such pass or
+database speedup is claimed.

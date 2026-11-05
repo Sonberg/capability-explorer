@@ -26,6 +26,7 @@ internal static class AnalysisParallelExtraction
         }
         var jobs = languages.SelectMany(language => repositories.Select(repo => new Job(repo,language,
             Path.Combine(work,"out/tasks",language,repo.Id,repo.Sha)))).ToArray();
+        using var timing = process.Measure("extraction");
         var started = Stopwatch.StartNew();
         Console.WriteLine("-- extraction concurrency: 1");
         try
@@ -55,12 +56,14 @@ internal static class AnalysisParallelExtraction
             }
         }
         Console.WriteLine($"-- timing: extraction {started.Elapsed.TotalSeconds:F1}s");
+        timing.Complete();
 
         async Task Execute(Job job)
         {
             try
             {
                 process.CheckCancellation();
+                using var jobTiming = process.Measure("extraction.job",job.Repository.Id,job.Language);
                 var timer = Stopwatch.StartNew();
                 AnalysisPreparation.RejectLinks(job.Output);
                 Directory.CreateDirectory(job.Output);
@@ -77,6 +80,7 @@ internal static class AnalysisParallelExtraction
                 if (job.Language != "sql" && run.Settings.IncludeTests) args.Add("--include-tests");
                 await process.Run("scripts/sandbox",args);
                 Console.WriteLine($"-- timing: {job.Repository.Id} {job.Language} {timer.Elapsed.TotalSeconds:F1}s");
+                jobTiming.Complete();
             }
             catch { process.Abort(); throw; }
         }

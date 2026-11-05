@@ -1,5 +1,6 @@
 extern alias analysiscli;
 using System.Diagnostics;
+using System.Text.Json;
 using CapabilityExplorer.Capabilities.Analysis;
 using analysiscli::CapabilityExplorer.Cli;
 using Xunit;
@@ -36,6 +37,21 @@ public sealed class AnalysisParallelTests
         }
         var peaks = File.ReadAllLines(Path.Combine(f.Root,"peaks")).Select(int.Parse);
         Assert.All(peaks,peak => Assert.InRange(peak,1,expected));
+        var telemetry = Telemetry(f.Store,f.Run);
+        var extraction = Assert.Single(telemetry, entry => entry.GetProperty("stage").GetString() == "extraction");
+        Assert.Equal("completed",extraction.GetProperty("outcome").GetString());
+        var jobs = telemetry.Where(entry => entry.GetProperty("stage").GetString() == "extraction.job").ToArray();
+        Assert.Equal(f.Repositories.Length * 3,jobs.Length);
+        foreach (var repository in f.Repositories)
+            foreach (var language in new[] { "cs", "ts", "sql" })
+                Assert.Single(jobs,entry => entry.GetProperty("repositoryId").GetString() == repository.Id && entry.GetProperty("language").GetString() == language);
+        Assert.All(telemetry,entry =>
+        {
+            Assert.Equal(f.Run.RunId,entry.GetProperty("runId").GetString());
+            Assert.Equal(f.Run.AttemptId,entry.GetProperty("attemptId").GetString());
+            Assert.True(entry.GetProperty("elapsedMilliseconds").GetDouble() >= 0);
+            Assert.Equal("completed",entry.GetProperty("outcome").GetString());
+        });
     }
 
     [Fact]
@@ -55,6 +71,9 @@ public sealed class AnalysisParallelTests
         Assert.All(f.Repositories,repo => Assert.Empty(Directory.GetFiles(repo.Staging)));
         Assert.Equal("unknown",f.Store.FinishExecution(f.Owner,new(f.Run.RunId,f.Run.AttemptId!),1,process.TerminationConfirmed).State);
         Assert.False(f.Store.ReadRun(f.Run.RunId).CancellationRequested);
+        var telemetry = Telemetry(f.Store,f.Run);
+        Assert.Equal("failed",Assert.Single(telemetry,entry => entry.GetProperty("stage").GetString() == "extraction").GetProperty("outcome").GetString());
+        Assert.Equal("failed",Assert.Single(telemetry,entry => entry.GetProperty("stage").GetString() == "extraction.job").GetProperty("outcome").GetString());
     }
 
     [Fact]
@@ -242,6 +261,98 @@ public sealed class AnalysisParallelTests
             await survivor.WaitForExitAsync(timeout.Token);
         }
     }
+
+    [Fact]
+    public async Task Given_a_complete_local_analysis_when_it_finishes_then_each_major_stage_has_private_durable_timing()
+    {
+        if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Unix qualification required");
+        using var fixture = new ParallelFixture(1);
+        var root = Path.Combine(fixture.Root,"pipeline");
+        void Write(string relative, string text, bool executable = false)
+        {
+            var file = Path.Combine(root,relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            File.WriteAllText(file,text);
+            if (executable) File.SetUnixFileMode(file,UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        Write("capabilities.json",JsonSerializer.Serialize(new
+        {
+            capabilities = new[] { new { id = "sales", repositories = new[]
+            {
+                new { id = "web-ts", kind = "local", location = Fixtures.RepoDirectory("web-ts"), @ref = "v1-base" }
+            } } }
+        }));
+        foreach (var file in new[]
+        {
+            "config/runtime/images.env", "scripts/lib/container-engine.sh", "scripts/lib/analysis-runtime.ts",
+            "scripts/fetch-npm-packages.mjs", "extractors/ts/package-lock.json",
+            "platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll",
+            "platform/src/CapabilityExplorer.Extractors.CSharp/bin/Debug/net10.0/ce-cs.dll"
+        }) Write(file,"");
+        Write("extractors/ts/src/cli.ts","\"extract\" \"extract-sql\"");
+        Write("scripts/github-token","#!/bin/sh\nexit 0\n",true);
+        var snapshot = JsonSerializer.Serialize(new
+        {
+            backend = "podman", executable = "/fixture/podman", prefixArguments = new[] { "--remote=false" }, fingerprint = new string('a',64)
+        });
+        Write("scripts/container-engine","#!/bin/sh\nprintf '%s' '" + snapshot + "'\n",true);
+        Write("artifact.jsonl",Fixtures.Golden("web-ts/v1-base/_fixture_web.jsonl"));
+        Write("scripts/sandbox",string.Join('\n',new[]
+        {
+            "#!/bin/sh", "kind=other; output=",
+            "for arg in \"$@\"; do case \"$arg\" in *ce-cs.dll) kind=cs;; esac; done",
+            "while [ \"$#\" -gt 0 ]; do if [ \"$1\" = --out ]; then shift; output=\"$1\"; fi; shift; done",
+            "case \"$output\" in /work/*) output=\"$PWD/${output#/work/}\";; esac",
+            "if [ \"$kind\" = cs ]; then cp artifact.jsonl \"$output/artifact.jsonl\"; fi", ""
+        }),true);
+        var feeds = Path.Combine(fixture.Root,"pipeline-feeds.json");
+        File.SetUnixFileMode(fixture.Root,UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        File.WriteAllText(feeds,"{\"feeds\":[]}");
+        File.SetUnixFileMode(feeds,UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        var start = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = root, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        start.ArgumentList.Add(Path.Combine(Fixtures.RepositoryRoot,"platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll"));
+        foreach (var argument in new[] { "analysis-run", "--capability", "sales" }) start.ArgumentList.Add(argument);
+        start.Environment.Clear();
+        foreach (var name in new[] { "PATH", "HOME", "TMPDIR" })
+            if (Environment.GetEnvironmentVariable(name) is { } value) start.Environment[name] = value;
+        start.Environment["CE_CONTAINER_ENGINE"] = "podman";
+        start.Environment["CE_PACKAGE_FEEDS_FILE"] = feeds;
+        start.Environment["PACKAGES"] = "0";
+        start.Environment["GITHUB_AUTH"] = "none";
+        using var child = Process.Start(start)!;
+        var stdout = child.StandardOutput.ReadToEndAsync();
+        var stderr = child.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await child.WaitForExitAsync(timeout.Token);
+        await stdout;
+        Assert.True(child.ExitCode == 0,await stderr);
+        var store = new FileRunStore(Path.Combine(root,".sandbox-cache/requests"));
+        var id = Path.GetFileName(Assert.Single(Directory.GetDirectories(Path.Combine(root,".sandbox-cache/requests/runs"))));
+        var run = store.ReadRun(id);
+        Assert.Equal("done",run.State);
+        var telemetry = Telemetry(store,run);
+        foreach (var stage in new[]
+        {
+            "analysis.total", "sources.check", "sources.export", "hashing.sources.before", "hashing.dependencies.before",
+            "integrity.final", "publication", "cleanup", "enrichment"
+        })
+        {
+            var entry = Assert.Single(telemetry,value => value.GetProperty("stage").GetString() == stage);
+            Assert.Equal("completed",entry.GetProperty("outcome").GetString());
+            Assert.True(entry.GetProperty("elapsedMilliseconds").GetDouble() >= 0);
+        }
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite,File.GetUnixFileMode(store.LogPath(id)));
+        Assert.Empty(Directory.GetDirectories(Path.Combine(store.AttemptDirectory(new(id,run.AttemptId!)),"src")));
+        var canonical = Path.Combine(root,".sandbox-cache/artifacts/web-ts",Fixtures.Lock["web-ts"]["v1-base"],"artifact.jsonl");
+        Assert.Equal(Fixtures.Golden("web-ts/v1-base/_fixture_web.jsonl"),File.ReadAllText(canonical));
+    }
+
+    private static JsonElement[] Telemetry(FileRunStore store, AnalysisRun run) =>
+        (store.ReadLog(run.RunId) ?? "").Split('\n').Where(line => line.StartsWith("-- telemetry: ",StringComparison.Ordinal))
+            .Select(line => JsonDocument.Parse(line[14..]).RootElement.Clone()).ToArray();
 
     private sealed class Runtime(bool cleanupConfirmed = true) : IAnalysisContainerRuntime
     {
