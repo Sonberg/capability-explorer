@@ -203,12 +203,13 @@ GITHUB_AUTH ?= git
 ANALYZE_JOBS ?= 2
 export ANALYZE_JOBS
 PORT ?= 5080
+BIND_ADDRESS ?= 127.0.0.1
 EXPLORER_SOURCE ?= files
 # Human-maintained service map that binds @unbound hints (see schema/README.md). Used by explore and by the optional import in analyze.
 BINDINGS ?= $(wildcard bindings.json)
 explore: fixtures build
 	@echo "Capability Explorer: http://127.0.0.1:$(PORT)"
-	ASPNETCORE_URLS="http://127.0.0.1:$(PORT)" $(NODE) scripts/explorer-host.mjs platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll \
+	ASPNETCORE_URLS="http://$(BIND_ADDRESS):$(PORT)" $(NODE) scripts/explorer-host.mjs platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll \
 	  --source $(EXPLORER_SOURCE) --artifacts $(ARTIFACTS) --repos fixtures/.repos $(if $(EVALUATION),--evaluation $(EVALUATION)) \
 	  --capabilities $(CAPABILITIES) --workspace .sandbox-cache/sources $(if $(BINDINGS),--bindings $(BINDINGS)) \
 	  $(if $(INTERPRETATION),--interpretation:provider $(INTERPRETATION) --interpretation:cacheDirectory .sandbox-cache/interpretations) \
