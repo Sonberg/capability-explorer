@@ -109,6 +109,8 @@ configured/covered model identities, coverage, completion time and counts.
 Reads inspect bounded projection/artifact metadata, never enumerate nodes or
 scan vectors. Selected-view readiness considers only the selected artifacts;
 an unrelated artifact failure does not invalidate their completed projection.
+`coveredArtifactCount` counts fully ready artifacts, not enumeration seals;
+a sealed artifact can still contain failed occurrences.
 
 | State | Meaning |
 |---|---|

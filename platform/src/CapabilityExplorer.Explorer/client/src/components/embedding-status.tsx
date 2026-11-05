@@ -51,7 +51,7 @@ export function EmbeddingStatusPanel({ scope, meta, selection }: {
       <p className="mt-2 font-medium">PostgreSQL similarity search unavailable.</p>
       {data && <div className="mt-2 space-y-2">
         <p>Coverage scope: selected view · {data.selectedArtifactCount} selected artifacts of {data.snapshotArtifactCount} in snapshot
-          {" · "}{data.coveredArtifactCount} selected artifacts sealed.</p>
+          {" · "}{data.coveredArtifactCount} selected artifacts fully covered.</p>
         <p>{data.countsExact && data.counts
           ? <>Occurrences: {data.counts.ready} ready · {data.counts.pending} pending · {data.counts.failed} failed · {data.counts.total} total.</>
           : "Occurrence counts unknown — complete enumeration of the selected view has not been confirmed."}</p>

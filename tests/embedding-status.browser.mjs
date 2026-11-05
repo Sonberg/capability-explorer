@@ -98,6 +98,10 @@ try {
       await panel.getByText('Model identity and exact coverage context', { exact: true }).click();
       if (state !== 'not-configured') assert.match(await panel.innerText(), /synthetic-current-model/);
       if (state === 'stale') assert.match(await panel.innerText(), /synthetic-old-model/);
+      if (state === 'partial-failure') {
+        assert.match(await panel.innerText(), /0 selected artifacts fully covered/);
+        assert.match(await panel.innerText(), /1 failed/);
+      }
       if (!['ready', 'stale', 'partial-failure'].includes(state)) {
         assert.doesNotMatch(await panel.innerText(), /\b0\s+(?:total|ready|pending|failed)/i);
       }
