@@ -2,7 +2,7 @@ using CapabilityExplorer.Capabilities.Analysis;
 
 namespace CapabilityExplorer.Cli;
 
-/// <summary>One host owner dispatches bounded capability tasks and drains every started task before returning.</summary>
+/// <summary>One host owner dispatches one capability at a time and preserves queued work after a failure.</summary>
 internal static class AnalysisCapabilityScheduler
 {
     internal static Task<int> RunAdmitted(FileRunStore store, WorkerOwnership owner, IReadOnlyList<AnalysisRun> runs,
@@ -22,8 +22,7 @@ internal static class AnalysisCapabilityScheduler
             if (queued.Count == 0) return 0;
             var bound = Math.Min(ceiling, queued.Min(run => run.Settings.CapabilityWorkers));
             if (bound is < 1 or > 4) throw new InvalidDataException("queued capability worker ceiling is invalid");
-            var batch = queued.Take(bound).ToArray();
-            var result = await Run(store, owner, batch, bound, execute, stop);
+            var result = await Run(store, owner, queued.Take(1).ToArray(), 1, execute, stop);
             if (result != 0) return result;
         }
         return 130;
@@ -39,11 +38,10 @@ internal static class AnalysisCapabilityScheduler
         if (runs.Count == 0) return 0;
 
         var failed = 0;
-        for (var offset = 0; offset < runs.Count; offset += ceiling)
+        foreach (var admitted in runs)
         {
             if (stop.IsCancellationRequested) return 130;
-            var batch = runs.Skip(offset).Take(ceiling).ToArray();
-            await Task.WhenAll(batch.Select(ExecuteOne));
+            await ExecuteOne(admitted);
             if (stop.IsCancellationRequested) return 130;
             if (Volatile.Read(ref failed) != 0) return 1;
         }

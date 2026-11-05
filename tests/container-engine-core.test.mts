@@ -1,16 +1,36 @@
-import { test } from 'node:test';
+import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
+
+type EngineCall = { engine: string; args: string[]; selectors: Record<string, string | null> };
+type CommandResult = SpawnSyncReturns<string>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item: unknown) => typeof item === 'string');
+}
+function isSelectors(value: unknown): value is Record<string, string | null> {
+  return isRecord(value) && Object.values(value).every(item => item === null || typeof item === 'string');
+}
+function engineCall(line: string): EngineCall {
+  const value: unknown = JSON.parse(line);
+  assert.ok(isRecord(value), `invalid engine log: ${line}`);
+  assert.equal(typeof value.engine, 'string', line);
+  assert.ok(typeof value.engine === 'string' && isStringArray(value.args) && isSelectors(value.selectors), line);
+  return { engine: value.engine, args: value.args, selectors: value.selectors };
+}
 
 // Test-only executables, never production aliases or runtime qualification evidence.
 const source = process.env.CE_RUNTIME_TEST_SOURCE_ROOT ?? fileURLToPath(new URL('../', import.meta.url));
 const selectors = ['CE_CONTAINER_ENGINE', 'CE_PODMAN_CONNECTION', 'DOCKER_HOST', 'DOCKER_CONTEXT',
   'CONTAINER_HOST', 'CONTAINER_CONNECTION', 'CONTAINER_SSHKEY', 'SANDBOX_SOURCES', 'SANDBOX_PASS_ENV',
-  'SANDBOX_NETWORK', 'SANDBOX_EXTRA_CA_FILE', 'SANDBOX_NODE_IMAGE', 'SANDBOX_DOTNET_IMAGE'];
+  'SANDBOX_NETWORK', 'SANDBOX_EXTRA_CA_FILE', 'SANDBOX_NODE_IMAGE', 'SANDBOX_DOTNET_IMAGE', 'CE_ANALYSIS_RUNTIME'];
 const mock = `#!${process.execPath}
 const fs=require('node:fs');
 const path=require('node:path');
@@ -46,7 +66,7 @@ if(op==='pull')process.exit(Number(process.env.MOCK_PULL_EXIT??0));
 if(op==='run')process.exit(Number(process.env.MOCK_RUN_EXIT??0));
 `;
 
-function fixture(t, engines = ['docker', 'podman']) {
+function fixture(t: TestContext, engines: string[] = ['docker', 'podman']) {
   const dir = mkdtempSync(join(tmpdir(), 'ce-runtime-core-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const root = join(dir, 'checkout with spaces'), bin = join(dir, 'bin'), log = join(dir, 'engine.jsonl');
@@ -61,6 +81,7 @@ function fixture(t, engines = ['docker', 'podman']) {
   }
   symlinkSync(process.execPath, join(bin, 'node'));
   cpSync(join(source, 'scripts'), join(root, 'scripts'), { recursive: true });
+  assert.ok(existsSync(join(root, 'scripts/lib/analysis-runtime.ts')), 'copied scripts must include the runtime snapshot helper');
   cpSync(join(source, 'config'), join(root, 'config'), { recursive: true });
   cpSync(join(source, 'Makefile'), join(root, 'Makefile'));
   for (const engine of engines) writeFileSync(join(bin, engine), mock, { mode: 0o755 });
@@ -68,26 +89,34 @@ function fixture(t, engines = ['docker', 'podman']) {
   // Prevent later-slice entrypoints from contacting real Git or restoring/building code.
   for (const cmd of ['gh', 'dotnet', 'curl']) writeFileSync(join(bin, cmd), '#!/bin/sh\nexit 91\n', { mode: 0o755 });
   writeFileSync(join(bin, 'git'), '#!/bin/sh\nif [ "$1" = rev-parse ] && [ "$2" = --show-toplevel ]; then printf "%s\\n" "$TEST_FIXTURE_ROOT"; else exit 91; fi\n', { mode: 0o755 });
-  const env = { ...process.env, PATH: bin, TEST_ENGINE_LOG: log, TEST_FIXTURE_ROOT: root,
+  const env: NodeJS.ProcessEnv = { ...process.env, PATH: bin, TEST_ENGINE_LOG: log, TEST_FIXTURE_ROOT: root,
     TEST_PODMAN_IDENTITY: identity, MOCK_HOST_OS: 'Linux' };
-  for (const key of [...selectors, ...Object.keys(env).filter(k => k.startsWith('MOCK_'))]) delete env[key];
+  for (const key of [...selectors, 'MAKEFLAGS', 'MAKEOVERRIDES', 'MAKELEVEL', 'MFLAGS', ...Object.keys(env).filter(k => k.startsWith('MOCK_'))]) delete env[key];
   env.MOCK_HOST_OS = 'Linux';
-  const calls = () => existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : [];
-  function run(script, args = [], extra = {}, executable = '/bin/bash', timeout = 30000) {
+  const calls = (): EngineCall[] => existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(engineCall) : [];
+  function run(script: string, args: string[] = [], extra: NodeJS.ProcessEnv = {}, executable = '/bin/bash', timeout = 30000) {
     return spawnSync(executable, [join(root, script), ...args], { cwd: root, env: { ...env, ...extra }, encoding: 'utf8', timeout });
   }
   return { dir, root, bin, log, env, identity, run, calls };
 }
-const doctor = f => JSON.parse(f.stdout);
-const operation = call => {
+const doctor = (result: CommandResult): Record<string, unknown> & { contextSha256: string } => {
+  const value: unknown = JSON.parse(result.stdout);
+  assert.ok(isRecord(value), resultError(result));
+  for (const key of ['backend', 'qualification', 'clientVersion', 'serverVersion', 'connection', 'serverOs'])
+    assert.equal(typeof value[key], 'string', `invalid doctor field ${key}: ${result.stdout}`);
+  assert.ok(typeof value.contextSha256 === 'string', result.stdout);
+  return { ...value, contextSha256: value.contextSha256 };
+};
+const operation = (call: EngineCall | undefined) => {
+  assert.ok(call, 'expected an engine command in the fixture log');
   const args = [...call.args];
   while (['--host', '--connection', '--url', '--identity'].includes(args[0])) args.splice(0, 2);
   if (args[0] === '--remote=false') args.shift();
   return args;
 };
-const resultError = r => `${r.error?.message ?? ''}\n${r.stdout}\n${r.stderr}`;
-function passed(r) { assert.equal(r.status, 0, resultError(r)); }
-function refused(r, message) {
+const resultError = (result: CommandResult) => `status=${result.status} signal=${result.signal}\n${result.error?.message ?? ''}\n${result.stdout}\n${result.stderr}`;
+function passed(result: CommandResult) { assert.equal(result.status, 0, resultError(result)); }
+function refused(r: CommandResult, message: RegExp) {
   assert.ok(Number.isInteger(r.status) && r.status !== 0, resultError(r) || 'unexpected successful command');
   assert.match(resultError(r), message);
 }
@@ -163,7 +192,7 @@ test('macOS requires an explicit connection when multiple Podman machines are ru
   assert.equal(f.calls().filter(call => operation(call)[0] === 'system').length, 0);
 });
 
-for (const kind of ['missing', 'relative', 'directory', 'symlink', 'control', 'extra-field'])
+for (const kind of ['missing', 'relative', 'directory', 'symlink', 'control', 'extra-field'] as const)
   test(`macOS refuses ${kind} SSH identity metadata before server commands`, t => {
     const f = fixture(t);
     const alias = join(f.dir, 'linked identity'); symlinkSync(f.identity, alias);
@@ -193,7 +222,7 @@ for (const [name, env, message, beforeCli] of [
   ['Docker context pointing to Podman', { CE_CONTAINER_ENGINE: 'docker', MOCK_DOCKER_METADATA: '29.0.0|6.1.4|linux|arm64|Podman Engine' }, /did not identify a Docker/, false],
   ['remote Docker endpoint', { DOCKER_HOST: 'tcp://external:2375' }, /local Unix/, true],
   ['unsupported OS', { CE_CONTAINER_ENGINE: 'podman', MOCK_HOST_OS: 'Windows_NT' }, /Linux or macOS/, true],
-]) test(`doctor rejects ${name}`, t => {
+] satisfies [string, NodeJS.ProcessEnv, RegExp, boolean][]) test(`doctor rejects ${name}`, t => {
   const f = fixture(t), r = f.run('scripts/container-engine-doctor', [], env); refused(r, message);
   if (beforeCli) assert.equal(f.calls().length, 0);
   if (name === 'missing mac machine') assert.deepEqual(f.calls().map(call => operation(call)[0]), ['machine']);
@@ -218,15 +247,15 @@ test('oversized metadata is rejected without publishing its raw bytes', t => {
 
 for (const engine of ['docker', 'podman']) test(`${engine} bounded metadata capture terminates its actual hanging CLI child`, t => {
   const f = fixture(t);
-  let pid;
+  let pid: number | undefined;
   try {
     const r = f.run('scripts/container-engine-doctor', [], { CE_CONTAINER_ENGINE: engine, MOCK_HANGING_METADATA: engine });
     refused(r, /metadata probe exceeded time\/output limit/);
-    pid = Number(readFileSync(f.log + '.pid', 'utf8'));
-    assert.ok(Number.isInteger(pid) && pid > 1);
-    assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+    const childPid = Number(readFileSync(f.log + '.pid', 'utf8')); pid = childPid;
+    assert.ok(Number.isInteger(childPid) && childPid > 1);
+    assert.throws(() => process.kill(childPid, 0), { code: 'ESRCH' });
   } finally {
-    if (pid) { try { process.kill(pid, 'SIGKILL'); } catch (e) { if (e.code !== 'ESRCH') throw e; } }
+    if (pid) { try { process.kill(pid, 'SIGKILL'); } catch (error) { if (!isRecord(error) || error.code !== 'ESRCH') throw error; } }
   }
 });
 
@@ -274,6 +303,35 @@ test('sandbox rejects incompatible offline published ports before run', t => {
   const f = fixture(t);
   refused(f.run('scripts/sandbox', ['--offline', '--port', '5999', 'node', 'true'], { CE_CONTAINER_ENGINE: 'podman' }), /cannot be combined/);
   assert.ok(!f.calls().some(c => operation(c)[0] === 'run'));
+});
+
+for (const os of ['Linux', 'Darwin']) test(`Podman ${os} maps the requested sandbox uid and gid explicitly`, t => {
+  const f = fixture(t);
+  passed(f.run('scripts/sandbox', ['--offline', 'node', 'true'], { CE_CONTAINER_ENGINE: 'podman', MOCK_HOST_OS: os }));
+  const args = operation(f.calls().find(call => operation(call)[0] === 'run'));
+  const user = args[args.indexOf('--user') + 1];
+  assert.ok(typeof user === 'string');
+  assert.match(user, /^[0-9]+:[0-9]+$/);
+  const [uid, gid] = user.split(':');
+  assert.equal(args[args.indexOf('--userns') + 1], `keep-id:uid=${uid},gid=${gid}`,
+    'the Podman VM identity must map to the host uid/gid requested by the sandbox');
+});
+
+for (const engine of ['docker', 'podman']) test(`${engine} frozen extraction mounts source and runtime trees read-only`, t => {
+  const f = fixture(t);
+  const captured = f.run('scripts/container-engine', ['--analysis-snapshot'], { CE_CONTAINER_ENGINE: engine });
+  passed(captured);
+  const source = join(f.root, '.sandbox-cache/requests/runs/test/attempt/src/repo');
+  mkdirSync(source, { recursive: true });
+  const runtimeTrees = ['extractors/ts', 'platform/src/CapabilityExplorer.Extractors.CSharp/bin', 'platform/src/CapabilityExplorer.Cli/bin'];
+  for (const tree of runtimeTrees) mkdirSync(join(f.root, tree), { recursive: true });
+  const result = f.run('scripts/sandbox', ['--offline', 'node', 'true'], {
+    CE_ANALYSIS_RUNTIME: captured.stdout.trim(), SANDBOX_SOURCES: source,
+  });
+  passed(result);
+  const args = operation(f.calls().find(call => operation(call)[0] === 'run'));
+  assert.ok(args.includes(`${source}:/work/.sandbox-cache/requests/runs/test/attempt/src/repo:ro`), 'the parser source must override the writable journal mount');
+  for (const tree of runtimeTrees) assert.ok(args.includes(`${join(f.root, tree)}:/work/${tree}:ro`), tree);
 });
 
 test('Explorer sandbox mounts only the public feed directory and masks legacy secrets', t => {
@@ -325,7 +383,8 @@ test('scanner mounts an explicit certificate with spaces read-only without forwa
   const r = f.run('scripts/security-check', [], { CE_CONTAINER_ENGINE: 'podman',
     MOCK_HOST_OS: 'Darwin', CE_PODMAN_CONNECTION: 'ce-validation', MOCK_REPOINT_MACHINE: '1',
     SANDBOX_EXTRA_CA_FILE: ca, TEST_PRIVATE_TOKEN: 'NEVER-FORWARD-THIS' }); passed(r);
-  const call = f.calls().find(c => operation(c)[0] === 'run'), args = operation(call);
+  const call = f.calls().find(c => operation(c)[0] === 'run'); assert.ok(call);
+  const args = operation(call);
   assert.deepEqual(call.args.slice(0, 4), ['--url', 'ssh://core@127.0.0.1:34567/run/user/501/podman/podman.sock', '--identity', f.identity]);
   assert.ok(!call.args.includes('--connection'));
   assert.ok(args.includes(`${ca}:/etc/sandbox/extra-ca.crt:ro`));
@@ -334,7 +393,7 @@ test('scanner mounts an explicit certificate with spaces read-only without forwa
   assert.ok(!args.join('\n').includes('TEST_PRIVATE_TOKEN')); assert.ok(!args.join('\n').includes('NEVER-FORWARD-THIS'));
 });
 
-for (const kind of ['relative', 'missing', 'newline', 'colon']) test(`scanner rejects ${kind} certificate path before run`, t => {
+for (const kind of ['relative', 'missing', 'newline', 'colon'] as const) test(`scanner rejects ${kind} certificate path before run`, t => {
   const f = fixture(t), paths = { relative: 'ca.pem', missing: join(f.dir, 'missing.pem'),
     newline: join(f.dir, 'bad\ncertificate.pem'), colon: join(f.dir, 'bad:certificate.pem') };
   if (kind !== 'missing') writeFileSync(kind === 'relative' ? join(f.root, paths[kind]) : paths[kind], 'test-only certificate');
@@ -342,8 +401,41 @@ for (const kind of ['relative', 'missing', 'newline', 'colon']) test(`scanner re
   refused(r, /SANDBOX_EXTRA_CA_FILE/); assert.ok(!f.calls().some(c => operation(c)[0] === 'run'));
 });
 
-for (const script of ['scripts/local-check', 'scripts/pr-check', 'scripts/analyze-worker', 'scripts/analyze',
-  'scripts/analyze-all', 'scripts/security-collect']) test(`${script} rejects the unqualified Podman legacy path`, t => {
+for (const [script, args, command, expectedArgs] of [
+  ['scripts/analyze-worker', ['capabilities with spaces.json'], 'analysis-worker', ['--capabilities', 'capabilities with spaces.json']],
+  ['scripts/analyze', ['fixture-capability', 'capabilities with spaces.json'], 'analysis-run', ['--capability', 'fixture-capability', '--capabilities', 'capabilities with spaces.json']],
+  ['scripts/analyze-all', ['capabilities with spaces.json'], 'analysis-all', ['--capabilities', 'capabilities with spaces.json']],
+] satisfies [string, string[], string, string[]][]) test(`Given a native engine when ${script} launches then the host CLI receives that engine without fallback`, t => {
+  for (const engine of ['docker', 'podman']) {
+    const f = fixture(t), cli = join(f.root, 'platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll');
+    mkdirSync(join(cli, '..'), { recursive: true }); writeFileSync(cli, 'test-only dummy CLI');
+    const log = join(f.dir, 'host-cli.jsonl');
+    writeFileSync(join(f.bin, 'dotnet'), `#!${process.execPath}
+const fs = require('node:fs');
+fs.appendFileSync(process.env.TEST_HOST_CLI_LOG, JSON.stringify({ args: process.argv.slice(2), engine: process.env.CE_CONTAINER_ENGINE })+'\\n');
+process.exit(Number(process.env.TEST_HOST_CLI_EXIT ?? 0));
+`, { mode: 0o755 });
+    const env = { CE_CONTAINER_ENGINE: engine, TEST_HOST_CLI_LOG: log };
+    const launched = f.run(script, args, env, '/bin/bash', 5000); passed(launched);
+    const expected = { args: [cli, command, ...expectedArgs], engine };
+    const recorded: unknown = JSON.parse(readFileSync(log, 'utf8').trim());
+    assert.deepEqual(recorded, expected, resultError(launched));
+    const failed = f.run(script, args, { ...env, TEST_HOST_CLI_EXIT: '17' }, '/bin/bash', 5000);
+    assert.equal(failed.status, 17, resultError(failed));
+    const calls: unknown[] = readFileSync(log, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+    assert.deepEqual(calls, [expected, expected], 'launcher must propagate host failure without retrying another engine');
+    rmSync(join(f.bin, engine));
+    const missing = f.run(script, args, { ...env, TEST_HOST_CLI_EXIT: '17' }, '/bin/bash', 5000);
+    assert.equal(missing.status, 17, resultError(missing));
+    const afterMissing: unknown[] = readFileSync(log, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+    assert.deepEqual(afterMissing, [expected, expected, expected], 'missing engine must reach host qualification without falling back to the available engine');
+    refused(f.run(script, args, { ...env, CE_CONTAINER_ENGINE: 'containerd' }, '/bin/bash', 5000), /must be docker or podman/);
+    assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 3, 'invalid engine must stop before the host CLI');
+    assert.deepEqual(f.calls(), [], 'launcher must not probe or run an engine before the host CLI owns qualification');
+  }
+});
+
+for (const script of ['scripts/local-check', 'scripts/pr-check', 'scripts/security-collect']) test(`${script} rejects the unqualified Podman legacy path`, t => {
   const f = fixture(t), r = f.run(script, [], { CE_CONTAINER_ENGINE: 'podman' }, '/bin/bash', 1500);
   refused(r, /not qualified|unsupported|not supported/i); assert.equal(f.calls().length, 0);
 });
@@ -364,22 +456,48 @@ for (const [script, expression] of [
 const make = process.platform === 'darwin' && existsSync('/Library/Developer/CommandLineTools/usr/bin/make')
   ? '/Library/Developer/CommandLineTools/usr/bin/make' : '/usr/bin/make';
 
+for (const engine of ['docker', 'podman']) test(`native make dev starts the host worker with ${engine}`, t => {
+  const f = fixture(t, [engine]);
+  const ready = join(f.dir, 'worker-started');
+  symlinkSync('/usr/bin/awk', join(f.bin, 'awk'));
+  const cli = join(f.root, 'platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0');
+  mkdirSync(cli, { recursive: true });
+  writeFileSync(join(cli, 'ce.dll'), 'test-only CLI placeholder');
+  writeFileSync(join(f.bin, 'dotnet'), '#!/bin/sh\nprintf "%s" "$CE_CONTAINER_ENGINE" > "$TEST_WORKER_READY"\n', { mode: 0o755 });
+  const wait = join(f.dir, 'wait-worker.cjs');
+  writeFileSync(wait, `const fs=require('node:fs');const file=process.env.TEST_WORKER_READY;
+if(fs.existsSync(file))process.exit(0);
+const watcher=fs.watch(require('node:path').dirname(file),()=>{if(fs.existsSync(file)){watcher.close();clearTimeout(timeout);}});
+const timeout=setTimeout(()=>{watcher.close();console.error('development worker never started');process.exitCode=1;},2000);
+`);
+  const overrides = join(f.dir, 'dev-overrides.mk');
+  writeFileSync(overrides, `explore:\n\t@node "${wait}"\n`);
+  const result = spawnSync(make, ['-f', 'Makefile', '-f', overrides, '--no-print-directory',
+    '-o', 'dev-data', '-o', 'build', '-o', 'fixtures', '-o', 'model-fixtures', 'EXECUTION=native',
+    `MAKE=${make} -f Makefile -f ${overrides} -o dev-data -o build -o fixtures -o model-fixtures`, 'dev'], {
+    cwd: f.root, env: { ...f.env, CE_CONTAINER_ENGINE: engine, TEST_WORKER_READY: ready }, encoding: 'utf8', timeout: 10000,
+  });
+  passed(result);
+  assert.equal(readFileSync(ready, 'utf8'), engine, 'both development profiles must start the same host worker');
+  assert.equal(f.calls().length, 0, 'stubbed development startup must not start a container');
+});
+
 for (const goal of ['postgres', 'ollama', 'dev-down', 'ci']) test(`Make ${goal} refuses the partial Podman profile before engine use`, t => {
   const f = fixture(t), r = spawnSync(make, ['EXECUTION=sandbox', goal], {
     cwd: f.root, env: { ...f.env, CE_CONTAINER_ENGINE: 'podman' }, encoding: 'utf8', timeout: 10000 });
   refused(r, /not qualified|unsupported|not supported/i); assert.equal(f.calls().length, 0);
 });
 
-test('Make permits native dev service goals with Podman but keeps sandbox dev refused', t => {
+test('Make permits native service and analysis goals with Podman but keeps sandbox dev refused', t => {
   const f = fixture(t), env = { ...f.env, CE_CONTAINER_ENGINE: 'podman' };
   writeFileSync(join(f.root, 'podman-goals.mk'), [
     'include config/build/container-engine.mk',
-    '.PHONY: dev dev-data explore postgres ollama dev-down',
-    'dev dev-data explore postgres ollama dev-down:',
+    '.PHONY: dev dev-data explore postgres ollama dev-down analyze analyze-all analyze-worker',
+    'dev dev-data explore postgres ollama dev-down analyze analyze-all analyze-worker:',
     '\t@true',
     ''
   ].join('\n'));
-  for (const goal of ['postgres', 'ollama', 'dev-down', 'dev', 'explore']) {
+  for (const goal of ['postgres', 'ollama', 'dev-down', 'dev', 'explore', 'analyze', 'analyze-all', 'analyze-worker']) {
     const r = spawnSync(make, ['-f', 'podman-goals.mk', '-n', 'EXECUTION=native', goal], {
       cwd: f.root, env, encoding: 'utf8', timeout: 10000 });
     passed(r);

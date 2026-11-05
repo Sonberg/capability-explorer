@@ -46,26 +46,89 @@ analysis state. A worker already running for Explorer also excludes direct
 A second worker refuses before recovery changes live records.
 Direct `ce export` is disabled; it cannot bypass this owner.
 
-The one owner may execute independent capability runs concurrently. The default
-capability-worker ceiling is **2**; set host `ANALYZE_WORKERS` to **1–4** to
-choose a different bound. `ANALYZE_JOBS` (or `--extraction-jobs` for direct
-commands) bounds extraction tasks within each run to **1–4**. Their configured
-product must not exceed **16**. `analysis-all` uses the same bounded scheduler
-as the background worker; it is not a fan-out of independent CLI owners.
-Per-capability admission remains unique. A failed task stops further dispatch
-but does not cancel its siblings; every started task drains before the command
-returns. Publication is serialized by the host. A source acquisition or package
-fetch gate protects shared Git and package-fetch caches; exported sources,
-package outputs, attempts and logs use run/attempt-private paths.
+## Integration reconciliation
+
+After confirmed core publication, the host reconciles integration observations
+against the latest successfully published analysis of each capability, in both
+directions. A newly published target can supply candidates for older callers
+without re-extracting them. Failed newer analyses do not replace the previous
+successful input. Worker startup also retries reconciliation, covering a crash
+between publication and matching. Matching does not change run input manifests,
+extracted facts, reviewed bindings or manual connections.
+
+To reconcile already ingested artifacts without running analysis, from the
+project root:
+
+```bash
+dotnet platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll match-integrations
+```
+
+The host verifies publication manifest and artifact hashes before atomically
+replacing the private `.sandbox-cache/integration-matches.json` catalogue.
+Matching failure preserves the previous complete catalogue and confirmed
+publication; the command or the next successful publication/startup retries it.
+The catalogue has a 128 MiB byte budget and refuses rather than truncating an
+oversized result. Reconciliation reads complete artifacts, not the capped
+integration UI projection. A dedicated writer lock serializes catalogue updates;
+the publication input vector is rechecked before commit.
+
+Only exact declared endpoint identities, existing explicit bindings, and fully
+bound shared-resource identities can produce confirmed automatic links.
+HTTP calls are additionally clustered by qualified caller and host, compared as
+operation sets against analyzed service endpoints. A unique best target with at
+least two distinct related operations can produce an inferred candidate graph
+connection. HTTP method, path/query identifier layout, concrete versions and
+available payload schemas are compared; differences stay visible and absent
+metadata stays unknown. Gateway prefixes/version templates are comparison
+heuristics, not adopted endpoint rewrites. Ties and single-operation overlaps
+remain suggestions. Unbound same-name resources remain suggestions; generic
+root/health-only HTTP matches do not establish a cluster. Dynamic destinations
+remain unresolved. The
+file-backed architecture graph filters matches to both selected artifact hashes
+and current capability membership, aggregates each inferred service cluster into
+one edge and retains contract warnings in its inspector. Scoped system views
+retain only incoming/outgoing clusters involving their selected capability.
+Inferred links are drawn as candidates, never confirmed automatic edges. The
+match API pages the complete selected catalogue at
+`GET /api/architecture/integration-matches?offset=0&limit=50` (limit 1-100).
+
+Optional LLM assessment is a separate, on-demand action in the architecture
+inspector, using the existing configured model. It reads bounded source pages
+from exact analyzed commits, cites both sides and distinguishes dependency
+intent from compatibility. It never writes bindings, extracted facts, manual
+connections or the deterministic match catalogue, and it does not run as an
+unattended model batch after every analysis. See the
+[qualification and limits](evidence/automatic-integration-matching.md).
+
+The one owner executes **one capability and one extractor at a time on both
+engines**. This also applies to old frozen worker/job settings of 2 or 4; those
+records are not rewritten to enforce serialization. Newly admitted settings are
+1. Legacy `ANALYZE_WORKERS`, `ANALYZE_JOBS` and direct worker/extraction options
+still validate values in 1-4 but cap effective execution at 1. `analysis-all`
+uses the same serial scheduler as the background worker, not independent CLI
+owners. Per-capability admission remains unique. Publication, source acquisition
+and package fetching remain serialized; exported sources, package outputs,
+attempts and logs use run/attempt-private paths.
 
 For an existing run, `ce reconcile-publication --run <run-id> --attempt
 <attempt-id>` reports PostgreSQL attempt evidence and the matching host journal.
 It is a read-only report, not a recovery command.
 
-Full analysis requires the qualified Docker host profile. Explicit Podman full
-analysis, running ownership inside an extraction container and runtime image
-overrides are refused. This does not broaden the separately qualified direct
-Podman sandbox profile.
+Native `make dev` starts the same host worker with Docker or Podman; commands and
+the UI Analyse action are unchanged. All three scripts accept
+`CE_CONTAINER_ENGINE=auto|docker|podman`. Auto selects by executable availability
+(Docker first), with no fallback after selection failure. The supported profiles
+are local Unix Docker, rootless Linux Podman and one explicitly selected qualified
+loopback macOS Podman machine. No aliases or Docker-compatibility symlinks are used.
+
+`scripts/container-engine --analysis-snapshot` freezes backend, executable,
+argument prefix and fingerprint as JSON. Host-only `CE_ANALYSIS_RUNTIME` carries
+it; each sandbox/cleanup invocation validates and reprobes that context. Offline
+source exports and runtime trees are read-only, the private journal is explicitly
+mounted, and Podman uses `keep-id` with explicit UID/GID. Running ownership inside
+an extraction container and runtime image overrides remain refused.
+`EXECUTION=sandbox`, sandbox `--docker`/Testcontainers and canonical full
+CI/security-collect remain Docker-only; this is not a transparent full sandbox profile.
 
 ## Qualified coordination domains
 
@@ -183,14 +246,16 @@ they are not silently skipped or converted to success.
 ## Stop and publication ordering
 
 Stopping queued work withdraws it atomically. Stopping executing work persists
-cancellation intent separately from termination. A killed Docker client or
+cancellation intent separately from termination. A killed engine client or
 controller does not prove that its descendants or containers ended.
 
 Currently, Stop during a live child and an ordinary nonzero sandbox exit both
 leave the run `unknown`, even when exact-label container cleanup reports no
-running container. A late Docker request or escaped descendant is still
+running container. A late engine request or escaped descendant is still
 uncertain. This blocks all subsequent analysis until offline reconciliation;
-there is no automatic reset or stop-and-retry command. Confirmed cancellation
+the only supported exception is the explicitly acknowledged **Retry interrupted
+run** action described below. There is no automatic reset or stop-and-retry.
+Confirmed cancellation
 is available for queued work or cancellation detected before any child starts.
 Stop after confirmed core publication remains too late.
 
@@ -245,9 +310,9 @@ queued. Ownership loss, PID absence and a stale timestamp cannot authorize
 reuse. There is no automatic retry, resume or success reconstruction from shell
 exit codes.
 
-There is currently no automated reconcile, reset or archive command. Operator
-reconciliation must establish the following before authorizing conflicting
-execution again:
+There is no general automated reconcile, reset or archive command. Except for
+the owner-approved retry exception below, operator reconciliation must establish
+the following before authorizing conflicting execution again:
 
 1. Stop new admission/controllers and preserve the complete journal, logs,
    resolved inputs, attempt staging, prior artifact directories and database
@@ -265,6 +330,39 @@ execution again:
 These are reconciliation requirements, not an automatic proof procedure.
 Changing the coordination marker, deleting running evidence or editing unknown
 to stopped merely to unblock work bypasses the protocol.
+
+### Owner-approved retry exception
+
+The owner explicitly approved "Yes, recover ASQ and queue a fresh run" after a
+clear warning that termination and the original engine endpoint were unproven.
+The supported UI action **Retry interrupted run** requires acknowledgement of
+that uncertainty and calls POST `/api/capabilities/{id}/retry` with:
+
+```json
+{"runId":"<run-id>","attemptId":"<attempt-id>","acknowledgeUnverifiedExecution":true}
+```
+
+`FileRunStore.RetireCancelledExecution` acquires exclusive worker and metadata
+locks; a live worker prevents the operation. Only the exact cancelled
+`unknown`/`interrupted` attempt is eligible, strictly before publication:
+`ExecutionCompleted` must be false, with no `ManifestHash`, `Effects` or
+`resolved.json`. `VerifyAccepted` validates the accepted inputs. Publication
+uncertainty, partial publication, malformed or tampered evidence and foreign
+attempts are refused.
+
+The original run moves unchanged to `reconciled/<run>/evidence`.
+`reconciled/<run>/decision.json` records `operator-released-for-retry`,
+`terminationVerified: false`, capability/run/attempt IDs, the accepted hash and
+timestamp. An existing matching pending decision can resume the evidence move.
+This is an explicit owner-approved exception to offline-only archival, not
+automatic reconciliation, proof of no late work, or a claim that the old run
+succeeded or stopped. The global execution block remains for all other cases.
+
+After retirement, the API queues a fresh run with a new run ID using current
+accepted configuration/settings, not the archived run's frozen inputs.
+Retirement and fresh admission are separate operations, not an atomic
+transaction. If admission fails after retirement, the old evidence remains
+archived; correct the input and retry ordinary Analyze.
 
 `ce reconcile-publication` reads the attempt, per-artifact outcomes, candidate
 history and current pointer in one PostgreSQL `REPEATABLE READ`, read-only
@@ -329,6 +427,22 @@ last-good policy. See [MADR-0022](adr/0022-local-analysis-lifecycle.md) for the
 scope and store-level validation evidence.
 
 ## Host-specific qualification
+
+An isolated macOS probe using Podman 6.0.2 client / 6.1.2 server passed single and
+aggregate analysis with valid artifacts after serialization. Concurrent probes
+failed; their isolated unknowns were retained without consuming the production
+queue. No old queued run's execution or completion is established by these probes.
+Package fetching, private feeds, database import and model effects remain outside
+live qualification. Docker fixture tests passed, but no Docker daemon was
+available: live Docker and full CI remain unqualified. Owner-approved retry does
+not resolve those gaps or prove termination at an original engine endpoint.
+
+The new [`tests/native-analysis-runtime.live.ts`](../tests/native-analysis-runtime.live.ts)
+harness requires `--live`, preserves isolated probe directories and writes
+`.sandbox-cache/runtime-analysis-podman.json`. The integration owner will rerun
+final gates and this source-hash-qualified probe; prior success does not qualify
+later source changes. See the [Podman profile](podman-core.md) for invocation and
+the locked TypeScript 7.0.2 core-test migration/cache scope.
 
 The native store test suite includes the real Docker CLI cleanup probe. The
 pinned SDK image deliberately contains no Docker CLI, so sandbox CI excludes

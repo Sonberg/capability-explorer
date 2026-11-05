@@ -40,7 +40,7 @@ internal static class AnalysisPreparation
 
     internal static string RuntimeIdentity(string root)
     {
-        var files = new[] { "config/runtime/images.env", "scripts/sandbox", "scripts/github-token", "scripts/lib/container-engine.sh", "scripts/fetch-npm-packages.mjs", Cli, CSharp, TypeScript, "extractors/ts/package-lock.json" };
+        var files = new[] { "config/runtime/images.env", "scripts/sandbox", "scripts/github-token", "scripts/container-engine", "scripts/lib/container-engine.sh", "scripts/lib/analysis-runtime.ts", "scripts/fetch-npm-packages.mjs", Cli, CSharp, TypeScript, "extractors/ts/package-lock.json" };
         var inputs = files.Select(p => { RejectLinks(Path.Combine(root,p)); return p + ":" + AnalysisWorkerCommand.HashFile(Path.Combine(root, p)); });
         // Transitive managed binaries affect parser semantics as well as the entry assembly.
         var parserInputs = CheckedFiles(Path.Combine(root,"extractors/ts/src")).Order(StringComparer.Ordinal)
@@ -84,21 +84,27 @@ internal static class AnalysisPreparation
         await SourceAcquisitionGate.WaitAsync(stop);
         try
         {
-            snapshot = run.Settings.Locked
-                ? priorCheck is { State: "done", Snapshot: not null } && FileRunStore.CheckMatches(priorCheck, run.ConfigurationPath, run.Settings.GitHubAuth)
-                    ? priorCheck.Snapshot : throw new InvalidOperationException("locked analysis requires a matching completed host source check")
-                : await process.AcquireSource(sync, token => sync.CheckAsync(definition, token));
-            if (sync.ExecutionUncertain) { process.MarkUncertainAcquisition(); throw new InvalidOperationException("source acquisition requires reconciliation"); }
-            process.CheckCancellation();
-            if (snapshot.Repositories.Count != definition.Repositories.Count || snapshot.Repositories.Any(repo => repo.CommitSha is null || repo.Error is not null))
-                throw new InvalidOperationException("source acquisition failed");
+            using (var timing = process.Measure("sources.check"))
+            {
+                snapshot = run.Settings.Locked
+                    ? priorCheck is { State: "done", Snapshot: not null } && FileRunStore.CheckMatches(priorCheck, run.ConfigurationPath, run.Settings.GitHubAuth)
+                        ? priorCheck.Snapshot : throw new InvalidOperationException("locked analysis requires a matching completed host source check")
+                    : await process.AcquireSource(sync, token => sync.CheckAsync(definition, token));
+                if (sync.ExecutionUncertain) { process.MarkUncertainAcquisition(); throw new InvalidOperationException("source acquisition requires reconciliation"); }
+                process.CheckCancellation();
+                if (snapshot.Repositories.Count != definition.Repositories.Count || snapshot.Repositories.Any(repo => repo.CommitSha is null || repo.Error is not null))
+                    throw new InvalidOperationException("source acquisition failed");
+                timing.Complete();
+            }
             foreach (var repository in snapshot.Repositories)
             {
                 process.CheckCancellation();
+                using var timing = process.Measure("sources.export",repository.Id);
                 var source = definition.Repositories.Single(source => source.Id == repository.Id && source.Ref == repository.Ref);
                 var destination = Path.Combine(work, "src", source.Id);
                 await process.AcquireSource(sync, token => sync.ExportAsync(source, repository.CommitSha!, destination, token));
                 manifest.Add($"{source.Id}\t{repository.CommitSha}\tsrc/{source.Id}");
+                timing.Complete();
             }
         }
         finally { SourceAcquisitionGate.Release(); }
@@ -130,15 +136,26 @@ internal static class AnalysisPreparation
         var locks = Path.Combine(work,"locks");
         RejectLinks(locks); RejectLinks(packageDir);
         Directory.CreateDirectory(locks); Directory.CreateDirectory(packageDir);
-        var sources = repositories.ToDictionary(repo => repo.Id, repo => AnalysisPackagePreparation.SourceIdentity(repo.Source), StringComparer.Ordinal);
+        Dictionary<string,string> sources;
+        using (var timing = process.Measure("hashing.sources.before"))
+        {
+            sources = repositories.ToDictionary(repo => repo.Id, repo => AnalysisPackagePreparation.SourceIdentity(repo.Source), StringComparer.Ordinal);
+            timing.Complete();
+        }
         await PackageAcquisitionGate.WaitAsync(stop);
         Dictionary<string, string> packageInputs;
         try { packageInputs = await AnalysisPackagePreparation.Run(root, run, process, repositories, work, locks, packageDir); }
         finally { PackageAcquisitionGate.Release(); }
         // Prove npm/workspace links stay confined before any offline parser can follow them.
-        var dependencies = repositories.ToDictionary(repo => repo.Id, repo => AnalysisPackagePreparation.DependencyIdentity(repo.Source), StringComparer.Ordinal);
+        Dictionary<string,string> dependencies;
+        using (var timing = process.Measure("hashing.dependencies.before"))
+        {
+            dependencies = repositories.ToDictionary(repo => repo.Id, repo => AnalysisPackagePreparation.DependencyIdentity(repo.Source), StringComparer.Ordinal);
+            timing.Complete();
+        }
         await AnalysisParallelExtraction.Run(root, store, run, process, repositories, work, locks, packageDir);
         process.CheckCancellation();
+        using var integrityTiming = process.Measure("integrity.final");
         if (runtime != RuntimeIdentity(root)) throw new InvalidOperationException("runtime changed during preparation");
         var inputs = new Dictionary<string,string> { ["runtime"] = runtime, ["manifest.tsv"] = AnalysisWorkerCommand.HashFile(manifestPath) };
         var artifacts = new Dictionary<string,string>();
@@ -162,6 +179,7 @@ internal static class AnalysisPreparation
         if (run.Settings.Packages) inputs["package-cache"] = AnalysisWorkerCommand.HashText(string.Join('\n',CheckedFiles(packageDir).Order(StringComparer.Ordinal)
             .Select(file => Path.GetRelativePath(packageDir,file) + ":" + AnalysisWorkerCommand.HashFile(file))));
         if (artifacts.Count is < 1 or > 100000) throw new FormatException("invalid artifact count");
+        integrityTiming.Complete();
         return new(repositories,inputs,artifacts);
     }
 

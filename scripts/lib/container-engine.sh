@@ -3,7 +3,28 @@
 # No eval, CLI aliases, global configuration changes or backend fallback.
 ce_runtime_fail() { echo "container-engine: $*" >&2; return 2; }
 
+ce_analysis_restore() {
+  local values value index=0
+  values="$(node --experimental-strip-types "$(dirname "${BASH_SOURCE[0]}")/analysis-runtime.ts" decode)" || return
+  CE_ENGINE_CMD=()
+  while IFS= read -r value; do
+    case "$index" in
+      0) CE_ENGINE="$value" ;;
+      1) CE_ANALYSIS_EXPECTED_HASH="$value" ;;
+      *) CE_ENGINE_CMD+=("$value") ;;
+    esac
+    index=$((index + 1))
+  done <<< "$values"
+  CE_ENGINE_BIN="${CE_ENGINE_CMD[0]}"
+  [[ -f "$CE_ENGINE_BIN" && -x "$CE_ENGINE_BIN" ]] || { ce_runtime_fail 'captured runtime executable is missing'; return 2; }
+}
+
+ce_analysis_snapshot() {
+  node --experimental-strip-types "$(dirname "${BASH_SOURCE[0]}")/analysis-runtime.ts" encode "$CE_ENGINE" "$CE_ENGINE_CONTEXT_HASH" "${CE_ENGINE_CMD[@]}"
+}
+
 ce_engine_choice() {
+  if [[ "${CE_ANALYSIS_RUNTIME+x}" == x ]]; then ce_analysis_restore; return; fi
   local requested="${CE_CONTAINER_ENGINE-auto}"
   if [[ "$requested" == auto ]]; then
     if command -v docker >/dev/null 2>&1; then CE_ENGINE=docker
@@ -58,27 +79,31 @@ ce_engine() (
 )
 
 ce_engine_exec() {
-  unset DOCKER_HOST DOCKER_CONTEXT CONTAINER_HOST CONTAINER_CONNECTION CONTAINER_SSHKEY
+  unset DOCKER_HOST DOCKER_CONTEXT CONTAINER_HOST CONTAINER_CONNECTION CONTAINER_SSHKEY CE_PODMAN_CONNECTION CE_ANALYSIS_RUNTIME
   exec "${CE_ENGINE_CMD[@]}" "$@"
 }
 
 ce_engine_init() {
   local endpoint metadata platform identity context_subject template machine verified_version version digest ssh_identity
   ce_engine_choice || return
-  CE_ENGINE_BIN="$(command -v "$CE_ENGINE")" || { ce_runtime_fail "selected $CE_ENGINE executable is missing"; return 2; }
+  if [[ "${CE_ANALYSIS_RUNTIME+x}" != x ]]; then
+    CE_ENGINE_BIN="$(command -v "$CE_ENGINE")" || { ce_runtime_fail "selected $CE_ENGINE executable is missing"; return 2; }
+    CE_ENGINE_CMD=("$CE_ENGINE_BIN")
+  fi
   [[ "$CE_ENGINE_BIN" == /* && -x "$CE_ENGINE_BIN" ]] || { ce_runtime_fail 'runtime executable must resolve to an absolute file'; return 2; }
-  CE_ENGINE_CMD=("$CE_ENGINE_BIN")
   CE_ENGINE_CONTEXT=''
   CE_ENGINE_ROOTLESS=null
   if [[ "$CE_ENGINE" == docker ]]; then
-    if [[ -n "${DOCKER_CONTEXT:-}" || -z "${DOCKER_HOST:-}" ]]; then
+    if [[ "${CE_ANALYSIS_RUNTIME+x}" == x ]]; then
+      endpoint="${CE_ENGINE_CMD[2]}"
+    elif [[ -n "${DOCKER_CONTEXT:-}" || -z "${DOCKER_HOST:-}" ]]; then
       CE_ENGINE_CONTEXT="${DOCKER_CONTEXT:-}"
       [[ -n "$CE_ENGINE_CONTEXT" ]] || CE_ENGINE_CONTEXT="$(ce_capture "$CE_ENGINE_BIN" context show)" || return
       [[ "$CE_ENGINE_CONTEXT" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]] || { ce_runtime_fail 'unsupported Docker context name'; return 2; }
       endpoint="$(ce_capture "$CE_ENGINE_BIN" context inspect "$CE_ENGINE_CONTEXT" --format '{{.Endpoints.docker.Host}}')" || return
     else endpoint="$DOCKER_HOST"; fi
     [[ "$endpoint" == unix:///* && ${#endpoint} -le 1024 && "$endpoint" != *$'\n'* ]] || { ce_runtime_fail 'core profile requires a local Unix Docker endpoint'; return 2; }
-    CE_ENGINE_CMD+=(--host "$endpoint")
+    CE_ENGINE_CMD=("$CE_ENGINE_BIN" --host "$endpoint")
     metadata="$(ce_capture ce_engine_exec version --format '{{.Client.Version}}|{{.Server.Version}}|{{.Server.Os}}|{{.Server.Arch}}|{{.Server.Platform.Name}}')" || return
     IFS='|' read -r CE_ENGINE_CLIENT_VERSION CE_ENGINE_SERVER_VERSION CE_ENGINE_OS CE_ENGINE_ARCH platform <<< "$metadata"
     [[ "$platform" == *Docker* ]] || { ce_runtime_fail 'Docker request did not identify a Docker backend'; return 2; }
@@ -88,27 +113,38 @@ ce_engine_init() {
     # Native Linux core never consults remote connection defaults.
     case "$(uname -s)" in
       Linux)
-        [[ -z "${CE_PODMAN_CONNECTION:-}" ]] || { ce_runtime_fail 'Linux core uses native rootless Podman, not a remote connection'; return 2; }
+        if [[ "${CE_ANALYSIS_RUNTIME+x}" == x ]]; then
+          [[ ${#CE_ENGINE_CMD[@]} -eq 2 && "${CE_ENGINE_CMD[1]}" == --remote=false ]] || { ce_runtime_fail 'captured Podman profile does not match Linux'; return 2; }
+        else
+          [[ -z "${CE_PODMAN_CONNECTION:-}" ]] || { ce_runtime_fail 'Linux core uses native rootless Podman, not a remote connection'; return 2; }
+        fi
         CE_ENGINE_CONTEXT=native-rootless
-        CE_ENGINE_CMD+=(--remote=false)
+        CE_ENGINE_CMD=("$CE_ENGINE_BIN" --remote=false)
         context_subject=podman-native-rootless
         ;;
       Darwin)
-        CE_ENGINE_CONTEXT="${CE_PODMAN_CONNECTION:-}"
-        if [[ -z "$CE_ENGINE_CONTEXT" ]]; then
-          metadata="$(ce_capture ce_engine_exec machine list --format '{{.Name}}|{{.Running}}')" || return
-          while IFS='|' read -r machine_name running; do
-            [[ "$running" == true && "$machine_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]] || continue
-            [[ -z "$CE_ENGINE_CONTEXT" ]] || { ce_runtime_fail 'multiple Podman machines are running; set CE_PODMAN_CONNECTION'; return 2; }
-            CE_ENGINE_CONTEXT="$machine_name"
-          done <<< "$metadata"
-          [[ -n "$CE_ENGINE_CONTEXT" ]] || { ce_runtime_fail 'no Podman machine is running; start one or set CE_PODMAN_CONNECTION'; return 2; }
+        if [[ "${CE_ANALYSIS_RUNTIME+x}" == x ]]; then
+          [[ ${#CE_ENGINE_CMD[@]} -eq 5 && "${CE_ENGINE_CMD[1]}" == --url ]] || { ce_runtime_fail 'captured Podman profile does not match macOS'; return 2; }
+          endpoint="${CE_ENGINE_CMD[2]}"
+          ssh_identity="${CE_ENGINE_CMD[4]}"
+          machine=true
+        else
+          CE_ENGINE_CONTEXT="${CE_PODMAN_CONNECTION:-}"
+          if [[ -z "$CE_ENGINE_CONTEXT" ]]; then
+            metadata="$(ce_capture ce_engine_exec machine list --format '{{.Name}}|{{.Running}}')" || return
+            while IFS='|' read -r machine_name running; do
+              [[ "$running" == true && "$machine_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]] || continue
+              [[ -z "$CE_ENGINE_CONTEXT" ]] || { ce_runtime_fail 'multiple Podman machines are running; set CE_PODMAN_CONNECTION'; return 2; }
+              CE_ENGINE_CONTEXT="$machine_name"
+            done <<< "$metadata"
+            [[ -n "$CE_ENGINE_CONTEXT" ]] || { ce_runtime_fail 'no Podman machine is running; start one or set CE_PODMAN_CONNECTION'; return 2; }
+          fi
+          [[ "$CE_ENGINE_CONTEXT" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]] || { ce_runtime_fail 'invalid CE_PODMAN_CONNECTION machine name'; return 2; }
+          template="{{range .}}{{if eq .Name \"$CE_ENGINE_CONTEXT\"}}{{.URI}}|{{.IsMachine}}|{{.Identity}}{{end}}{{end}}"
+          metadata="$(ce_capture ce_engine_exec system connection list --format "$template")" || return
+          [[ "$metadata" != *[[:cntrl:]]* ]] || { ce_runtime_fail 'invalid machine connection metadata'; return 2; }
+          IFS='|' read -r endpoint machine ssh_identity <<< "$metadata"
         fi
-        [[ "$CE_ENGINE_CONTEXT" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]] || { ce_runtime_fail 'invalid CE_PODMAN_CONNECTION machine name'; return 2; }
-        template="{{range .}}{{if eq .Name \"$CE_ENGINE_CONTEXT\"}}{{.URI}}|{{.IsMachine}}|{{.Identity}}{{end}}{{end}}"
-        metadata="$(ce_capture ce_engine_exec system connection list --format "$template")" || return
-        [[ "$metadata" != *[[:cntrl:]]* ]] || { ce_runtime_fail 'invalid machine connection metadata'; return 2; }
-        IFS='|' read -r endpoint machine ssh_identity <<< "$metadata"
         [[ "$machine" == true && "$endpoint" =~ ^ssh://[A-Za-z0-9._-]+@127\.0\.0\.1:[0-9]+/run/user/[0-9]+/podman/podman\.sock$ ]] || {
           ce_runtime_fail 'core macOS profile requires a loopback rootless Podman machine connection'; return 2;
         }
@@ -116,7 +152,7 @@ ce_engine_init() {
           ce_runtime_fail 'machine SSH identity must be a readable absolute file'; return 2;
         }
         # Freeze endpoint and key path; never re-resolve a mutable connection name.
-        CE_ENGINE_CMD+=(--url "$endpoint" --identity "$ssh_identity")
+        CE_ENGINE_CMD=("$CE_ENGINE_BIN" --url "$endpoint" --identity "$ssh_identity")
         context_subject="podman-machine|$endpoint"
         ;;
       *) ce_runtime_fail 'Podman core currently supports Linux or macOS profiles only'; return 2 ;;
@@ -140,6 +176,9 @@ ce_engine_init() {
   else digest="$(printf '%s' "$context_subject" | shasum -a 256)"; fi
   CE_ENGINE_CONTEXT_HASH="${digest%% *}"
   [[ "$CE_ENGINE_CONTEXT_HASH" =~ ^[a-f0-9]{64}$ ]] || { ce_runtime_fail 'cannot fingerprint runtime context'; return 2; }
+  if [[ "${CE_ANALYSIS_RUNTIME+x}" == x && "$CE_ENGINE_CONTEXT_HASH" != "$CE_ANALYSIS_EXPECTED_HASH" ]]; then
+    ce_runtime_fail 'analysis runtime fingerprint drift; no fallback was attempted'; return 2
+  fi
 }
 
 ce_image_ref() {

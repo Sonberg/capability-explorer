@@ -119,6 +119,7 @@ public sealed partial class ExplorerState(ExplorerOptions options, ILogger<Explo
 
         foreach (var file in new[] { options.CapabilitiesFile,
             Path.ChangeExtension(options.CapabilitiesFile, $".local{Path.GetExtension(options.CapabilitiesFile)}"),
+            Path.Combine(Path.GetDirectoryName(Path.GetFullPath(options.CapabilitiesFile))!, ".sandbox-cache", "integration-matches.json"),
             options.BindingsFile ?? "" }.Where(f => f.Length > 0))
         {
             var info = new FileInfo(file);

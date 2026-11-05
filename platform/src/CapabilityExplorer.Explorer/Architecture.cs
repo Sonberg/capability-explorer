@@ -32,7 +32,8 @@ public sealed record ArchFact(string Relation, SymbolRef From, SymbolRef? To, st
 /// known by a configuration name only), "bound" (named by the service map, endpoint found), "broken" (named by the service map, endpoint missing),
 /// "candidate" (a match by route or name, or a candidate fact), "unresolved".
 /// </summary>
-public sealed record ArchEdge(string Id, string From, string To, string Kind, string Label, int Count, string Certainty, IReadOnlyList<ArchFact> Facts);
+public sealed record ArchEdge(string Id, string From, string To, string Kind, string Label, int Count, string Certainty, IReadOnlyList<ArchFact> Facts,
+    string? ManualConnectionId = null, string? Note = null);
 
 public sealed record Crumb(string Label, string Level, string? Focus);
 
@@ -341,7 +342,7 @@ public static class Architecture
 
         b.SameNameLinks();
         return b.Graph("repository", repo, repo, [.. top, new Crumb(repo, "repository", repo)],
-            ["C# types are grouped by declaration source file; TypeScript modules and SQL objects retain their unit grouping.", "Calls into external libraries are shown one level down."]);
+            ["C# types are grouped by namespace; TypeScript modules and SQL objects retain their unit grouping.", "Calls into external libraries are shown one level down."]);
     }
 
     private static ArchNode ExternalRepo(ViewIndex view, string repo) => RepoNode(view, repo) with { Category = "external", Group = "Other systems" };
@@ -574,6 +575,11 @@ public static class Architecture
                 category = n.Props?.TryGetProperty("typeKind", out var tk) == true && tk.GetString() == "interface" ? "interface" : "component";
                 break;
             case "cs" when n.NodeKind is "Method" or "Property" or "Field" or "Variable" && seg.Length >= 4:
+                if (seg[3].StartsWith("sha256:", StringComparison.Ordinal))
+                {
+                    var declaringType = SourcePathResolver.TypeKey(view, n.SymbolKey);
+                    return declaringType is not null && view.Node(declaringType) is { } parent ? Component(view, parent) : null;
+                }
                 var body = seg[3].Length > 2 && seg[3][1] == ':' ? seg[3][2..] : seg[3];
                 var paren = body.IndexOf('(', StringComparison.Ordinal);
                 var head = paren >= 0 ? body[..paren] : body;
@@ -606,8 +612,33 @@ public static class Architecture
 
         var declared = view.Node(key);
         var calcs = view.Calculations.Keys.Count(k => ComponentKeyFast(k) == key);
+        var group = seg[0] == "cs" ? CSharpNamespace(view, key) : null;
         return new ComponentInfo(key, new ArchNode($"comp:{key}", category, declared?.Record.Name ?? label!, declared?.Record.NodeKind ?? (category == "module" ? "module" : "type"),
-            SourcePathResolver.ForCSharpComponent(view, key) ?? unit, key, repo, new Drill("component", key), calcs > 0 ? [$"{calcs} calculation{(calcs == 1 ? "" : "s")}"] : []));
+            group ?? SourcePathResolver.ForCSharpComponent(view, key) ?? unit, key, repo, new Drill("component", key), calcs > 0 ? [$"{calcs} calculation{(calcs == 1 ? "" : "s")}"] : []));
+    }
+
+    private static string? CSharpNamespace(ViewIndex view, string key)
+    {
+        var segments = key.Split('|');
+        if (segments.Length < 4 || segments[0] != "cs" || !segments[3].StartsWith("T:", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var typeName = segments[3][2..];
+        while (typeName.LastIndexOf('.') is var separator && separator > 0)
+        {
+            var enclosingType = $"cs|{segments[1]}|{segments[2]}|T:{typeName[..separator]}";
+            if (view.Node(enclosingType)?.Record.NodeKind == "Type")
+            {
+                typeName = typeName[..separator];
+                continue;
+            }
+
+            return typeName[..separator];
+        }
+
+        return "(global namespace)";
     }
 
     /// <summary>Component key from a symbol key alone (used for counting).</summary>

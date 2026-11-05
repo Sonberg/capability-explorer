@@ -1,5 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using CapabilityExplorer.Explorer;
 using Xunit;
 
 namespace CapabilityExplorer.Tests;
@@ -49,10 +51,40 @@ public sealed class ArchitectureApiTests(ExplorerFactory factory) : IClassFixtur
                                          && e.GetProperty("to").GetString() == "comp:cs|forecast-cs|Forecast.Api|T:Forecast.Api.Data.Repository`1");
         Assert.Equal(2, calls.GetProperty("count").GetInt32()); // ListAsync and AddAsync
         var type = g.GetProperty("nodes").EnumerateArray().Single(n => n.GetProperty("id").GetString() == "comp:cs|forecast-cs|Forecast.Api|T:Forecast.Api.Endpoints.ForecastEndpoints");
-        Assert.Equal("src/Forecast.Api/Endpoints/ForecastEndpoints.cs", type.GetProperty("group").GetString());
+        Assert.Equal("Forecast.Api.Endpoints", type.GetProperty("group").GetString());
         var iface = Edges(g).Single(e => e.GetProperty("to").GetString() == "comp:cs|forecast-cs|Forecast.Api|T:Forecast.Api.Forecasting.IForecastStrategy" && e.GetProperty("kind").GetString() == "call");
         Assert.Equal("static", iface.GetProperty("certainty").GetString()); // interface dispatch
         Assert.Contains(Edges(g), e => e.GetProperty("kind").GetString() == "http" && e.GetProperty("to").GetString() == "repo:api-cs");
+    }
+
+    [Fact]
+    public async Task Repository_level_groups_CSharp_types_by_namespace_to_reduce_source_containers()
+    {
+        var graph = await Graph("level=repository&focus=forecast-cs");
+        var types = graph.GetProperty("nodes").EnumerateArray()
+            .Where(node => node.TryGetProperty("symbolKey", out var key)
+                && key.GetString() is { } symbolKey
+                && symbolKey.StartsWith("cs|forecast-cs|", StringComparison.Ordinal)
+                && symbolKey.Split('|')[3].StartsWith("T:", StringComparison.Ordinal))
+            .ToList();
+        var groups = types.Select(node => node.GetProperty("group").GetString()).Distinct(StringComparer.Ordinal).Count();
+        var namespaceGroups = types.Select(node =>
+        {
+            var typeName = node.GetProperty("symbolKey").GetString()!.Split('|')[3][2..];
+            var separator = typeName.LastIndexOf('.');
+            return separator < 0 ? "(global namespace)" : typeName[..separator];
+        }).Distinct(StringComparer.Ordinal).Count();
+
+        Assert.NotEmpty(types);
+    Assert.True(groups < types.Count, $"Expected {types.Count} C# types to collapse into fewer namespace groups, found {groups}.");
+    Assert.Equal(namespaceGroups, groups);
+        foreach (var node in types)
+        {
+            var typeName = node.GetProperty("symbolKey").GetString()!.Split('|')[3][2..];
+            var separator = typeName.LastIndexOf('.');
+            var expectedNamespace = separator < 0 ? "(global namespace)" : typeName[..separator];
+            Assert.Equal(expectedNamespace, node.GetProperty("group").GetString());
+        }
     }
 
     [Fact]
@@ -65,6 +97,55 @@ public sealed class ArchitectureApiTests(ExplorerFactory factory) : IClassFixtur
         Assert.Contains("unmatched", categories); // the reflection-based plugin path
         Assert.Contains(Edges(g), e => e.GetProperty("certainty").GetString() == "candidate"); // keyed DI
         Assert.Equal(["Landscape", "System", "forecast-cs", "StrategyLoader"], g.GetProperty("breadcrumbs").EnumerateArray().Select(c => c.GetProperty("label").GetString()));
+    }
+
+    [Fact]
+    public void Given_a_compacted_member_when_grouped_then_its_declaring_type_uses_its_namespace_container()
+    {
+        const string type = "cs|forecast-cs|Forecast.Api|T:Forecast.Api.Forecasting.StrategyLoader";
+        var fixture = Fixtures.GoldenFiles.First(path => path.StartsWith("forecast-cs/", StringComparison.Ordinal)
+            && Fixtures.Golden(path).Contains(type, StringComparison.Ordinal));
+        var records = Fixtures.Golden(fixture).Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => JsonNode.Parse(line)!.AsObject()).ToArray();
+        var method = records.First(record => record["kind"]?.GetValue<string>() == "node"
+            && record["nodeKind"]?.GetValue<string>() == "Method"
+            && record["symbolKey"]!.GetValue<string>().Contains("StrategyLoader.", StringComparison.Ordinal))["symbolKey"]!.GetValue<string>();
+        var compact = "cs|forecast-cs|Forecast.Api|sha256:" + new string('a', 64);
+        foreach (var record in records)
+            foreach (var field in new[] { "symbolKey", "from", "to" })
+                if (record[field]?.GetValue<string>() == method) record[field] = compact;
+        var member = records.First(record => record["kind"]?.GetValue<string>() == "node"
+            && record["symbolKey"]?.GetValue<string>() == compact);
+        if (!records.Any(record => record["kind"]?.GetValue<string>() == "edge"
+            && record["relation"]?.GetValue<string>() == "DECLARES" && record["from"]?.GetValue<string>() == type
+            && record["to"]?.GetValue<string>() == compact))
+        {
+            records = [.. records[..^1], new JsonObject
+            {
+                ["schema"] = "ce.v1", ["kind"] = "edge", ["id"] = "e:fffffffffffffffe",
+                ["from"] = type, ["relation"] = "DECLARES", ["to"] = compact,
+                ["derivation"] = "compiler", ["resolution"] = "resolved", ["evidence"] = member["evidence"]!.DeepClone(),
+            }, records[^1]];
+            var counts = records.First(record => record["kind"]?.GetValue<string>() == "complete")["counts"]!;
+            counts["edge"] = counts["edge"]!.GetValue<int>() + 1;
+        }
+        var directory = Directory.CreateTempSubdirectory("ce-compact-member-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(directory, "forecast.jsonl"), string.Join('\n', records.Select(record => record.ToJsonString())) + "\n");
+            var index = ExplorerIndex.Load([directory], null);
+            Assert.Empty(index.Problems);
+            var view = index.View(null);
+            var graph = Architecture.Build(view, "component", type, view, [], null);
+            Assert.Contains(graph.Nodes, node => node.SymbolKey == compact);
+            var repository = Architecture.Build(view, "repository", "forecast-cs", view, [], null);
+            Assert.Contains(repository.Nodes, node => node.SymbolKey == type
+                && node.Group == "Forecast.Api.Forecasting");
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     [Fact]

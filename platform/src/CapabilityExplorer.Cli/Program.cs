@@ -21,6 +21,7 @@ const string Usage = """
       ce analysis-worker [--capabilities <file>] [--model-config <shared.json> | --modelSettings <model.json>]
       ce analysis-run --capability <id> [--capabilities <file>]
       ce analysis-all [--capabilities <file>]
+    ce match-integrations
       ce collection-freshness --previous <input-vector.json> --current <input-vector.json> [--as-of <ISO-8601-offset-time> --policy <observation-policy.json>]
       ce collect --plan <plan.json> --out <directory>
       ce validate-collection <directory>
@@ -76,6 +77,8 @@ NpgsqlDataSource OpenDatabase()
 
 switch (command)
 {
+    case "match-integrations":
+        return AnalysisIntegrationReconciliation.Command(options, files);
     case "collect":
     case "validate-collection":
         return await CollectionCommand.RunAsync(command, options, files);

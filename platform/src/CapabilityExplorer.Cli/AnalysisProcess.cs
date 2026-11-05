@@ -7,7 +7,7 @@ namespace CapabilityExplorer.Cli;
 
 internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisRun run, CancellationToken stop, IAnalysisContainerRuntime? containerRuntime = null) : IDisposable
 {
-    private readonly IAnalysisContainerRuntime _runtime = containerRuntime ?? new AnalysisDockerRuntime();
+    private readonly IAnalysisContainerRuntime _runtime = containerRuntime ?? new AnalysisEngineRuntime(root);
     private readonly SemaphoreSlim _runtimeGate = new(1,1);
     private readonly object _logGate = new();
     private readonly CancellationTokenSource _abort = new();
@@ -18,6 +18,28 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
     public void Dispose() { _abort.Dispose(); _runtimeGate.Dispose(); }
     public async Task CleanupAfterAbort() => await _runtime.CleanupOwned(Label);
     private string Label => "ce-analyze=" + AnalysisWorkerCommand.HashText(root)[..16] + "-" + run.RunId + "-" + run.AttemptId;
+    internal AnalysisTelemetryStage Measure(string stage, string? repositoryId = null, string? language = null) =>
+        new(WriteTelemetry,run.RunId,run.AttemptId!,stage,repositoryId,language);
+
+    private void WriteTelemetry(string line)
+    {
+        if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("analysis host requires Linux or macOS");
+        var path = store.LogPath(run.RunId);
+        var bytes = Encoding.UTF8.GetBytes(line);
+        lock (_logGate)
+        {
+            AnalysisPreparation.RejectLinks(path);
+            using var log = new FileStream(path,new FileStreamOptions
+            {
+                Mode = FileMode.OpenOrCreate, Access = FileAccess.Write, Share = FileShare.Read,
+                UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite
+            });
+            if (log.Length + bytes.Length > 16 * 1024 * 1024) return;
+            log.Seek(0,SeekOrigin.End);
+            log.Write(bytes);
+        }
+    }
+
     public void CheckCancellation()
     {
         if (stop.IsCancellationRequested) store.Cancel(run.RunId);
@@ -58,10 +80,11 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
         }
     }
 
-    public async Task<string> Run(string executable, IEnumerable<string> arguments, IReadOnlyDictionary<string,string>? environment = null, bool capture = false, int captureLimit = 65536)
+    public async Task<string> Run(string executable, IEnumerable<string> arguments, IReadOnlyDictionary<string,string>? environment = null, bool capture = false, int captureLimit = 65536, Action<string>? captureError = null)
     {
         if (captureLimit is < 1 or > 1048576) throw new ArgumentOutOfRangeException(nameof(captureLimit));
         CheckCancellation();
+        var argumentList = arguments.ToArray();
         var sandbox = executable == "scripts/sandbox";
         if (sandbox)
         {
@@ -71,13 +94,24 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
         var resolvedExecutable = executable.Contains(Path.DirectorySeparatorChar) ? Path.GetFullPath(Path.Combine(root,executable)) : executable;
         var start = new ProcessStartInfo(resolvedExecutable) { WorkingDirectory = root, UseShellExecute = false,
             RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true };
-        foreach (var argument in arguments) start.ArgumentList.Add(argument);
+        foreach (var argument in argumentList) start.ArgumentList.Add(argument);
         start.Environment.Clear();
         foreach (var name in new[] { "PATH", "HOME", "TMPDIR", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "SANDBOX_EXTRA_CA_FILE", "SANDBOX_NETWORK" })
             if (Environment.GetEnvironmentVariable(name) is { } value) start.Environment[name] = value;
-        start.Environment["CE_CONTAINER_ENGINE"] = "docker";
+        start.Environment["CE_CONTAINER_ENGINE"] = Environment.GetEnvironmentVariable("CE_CONTAINER_ENGINE") ?? "auto";
         start.Environment["SANDBOX_PASS_ENV"] = "";
         start.Environment["SANDBOX_SOURCES"] = "";
+        var sourceIndex = Array.IndexOf(argumentList,"--source");
+        if (sandbox && argumentList.Contains("--offline",StringComparer.Ordinal) && sourceIndex >= 0 && sourceIndex + 1 < argumentList.Length &&
+            argumentList[sourceIndex + 1].StartsWith("/work/",StringComparison.Ordinal))
+        {
+            var source = Path.GetFullPath(Path.Combine(root,argumentList[sourceIndex + 1][6..]));
+            var relative = Path.GetRelativePath(root,source);
+            if (Path.IsPathRooted(relative) || relative == ".." || relative.StartsWith("../",StringComparison.Ordinal))
+                throw new IOException("offline source escapes workspace");
+            AnalysisPreparation.RejectLinks(source);
+            start.Environment["SANDBOX_SOURCES"] = source;
+        }
         start.Environment["SANDBOX_LABEL"] = Label;
         if (environment is not null) foreach (var pair in environment) start.Environment[pair.Key] = pair.Value;
         if (sandbox) _runtime.ApplyEnvironment(start);
@@ -97,7 +131,7 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
         using var child = Process.Start(start) ?? throw new InvalidOperationException("could not start preparation child");
         using var drain = new CancellationTokenSource();
         var stdout = Pump(child.StandardOutput, capture ? null : logPath, capture, captureLimit, drain.Token);
-        var stderr = Pump(child.StandardError, capture ? null : logPath, false, captureLimit, drain.Token);
+        var stderr = Pump(child.StandardError, capture ? null : logPath, captureError is not null, captureLimit, drain.Token);
         try
         {
             child.StandardInput.Close();
@@ -111,7 +145,8 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
             if (child.ExitCode != 0) throw new InvalidOperationException("preparation child failed with exit " + child.ExitCode);
             using var drainTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             var output = await stdout.WaitAsync(drainTimeout.Token);
-            await stderr.WaitAsync(drainTimeout.Token);
+            var errors = await stderr.WaitAsync(drainTimeout.Token);
+            captureError?.Invoke(errors);
             Interlocked.Decrement(ref _unconfirmedSpawns);
             CheckCancellation();
             return output;

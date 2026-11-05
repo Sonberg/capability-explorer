@@ -15,11 +15,13 @@ internal sealed class RuleContext(ExtractorOptions options, IReadOnlyList<CSharp
 
     public IReadOnlySet<string> RepoAssemblies => repoAssemblies;
 
+    public SymbolKeys Keys { get; } = new(options.RepositoryId, repoAssemblies);
+
     public IEnumerable<(SyntaxTree Tree, SemanticModel Model, CSharpExtractor.Unit Unit)> Trees() =>
         units.SelectMany(u => u.Compilation.SyntaxTrees.Where(t => t.FilePath != "<implicit-usings>").Select(t => (t, u.Compilation.GetSemanticModel(t), u)));
 }
 
-internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit unit, ArtifactBuilder b, SymbolKeys keys, Func<string, string> relative)
+internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit unit, ArtifactBuilder b, SymbolKeys keys, Func<string, string> relative, int? unitIndex = null)
 {
     public static readonly Tool Routes = new("aspnetcore.routes", "1");
     public static readonly Tool Di = new("dotnet.di", "1");
@@ -74,12 +76,19 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
     public void Apply()
     {
         var files = Files().ToList();
-        AspNet(files);
-        DependencyInjection(files);
-        EntityFramework(files);
-        DapperSql(files);
-        ServiceBusChannels(files);
-        HttpClients(files);
+        ApplyRule("cs.rules.routes",() => AspNet(files));
+        ApplyRule("cs.rules.di",() => DependencyInjection(files));
+        ApplyRule("cs.rules.ef",() => EntityFramework(files));
+        ApplyRule("cs.rules.dapper",() => DapperSql(files));
+        ApplyRule("cs.rules.servicebus",() => ServiceBusChannels(files));
+        ApplyRule("cs.rules.http",() => HttpClients(files));
+    }
+
+    private void ApplyRule(string stage, Action apply)
+    {
+        using var timing = context.Options.Measure(stage,unitIndex);
+        apply();
+        timing.Complete();
     }
 
     // ---------------------------------------------------------------- shared helpers
@@ -874,6 +883,8 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
 
     private void HttpClients(List<CSharpExtractor.SourceFile> files)
     {
+        string SourceEvidence(SyntaxNode node) => b.Evidence(relative(node.SyntaxTree.FilePath),
+            node.GetLocation().GetLineSpan(), node.SyntaxTree.GetText().ToString());
         // Typed clients: AddHttpClient<T>(c => c.BaseAddress = new Uri(<expr>)).
         var bases = new Dictionary<string, (string Hint, List<(CSharpExtractor.SourceFile File, SyntaxNode Node)> Sources, bool Ambiguous, string Anchor)>(StringComparer.Ordinal);
         foreach (var (tree, model, registering) in context.Trees())
@@ -933,7 +944,7 @@ internal sealed partial class Rules(RuleContext context, CSharpExtractor.Unit un
                 var hint = hasBase ? configured.Hint : $"client={containing?.Name ?? "unknown"}";
                 // A literal absolute request ignores any base; otherwise ambiguous registrations cannot bind it.
                 var absolute = url.Value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || url.Value.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
-                var proof = url.Sources.Select(s => f.Evidence(b, s)).Append(f.Evidence(b, inv)).ToList();
+                var proof = url.Sources.Select(SourceEvidence).Append(f.Evidence(b, inv)).ToList();
                 if (hasBase && !absolute) proof.AddRange(configured.Sources.Select(s => s.File.Evidence(b, s.Node)));
                 var target = hasBase && configured.Ambiguous && !absolute ? null : HttpRequestTarget.Parse(url.Value, hint);
                 if (target is null)

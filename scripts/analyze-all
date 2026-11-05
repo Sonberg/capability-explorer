@@ -4,7 +4,7 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 source "$root/scripts/lib/container-engine.sh"
-ce_require_docker 'complete multi-capability analysis'
+ce_engine_choice
 [[ $# -le 1 ]] || { echo 'usage: scripts/analyze-all [capabilities.json]' >&2; exit 2; }
 command -v dotnet >/dev/null || { echo 'analysis requires the trusted host .NET 10 runtime; see docs/local-analysis-lifecycle.md' >&2; exit 2; }
 cli="$root/platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll"

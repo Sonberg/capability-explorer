@@ -1,4 +1,6 @@
 extern alias analysiscli;
+using System.Diagnostics;
+using System.Text.Json;
 using CapabilityExplorer.Capabilities.Analysis;
 using analysiscli::CapabilityExplorer.Cli;
 using Xunit;
@@ -11,13 +13,13 @@ public sealed class AnalysisParallelTests
     [InlineData(1)]
     [InlineData(2)]
     [InlineData(4)]
-    public async Task Offline_jobs_overlap_within_the_bound_and_merge_isolated_outputs(int limit)
+    public async Task Offline_jobs_run_serially_and_merge_isolated_outputs_even_for_older_parallel_settings(int limit)
     {
         using var f = new ParallelFixture(limit);
         using var process = new AnalysisProcess(f.Root,f.Store,f.Run,CancellationToken.None,new Runtime());
         var execution = AnalysisParallelExtraction.Run(f.Root,f.Store,f.Run,process,f.Repositories,f.Work,f.Locks,f.Packages);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        var expected = Math.Min(limit,6);
+        var expected = 1;
         while (Directory.GetFiles(Path.Combine(f.Root,"active")).Length < expected)
         {
             if (execution.IsCompleted) await execution;
@@ -35,42 +37,61 @@ public sealed class AnalysisParallelTests
         }
         var peaks = File.ReadAllLines(Path.Combine(f.Root,"peaks")).Select(int.Parse);
         Assert.All(peaks,peak => Assert.InRange(peak,1,expected));
+        var telemetry = Telemetry(f.Store,f.Run);
+        var extraction = Assert.Single(telemetry, entry => entry.GetProperty("stage").GetString() == "extraction");
+        Assert.Equal("completed",extraction.GetProperty("outcome").GetString());
+        var jobs = telemetry.Where(entry => entry.GetProperty("stage").GetString() == "extraction.job").ToArray();
+        Assert.Equal(f.Repositories.Length * 3,jobs.Length);
+        foreach (var repository in f.Repositories)
+            foreach (var language in new[] { "cs", "ts", "sql" })
+                Assert.Single(jobs,entry => entry.GetProperty("repositoryId").GetString() == repository.Id && entry.GetProperty("language").GetString() == language);
+        Assert.All(telemetry,entry =>
+        {
+            Assert.Equal(f.Run.RunId,entry.GetProperty("runId").GetString());
+            Assert.Equal(f.Run.AttemptId,entry.GetProperty("attemptId").GetString());
+            Assert.True(entry.GetProperty("elapsedMilliseconds").GetDouble() >= 0);
+            Assert.Equal("completed",entry.GetProperty("outcome").GetString());
+        });
     }
 
     [Fact]
-    public async Task Failing_parallel_job_does_not_publish_or_erase_sibling_uncertainty()
+    public async Task Failing_first_serial_job_leaves_later_jobs_unstarted_without_merging_or_erasing_uncertainty()
     {
         using var f = new ParallelFixture(2);
         File.WriteAllText(Path.Combine(f.Root,"fail"),"");
         using var process = new AnalysisProcess(f.Root,f.Store,f.Run,CancellationToken.None,new Runtime());
-        var execution = AnalysisParallelExtraction.Run(f.Root,f.Store,f.Run,process,f.Repositories,f.Work,f.Locks,f.Packages);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        while (Directory.GetFiles(Path.Combine(f.Root,"active")).Length < 2)
-        {
-            if (execution.IsCompleted) await execution;
-            await Task.Delay(10,timeout.Token);
-        }
+        var started = f.WaitForFirstChild(timeout.Token);
+        var execution = AnalysisParallelExtraction.Run(f.Root,f.Store,f.Run,process,f.Repositories,f.Work,f.Locks,f.Packages);
+        await started;
         File.WriteAllText(Path.Combine(f.Root,"release"),"");
-        await Assert.ThrowsAnyAsync<Exception>(async () => await execution.WaitAsync(timeout.Token));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await execution.WaitAsync(timeout.Token));
+        Assert.Equal(new[] { "cs-repo-0" },File.ReadAllLines(Path.Combine(f.Root,"started")));
         Assert.False(process.TerminationConfirmed);
         Assert.All(f.Repositories,repo => Assert.Empty(Directory.GetFiles(repo.Staging)));
         Assert.Equal("unknown",f.Store.FinishExecution(f.Owner,new(f.Run.RunId,f.Run.AttemptId!),1,process.TerminationConfirmed).State);
         Assert.False(f.Store.ReadRun(f.Run.RunId).CancellationRequested);
+        var telemetry = Telemetry(f.Store,f.Run);
+        Assert.Equal("failed",Assert.Single(telemetry,entry => entry.GetProperty("stage").GetString() == "extraction").GetProperty("outcome").GetString());
+        Assert.Equal("failed",Assert.Single(telemetry,entry => entry.GetProperty("stage").GetString() == "extraction.job").GetProperty("outcome").GetString());
     }
 
     [Fact]
-    public async Task Cancellation_drains_parallel_children_without_merging_or_claiming_stopped()
+    public async Task Cancellation_drains_first_serial_child_without_starting_later_jobs_merging_or_claiming_stopped()
     {
         using var f = new ParallelFixture(2);
         using var process = new AnalysisProcess(f.Root,f.Store,f.Run,CancellationToken.None,new Runtime());
-        var execution = AnalysisParallelExtraction.Run(f.Root,f.Store,f.Run,process,f.Repositories,f.Work,f.Locks,f.Packages);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        while (Directory.GetFiles(Path.Combine(f.Root,"active")).Length < 2) await Task.Delay(10,timeout.Token);
+        var started = f.WaitForFirstChild(timeout.Token);
+        var execution = AnalysisParallelExtraction.Run(f.Root,f.Store,f.Run,process,f.Repositories,f.Work,f.Locks,f.Packages);
+        await started;
         f.Store.Cancel(f.Run.RunId);
-        await Assert.ThrowsAnyAsync<Exception>(async () => await execution.WaitAsync(timeout.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await execution.WaitAsync(timeout.Token));
+        Assert.Equal(new[] { "cs-repo-0" },File.ReadAllLines(Path.Combine(f.Root,"started")));
         Assert.False(process.TerminationConfirmed);
         Assert.All(f.Repositories,repo => Assert.Empty(Directory.GetFiles(repo.Staging)));
         Assert.Equal("unknown",f.Store.FinishExecution(f.Owner,new(f.Run.RunId,f.Run.AttemptId!),1,process.TerminationConfirmed).State);
+        Assert.True(f.Store.ReadRun(f.Run.RunId).CancellationRequested);
     }
 
     [Theory]
@@ -80,11 +101,280 @@ public sealed class AnalysisParallelTests
     public void Invalid_job_limits_refuse_before_any_child(int jobs) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => AnalysisPreparation.ValidateSettings(new(ExtractionJobs:jobs)));
 
-    private sealed class Runtime : IAnalysisContainerRuntime
+    [Theory]
+    [InlineData("docker")]
+    [InlineData("podman")]
+    public async Task Given_a_native_engine_choice_when_the_worker_starts_then_both_engines_reach_the_same_host_cli(string engine)
+    {
+        if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Unix qualification required");
+        using var fixture = new ParallelFixture(1);
+        var scripts = Path.Combine(fixture.Root,"scripts");
+        Directory.CreateDirectory(Path.Combine(scripts,"lib"));
+        File.Copy(Path.Combine(Fixtures.RepositoryRoot,"scripts/analyze-worker"),Path.Combine(scripts,"analyze-worker"));
+        File.Copy(Path.Combine(Fixtures.RepositoryRoot,"scripts/lib/container-engine.sh"),Path.Combine(scripts,"lib/container-engine.sh"));
+        var output = Path.Combine(fixture.Root,"platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0");
+        Directory.CreateDirectory(output);
+        File.WriteAllText(Path.Combine(output,"ce.dll"),"");
+        var bin = Directory.CreateDirectory(Path.Combine(fixture.Root,"bin")).FullName;
+        var dotnet = Path.Combine(bin,"dotnet");
+        File.WriteAllText(dotnet,"#!/bin/sh\nprintf 'worker-engine:%s\\n' \"$CE_CONTAINER_ENGINE\"\n");
+        File.SetUnixFileMode(dotnet,UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var start = new ProcessStartInfo("/bin/bash")
+        {
+            WorkingDirectory = fixture.Root, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
+        };
+        start.ArgumentList.Add(Path.Combine(scripts,"analyze-worker"));
+        start.Environment.Clear();
+        start.Environment["PATH"] = bin + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH");
+        start.Environment["CE_CONTAINER_ENGINE"] = engine;
+        using var child = Process.Start(start)!;
+        var stdout = child.StandardOutput.ReadToEndAsync();
+        var stderr = child.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await child.WaitForExitAsync(timeout.Token);
+        Assert.True(child.ExitCode == 0,await stderr);
+        Assert.Contains("worker-engine:" + engine,await stdout,StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("docker")]
+    [InlineData("podman")]
+    public async Task Given_an_engine_when_analysis_starts_then_host_boundary_precedes_runtime_and_admission(string engine)
+    {
+        if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Unix qualification required");
+        using var fixture = new ParallelFixture(1);
+        Directory.CreateDirectory(Path.Combine(fixture.Root,"config/runtime"));
+        File.WriteAllText(Path.Combine(fixture.Root,"config/runtime/images.env"),"");
+        var executable = Path.Combine(fixture.Root,"scripts/container-engine");
+        var snapshot = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            backend = engine, executable = "/fixture/" + engine,
+            prefixArguments = engine == "docker" ? new[] { "--host","unix:///fixture.sock" } : new[] { "--remote=false" },
+            fingerprint = new string('a',64),
+        });
+        File.WriteAllText(executable,"#!/bin/sh\nprintf '%s' \"$CE_CONTAINER_ENGINE\" > runtime-probe\nprintf '%s' \"$CE_ANALYSIS_RUNTIME\" > runtime-inherited\nprintf '%s\\n' '" + snapshot + "'\n");
+        File.SetUnixFileMode(executable,UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var start = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = fixture.Root, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
+        };
+        start.ArgumentList.Add(Path.Combine(Fixtures.RepositoryRoot,"platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll"));
+        start.ArgumentList.Add("analysis-run");
+        start.ArgumentList.Add("--capability");
+        start.ArgumentList.Add("missing-capability");
+        start.Environment["CE_CONTAINER_ENGINE"] = engine;
+        start.Environment["CE_ANALYSIS_RUNTIME"] = snapshot;
+        start.Environment.Remove("DOTNET_RUNNING_IN_CONTAINER");
+        using var child = Process.Start(start)!;
+        var stdout = child.StandardOutput.ReadToEndAsync();
+        var stderr = child.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await child.WaitForExitAsync(timeout.Token);
+        await stdout;
+        Assert.Equal(2,child.ExitCode);
+        if (File.Exists("/.dockerenv"))
+        {
+            Assert.Contains("host operation failed (InvalidOperationException)",await stderr,StringComparison.Ordinal);
+            Assert.False(File.Exists(Path.Combine(fixture.Root,"runtime-probe")));
+            Assert.False(File.Exists(Path.Combine(fixture.Root,"runtime-inherited")));
+            Assert.Single(Directory.GetDirectories(Path.Combine(fixture.Root,".sandbox-cache/requests/runs")));
+            return;
+        }
+        Assert.True(File.Exists(Path.Combine(fixture.Root,"runtime-probe")),"Selected runtime must be validated before capability admission. " + await stderr);
+        Assert.Equal(engine,File.ReadAllText(Path.Combine(fixture.Root,"runtime-probe")));
+        Assert.Equal(snapshot,File.ReadAllText(Path.Combine(fixture.Root,"runtime-inherited")));
+    }
+
+    [Fact]
+    public async Task Given_offline_extraction_when_a_source_is_selected_then_the_host_exports_it_as_a_readonly_mount()
+    {
+        using var fixture = new ParallelFixture(1);
+        var source = Path.Combine(fixture.Work,"src","repo-0");
+        Directory.CreateDirectory(source);
+        File.WriteAllText(Path.Combine(fixture.Root,"scripts/sandbox"),"#!/bin/sh\nprintf '%s' \"$SANDBOX_SOURCES\"\n");
+        using var process = new AnalysisProcess(fixture.Root,fixture.Store,fixture.Run,CancellationToken.None,new Runtime());
+        var containerPath = "/work/" + Path.GetRelativePath(fixture.Root,source).Replace('\\','/');
+
+        var output = await process.Run("scripts/sandbox",["--offline","node","extract","--source",containerPath],capture:true);
+
+        Assert.Equal(source,output);
+        Assert.True(process.TerminationConfirmed);
+    }
+
+    [Theory]
+    [InlineData("scripts/container-engine")]
+    [InlineData("scripts/lib/analysis-runtime.ts")]
+    public void Given_runtime_bridge_code_when_it_changes_then_the_analysis_runtime_identity_changes(string changed)
+    {
+        using var fixture = new ParallelFixture(1);
+        var files = new[]
+        {
+            "config/runtime/images.env","scripts/sandbox","scripts/github-token","scripts/lib/container-engine.sh",
+            "scripts/container-engine","scripts/lib/analysis-runtime.ts","scripts/fetch-npm-packages.mjs",
+            "platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll",
+            "platform/src/CapabilityExplorer.Extractors.CSharp/bin/Debug/net10.0/ce-cs.dll",
+            "extractors/ts/src/cli.ts","extractors/ts/package-lock.json",
+        };
+        foreach (var file in files)
+        {
+            var path = Path.Combine(fixture.Root,file);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            if (!File.Exists(path)) File.WriteAllText(path,"fixture-input");
+        }
+        var before = AnalysisPreparation.RuntimeIdentity(fixture.Root);
+        File.AppendAllText(Path.Combine(fixture.Root,changed),"-changed");
+
+        Assert.NotEqual(before,AnalysisPreparation.RuntimeIdentity(fixture.Root));
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task Given_failed_sandbox_execution_when_only_label_cleanup_is_available_then_execution_remains_unknown(bool cleanupConfirmed, bool independentUncertainty)
+    {
+        using var fixture = new ParallelFixture(1);
+        File.WriteAllText(Path.Combine(fixture.Root,"fail"),"");
+        File.WriteAllText(Path.Combine(fixture.Root,"release"),"");
+        using var process = new AnalysisProcess(fixture.Root,fixture.Store,fixture.Run,CancellationToken.None,new Runtime(cleanupConfirmed));
+        if (independentUncertainty) process.MarkUncertainAcquisition();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => process.Run("scripts/sandbox",
+            ["ce-cs.dll","--repository","repo-0","--out",fixture.Repositories[0].Staging]));
+
+        Assert.False(process.TerminationConfirmed);
+        var completed = fixture.Store.FinishExecution(fixture.Owner,new(fixture.Run.RunId,fixture.Run.AttemptId!),1,process.TerminationConfirmed);
+        Assert.Equal("unknown",completed.State);
+        Assert.All(fixture.Repositories,repository => Assert.Empty(Directory.GetFiles(repository.Staging)));
+    }
+
+    [Fact]
+    public async Task Given_a_detached_host_descendant_when_its_parent_fails_then_termination_remains_unconfirmed()
+    {
+        using var fixture = new ParallelFixture(1);
+        using var process = new AnalysisProcess(fixture.Root,fixture.Store,fixture.Run,CancellationToken.None,new Runtime());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => process.Run("/bin/sh",
+            ["-c","/bin/sleep 30 </dev/null >/dev/null 2>&1 & printf '%s' \"$!\" > child.pid; exit 9"]));
+        using var survivor = Process.GetProcessById(int.Parse(File.ReadAllText(Path.Combine(fixture.Root,"child.pid"))));
+        try
+        {
+            Assert.False(survivor.HasExited);
+            Assert.False(process.TerminationConfirmed);
+            Assert.Equal("unknown",fixture.Store.FinishExecution(fixture.Owner,new(fixture.Run.RunId,fixture.Run.AttemptId!),1,process.TerminationConfirmed).State);
+        }
+        finally
+        {
+            if (!survivor.HasExited) survivor.Kill(entireProcessTree:true);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await survivor.WaitForExitAsync(timeout.Token);
+        }
+    }
+
+    [Fact]
+    public async Task Given_a_complete_local_analysis_when_it_finishes_then_each_major_stage_has_private_durable_timing()
+    {
+        if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Unix qualification required");
+        using var fixture = new ParallelFixture(1);
+        var root = Path.Combine(fixture.Root,"pipeline");
+        void Write(string relative, string text, bool executable = false)
+        {
+            var file = Path.Combine(root,relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            File.WriteAllText(file,text);
+            if (executable) File.SetUnixFileMode(file,UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        Write("capabilities.json",JsonSerializer.Serialize(new
+        {
+            capabilities = new[] { new { id = "sales", repositories = new[]
+            {
+                new { id = "web-ts", kind = "local", location = Fixtures.RepoDirectory("web-ts"), @ref = "v1-base" }
+            } } }
+        }));
+        foreach (var file in new[]
+        {
+            "config/runtime/images.env", "scripts/lib/container-engine.sh", "scripts/lib/analysis-runtime.ts",
+            "scripts/fetch-npm-packages.mjs", "extractors/ts/package-lock.json",
+            "platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll",
+            "platform/src/CapabilityExplorer.Extractors.CSharp/bin/Debug/net10.0/ce-cs.dll"
+        }) Write(file,"");
+        Write("extractors/ts/src/cli.ts","\"extract\" \"extract-sql\"");
+        Write("scripts/github-token","#!/bin/sh\nexit 0\n",true);
+        var snapshot = JsonSerializer.Serialize(new
+        {
+            backend = "podman", executable = "/fixture/podman", prefixArguments = new[] { "--remote=false" }, fingerprint = new string('a',64)
+        });
+        Write("scripts/container-engine","#!/bin/sh\nprintf '%s' '" + snapshot + "'\n",true);
+        Write("artifact.jsonl",Fixtures.Golden("web-ts/v1-base/_fixture_web.jsonl"));
+        Write("scripts/sandbox",string.Join('\n',new[]
+        {
+            "#!/bin/sh", "kind=other; output=",
+            "for arg in \"$@\"; do case \"$arg\" in *ce-cs.dll) kind=cs;; esac; done",
+            "while [ \"$#\" -gt 0 ]; do if [ \"$1\" = --out ]; then shift; output=\"$1\"; fi; shift; done",
+            "case \"$output\" in /work/*) output=\"$PWD/${output#/work/}\";; esac",
+            "if [ \"$kind\" = cs ]; then cp artifact.jsonl \"$output/artifact.jsonl\"; fi", ""
+        }),true);
+        var feeds = Path.Combine(fixture.Root,"pipeline-feeds.json");
+        File.SetUnixFileMode(fixture.Root,UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        File.WriteAllText(feeds,"{\"feeds\":[]}");
+        File.SetUnixFileMode(feeds,UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        var start = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = root, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        start.ArgumentList.Add(Path.Combine(Fixtures.RepositoryRoot,"platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll"));
+        foreach (var argument in new[] { "analysis-run", "--capability", "sales" }) start.ArgumentList.Add(argument);
+        start.Environment.Clear();
+        foreach (var name in new[] { "PATH", "HOME", "TMPDIR" })
+            if (Environment.GetEnvironmentVariable(name) is { } value) start.Environment[name] = value;
+        start.Environment["CE_CONTAINER_ENGINE"] = "podman";
+        start.Environment["CE_PACKAGE_FEEDS_FILE"] = feeds;
+        start.Environment["PACKAGES"] = "0";
+        start.Environment["GITHUB_AUTH"] = "none";
+        using var child = Process.Start(start)!;
+        var stdout = child.StandardOutput.ReadToEndAsync();
+        var stderr = child.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await child.WaitForExitAsync(timeout.Token);
+        await stdout;
+        if (File.Exists("/.dockerenv"))
+        {
+            Assert.Equal(2,child.ExitCode);
+            Assert.Contains("host operation failed (InvalidOperationException)",await stderr,StringComparison.Ordinal);
+            Assert.False(Directory.Exists(Path.Combine(root,".sandbox-cache/requests")));
+            Assert.False(Directory.Exists(Path.Combine(root,".sandbox-cache/artifacts")));
+            return;
+        }
+        Assert.True(child.ExitCode == 0,await stderr);
+        var store = new FileRunStore(Path.Combine(root,".sandbox-cache/requests"));
+        var id = Path.GetFileName(Assert.Single(Directory.GetDirectories(Path.Combine(root,".sandbox-cache/requests/runs"))));
+        var run = store.ReadRun(id);
+        Assert.Equal("done",run.State);
+        var telemetry = Telemetry(store,run);
+        foreach (var stage in new[]
+        {
+            "analysis.total", "sources.check", "sources.export", "hashing.sources.before", "hashing.dependencies.before",
+            "integrity.final", "publication", "cleanup", "enrichment"
+        })
+        {
+            var entry = Assert.Single(telemetry,value => value.GetProperty("stage").GetString() == stage);
+            Assert.Equal("completed",entry.GetProperty("outcome").GetString());
+            Assert.True(entry.GetProperty("elapsedMilliseconds").GetDouble() >= 0);
+        }
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite,File.GetUnixFileMode(store.LogPath(id)));
+        Assert.Empty(Directory.GetDirectories(Path.Combine(store.AttemptDirectory(new(id,run.AttemptId!)),"src")));
+        var canonical = Path.Combine(root,".sandbox-cache/artifacts/web-ts",Fixtures.Lock["web-ts"]["v1-base"],"artifact.jsonl");
+        Assert.Equal(Fixtures.Golden("web-ts/v1-base/_fixture_web.jsonl"),File.ReadAllText(canonical));
+    }
+
+    private static JsonElement[] Telemetry(FileRunStore store, AnalysisRun run) =>
+        (store.ReadLog(run.RunId) ?? "").Split('\n').Where(line => line.StartsWith("-- telemetry: ",StringComparison.Ordinal))
+            .Select(line => JsonDocument.Parse(line[14..]).RootElement.Clone()).ToArray();
+
+    private sealed class Runtime(bool cleanupConfirmed = true) : IAnalysisContainerRuntime
     {
         public Task EnsureFrozen() => Task.CompletedTask;
         public void ApplyEnvironment(System.Diagnostics.ProcessStartInfo start) { }
-        public Task<bool> CleanupOwned(string label) => Task.FromResult(true);
+        public Task<bool> CleanupOwned(string label) => Task.FromResult(cleanupConfirmed);
     }
 
     private sealed class ParallelFixture : IDisposable
@@ -132,6 +422,7 @@ public sealed class AnalysisParallelTests
                   shift
                 done
                 case "$output" in /work/*) output="$PWD/${output#/work/}";; esac
+                printf '%s\n' "$kind-$repo" >> started
                 touch "active/$kind-$repo"
                 find active -type f | wc -l >> peaks
                 while [ ! -f release ]; do sleep .01; done
@@ -141,6 +432,15 @@ public sealed class AnalysisParallelTests
                 rm -f "active/$kind-$repo"
                 """ + "\n");
             File.SetUnixFileMode(script,UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        public async Task WaitForFirstChild(CancellationToken stop)
+        {
+            var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var watcher = new FileSystemWatcher(Path.Combine(Root,"active"),"cs-repo-0");
+            watcher.Created += (_, _) => started.TrySetResult();
+            watcher.EnableRaisingEvents = true;
+            if (File.Exists(Path.Combine(Root,"active/cs-repo-0"))) started.TrySetResult();
+            await started.Task.WaitAsync(stop);
         }
         public void Dispose() { Owner.Dispose(); Directory.Delete(Root,true); }
     }

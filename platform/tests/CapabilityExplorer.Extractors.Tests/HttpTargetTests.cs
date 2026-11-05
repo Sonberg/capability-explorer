@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CapabilityExplorer.Contracts;
 using CapabilityExplorer.Extractors.CSharp;
 using Xunit;
 
@@ -70,6 +71,29 @@ public sealed class HttpTargetTests : IDisposable
         Assert.Contains(records, r => r.GetProperty("kind").GetString() == "evidence"
             && evidence.Contains(r.GetProperty("id").GetString())
             && r.GetProperty("span").GetProperty("startLine").GetInt32() == registrationLine);
+    }
+
+    [Fact]
+    public void Given_a_cross_file_url_constant_when_requested_then_each_citation_uses_its_own_source_file()
+    {
+        File.WriteAllText(Path.Combine(_root, "Routes.cs"), new string('\n', 80)
+            + "public static class Routes { public const string Endpoint = \"/cross-file\"; }");
+        var records = Extract("Routes.Endpoint");
+        var request = Request(records);
+        var references = request.GetProperty("evidence").EnumerateArray().Select(value => value.GetString()).ToHashSet();
+        var citations = records.Where(record => record.GetProperty("kind").GetString() == "evidence"
+            && references.Contains(record.GetProperty("id").GetString())).ToArray();
+        Assert.Contains(citations, citation => citation.GetProperty("path").GetString() == "Routes.cs");
+        foreach (var citation in citations)
+        {
+            var file = citation.GetProperty("path").GetString()!;
+            var span = citation.GetProperty("span");
+            var content = Snippet.Extract(File.ReadAllText(Path.Combine(_root, file)), new Span(
+                span.GetProperty("startLine").GetInt32(), span.GetProperty("startColumn").GetInt32(),
+                span.GetProperty("endLine").GetInt32(), span.GetProperty("endColumn").GetInt32()));
+            Assert.NotNull(content);
+            Assert.Equal(citation.GetProperty("snippetSha256").GetString(), Snippet.Sha256(content));
+        }
     }
 
     private JsonElement[] Extract(string expression, bool withBase = false, bool duplicate = false)

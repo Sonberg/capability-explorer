@@ -30,6 +30,13 @@ internal static class AnalysisPackagePreparation
             .Select(feed => new { id = feed.GetProperty("id").GetString(), kind = feed.GetProperty("kind").GetString(),
                 url = new Uri(feed.GetProperty("url").GetString()!).AbsoluteUri, scope = Optional(feed, "scope") });
         inputs["package-feed-policy"] = AnalysisWorkerCommand.HashText(JsonSerializer.Serialize(descriptors));
+        using (var timing = process.Measure("packages.reuse"))
+        {
+            var reused = AnalysisPackageReuse.Seed(root,run,repositories,packageDir,inputs["package-feed-policy"],process);
+            inputs["nuget-reuse"] = reused is null ? "miss" : "verified";
+            if (reused is not null) inputs["nuget-reuse-source"] = reused;
+            timing.Complete();
+        }
         string InContainer(string file) => "/work/" + Relative(root, file);
         var nuget = SerializeFeeds(feeds.Where(feed => feed.GetProperty("kind").GetString() == "nuget"));
         var packageEnvironment = new Dictionary<string, string>
@@ -42,6 +49,7 @@ internal static class AnalysisPackagePreparation
             if (Environment.GetEnvironmentVariable(name) is { } credential) packageEnvironment[name] = credential;
         foreach (var repo in repositories)
         {
+            using var timing = process.Measure("packages.nuget",repo.Id);
             var arguments = new List<string> { "dotnet", "dotnet", CSharp, "fetch-packages", "--source", InContainer(repo.Source),
                 "--packages", InContainer(packageDir), "--lock", InContainer(Path.Combine(locks, repo.Id + ".json")) };
             if (run.Settings.IncludeTests) arguments.Add("--include-tests");
@@ -50,6 +58,7 @@ internal static class AnalysisPackagePreparation
             var coverage = Regex.Match(output, @"(?m)^packages: (\d+) downloaded, (\d+) already present, (\d+) unavailable;");
             if (!coverage.Success) throw new InvalidDataException("NuGet fetch did not report dependency coverage");
             inputs["nuget-coverage:" + repo.Id] = string.Join(':', coverage.Groups.Cast<Group>().Skip(1).Select(group => group.Value));
+            timing.Packages(downloaded:Count(coverage,1),alreadyPresent:Count(coverage,2),unavailable:Count(coverage,3));
         }
 
         var npm = SerializeFeeds(feeds.Where(feed => feed.GetProperty("kind").GetString() == "npm"));
@@ -58,14 +67,38 @@ internal static class AnalysisPackagePreparation
         if (Encoding.UTF8.GetByteCount(resolvedNpm) > MaximumSettingsBytes) throw new InvalidDataException("resolved npm feed settings exceed the bounded environment transport");
         using (var resolved = JsonDocument.Parse(resolvedNpm)) ValidateFeeds(resolved.RootElement);
         var npmEnvironment = new Dictionary<string, string> { ["CE_PACKAGE_FEEDS"] = resolvedNpm, ["SANDBOX_PASS_ENV"] = "CE_PACKAGE_FEEDS" };
+        using var npmTiming = process.Measure("packages.npm");
+        var npmErrors = "";
         var npmOutput = await process.Run("scripts/sandbox", ["node", "node", NpmHelper, InContainer(Path.Combine(work, "manifest.tsv"))],
-            npmEnvironment, capture: true, captureLimit: 1048576);
+            npmEnvironment, capture: true, captureLimit: 1048576, captureError: errors => npmErrors = errors);
         var npmCoverage = Regex.Match(npmOutput, @"(?m)^npm packages: (\d+) lockfile-backed project\(s\) installed, (\d+) unavailable;");
         if (!npmCoverage.Success) throw new InvalidDataException("npm fetch did not report dependency coverage");
         inputs["npm-coverage"] = string.Join(':', npmCoverage.Groups.Cast<Group>().Skip(1).Select(group => group.Value));
+        var unavailable = Count(npmCoverage,2);
+        var categories = new SortedSet<string>(StringComparer.Ordinal);
+        if (unavailable > 0)
+        {
+            foreach (Match code in Regex.Matches(npmOutput + "\n" + npmErrors, @"(?m)^npm (?:ERR!|error) code ([A-Z0-9_]+)\r?$"))
+                categories.Add(code.Groups[1].Value switch
+                {
+                    "E401" or "ENEEDAUTH" => "authentication",
+                    "E403" => "authorization",
+                    "E404" or "ETARGET" => "package-not-found",
+                    "CERT_HAS_EXPIRED" or "SELF_SIGNED_CERT_IN_CHAIN" or "UNABLE_TO_VERIFY_LEAF_SIGNATURE" or "DEPTH_ZERO_SELF_SIGNED_CERT" => "tls",
+                    "ETIMEDOUT" or "ESOCKETTIMEDOUT" => "network-timeout",
+                    "ECONNRESET" or "ECONNREFUSED" or "ENOTFOUND" or "EAI_AGAIN" => "network",
+                    "ERESOLVE" => "dependency-conflict",
+                    "EUSAGE" => "lockfile-or-usage",
+                    _ => "unknown"
+                });
+            if (categories.Count == 0) categories.Add("unknown");
+        }
+        npmTiming.Packages(installed:Count(npmCoverage,1),unavailable:unavailable,failureCategories:categories.ToArray());
         process.CheckCancellation();
         return inputs;
     }
+
+    private static int Count(Match coverage, int group) => int.Parse(coverage.Groups[group].Value,System.Globalization.CultureInfo.InvariantCulture);
 
     private static Dictionary<string, string> HostNpmEnvironment(string feeds)
     {

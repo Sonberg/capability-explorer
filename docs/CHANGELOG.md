@@ -11,6 +11,11 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- HTTP capability recommendations in architecture inspection and binding review,
+  with explainable observed route coverage, request/endpoint source evidence,
+  explicit cross-capability destination revisions and stale-review protection.
+  Candidate selection remains unreviewed; export never adopts a binding.
+
 - Proposed MADR-0036 describes interface-configurable evidence retention with
   policy minimums/defaults, verified central custody, age-based historical
   resolution and explicit archival/deletion safeguards. Numeric durations and

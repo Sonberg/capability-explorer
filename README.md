@@ -62,13 +62,12 @@ for supported host/API combinations and recovery limits.
 Run `make dev` (or `make EXECUTION=sandbox dev`) to import saved analysis artifacts
 and start the explorer without re-analyzing repositories. Run `make analyze-all`
 separately to refresh the data, or opt in at startup with `DEV_REANALYZE=1`.
-Analysis runs up to two offline extraction jobs concurrently across repositories and languages.
-Use `make analyze CAPABILITY=<id> ANALYZE_JOBS=4` to raise the limit, or `ANALYZE_JOBS=1`
-for serial extraction. The same setting applies to `analyze-all`, `analyze-worker`, and
-the worker started by `make dev`; restart an existing worker to change its limit.
-Package downloads and publication remain sequential. Each extractor writes isolated staging
-output, merged only after every job succeeds. Logs include phase and extraction-task durations;
-increase concurrency conservatively because concurrent Roslyn processes can use substantial memory.
+Analysis is serial on both Docker and Podman: one capability and one extractor at a time,
+including previously frozen worker/job settings of 2 or 4. Newly admitted settings are 1;
+legacy `ANALYZE_WORKERS`/`ANALYZE_JOBS` values of 1-4 are validated but capped at 1.
+This applies to `analyze`, `analyze-all`, `analyze-worker`, and the worker started by
+native `make dev`. Package downloads and publication remain sequential. Each extractor
+writes isolated staging output, merged only after every extractor succeeds.
 Compare the private `.sandbox-cache/analysis-receipt.json`
 application/repository SHAs and hashes with the owner to verify shared inputs;
 unavailable repositories remain failures or not assessed, never successful analysis.
@@ -87,7 +86,10 @@ Everything goes through `make`. Trusted project restore, build, tests, the Explo
 the host for normal debugger and hot-reload support. Capability analysis alone runs in hardened containers because
 it reads repositories that must be treated as untrusted input.
 
-Install .NET 10, Node.js 22, Docker and make, then run:
+Install .NET 10, Node.js 22 and make. Native development and analysis accept local Unix
+Docker or qualified rootless Podman; the full sandbox/CI and Testcontainers paths still
+require Docker. See the [Podman profile and qualification limits](docs/podman-core.md).
+Then run:
 
 ```sh
 make ci                 # fixture compile checks + all tests
@@ -99,17 +101,30 @@ make frontend           # Vite dev server with hot reload
 
 ### Run the complete development environment
 
-With Docker running, one command starts the complete local stack:
+With local Docker or qualified rootless Podman running, the same native command starts
+the local stack and host analysis worker:
 
 ```sh
 make dev
 ```
 
+`CE_CONTAINER_ENGINE=auto|docker|podman` also applies to `scripts/analyze`,
+`scripts/analyze-all` and `scripts/analyze-worker`. Automatic selection prefers an
+available Docker executable, otherwise Podman; a selected engine's failure never
+triggers fallback. Commands and the UI Analyse action are unchanged. This does not
+make `EXECUTION=sandbox`, `--docker`/Testcontainers or full CI/security collection
+transparent across engines; those paths remain Docker-only.
+
 This builds the solution and production frontend, starts PostgreSQL with pgvector and Ollama, imports and
 embeds the available artifacts, starts the capability-analysis worker, and serves the application at
-<http://127.0.0.1:5080>. The first run can take longer while Docker images and Ollama models are downloaded.
+<http://127.0.0.1:5080>. The first run can take longer while container images and Ollama models are downloaded.
 The Explorer API, solution, frontend build, import, and embedding run directly on the host; only capability
 source acquisition and extraction run in the analysis sandbox.
+The isolated macOS Podman single/aggregate probe passed with valid artifacts after
+serialization, not with live package fetching, private feeds, database import or model
+effects. Docker fixture tests passed, but no Docker daemon was available for live
+Docker/full CI qualification; final gates and a new source-hash-qualified probe remain
+the integration owner's responsibility.
 
 The built frontend is already served by `make dev`. For frontend hot reload, leave it running and start Vite
 in a second terminal:

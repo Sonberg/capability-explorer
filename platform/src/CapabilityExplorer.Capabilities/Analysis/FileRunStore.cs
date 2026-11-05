@@ -84,8 +84,12 @@ public sealed partial class FileRunStore
         if (Legacy()) return "legacy lifecycle evidence requires reconciliation";
         try
         {
-            return ChecksBlock() || All().Any(run => run.State is "unknown" or "interrupted" or "partial")
-                ? "unreconciled execution or publication blocks analysis" : null;
+            if (ChecksBlock()) return "Analysis is waiting for a source check to finish or for its termination to be verified on the host.";
+            var blocked = All().Where(run => run.State is "unknown" or "interrupted" or "partial")
+                .OrderBy(run => run.AcceptedAt).ThenBy(run => run.RunId,StringComparer.Ordinal).FirstOrDefault();
+            if (blocked is null) return null;
+            var boundary = blocked.Effects is not null ? "publication" : "execution";
+            return $"Analysis paused for '{blocked.CapabilityId}' (run {blocked.RunId}): {boundary} was interrupted. Verify this attempt on the host before retrying; its evidence has been preserved.";
         }
         catch (Exception error) when (error is IOException or InvalidDataException or KeyNotFoundException or JsonException or ArgumentException)
         { return "incomplete or malformed lifecycle evidence requires reconciliation"; }
@@ -103,6 +107,17 @@ public sealed partial class FileRunStore
         return string.Join('\n', text.Split('\n').TakeLast(maxLines));
     }
     public AnalysisRun ReadRun(string runId) => Load(runId);
+    public IReadOnlyList<AnalysisRun> ReadPublishedRuns() => All()
+        .Where(run => run.State == "done" && run.ManifestHash is not null && run.Effects is { Count: > 0 }
+            && run.Effects.All(effect => effect.State == "confirmed"))
+        .GroupBy(run => run.CapabilityId, StringComparer.Ordinal)
+        .Select(group => group.OrderByDescending(run => run.AcceptedAt)
+            .ThenByDescending(run => run.RunId, StringComparer.Ordinal).First())
+        .OrderBy(run => run.CapabilityId, StringComparer.Ordinal).ToArray();
+    public IReadOnlyDictionary<string, AnalysisRun> ReadLatestRuns() => All()
+        .GroupBy(run => run.CapabilityId, StringComparer.Ordinal)
+        .ToDictionary(group => group.Key, group => group.OrderByDescending(run => run.AcceptedAt)
+            .ThenByDescending(run => run.RunId, StringComparer.Ordinal).First(), StringComparer.Ordinal);
     public AnalysisRun? ReadLatest(string capId)
     {
         AnalysisPaths.Capability(capId);
@@ -157,6 +172,49 @@ public sealed partial class FileRunStore
         Save(run);
         return new("accepted", run);
     }
+
+    public void RetireCancelledExecution(WorkerOwnership owner, string capabilityId, AttemptIdentity attempt)
+    {
+        Owner(owner);
+        AnalysisPaths.Capability(capabilityId);
+        AnalysisPaths.Id(attempt.AttemptId);
+        using var gate = Gate();
+        var run = Load(attempt.RunId);
+        if (run.CapabilityId != capabilityId || run.AttemptId != attempt.AttemptId ||
+            run.State is not ("unknown" or "interrupted") || !run.CancellationRequested || run.ExecutionCompleted ||
+            run.ManifestHash is not null || run.Effects is not null || File.Exists(SafePath(run.RunId,"resolved.json")))
+            throw new InvalidOperationException("only the exact cancelled pre-publication execution can be retired");
+        VerifyAccepted(run);
+        var archive = Path.Combine(_root,"reconciled",run.RunId);
+        AnalysisPaths.NoLinks(archive);
+        var evidence = Path.Combine(archive,"evidence");
+        AnalysisPaths.NoLinks(evidence);
+        if (File.Exists(archive) || Directory.Exists(evidence) || File.Exists(evidence)) throw new InvalidOperationException("recovery evidence already exists");
+        var decisionPath = Path.Combine(archive,"decision.json");
+        if (Directory.Exists(archive))
+        {
+            using var recorded = JsonDocument.Parse(AnalysisPaths.ReadBounded(decisionPath));
+            var decision = recorded.RootElement;
+            if (decision.GetProperty("runId").GetString() != run.RunId || decision.GetProperty("attemptId").GetString() != run.AttemptId ||
+                decision.GetProperty("capabilityId").GetString() != run.CapabilityId || decision.GetProperty("acceptedInputsHash").GetString() != run.AcceptedInputsHash ||
+                decision.GetProperty("outcome").GetString() != "operator-released-for-retry" || decision.GetProperty("terminationVerified").GetBoolean())
+                throw new InvalidOperationException("recovery decision does not match this interrupted attempt");
+        }
+        else
+        {
+            AnalysisPaths.DirectoryPrivate(Path.GetDirectoryName(archive)!);
+            AnalysisPaths.DirectoryPrivate(archive);
+            AnalysisPaths.Save(decisionPath,new
+            {
+                run.RunId, run.AttemptId, run.CapabilityId, run.AcceptedInputsHash,
+                outcome = "operator-released-for-retry", terminationVerified = false,
+                priorState = run.State, recordedAt = DateTimeOffset.UtcNow,
+                decision = "Operator explicitly authorized a fresh run despite unverified termination. Original evidence is preserved without claiming success or confirmed stop.",
+            });
+        }
+        Directory.Move(RunDirectory(run.RunId),evidence);
+    }
+
     private bool Legacy()
     {
         CoordinationDomain.Validate(_root);

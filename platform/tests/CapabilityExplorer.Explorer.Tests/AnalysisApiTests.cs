@@ -9,6 +9,170 @@ public sealed class AnalysisApiTests
 {
     private const string Url = "/api/capabilities/demand-pricing/analyze";
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Given_cancelled_prepublication_execution_when_operator_authorizes_retry_then_old_evidence_is_preserved_and_a_new_run_is_queued(bool acknowledge)
+    {
+        using var factory = new CapabilityExplorerFactory();
+        using var client = factory.CreateClient();
+        var store = new CapabilityExplorer.Capabilities.Analysis.FileRunStore(factory.RequestsDirectory);
+        var admitted = store.Admit("demand-pricing",factory.ConfigurationPath,null,new()).Run;
+        CapabilityExplorer.Capabilities.Analysis.AnalysisRun prior;
+        using (var owner = store.AcquireWorker())
+        {
+            prior = store.ClaimNext(owner,admitted.RunId)!;
+            store.Cancel(prior.RunId);
+            store.FinishExecution(owner,new(prior.RunId,prior.AttemptId!),1,false);
+        }
+        var record = Path.Combine(store.RunDirectory(prior.RunId),"run.json");
+        var bytes = await File.ReadAllBytesAsync(record);
+
+        var response = await client.PostAsJsonAsync("/api/capabilities/demand-pricing/retry",new
+        {
+            runId = prior.RunId, attemptId = prior.AttemptId, acknowledgeUnverifiedExecution = acknowledge,
+        });
+
+        Assert.Equal(acknowledge ? HttpStatusCode.Accepted : HttpStatusCode.BadRequest,response.StatusCode);
+        if (!acknowledge)
+        {
+            Assert.Equal(bytes,await File.ReadAllBytesAsync(record));
+            Assert.Equal("unknown",store.ReadRun(prior.RunId).State);
+            return;
+        }
+        var job = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var nextId = job.GetProperty("runId").GetString()!;
+        Assert.NotEqual(prior.RunId,nextId);
+        Assert.Equal("queued",job.GetProperty("state").GetString());
+        Assert.False(job.GetProperty("blocked").GetBoolean());
+        Assert.Equal(nextId,store.ReadLatest("demand-pricing")!.RunId);
+        Assert.Null(store.ReadBlockReason());
+        var archive = Path.Combine(factory.RequestsDirectory,"reconciled",prior.RunId);
+        Assert.Equal(bytes,await File.ReadAllBytesAsync(Path.Combine(archive,"evidence","run.json")));
+        var decision = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(archive,"decision.json")));
+        using (decision)
+        {
+            Assert.Equal("operator-released-for-retry",decision.RootElement.GetProperty("outcome").GetString());
+            Assert.False(decision.RootElement.GetProperty("terminationVerified").GetBoolean());
+            Assert.Equal(prior.AttemptId,decision.RootElement.GetProperty("attemptId").GetString());
+        }
+        Assert.DoesNotContain(factory.RequestsDirectory,await response.Content.ReadAsStringAsync(),StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("publication")]
+    [InlineData("stale-attempt")]
+    [InlineData("not-cancelled")]
+    public async Task Given_unsafe_or_stale_recovery_when_retry_is_requested_then_no_evidence_is_retired(string condition)
+    {
+        using var factory = new CapabilityExplorerFactory();
+        using var client = factory.CreateClient();
+        var store = new CapabilityExplorer.Capabilities.Analysis.FileRunStore(factory.RequestsDirectory);
+        store.Admit("demand-pricing",factory.ConfigurationPath,null,new());
+        CapabilityExplorer.Capabilities.Analysis.AnalysisRun prior;
+        using (var owner = store.AcquireWorker())
+        {
+            prior = store.ClaimNext(owner)!;
+            if (condition == "publication")
+            {
+                var manifest = store.BindResolved(owner,new(prior.RunId,prior.AttemptId!),new(prior.AcceptedInputsHash,
+                    new Dictionary<string,string> { ["source"] = new('a',64) }));
+                store.FinishExecution(owner,new(prior.RunId,prior.AttemptId!),0);
+                using (var permit = store.BeginPublication(owner,new(prior.RunId,prior.AttemptId!),manifest))
+                    permit.Intent("local-artifacts","preserve");
+                store.Cancel(prior.RunId);
+            }
+            else
+            {
+                if (condition != "not-cancelled") store.Cancel(prior.RunId);
+                store.FinishExecution(owner,new(prior.RunId,prior.AttemptId!),1,false);
+            }
+        }
+        var record = Path.Combine(store.RunDirectory(prior.RunId),"run.json");
+        var bytes = await File.ReadAllBytesAsync(record);
+
+        var response = await client.PostAsJsonAsync("/api/capabilities/demand-pricing/retry",new
+        {
+            runId = prior.RunId, attemptId = condition == "stale-attempt" ? Guid.NewGuid().ToString("N") : prior.AttemptId,
+            acknowledgeUnverifiedExecution = true,
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict,response.StatusCode);
+        Assert.Equal(bytes,await File.ReadAllBytesAsync(record));
+        Assert.False(Directory.Exists(Path.Combine(factory.RequestsDirectory,"reconciled",prior.RunId)));
+        Assert.Equal(prior.RunId,store.ReadLatest("demand-pricing")!.RunId);
+        Assert.NotNull(store.ReadBlockReason());
+    }
+
+    [Fact]
+    public async Task Given_a_recorded_operator_decision_when_retirement_was_interrupted_before_move_then_retry_can_resume_without_deleting_evidence()
+    {
+        using var factory = new CapabilityExplorerFactory();
+        using var client = factory.CreateClient();
+        var store = new CapabilityExplorer.Capabilities.Analysis.FileRunStore(factory.RequestsDirectory);
+        store.Admit("demand-pricing",factory.ConfigurationPath,null,new());
+        CapabilityExplorer.Capabilities.Analysis.AnalysisRun prior;
+        using (var owner = store.AcquireWorker())
+        {
+            prior = store.ClaimNext(owner)!;
+            store.Cancel(prior.RunId);
+            store.FinishExecution(owner,new(prior.RunId,prior.AttemptId!),1,false);
+        }
+        var archive = Path.Combine(factory.RequestsDirectory,"reconciled",prior.RunId);
+        Directory.CreateDirectory(archive);
+        var decision = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            prior.RunId, prior.AttemptId, prior.CapabilityId, prior.AcceptedInputsHash,
+            outcome = "operator-released-for-retry", terminationVerified = false,
+        },JsonSerializerOptions.Web);
+        await File.WriteAllBytesAsync(Path.Combine(archive,"decision.json"),decision);
+        var original = await File.ReadAllBytesAsync(Path.Combine(store.RunDirectory(prior.RunId),"run.json"));
+
+        var response = await client.PostAsJsonAsync("/api/capabilities/demand-pricing/retry",new
+        {
+            prior.RunId, prior.AttemptId, acknowledgeUnverifiedExecution = true,
+        });
+
+        Assert.Equal(HttpStatusCode.Accepted,response.StatusCode);
+        Assert.Equal(decision,await File.ReadAllBytesAsync(Path.Combine(archive,"decision.json")));
+        Assert.Equal(original,await File.ReadAllBytesAsync(Path.Combine(archive,"evidence","run.json")));
+        Assert.Equal("queued",store.ReadLatest("demand-pricing")!.State);
+    }
+
+    [Theory]
+    [InlineData("healthy")]
+    [InlineData("legacy")]
+    [InlineData("malformed")]
+    public async Task Given_multiple_capabilities_when_status_is_batched_then_identities_and_global_safety_blocks_are_preserved(string evidence)
+    {
+        using var factory = new CapabilityExplorerFactory();
+        using var client = factory.CreateClient();
+        var created = await client.PostAsJsonAsync("/api/capabilities", new { name = "Other", repositories = "https://github.com/acme/other" });
+        Assert.Equal(HttpStatusCode.Accepted,created.StatusCode);
+        var admitted = await client.PostAsync(new Uri(Url,UriKind.Relative),null);
+        Assert.Equal(HttpStatusCode.Accepted,admitted.StatusCode);
+        var accepted = await admitted.Content.ReadFromJsonAsync<JsonElement>();
+        if (evidence == "legacy") await File.WriteAllTextAsync(Path.Combine(factory.RequestsDirectory,"old.running"),"");
+        if (evidence == "malformed")
+        {
+            var orphan = Path.Combine(factory.RequestsDirectory,"runs",Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(orphan);
+            await File.WriteAllTextAsync(Path.Combine(orphan,"run.json"),"{invalid");
+        }
+
+        var response = await client.GetAsync(new Uri("/api/analysis-status",UriKind.Relative));
+
+        Assert.Equal(HttpStatusCode.OK,response.StatusCode);
+        Assert.Equal("application/json",response.Content.Headers.ContentType?.MediaType);
+        var statuses = await response.Content.ReadFromJsonAsync<Dictionary<string,JsonElement>>();
+        Assert.Equal(new[] { "demand-pricing","other" },statuses!.Keys.Order(StringComparer.Ordinal));
+        Assert.All(statuses.Values,status => Assert.Equal(evidence != "healthy",status.GetProperty("blocked").GetBoolean()));
+        if (evidence != "malformed") Assert.Equal(accepted.GetProperty("runId").GetString(),statuses["demand-pricing"].GetProperty("runId").GetString());
+        if (evidence == "malformed") Assert.All(statuses.Values,status => Assert.Equal("unknown",status.GetProperty("state").GetString()));
+        Assert.DoesNotContain(factory.RequestsDirectory,await response.Content.ReadAsStringAsync(),StringComparison.Ordinal);
+        Assert.DoesNotContain("configurationPath",await response.Content.ReadAsStringAsync(),StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task Concurrent_admission_accepts_one_run_and_preserves_its_identity()
     {

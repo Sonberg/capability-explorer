@@ -71,7 +71,13 @@ security-check:
 ci:
 	$(MAKE) EXECUTION=sandbox ci
 
-test: test-local-ci test-package-feeds golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store
+test: test-local-ci test-package-feeds golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store test-capability-ingestion-browser
+
+.PHONY: test-capability-ingestion-browser
+test-capability-ingestion-browser: restore-ui
+	node spikes/likec4/node_modules/typescript/bin/tsc --noEmit -p platform/src/CapabilityExplorer.Explorer/client/tsconfig.json --types vite/client
+	node spikes/likec4/node_modules/typescript/bin/tsc --noEmit --ignoreConfig --strict --target ES2022 --module ESNext --moduleResolution Bundler --esModuleInterop --allowImportingTsExtensions --skipLibCheck --types node --typeRoots spikes/likec4/node_modules/@types tests/capability-ingestion.browser.ts
+	node --experimental-strip-types --test tests/capability-ingestion.browser.ts
 
 test-package-feeds:
 	node --test tests/package-feeds.test.mjs tests/explorer-environment.test.mjs
@@ -213,7 +219,7 @@ analyze-all: build
 ARTIFACTS ?= fixtures/expected,.sandbox-cache/artifacts
 CAPABILITIES ?= capabilities.json
 GITHUB_AUTH ?= git
-ANALYZE_JOBS ?= 2
+ANALYZE_JOBS ?= 1
 export ANALYZE_JOBS
 PORT ?= 5080
 BIND_ADDRESS ?= 127.0.0.1
@@ -276,14 +282,9 @@ postgres:
 # make analyze CAPABILITY=<id> CE_DATABASE='...' (printed above) while it runs; the explorer reloads by itself.
 # The explorer's Analyze code button queues a request that the analyze worker, started next to it, runs on the host.
 dev: dev-data
-ifeq ($(CE_SELECTED_CONTAINER_ENGINE),podman)
-	@echo "-- Analyze worker skipped; analysis pipelines remain Docker-only"
-	@$(MAKE) --no-print-directory explore CE_DATABASE='$(DEV_DATABASE)'
-else
 	@CE_DATABASE='$(DEV_DATABASE)' GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) scripts/analyze-worker $(CAPABILITIES) </dev/null & \
 	  trap "kill $$! 2>/dev/null" EXIT; \
 	  $(MAKE) --no-print-directory explore CE_DATABASE='$(DEV_DATABASE)'
-endif
 
 analyze-worker: build
 	GITHUB_AUTH=$(GITHUB_AUTH) BINDINGS=$(BINDINGS) scripts/analyze-worker $(CAPABILITIES)

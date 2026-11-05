@@ -21,8 +21,7 @@ internal static class SourcePathResolver
 
     public static string? ForCSharpComponent(ViewIndex view, string symbolKey)
     {
-        var symbol = view.Node(symbolKey)?.Record;
-        var typeKey = TypeKey(symbolKey, symbol?.NodeKind);
+        var typeKey = TypeKey(view, symbolKey);
         if (typeKey is null || !view.Nodes.TryGetValue(typeKey, out var occurrences))
         {
             return null;
@@ -45,6 +44,17 @@ internal static class SourcePathResolver
                 .Select(id => caller.Artifact.EvidenceById[id].Path).ToHashSet(StringComparer.Ordinal);
         var matching = paths.Where(callerPaths.Contains).ToList();
         return SelectPath(matching.Count > 0 ? matching : paths);
+    }
+
+    internal static string? TypeKey(ViewIndex view, string symbolKey)
+    {
+        var symbol = view.Node(symbolKey)?.Record;
+        if (symbol?.NodeKind != "Type" && symbolKey.StartsWith("cs|", StringComparison.Ordinal)
+            && symbolKey.Split('|').ElementAtOrDefault(3)?.StartsWith("sha256:", StringComparison.Ordinal) == true)
+            return view.Edges.Where(edge => edge.Record.Relation == "DECLARES" && edge.Record.To == symbolKey
+                    && view.Node(edge.Record.From)?.Record.NodeKind == "Type")
+                .Select(edge => edge.Record.From).Order(StringComparer.Ordinal).FirstOrDefault();
+        return TypeKey(symbolKey, symbol?.NodeKind);
     }
 
     internal static string? TypeKey(string symbolKey, string? nodeKind)

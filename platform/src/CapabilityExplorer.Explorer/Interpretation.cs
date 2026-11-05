@@ -9,6 +9,7 @@ public sealed record InterpretationLayer(InterpretationOptions Options, Explanat
 {
     public bool Enabled => Explanations is not null;
     public GlossaryService? Glossary { get; init; }
+    public IInterpretationModel? Model { get; init; }
 }
 
 /// <summary>
@@ -135,6 +136,7 @@ public sealed partial class Intelligence
         return new State(new InterpretationLayer(options, explanations, model as IChatModel)
         {
             Glossary = model is null ? null : new GlossaryService(model, options.CacheDirectory),
+            Model = model,
         }, options.CreateEmbeddingModel(), saved);
     }
 

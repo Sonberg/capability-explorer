@@ -33,7 +33,7 @@ export const symbolHref = (key: string) => href("explore", { key });
 
 // ---------------------------------------------------------------- data fetching
 
-export function useApi<T>(path: string | null) {
+export function useApi<T>(path: string | null, pollInterval = 0) {
   const [state, setState] = useState<{ data?: T; error?: string; loading: boolean }>({ loading: !!path });
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -42,16 +42,31 @@ export function useApi<T>(path: string | null) {
       return;
     }
     let live = true;
+    let timer: number;
     const controller = new AbortController();
-    setState((s) => ({ data: s.data, loading: true }));
-    request<T>(path, { signal: controller.signal })
-      .then((data) => live && setState({ data, loading: false }))
-      .catch((e: Error) => live && setState({ error: e.message, loading: false }));
+    const schedule = () => {
+      if (!live || pollInterval <= 0) return;
+      timer = window.setTimeout(() => {
+        if (document.hidden) schedule();
+        else load();
+      }, pollInterval);
+    };
+    const load = () => {
+      const deadline = new AbortController();
+      const timeout = pollInterval > 0 ? window.setTimeout(() => deadline.abort(new Error("Refresh timed out; retrying.")), 15000) : undefined;
+      setState((s) => ({ data: s.data, loading: true }));
+      request<T>(path, { signal: AbortSignal.any([controller.signal, deadline.signal]) })
+        .then((data) => live && setState({ data, loading: false }))
+        .catch((e: Error) => live && setState((previous) => ({ data: pollInterval > 0 ? previous.data : undefined, error: e.message, loading: false })))
+        .finally(() => { window.clearTimeout(timeout); schedule(); });
+    };
+    load();
     return () => {
       live = false;
+      window.clearTimeout(timer);
       controller.abort();
     };
-  }, [path, tick]);
+  }, [path, tick, pollInterval]);
   const reload = useCallback(() => setTick((t) => t + 1), []);
   return { ...state, reload };
 }

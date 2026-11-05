@@ -105,7 +105,13 @@ test-frugal-ci:
 	scripts/ci/check-frugal-ci
 	$(OFFLINE) node node --test tests/frugal-ci.test.mjs tests/fixture-concurrency.test.mjs
 
-test: test-postmerge-analysis test-local-ci test-mapping-replay test-package-feeds test-security-gates test-corpus-replay test-binding-preview golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store test-model-viewer-browser
+test: test-postmerge-analysis test-local-ci test-mapping-replay test-package-feeds test-security-gates test-corpus-replay test-binding-preview golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store test-model-viewer-browser test-capability-ingestion-browser
+
+.PHONY: test-capability-ingestion-browser
+test-capability-ingestion-browser: build
+	$(OFFLINE) node node spikes/likec4/node_modules/typescript/bin/tsc --noEmit -p platform/src/CapabilityExplorer.Explorer/client/tsconfig.json --types vite/client
+	$(OFFLINE) node node spikes/likec4/node_modules/typescript/bin/tsc --noEmit --ignoreConfig --strict --target ES2022 --module ESNext --moduleResolution Bundler --esModuleInterop --allowImportingTsExtensions --skipLibCheck --types node --typeRoots spikes/likec4/node_modules/@types tests/capability-ingestion.browser.ts
+	SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) --offline node node --experimental-strip-types --test tests/capability-ingestion.browser.ts
 
 .PHONY: test-model-viewer-browser
 test-model-viewer-browser: build test-model-fixture-autoload
@@ -233,7 +239,7 @@ analyze: build
 ARTIFACTS ?= fixtures/expected,.sandbox-cache/artifacts
 CAPABILITIES ?= capabilities.json
 GITHUB_AUTH ?= git
-ANALYZE_JOBS ?= 2
+ANALYZE_JOBS ?= 1
 export ANALYZE_JOBS
 PORT ?= 5080
 EXPLORER_SOURCE ?= files
@@ -379,7 +385,8 @@ analyze-all: build
 
 .PHONY: test-postmerge-analysis
 test-postmerge-analysis:
-	$(OFFLINE) node node --test tests/postmerge-analysis.test.mjs
+	$(OFFLINE) node node spikes/likec4/node_modules/typescript/bin/tsc --noEmit --ignoreConfig --strict --target ES2023 --module NodeNext --moduleResolution NodeNext --types node --typeRoots spikes/likec4/node_modules/@types tests/postmerge-analysis.test.mts
+	$(OFFLINE) node node --experimental-strip-types --test tests/postmerge-analysis.test.mts
 
 # Tool-free research evidence gates: no candidate install, image or model call.
 .PHONY: test-research-foundation

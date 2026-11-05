@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError, request, shortSha, type AnalysisJob, type CapabilityCreated, type CapabilityStatus, type RebuildResult } from "../api";
 import { Button, Card, ErrorBox, H1, H2, inputClass, Loading, Mono, Muted, Note, Pill, Table } from "../components/ui";
 import { useApi, useSelection } from "../state";
@@ -11,8 +11,9 @@ interface LineError {
 
 export function Capabilities() {
   const { meta, reloadMeta, setCapability, capability } = useSelection();
-  const list = useApi<CapabilityStatus[]>(`/api/capabilities?g=${meta.generation}`);
+  const list = useApi<CapabilityStatus[]>(`/api/capabilities?g=${meta.generation}`, 2000);
   const [busy, setBusy] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string>();
   const [actionError, setActionError] = useState<string>();
   const [rebuilt, setRebuilt] = useState<{ id: string; result: RebuildResult }>();
   const intelligenceOff = !meta.similarity.database
@@ -30,49 +31,72 @@ export function Capabilities() {
   // "Analyze code" runs on the host (scripts/analyze-worker, started by make dev): queue it, then follow it.
   const [analysisError, setAnalysisError] = useState<string>();
   const [jobs, setJobs] = useState<Record<string, AnalysisJob>>({});
-  const follow = useCallback((id: string) => request<AnalysisJob>(`/api/capabilities/${encodeURIComponent(id)}/analyze`).then((job) => {
-    setJobs((s) => ({ ...s, [id]: job }));
-    return job;
-  }), []);
+  const analysisRequests = useRef(new Set<string>());
+  const analysisVersions = useRef<Record<string, number>>({});
+  const observedJobs = useRef<Record<string, AnalysisJob>>({});
+  const [pendingAnalysis, setPendingAnalysis] = useState<Record<string, boolean>>({});
   const ids = list.data?.map((c) => c.id).join("\n") ?? "";
   useEffect(() => {
     if (!ids) return;
-    const timer = window.setInterval(reloadList, 2000);
-    return () => window.clearInterval(timer);
-  }, [ids, reloadList]);
-  useEffect(() => {
-    for (const id of ids.split("\n").filter(Boolean)) void follow(id).catch((e: Error) => setAnalysisError(e.message));
-  }, [ids, follow]);
-  const active = Object.keys(jobs).filter((id) => isActive(jobs[id]) || jobs[id].blocked).join("\n");
-  useEffect(() => {
-    if (!active) return;
-    const timer = window.setInterval(() => {
-      for (const id of active.split("\n")) {
-        void follow(id).then((job) => !isActive(job) && refresh(), (e: Error) => setAnalysisError(e.message));
+    const controller = new AbortController();
+    let timer: number;
+    const poll = async () => {
+      if (!document.hidden) {
+        let next: Record<string, AnalysisJob> = {};
+        const versions = { ...analysisVersions.current };
+        const errors: string[] = [];
+        const deadline = new AbortController();
+        const timeout = window.setTimeout(() => deadline.abort(new Error("Analysis status timed out; retrying.")), 15000);
+        try {
+          next = await request<Record<string, AnalysisJob>>("/api/analysis-status", { signal: AbortSignal.any([controller.signal, deadline.signal]) });
+        } catch (error) {
+          errors.push((error as Error).message);
+        }
+        window.clearTimeout(timeout);
+        if (controller.signal.aborted) return;
+        const known = new Set(ids.split("\n"));
+        for (const id of Object.keys(next)) {
+          if (!known.has(id) || versions[id] !== analysisVersions.current[id] || analysisRequests.current.has(id)) delete next[id];
+        }
+        setJobs((current) => ({ ...current, ...next }));
+        setAnalysisError(errors.length ? errors.join("; ") : undefined);
+        const completed = Object.entries(next).some(([id, job]) => isActive(observedJobs.current[id]) && !isActive(job));
+        observedJobs.current = { ...observedJobs.current, ...next };
+        if (completed) refresh();
       }
-    }, 2000);
-    return () => window.clearInterval(timer);
-  }, [active, follow, refresh]);
+      timer = window.setTimeout(() => { void poll(); }, 2000);
+    };
+    void poll();
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [ids, refresh]);
 
-  const analyze = async (id: string) => {
+  const analysisAction = async (id: string, action: "analyze" | "stop" | "retry") => {
+    if (analysisRequests.current.has(id)) return;
     setActionError(undefined);
-    try {
-      const job = await request<AnalysisJob>(`/api/capabilities/${encodeURIComponent(id)}/analyze`, { method: "POST" });
-      setJobs((s) => ({ ...s, [id]: job }));
-    } catch (e) {
-      setActionError((e as Error).message);
+    const observed = jobs[id];
+    const runId = observed?.runId;
+    const attemptId = observed?.attemptId;
+    if (action === "stop" && !runId) { setActionError("Reload analysis status before stopping this run."); return; }
+    if (action === "retry") {
+      if (!canRetry(observed)) { setActionError("Reload analysis status before retrying this run."); return; }
+      if (!window.confirm(`Retry interrupted run ${runId}, attempt ${attemptId}? Old evidence will be preserved. Execution termination is not verified. By confirming, you authorize a fresh run; this does not confirm termination or success of the old run.`)) return;
     }
-  };
-
-  const stop = async (id: string) => {
-    setActionError(undefined);
-    const runId = jobs[id]?.runId;
-    if (!runId) { setActionError("Reload analysis status before stopping this run."); return; }
+    analysisRequests.current.add(id);
+    analysisVersions.current[id] = (analysisVersions.current[id] ?? 0) + 1;
+    setPendingAnalysis((current) => ({ ...current, [id]: true }));
     try {
-      const job = await request<AnalysisJob>(`/api/capabilities/${encodeURIComponent(id)}/analyze?runId=${encodeURIComponent(runId)}`, { method: "DELETE" });
+      const target = `/api/capabilities/${encodeURIComponent(id)}/${action === "retry" ? "retry" : "analyze"}`;
+      const job = await request<AnalysisJob>(action === "stop" ? `${target}?runId=${encodeURIComponent(runId!)}` : target,
+        { method: action === "stop" ? "DELETE" : "POST",
+          ...(action === "retry" ? { body: JSON.stringify({ runId, attemptId, acknowledgeUnverifiedExecution: true }) } : {}) });
+      observedJobs.current[id] = job;
       setJobs((s) => ({ ...s, [id]: job }));
     } catch (e) {
       setActionError((e as Error).message);
+    } finally {
+      analysisVersions.current[id]++;
+      analysisRequests.current.delete(id);
+      setPendingAnalysis((current) => ({ ...current, [id]: false }));
     }
   };
 
@@ -107,7 +131,10 @@ export function Capabilities() {
   };
 
   const remove = async (c: CapabilityStatus) => {
+    if (busy !== null || analysisRequests.current.has(c.id)) return;
     if (!window.confirm(`Remove capability “${c.name}”? Cloned sources stay in the workspace.`)) return;
+    setBusy(c.id);
+    setRemoving(c.id);
     setActionError(undefined);
     try {
       await request(`/api/capabilities/${encodeURIComponent(c.id)}`, { method: "DELETE" });
@@ -115,6 +142,9 @@ export function Capabilities() {
       refresh();
     } catch (e) {
       setActionError((e as Error).message);
+    } finally {
+      setBusy(null);
+      setRemoving(undefined);
     }
   };
 
@@ -134,7 +164,7 @@ export function Capabilities() {
         </span>
       </div>
       {actionError && <ErrorBox message={actionError} />}
-      {analysisError && <ErrorBox message={`Analysis status unavailable: ${analysisError}. Reload this page before starting another run.`} />}
+      {analysisError && <ErrorBox message={`Analysis status unavailable: ${analysisError}. Retrying automatically.`} />}
       {list.error && <ErrorBox message={list.error} />}
       {!list.data && !list.error && <Loading />}
       {list.data?.length === 0 && <Card className="text-zinc-500">No capabilities yet. Define one below.</Card>}
@@ -146,7 +176,7 @@ export function Capabilities() {
             <Pill tone={c.analysed === c.repositories.length ? "ok" : c.analysed > 0 ? "warn" : "neutral"}>
               {c.analysed}/{c.repositories.length} analysed at locked revision
             </Pill>
-            <span className="ml-auto flex gap-2">
+            <span className="ml-auto flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => setCapability(c.id)} disabled={capability === c.id}>
                 {capability === c.id ? "Selected" : "Select"}
               </Button>
@@ -157,19 +187,24 @@ export function Capabilities() {
                 <Button variant="danger" onClick={() => check(c, true)} disabled={busy !== null}>Cancel check</Button>
               )}
               {isActive(jobs[c.id]) ? (
-                <Button variant="danger" onClick={() => stop(c.id)} disabled={!jobs[c.id]?.runId || jobs[c.id]?.state === "stopping" || jobs[c.id]?.state === "publishing"}>
-                  {jobs[c.id]?.state === "queued" ? "Queued · Stop" : jobs[c.id]?.state === "stopping" ? "Stopping…" : "Analyzing · Stop"}
+                <Button variant="danger" onClick={() => analysisAction(c.id, "stop")} disabled={pendingAnalysis[c.id] || !jobs[c.id]?.runId || jobs[c.id]?.state === "stopping" || jobs[c.id]?.state === "publishing"}>
+                  {pendingAnalysis[c.id] || jobs[c.id]?.state === "stopping" ? "Stopping…" : jobs[c.id]?.state === "queued" ? "Queued · Stop" : "Analyzing · Stop"}
                 </Button>
               ) : (
-                <Button onClick={() => analyze(c.id)} disabled={busy !== null || !!analysisError || !jobs[c.id] || jobs[c.id]?.blocked || Object.values(jobs).some((job) => job.blocked)}>
-                  Analyze code
+                <Button onClick={() => analysisAction(c.id, "analyze")} disabled={pendingAnalysis[c.id] || busy !== null || !!analysisError || !jobs[c.id] || jobs[c.id]?.blocked || Object.values(jobs).some((job) => job.blocked)}>
+                  {pendingAnalysis[c.id] ? "Queuing…" : "Analyze code"}
+                </Button>
+              )}
+              {canRetry(jobs[c.id]) && (
+                <Button variant="secondary" onClick={() => analysisAction(c.id, "retry")} disabled={pendingAnalysis[c.id] || busy !== null || !!analysisError}>
+                  Retry interrupted run
                 </Button>
               )}
               <Button variant="secondary" onClick={() => rebuild(c.id)} disabled={busy !== null || intelligenceOff !== undefined} title={intelligenceOff}>
-                {busy === c.id ? "Rebuilding…" : "Rebuild intelligence"}
+                {busy === c.id && removing !== c.id ? "Rebuilding…" : "Rebuild intelligence"}
               </Button>
-              <Button variant="danger" onClick={() => remove(c)}>
-                Remove
+              <Button variant="danger" onClick={() => remove(c)} disabled={busy !== null || pendingAnalysis[c.id]}>
+                {removing === c.id ? "Removing…" : "Remove"}
               </Button>
             </span>
           </div>
@@ -235,6 +270,7 @@ export function Capabilities() {
 }
 
 const isActive = (job?: AnalysisJob) => job?.state === "queued" || job?.state === "running" || job?.state === "stopping" || job?.state === "publishing";
+const canRetry = (job?: AnalysisJob) => !!job?.runId && !!job.attemptId && (job.state === "unknown" || job.state === "interrupted");
 
 function AnalysisProgress({ job }: { job?: AnalysisJob }) {
   if (!job || job.state === "idle") return null;

@@ -34,7 +34,7 @@ export function installBpmnNavigation(viewer: NavigatedViewer, document: Documen
   const calls: Array<{
     root: RootLike; view: ReturnType<Canvas["viewbox"]>; caller: string; target: string; name: string;
     hidden: Array<{ graphics: SVGElement; display: string; scoped: boolean }>;
-    buttons: Array<{ button: HTMLButtonElement; hidden: boolean }>;
+    buttons: Array<{ button: HTMLButtonElement; hidden: HTMLButtonElement["hidden"] }>;
     targetRoot: RootLike; roots: Set<RootLike>; autoFit: boolean;
   }> = [];
   const container = canvas.getContainer();

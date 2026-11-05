@@ -23,7 +23,8 @@
           "kind": "local",
           "ref": "HEAD"
         }
-      ]
+      ],
+      "includeTests": false
     },
     {
       "id": "demand-pricing",
@@ -48,26 +49,8 @@
           "kind": "local",
           "ref": "HEAD"
         }
-      ]
-    },
-    {
-      "id": "glufs",
-      "name": "Glufs",
-      "includeTests": false,
-      "repositories": [
-        {
-          "id": "glufs-checkout-api",
-          "location": "https://github.com/glufs/glufs-checkout-api",
-          "kind": "gitHub",
-          "ref": "HEAD"
-        },
-        {
-          "id": "glufs-web",
-          "location": "https://github.com/glufs/glufs-web",
-          "kind": "gitHub",
-          "ref": "HEAD"
-        }
-      ]
+      ],
+      "includeTests": false
     }
   ]
 }

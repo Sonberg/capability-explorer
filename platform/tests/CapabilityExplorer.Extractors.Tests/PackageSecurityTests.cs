@@ -8,6 +8,37 @@ namespace CapabilityExplorer.Extractors.Tests;
 public sealed class PackageSecurityTests : IDisposable
 {
     private readonly string root = Path.Combine(Path.GetTempPath(), "ce-security-" + Guid.NewGuid().ToString("N"));
+    [Fact]
+    public void Given_an_existing_package_path_when_checked_then_each_ancestor_requires_one_filesystem_inspection()
+    {
+        var cache = Path.Combine(root,"cache");
+        var package = Path.Combine(cache,"safe","1.0.0");
+        Directory.CreateDirectory(package);
+        var inspections = 0;
+        PackageSafety.NoLinks(cache,package,() => inspections++);
+        Assert.Equal(3,inspections);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Given_a_linked_package_ancestor_when_checked_then_existing_and_missing_targets_are_rejected(bool missing)
+    {
+        var cache = Directory.CreateDirectory(Path.Combine(root,"cache")).FullName;
+        var target = Path.Combine(root,"target");
+        if (!missing) Directory.CreateDirectory(target);
+        Directory.CreateSymbolicLink(Path.Combine(cache,"safe"),target);
+        Assert.Throws<InvalidDataException>(() => PackageSafety.NoLinks(cache,Path.Combine(cache,"safe","1.0.0")));
+    }
+
+    [Fact]
+    public void Given_a_missing_package_path_when_checked_then_it_remains_available_for_safe_acquisition()
+    {
+        var cache = Directory.CreateDirectory(Path.Combine(root,"cache")).FullName;
+        PackageSafety.NoLinks(cache,Path.Combine(cache,"safe","1.0.0"));
+        Assert.False(Directory.Exists(Path.Combine(cache,"safe")));
+    }
+
     [Theory]
     [InlineData("../outside", "1.0.0")]
     [InlineData("Safe", "../outside")]

@@ -1,3 +1,5 @@
+import "vite/client";
+
 interface ImportMetaEnv {
   BASE_URL: string;
 }
