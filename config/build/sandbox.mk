@@ -385,7 +385,8 @@ analyze-all: build
 
 .PHONY: test-postmerge-analysis
 test-postmerge-analysis:
-	$(OFFLINE) node node --test tests/postmerge-analysis.test.mjs
+	$(OFFLINE) node node spikes/likec4/node_modules/typescript/bin/tsc --noEmit --ignoreConfig --strict --target ES2023 --module NodeNext --moduleResolution NodeNext --types node --typeRoots spikes/likec4/node_modules/@types tests/postmerge-analysis.test.mts
+	$(OFFLINE) node node --experimental-strip-types --test tests/postmerge-analysis.test.mts
 
 # Tool-free research evidence gates: no candidate install, image or model call.
 .PHONY: test-research-foundation

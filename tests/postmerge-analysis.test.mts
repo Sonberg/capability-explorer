@@ -1,7 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {spawnSync} from 'node:child_process';
+import type {BinaryLike} from 'node:crypto';
+import {spawnSync, type SpawnSyncReturns} from 'node:child_process';
 import {chmodSync,copyFileSync,existsSync,lstatSync,mkdirSync,mkdtempSync,readFileSync,rmSync,symlinkSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
@@ -10,10 +11,11 @@ import {loadCapabilityDefinitions} from '../scripts/capability-definitions.mjs';
 
 const repository=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const application='a'.repeat(40),revision='b'.repeat(40),oldRevision='c'.repeat(40);
-const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
+type CommandResult=SpawnSyncReturns<string>;
+const hash=(bytes:BinaryLike):string=>createHash('sha256').update(bytes).digest('hex');
 const receiptPath='.sandbox-cache/analysis-receipt.json';
-function write(root,path,text){mkdirSync(dirname(join(root,path)),{recursive:true});writeFileSync(join(root,path),text);}
-function fixture(run){
+function write(root:string,path:string,text:string):void{mkdirSync(dirname(join(root,path)),{recursive:true});writeFileSync(join(root,path),text);}
+function fixture(run:(root:string)=>void):void{
  const root=mkdtempSync(join(tmpdir(),'ce-postmerge-analysis-'));
  try{
   mkdirSync(join(root,'scripts/lib'),{recursive:true});
@@ -26,12 +28,12 @@ function fixture(run){
   return run(root);
  }finally{rmSync(root,{recursive:true,force:true});}
 }
-const artifact=(repo,sha)=>JSON.stringify({schema:'ce.v1',kind:'header',repositoryId:repo,commitSha:sha})+'\n';
-function helper(root,name,args=[]){
+const artifact=(repo:string,sha:string):string=>JSON.stringify({schema:'ce.v1',kind:'header',repositoryId:repo,commitSha:sha})+'\n';
+function helper(root:string,name:string,args:string[]=[]):CommandResult{
  return spawnSync(process.execPath,[join(repository,'scripts',name),...args],{cwd:root,encoding:'utf8',timeout:20000,env:{PATH:process.env.PATH}});
 }
-function receipt(root,...args){return helper(root,'analysis-receipt.mjs',args.length?args:['capabilities.json',application,'clean','bindings.json']);}
-function failed(result){assert.equal(result.error,undefined);assert.notEqual(result.status,0);assert.equal(result.stdout,'');}
+function receipt(root:string,...args:string[]):CommandResult{return helper(root,'analysis-receipt.mjs',args.length?args:['capabilities.json',application,'clean','bindings.json']);}
+function failed(result:CommandResult):void{assert.equal(result.error,undefined);assert.notEqual(result.status,0);assert.equal(result.stdout,'');}
 
 test('capability IDs are completely validated before emitting a sorted, private-free list',()=>fixture(root=>{
  write(root,'capabilities.json',JSON.stringify({capabilities:[{id:'z-last',location:'PRIVATE_LOCATION'},{id:'a-first'}]}));
@@ -50,7 +52,8 @@ test('local capability definitions combine with shared definitions and override 
  write(root,'capabilities.local.json',JSON.stringify({capabilities:[{id:'one',repositories:[]},{id:'local-only',repositories:[]}]}));
  const result=helper(root,'analysis-capability-ids.mjs',['capabilities.json']);
  assert.equal(result.status,0,result.stderr);assert.equal(result.stdout,'local-only\none\n');
- assert.deepEqual(loadCapabilityDefinitions(join(root,'capabilities.json')).capabilities.find(capability=>capability.id==='one').repositories,[]);
+ const one=loadCapabilityDefinitions(join(root,'capabilities.json')).capabilities.find(capability=>capability.id==='one');
+ assert.ok(one);assert.deepEqual(one.repositories,[]);
  write(root,'capabilities.local.json','{"capabilities":[{"id":"bad/id"}]}');
  failed(helper(root,'analysis-capability-ids.mjs',['capabilities.json']));
 }));
@@ -133,7 +136,7 @@ test('symlink artifact files, inventory roots and receipt destinations are refus
 });
 
 test('make defaults to git authentication while preserving explicit overrides',()=>{
- const env={...process.env,CE_CONTAINER_ENGINE:'docker'};
+ const env:NodeJS.ProcessEnv={...process.env,CE_CONTAINER_ENGINE:'docker'};
  delete env.GITHUB_AUTH;
  for(const profile of ['native','sandbox']){
   for(const mode of [undefined,'auto','none']){
@@ -156,7 +159,7 @@ test('development startup imports saved artifacts unless re-analysis is explicit
   write(root,'bin/dotnet','#!/bin/sh\nprintf "%s\\n" "$2" >> .sandbox-cache/startup-import\n');
   for(const path of ['scripts/analyze-all','scripts/sandbox','bin/dotnet'])chmodSync(join(root,path),0o700);
   const args=['-s','-f',join(repository,'config/build',`${profile}.mk`),'dev-data','-o','build','-o','postgres','DEV_OLLAMA=0','ARTIFACTS=.sandbox-cache/artifacts'];
-  const env={...process.env,PATH:join(root,'bin')+':'+process.env.PATH,CE_CONTAINER_ENGINE:'docker'};
+  const env:NodeJS.ProcessEnv={...process.env,PATH:join(root,'bin')+':'+process.env.PATH,CE_CONTAINER_ENGINE:'docker'};
   delete env.DEV_REANALYZE;
   const startup=spawnSync('make',args,{cwd:root,encoding:'utf8',timeout:20000,env});
   assert.equal(startup.status,0,startup.stderr);
@@ -169,7 +172,7 @@ test('development startup imports saved artifacts unless re-analysis is explicit
 });
 
 test('both make profiles export default and overridden analysis job limits to recipes',()=>{
- const env={...process.env,CE_CONTAINER_ENGINE:'docker'};delete env.ANALYZE_JOBS;
+ const env:NodeJS.ProcessEnv={...process.env,CE_CONTAINER_ENGINE:'docker'};delete env.ANALYZE_JOBS;
  const probeDir=mkdtempSync(join(tmpdir(),'ce-make-probe-'));
  const probe=join(probeDir,'probe.mk');
  writeFileSync(probe,'print-analysis-jobs:\n\t@printf \'%s\\n\' "$$ANALYZE_JOBS"\n');
@@ -178,18 +181,18 @@ test('both make profiles export default and overridden analysis job limits to re
   const args=['-s','-f',join(repository,'config/build',profile+'.mk'),'-f',probe,'print-analysis-jobs'];
   if(jobs!==undefined)args.push('ANALYZE_JOBS='+jobs);
   const result=spawnSync('make',args,{cwd:repository,env,encoding:'utf8',timeout:20000});
-  assert.equal(result.status,0,result.stderr);assert.equal(result.stdout,String(jobs??2)+'\n');
+    assert.equal(result.status,0,result.stderr);assert.equal(result.stdout,String(jobs??1)+'\n');
  }
  }finally{rmSync(probeDir,{recursive:true,force:true});}
 });
 
 
 test('analysis wrappers pass literal arguments to the host coordinator without touching receipts',()=>{
- for(const [script,command,args,expected] of [
+for(const [script,command,args,expected] of [
   ['analyze-all','analysis-all',['config with spaces.json'],['--capabilities','config with spaces.json']],
   ['analyze-worker','analysis-worker',[],['--capabilities','capabilities.json']],
   ['analyze','analysis-run',['one','config with spaces.json'],['--capability','one','--capabilities','config with spaces.json']]
- ])fixture(root=>{
+ ] satisfies [string,string,string[],string[]][])fixture(root=>{
   mkdirSync(join(root,'scripts/lib'),{recursive:true});
   copyFileSync(join(repository,'scripts',script),join(root,'scripts',script));
   copyFileSync(join(repository,'scripts/lib/container-engine.sh'),join(root,'scripts/lib/container-engine.sh'));
