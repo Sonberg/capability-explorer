@@ -139,7 +139,7 @@ public sealed class AnalysisParallelTests
     [Theory]
     [InlineData("docker")]
     [InlineData("podman")]
-    public async Task Given_a_native_engine_when_analysis_starts_then_runtime_is_frozen_before_admission(string engine)
+    public async Task Given_an_engine_when_analysis_starts_then_host_boundary_precedes_runtime_and_admission(string engine)
     {
         if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Unix qualification required");
         using var fixture = new ParallelFixture(1);
@@ -172,6 +172,14 @@ public sealed class AnalysisParallelTests
         await child.WaitForExitAsync(timeout.Token);
         await stdout;
         Assert.Equal(2,child.ExitCode);
+        if (File.Exists("/.dockerenv"))
+        {
+            Assert.Contains("host operation failed (InvalidOperationException)",await stderr,StringComparison.Ordinal);
+            Assert.False(File.Exists(Path.Combine(fixture.Root,"runtime-probe")));
+            Assert.False(File.Exists(Path.Combine(fixture.Root,"runtime-inherited")));
+            Assert.Single(Directory.GetDirectories(Path.Combine(fixture.Root,".sandbox-cache/requests/runs")));
+            return;
+        }
         Assert.True(File.Exists(Path.Combine(fixture.Root,"runtime-probe")),"Selected runtime must be validated before capability admission. " + await stderr);
         Assert.Equal(engine,File.ReadAllText(Path.Combine(fixture.Root,"runtime-probe")));
         Assert.Equal(snapshot,File.ReadAllText(Path.Combine(fixture.Root,"runtime-inherited")));
@@ -328,6 +336,14 @@ public sealed class AnalysisParallelTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await child.WaitForExitAsync(timeout.Token);
         await stdout;
+        if (File.Exists("/.dockerenv"))
+        {
+            Assert.Equal(2,child.ExitCode);
+            Assert.Contains("host operation failed (InvalidOperationException)",await stderr,StringComparison.Ordinal);
+            Assert.False(Directory.Exists(Path.Combine(root,".sandbox-cache/requests")));
+            Assert.False(Directory.Exists(Path.Combine(root,".sandbox-cache/artifacts")));
+            return;
+        }
         Assert.True(child.ExitCode == 0,await stderr);
         var store = new FileRunStore(Path.Combine(root,".sandbox-cache/requests"));
         var id = Path.GetFileName(Assert.Single(Directory.GetDirectories(Path.Combine(root,".sandbox-cache/requests/runs"))));
