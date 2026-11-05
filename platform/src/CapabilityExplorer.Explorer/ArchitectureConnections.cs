@@ -30,7 +30,7 @@ internal sealed class ArchitectureConnections(string capabilitiesFile)
         var snapshot = JsonSerializer.Deserialize<ArchitectureConnectionSnapshot>(stream, Json)
             ?? throw new InvalidDataException("Invalid connection catalogue.");
         if (snapshot.Version < 0 || snapshot.Connections is null || snapshot.Connections.Count > 1000
-            || snapshot.Connections.Any(connection => !Guid.TryParseExact(connection.Id, "N", out _)
+            || snapshot.Connections.Any(connection => connection is null || !Guid.TryParseExact(connection.Id, "N", out _)
                 || !Kinds.Contains(connection.Kind) || string.IsNullOrWhiteSpace(connection.FromCapabilityId)
                 || string.IsNullOrWhiteSpace(connection.ToCapabilityId) || connection.Note?.Length > 1000
                 || connection.SourceKey?.Length > 16384 || connection.TargetKey?.Length > 16384)
@@ -109,9 +109,15 @@ internal sealed class ArchitectureConnections(string capabilitiesFile)
     public ArchitectureGraph Apply(ArchitectureGraph graph, IReadOnlyList<CapabilityStatus> capabilities)
     {
         if (graph.Level is not ("landscape" or "system")) return graph;
+        ArchitectureConnectionSnapshot snapshot;
+        try { snapshot = Read(); }
+        catch (Exception error) when (error is IOException or InvalidDataException or JsonException or UnauthorizedAccessException)
+        {
+            return graph with { Notes = [.. graph.Notes, "Manual connections are unavailable; existing mappings were preserved."] };
+        }
         var nodes = graph.Nodes.ToList();
         var edges = graph.Edges.ToList();
-        foreach (var connection in Read().Connections)
+        foreach (var connection in snapshot.Connections)
         {
             var from = capabilities.SingleOrDefault(capability => capability.Id == connection.FromCapabilityId);
             var to = capabilities.SingleOrDefault(capability => capability.Id == connection.ToCapabilityId);
@@ -188,7 +194,7 @@ internal static class ArchitectureConnectionsApi
         try { return action(); }
         catch (ArchitectureConnectionConflictException error) { return Results.Json(new { error = error.Message }, statusCode: 409); }
         catch (ArgumentException error) { return Results.BadRequest(new { error = error.Message }); }
-        catch (Exception error) when (error is IOException or JsonException or OverflowException or UnauthorizedAccessException)
+        catch (Exception error) when (error is IOException or InvalidDataException or JsonException or OverflowException or UnauthorizedAccessException)
         { return Results.Json(new { error = "Connection storage is unavailable or invalid; existing mappings were preserved." }, statusCode: 503); }
     }
 }

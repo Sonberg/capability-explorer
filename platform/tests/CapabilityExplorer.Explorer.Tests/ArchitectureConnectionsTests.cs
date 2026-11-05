@@ -189,4 +189,26 @@ public sealed class ArchitectureConnectionsTests : IDisposable
         });
         Assert.Equal(HttpStatusCode.BadRequest, unknownNode.StatusCode);
     }
+
+    [Fact]
+    public async Task Given_a_malformed_manual_catalogue_when_browsing_then_native_graph_survives_and_writes_preserve_the_file()
+    {
+        var directory = Directory.CreateDirectory(Path.Combine(_root, ".sandbox-cache")).FullName;
+        var path = Path.Combine(directory, "architecture-connections.json");
+        const string malformed = """{"version":1,"connections":[null]}""";
+        File.WriteAllText(path, malformed);
+        using var catalogue = await _client.GetAsync("/api/architecture/connections");
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, catalogue.StatusCode);
+        using var graph = await _client.GetAsync("/api/architecture?level=landscape");
+        Assert.Equal(HttpStatusCode.OK, graph.StatusCode);
+        var body = await graph.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.NotEmpty(body.GetProperty("nodes").EnumerateArray());
+        Assert.Contains(body.GetProperty("notes").EnumerateArray(), note => note.GetString()!.Contains("Manual connections", StringComparison.Ordinal));
+        using var write = await _client.PostAsJsonAsync("/api/architecture/connections", new
+        {
+            fromCapabilityId = "first", toCapabilityId = "second", kind = "http", expectedVersion = 1,
+        });
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, write.StatusCode);
+        Assert.Equal(malformed, File.ReadAllText(path));
+    }
 }

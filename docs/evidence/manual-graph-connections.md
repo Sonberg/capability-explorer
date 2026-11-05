@@ -70,6 +70,11 @@ ownership; all 6/6 focused cases pass. Its initial red observations were missing
 target fields and an invalid target returning 200 instead of 400. A test guard
 was corrected for optional manual metadata on ordinary extracted edges.
 The final complete Explorer run after the anchor extension passed 306/306 cases.
+One final malformed-catalogue scenario first returned 500, then passed after
+null-row validation and explicit storage-error handling. The overlay catalogue
+returns 503 without overwriting invalid data, while native graph browsing stays
+available with an unavailable-overlay note. Final focused cases pass 7/7 and
+the complete Explorer suite passes 307/307.
 
 Typed browser scenarios in
 [the UI browser harness](../../platform/src/CapabilityExplorer.Explorer/client/test/architecture-connections.browser.ts)
@@ -105,6 +110,15 @@ build is required after the UI build before validating those assets.
 
 ## Toolchain And Limits
 
+Final owner-only implementation/configuration snapshot:
+`.sandbox-cache/integration-audit-evidence/final-source.tgz`, SHA-256
+`bdf5fcd4ff86c7d01fd3abc1f470896be5d0d9ce5b3d72e5fc000bffcca5765e`.
+Some graph UI/API increments have observed failing commands but no retained
+immutable pre-edit source snapshot. They are not represented as fully
+source-bound MADR-0032 history; missing historical receipts were not reconstructed
+after implementation. Final executable results and source identity are retained,
+and release acceptance/full gates remain separate from this local qualification.
+
 This touched UI scope now locks TypeScript 7.0.2 and Node types 22.19.0;
 Lucide supplies the connection, edit, save and remove icons. Vite's normal
 client declarations qualify CSS side-effect imports under TypeScript 7.
@@ -115,7 +129,9 @@ The application entry bundle remains about 487 kB; connection code stays in the
 lazy architecture chunk. `npm audit` reported zero vulnerabilities during install.
 
 Full Docker-only CI was not executed. The broader source/integration comparison
-is separate and remains blocked by ASQ's new interrupted local-artifact
-publication, run `6e1ea7f48cf14645b0979d57e47473c0`, attempt
-`84c6f90f548e4c7a89a98f61f2bd5643`. Its original evidence is retained and has not
-been reset or retired by this graph feature.
+is separate. Its interrupted publications were independently owner-reconciled
+with original evidence retained; they were not reset by this graph feature.
+All available capabilities subsequently refreshed successfully, including the
+final source-citation correction refresh tracked in the private audit. Detailed source
+findings remain under `.sandbox-cache/integration-audit-evidence`, not an
+automatic export from the graph editor.

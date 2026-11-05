@@ -71,7 +71,8 @@ and database publication qualification were not run here.
 The later Squid run `4a1051e0188240359fbadbe9613b6e3d`, attempt
 `4ebccdd22ac94d898d5ff57dd09db199`, produced eight valid native artifacts but
 failed the existing all-repositories-must-have-an-artifact publication guard.
-`apd-squid-quantify-cicd@d32f9ca1ecae0562a3bc34c4a880e509c85827c4` contains
+The exact private repository/revision, retained in the owner-only local copy
+`.sandbox-cache/integration-audit-evidence/publication-private-source-qualification.md`, contains
 infrastructure/configuration and migration tooling rather than a supported native
 unit. The owner chose **Exclude CI/CD from native analysis**, not weakening the
 publication guard or inventing a native artifact.

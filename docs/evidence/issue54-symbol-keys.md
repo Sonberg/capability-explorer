@@ -7,7 +7,9 @@ Date: 2026-11-04. Tracking: [GitHub issue 54](https://github.com/Sonberg/capabil
 `SymbolKeys.Of` returned the complete scoped Roslyn documentation-comment ID
 without checking the ce.v1 limit. The preserved real Web API Domain artifact
 contains 244 overlength records, including a 2,332-character method key for
-`DeepDiveRepositoryV3.GetPMLevelDeepDiveEntity` and corresponding edge references.
+a wide domain method and corresponding edge references. Exact private source
+identities are retained in the local qualification copy under
+`.sandbox-cache/integration-audit-evidence/issue54-private-source-qualification.md`.
 This is a wide method signature, not evidence of a `ToDisplayString` fallback.
 
 Keys of at most 2,048 characters are unchanged. Longer keys retain the C# scheme,
@@ -62,14 +64,14 @@ the green test file adds the overload case without changing the primary scenario
 
 ## Isolated Real-Source Qualification
 
-The exact failing source revision was
-`apd-asq-webapi-api@598f56c3d9577b4992409b9a7b31a23b15e40d42`.
+The exact failing private repository and source revision are retained in the
+local qualification copy, not reproduced in this versioned note.
 Both isolated invocations used `scripts/sandbox --offline dotnet dotnet
 platform/src/CapabilityExplorer.Extractors.CSharp/bin/Debug/net10.0/ce-cs.dll
 extract`, the frozen Podman runtime snapshot, explicit read-only source mounts,
 the exact repository/commit arguments and separate outputs. The package-enabled
 invocation also used the failed attempt's preserved package directory and
-`locks/apd-asq-webapi-api.json` lock. Neither invocation published anything.
+repository-specific lock. Neither invocation published anything.
 
 Outputs `asq-packages` and `asq-no-packages` under the evidence directory each
 contain seven schema-valid artifacts; both commands returned exit 0. Domain
@@ -92,14 +94,18 @@ Inventory and post-move verification cover 20,540 entries and 998,767,221 bytes,
 including modes and link targets. Canonical artifact inventory was unchanged.
 The archive contains the operator decision, inventories and verification receipt.
 
-Fresh retry command, from the project root:
+The exact private invocation is retained locally. Its parameterized form, from
+the project root, is:
 
 ```sh
-CE_CONTAINER_ENGINE=podman CE_DATABASE= PACKAGES=1 GITHUB_AUTH=git BINDINGS=bindings.json scripts/analyze asq capabilities.json
+CE_CONTAINER_ENGINE=podman CE_DATABASE= PACKAGES=1 GITHUB_AUTH=git BINDINGS=bindings.json scripts/analyze <capability-id> capabilities.json
 ```
 
-Run `6e1ea7f48cf14645b0979d57e47473c0`, attempt
-`84c6f90f548e4c7a89a98f61f2bd5643`, was started. Completion and publication are
-not yet verified. No authorization to retire a future unknown run is inferred.
-The broader integration/landscape comparison remains deferred until fresh
-analysis completes. Full Docker-only CI was not executed in this qualification.
+The first managed retry passed extraction and encountered a separate
+cross-filesystem publication failure. That failure was independently qualified,
+fixed and owner-reconciled as recorded in
+[publication evidence](analysis-publication-storage.md). A subsequent managed
+refresh completed and confirmed local artifact publication with packages enabled.
+The integration audit then discovered a separate source-citation bug; its
+corrective managed refresh also completed and is tracked in local evidence. No authorization to retire a
+future unknown run is inferred. Full Docker-only CI was not executed.
