@@ -13,7 +13,7 @@ include config/build/container-engine.mk
 # and fixture regeneration must not overlap, even when a caller supplies -j.
 .NOTPARALLEL:
 
-.PHONY: help ci test fixtures fixtures-lock fixtures-compile golden golden-check \
+.PHONY: help ci test fixtures fixtures-lock fixtures-compile model-fixtures test-model-fixture-autoload golden golden-check \
         restore ui build test-ts test-contracts test-evaluation test-extractors test-explorer test-store evaluate evaluate-golden \
 		extract-cs evaluate-cs extract-ts evaluate-ts extract-sql evaluate-sql analyze analyze-worker explore ollama postgres dev dev-data dev-down clean local-check pr-check install-git-hooks actions-audit test-local-ci test-mapping-replay test-package-feeds security-check
 
@@ -33,6 +33,7 @@ help:
 	@echo "make golden          regenerate fixtures/expected from fixtures/golden/facts"
 	@echo "make fixtures-compile  check every fixture revision compiles (or fails) as intended"
 	@echo "make explore [ARTIFACTS=dir] [EVALUATION=report.json] [CAPABILITIES=file] [SOURCES=/abs/repo,...] [PORT=5080]"
+	@echo "     known BPMN/DMN fixtures are validated and listed automatically (MODEL_COLLECTIONS=dir to override)"
 	@echo "     browse the model at http://127.0.0.1:5080"
 	@echo "     private source checks and acquisition credentials belong to make analyze-worker, not Explorer"
 	@echo "     optional LLM: make ollama (local, no key), the Settings page (gear icon), or INTERPRETATION=foundry FOUNDRY_ENDPOINT=... FOUNDRY_DEPLOYMENT=..."
@@ -107,7 +108,7 @@ test-frugal-ci:
 test: test-postmerge-analysis test-local-ci test-mapping-replay test-package-feeds test-security-gates test-corpus-replay test-binding-preview golden-check test-ts test-contracts test-evaluation test-extractors evaluate-golden evaluate-cs evaluate-ts evaluate-sql test-explorer test-store test-model-viewer-browser
 
 .PHONY: test-model-viewer-browser
-test-model-viewer-browser: build
+test-model-viewer-browser: build test-model-fixture-autoload
 	SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) --offline node sh -c 'node --experimental-strip-types tests/issue78-ui-browser.ts && node --experimental-strip-types tests/issue78-viewer-boundary.ts'
 
 .PHONY: test-binding-preview test-binding-preview-browser
@@ -131,6 +132,18 @@ fixtures-compile: fixtures
 	$(NODE) scripts/compile-fixtures.sh restore-node
 	$(OFFLINE) dotnet scripts/compile-fixtures.sh build-dotnet
 	$(OFFLINE) node scripts/compile-fixtures.sh build-node
+
+MODEL_COLLECTIONS ?= .sandbox-cache/model-fixtures/collection-$(shell node scripts/prepare-model-fixtures.mjs --collection-key)
+model-fixtures: build
+	@set -e; trap 'rm -rf .sandbox-cache/model-fixtures/staging' EXIT; \
+	  $(OFFLINE) node node scripts/prepare-model-fixtures.mjs --check-output "$(MODEL_COLLECTIONS)"; \
+	  $(OFFLINE) node node scripts/prepare-model-fixtures.mjs; \
+	  $(OFFLINE) dotnet $(CE) collect --plan .sandbox-cache/model-fixtures/staging/plan.json --out "$(MODEL_COLLECTIONS)"; \
+	  $(OFFLINE) dotnet $(CE) validate-collection "$(MODEL_COLLECTIONS)"; \
+	  $(OFFLINE) node node --experimental-strip-types extractors/ts/src/collection/cli.ts validate "$(MODEL_COLLECTIONS)"
+
+test-model-fixture-autoload: model-fixtures
+	MODEL_COLLECTIONS="$(MODEL_COLLECTIONS)" SANDBOX_PASS_ENV=MODEL_COLLECTIONS SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) --offline node node --experimental-strip-types tests/model-fixture-autoload.ts
 
 golden: fixtures
 	$(OFFLINE) node node fixtures/golden/build.mjs
@@ -227,14 +240,14 @@ EXPLORER_SOURCE ?= files
 BINDINGS ?= $(wildcard bindings.json)
 # Extra local directories to mount read-only (local repositories in $(CAPABILITIES) are mounted automatically):
 # SOURCES=/abs/path,/abs/other — e.g. SOURCES=$$HOME/Code to add repositories from the UI without restarting.
-explore: fixtures build
+explore: fixtures build model-fixtures
 	@echo "Capability Explorer: http://127.0.0.1:$(PORT)"
 	@# Only the trusted host worker receives acquisition credentials.
 	CE_HOST_HOME="$$HOME" \
 	SANDBOX_PASS_ENV="CE_HOST_HOME,CE_DATABASE,CE_FOUNDRY_API_KEY" \
 	SANDBOX_SOURCES="$$(s="$(SOURCES)"; c="$$(scripts/capability-sources $(CAPABILITIES))"; echo "$${s}$${s:+$${c:+,}}$${c}")" \
 	$(SANDBOX) --feed-catalog --port $(PORT) dotnet dotnet platform/src/CapabilityExplorer.Explorer/bin/Debug/net10.0/ce-explorer.dll \
-	  --source $(EXPLORER_SOURCE) --artifacts $(ARTIFACTS) --repos fixtures/.repos $(if $(EVALUATION),--evaluation $(EVALUATION)) \
+	  --source $(EXPLORER_SOURCE) --artifacts $(ARTIFACTS) --collections "$(MODEL_COLLECTIONS)" --repos fixtures/.repos $(if $(EVALUATION),--evaluation $(EVALUATION)) \
 	  --capabilities $(CAPABILITIES) --workspace .sandbox-cache/sources $(if $(BINDINGS),--bindings $(BINDINGS)) \
 	  $(if $(INTERPRETATION),--interpretation:provider $(INTERPRETATION) --interpretation:cacheDirectory .sandbox-cache/interpretations) \
 	  $(if $(FOUNDRY_ENDPOINT),--interpretation:endpoint $(FOUNDRY_ENDPOINT)) \
