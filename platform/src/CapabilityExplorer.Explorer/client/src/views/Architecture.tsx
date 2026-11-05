@@ -267,7 +267,11 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
       />
       {requestError && <ErrorBox message={requestError} />}
       <div className="architecture-panels grid min-h-0 flex-1 gap-3">
-        <div role="region" aria-label="Architecture graph" className="architecture-canvas relative min-h-[420px] min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+        <div role="region" aria-label="Architecture graph" data-input-identity={snapshotKey}
+          data-node-budget={filters.nodeBudget} data-edge-budget={filters.edgeBudget}
+          data-query={filters.query} data-hide-kinds={JSON.stringify(filters.hideKinds)}
+          data-included-node-ids={JSON.stringify(filters.include)}
+          className="architecture-canvas relative min-h-[420px] min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
           {waitingForResponse && <div className="absolute inset-0 z-10 grid place-items-center bg-white/80 text-zinc-500 dark:bg-zinc-950/80">Preparing filtered graph…</div>}
           {graph && graph.nodes.length === 0 && <div className="absolute inset-0 grid place-items-center text-zinc-500">Nothing to draw at this level for the selected scope.</div>}
           {budget && <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-x-3 rounded-md border border-zinc-300 bg-white/90 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-950/90" data-architecture-counts
