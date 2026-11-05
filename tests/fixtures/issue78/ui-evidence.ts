@@ -1,3 +1,5 @@
+import type { AuthoredModelEvidence } from "../../../platform/src/CapabilityExplorer.Explorer/client/src/models/contracts.ts";
+
 type FixtureInput = {
   bpmnHash: string;
   dmnHash: string;
@@ -32,7 +34,7 @@ export function createUiModelEvidence({ bpmnHash, dmnHash, revisionA, revisionB,
   const tableIdentity = `model:${"3".repeat(64)}`;
   const ruleIdentities = [`model:${"4".repeat(64)}`, `model:${"5".repeat(64)}`, `model:${"6".repeat(64)}`];
   const sourceLocator = { artifact: "model.xml", element: "Decision_Eligibility" };
-  const bpmnEvidence = {
+  const bpmnEvidence: AuthoredModelEvidence = {
     schema: "ce.models.v1",
     repositoryId: "repo-a",
     commitSha: revisionA,
@@ -48,16 +50,27 @@ export function createUiModelEvidence({ bpmnHash, dmnHash, revisionA, revisionB,
       { identity: bpmnIdentity, kind: "bpmn", namespace: "http://www.omg.org/spec/BPMN/20100524/MODEL", id: "Process_A", type: "bpmn:process", order: 0, attributes: { name: "Application" }, source: sourceLocator },
       { identity: laneIdentity, kind: "bpmn", namespace: "http://www.omg.org/spec/BPMN/20100524/MODEL", id: "Lane_Main", type: "bpmn:lane", order: 1, parent: bpmnIdentity, attributes: { name: "Applicant lane" }, source: sourceLocator },
       { identity: startIdentity, kind: "bpmn", namespace: "http://www.omg.org/spec/BPMN/20100524/MODEL", id: "Start_Application", type: "bpmn:startEvent", order: 2, parent: bpmnIdentity, attributes: { name: "Application received" }, source: sourceLocator },
-      { identity: taskIdentity, kind: "bpmn", namespace: "http://www.omg.org/spec/BPMN/20100524/MODEL", id: "Task_Review", type: "bpmn:task", order: 3, parent: laneIdentity, attributes: { name: '<img src="https://example.invalid/x" onerror="window.pwned=1">' }, source: { artifact: "model.xml", element: "Task_Review" } },
+      { identity: taskIdentity, kind: "bpmn", namespace: "http://www.omg.org/spec/BPMN/20100524/MODEL", id: "Task_Review", type: "bpmn:task", order: 3, parent: bpmnIdentity, attributes: { name: '<img src="https://example.invalid/x" onerror="window.pwned=1">' }, source: { artifact: "model.xml", element: "Task_Review" } },
       { identity: serviceIdentity, kind: "bpmn", namespace: "http://www.omg.org/spec/BPMN/20100524/MODEL", id: "Task_Service", type: "bpmn:task", order: 4, parent: bpmnIdentity, attributes: { name: "Assess eligibility" }, source: sourceLocator },
       { identity: subprocessIdentity, kind: "bpmn", namespace: "http://www.omg.org/spec/BPMN/20100524/MODEL", id: "SubProcess_Check", type: "bpmn:subProcess", order: 5, parent: bpmnIdentity, attributes: { name: "Eligibility check", isExpanded: "true" }, source: sourceLocator },
       { identity: nestedTaskIdentity, kind: "bpmn", namespace: "http://www.omg.org/spec/BPMN/20100524/MODEL", id: "Task_Nested", type: "bpmn:task", order: 6, parent: subprocessIdentity, attributes: { name: "Nested decision task" }, source: sourceLocator }
     ],
     relationships: [
       { identity: "rel-flow-start-review", kind: "sequenceFlow", source: startIdentity, target: taskIdentity, order: 0 },
-      { identity: "rel-message-review-service", kind: "messageFlow", source: taskIdentity, target: serviceIdentity, order: 1 }
+      { identity: "rel-message-review-service", kind: "messageFlow", source: taskIdentity, target: serviceIdentity, order: 1 },
+      { identity: "rel-lane-review", kind: "reference", source: laneIdentity, target: taskIdentity, order: 2 }
     ]
   };
+  for (const element of bpmnEvidence.elements) element.type = element.type.replace(/^bpmn:/, "");
+  const layoutNamespace = "http://www.omg.org/spec/BPMN/20100524/DI";
+  bpmnEvidence.elements.push(
+    { identity: "layout-diagram", kind: "bpmn", namespace: layoutNamespace, id: "Diagram_Issue78", type: "BPMNDiagram", order: 7, attributes: { name: "Application overview" }, source: { artifact: "model.xml", element: "Diagram_Issue78" } },
+    { identity: "layout-plane", kind: "bpmn", namespace: layoutNamespace, id: "Plane_Issue78", type: "BPMNPlane", order: 8, parent: "layout-diagram", attributes: { bpmnElement: "Collaboration_Issue78" }, source: { artifact: "model.xml", element: "Plane_Issue78" } },
+    ...["Lane_Main", "Start_Application", "Task_Review", "Task_Service", "SubProcess_Check", "Task_Nested"].map((id, order) => ({
+      identity: `layout-${id}`, kind: "bpmn" as const, namespace: layoutNamespace, id: `Shape_${id}`, type: "BPMNShape",
+      order: order + 9, parent: "layout-plane", attributes: { bpmnElement: id }, source: { artifact: "model.xml", element: `Shape_${id}` }
+    }))
+  );
   const dmnEvidence = {
     schema: "ce.models.v1",
     repositoryId: "repo-a",
@@ -127,7 +140,8 @@ export function createUiModelEvidence({ bpmnHash, dmnHash, revisionA, revisionB,
     { id: "model-dmn-malformed", kind: "authored", repositoryId: "repo-a", commitSha: revisionA, unitPath: "models/malformed-table.dmn.json", modelKind: "dmn", coverage: "partial", diagnosticCount: 0, source: { status: "available", sha256: dmnHash } }
   ];
   const missingEvidence = { ...bpmnEvidence, unitPath: "models/missing.bpmn.json" };
-  const noDiEvidence = { ...bpmnEvidence, unitPath: "models/no-di.bpmn.json", sourceSha256: noDiHash };
+  const noDiEvidence = { ...bpmnEvidence, unitPath: "models/no-di.bpmn.json", sourceSha256: noDiHash,
+    elements: bpmnEvidence.elements.filter(element => element.namespace !== layoutNamespace) };
   const evidenceById: Record<string, { unitPath: string; sourceSha256: string }> = {
     "model-bpmn": bpmnEvidence, "model-dmn": dmnEvidence, "model-dmn-malformed": malformedDmnEvidence, "candidate-cs": candidateEvidence,
     "model-denied": deniedEvidence, "oversize-bpmn": oversizedEvidence,

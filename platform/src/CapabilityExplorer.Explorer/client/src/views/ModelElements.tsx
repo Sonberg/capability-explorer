@@ -78,7 +78,7 @@ export function ModelElements({ index, diagramId, selected, renderedIds, measure
       <h3 className="font-semibold">Captured relationships ({relationships.length})</h3>
       <p className="text-xs text-zinc-500">Only captured relationship kinds are listed; absence is not proof of no business dependency.</p>
       {relationships.map(relationship => <div key={relationship.identity} className="rounded border border-zinc-200 p-2 text-sm dark:border-zinc-800">
-        <button className={link} onClick={() => onSelect(relationship.identity)}>{relationshipName(index, relationship)}: {elementName(index.byIdentity.get(relationship.source))} → {elementName(index.byIdentity.get(relationship.target))}</button>
+        <button className={link} aria-pressed={selected === relationship.identity} onClick={() => onSelect(relationship.identity)}>{relationshipName(index, relationship)}: {elementName(index.byIdentity.get(relationship.source))} → {elementName(index.byIdentity.get(relationship.target))}</button>
         {relationship.condition && <p className="whitespace-pre-wrap">Condition ({relationship.condition.language || "language not specified"}): {relationship.condition.text ?? "Text not captured by this profile"}</p>}
       </div>)}
     </section>
