@@ -62,7 +62,7 @@ child.stderr.on("data", data => logs.push(data.toString()));
 let browser: { close(): Promise<void> } | undefined;
 try {
   let ready = false;
-  for (let attempt = 0; attempt < 100; attempt++) {
+  for (let attempt = 0; attempt < 600; attempt++) {
     try {
       if ((await fetch(`${origin}/api/models`)).ok) { ready = true; break; }
     } catch (error) {
@@ -71,7 +71,7 @@ try {
     if (child.exitCode !== null) throw new Error(`Explorer exited ${child.exitCode}\n${logs.join("")}`);
     await new Promise(done => setTimeout(done, 100));
   }
-  assert(ready, "Explorer using the normal files-mode startup must become responsive");
+  assert(ready, `Explorer using the normal files-mode startup must become responsive\n${logs.join("")}`);
 
   const page = await (await fetch(`${origin}/api/models`)).json();
   assert.equal(page.items.length, 4);

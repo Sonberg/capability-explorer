@@ -143,7 +143,8 @@ model-fixtures: build
 	  $(OFFLINE) node node --experimental-strip-types extractors/ts/src/collection/cli.ts validate "$(MODEL_COLLECTIONS)"
 
 test-model-fixture-autoload: model-fixtures
-	MODEL_COLLECTIONS="$(MODEL_COLLECTIONS)" SANDBOX_PASS_ENV=MODEL_COLLECTIONS SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) --offline node node --experimental-strip-types tests/model-fixture-autoload.ts
+	$(OFFLINE) dotnet sh -c 'rm -rf .sandbox-cache/model-fixture-runtime && mkdir -p .sandbox-cache/model-fixture-runtime && cp -a /usr/share/dotnet/dotnet /usr/share/dotnet/host /usr/share/dotnet/shared .sandbox-cache/model-fixture-runtime/'
+	SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) --offline node env MODEL_COLLECTIONS="$(MODEL_COLLECTIONS)" DOTNET_ROOT=/work/.sandbox-cache/model-fixture-runtime PATH=/work/.sandbox-cache/model-fixture-runtime:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin node --experimental-strip-types tests/model-fixture-autoload.ts
 
 golden: fixtures
 	$(OFFLINE) node node fixtures/golden/build.mjs
