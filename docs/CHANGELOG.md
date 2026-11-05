@@ -11,6 +11,11 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- HTTP capability recommendations in architecture inspection and binding review,
+  with explainable observed route coverage, request/endpoint source evidence,
+  explicit cross-capability destination revisions and stale-review protection.
+  Candidate selection remains unreviewed; export never adopts a binding.
+
 - Offline authored BPMN/DMN evidence and bounded, non-executable Roslyn
   process/decision candidates, separate from unchanged native `ce.v1`.
   Negotiated immutable collection, independent .NET/TypeScript consumers,

@@ -15,11 +15,13 @@ No existing status was changed to produce this index.
 | Red | D: draft | Not yet ready for decision review; not a severity rating. |
 | Gray | H: historical | Rejected, deprecated or superseded; retain the decision and replacement links. |
 
-There are **33 local records: 1 scoped accepted, 32 proposed, 0 draft,
+There are **35 local records: 1 scoped accepted, 34 proposed, 0 draft,
 0 historical**. MADR-0016 is accepted for the **operator workflow only**.
 Both `0005` paths are distinct records, named `0005-G` and `0005-PR` below solely
 for navigation. No `0015` exists; this is a numbering gap, not a missing file
-invented by the index. MADR-0025 landed in owner-merged #55 and remains proposed.
+invented by the index. No local `0035` record exists; that slot is left for the
+forthcoming SLO decision referenced by #81. MADR-0025 landed in owner-merged #55
+and remains proposed.
 
 | ID | Title / record | Declared status and scope |
 |---|---|---|
@@ -57,6 +59,7 @@ invented by the index. MADR-0025 landed in owner-merged #55 and remains proposed
 | 0032 | [Drive implementation with behavior scenarios and red-green-refactor tests](0032-tdd-bdd-delivery.md) | P: repository-wide adoption proposed; operator-directed TDD/BDD workflow, no new framework mandated |
 | 0033 | [Keep authored models, code candidates and collector authority separate](0033-bounded-model-and-collector-evidence.md) | P: bounded evidence and offline collection; no central deployment or business approval |
 | 0034 | [View revision-bound original models without granting execution authority](0034-revision-bound-read-only-model-views.md) | P: explicit source attachments, immutable scope and read-only viewer boundary; no hard CPU deadline or approval claim |
+| 0036 | [Recommend HTTP capabilities from observed route coverage without adopting bindings](0036-http-capability-recommendations.md) | P: bounded HTTP recommendations and explicit revision-bound review; route coverage is not confidence or deployment proof |
 
 ## Relationship map
 
@@ -101,6 +104,7 @@ flowchart LR
     a25["0025 Frontend discovery [P]"]:::proposed
     a27["0027 Object and event assessment [P]"]:::proposed
     a28["0028 Portable decision ledger [P]"]:::proposed
+    a36["0036 HTTP capability candidates [P]"]:::proposed
   end
   subgraph Runtime_and_exchange
     a17["0017 PostgreSQL snapshots [P]"]:::proposed
@@ -156,6 +160,8 @@ flowchart LR
   a31 -.-> a30
   a32 -.-> a29
   a32 -.-> a31
+  a36 -->|preserves uncertainty| a10
+  a36 -->|extends revision review| a12
   classDef accepted fill:#dcfce7,stroke:#166534,color:#14532d
   classDef proposed fill:#fef9c3,stroke:#854d0e,color:#713f12
   classDef draft fill:#fee2e2,stroke:#991b1b,color:#7f1d1d
@@ -199,6 +205,7 @@ referencing/extending/overriding record to its target.
 | 0030 | 0003, 0028, 0029 | Related metadata in the [record](0030-dependency-cache-lifecycle.md); upgrade housekeeping proposal, not cleanup authorization. |
 | 0031 | 0019, 0029, 0030 | Related metadata in the [record](0031-typescript7-on-touch.md); incremental migration rule, not completed compiler adoption. |
 | 0032 | 0029, 0031 | Related metadata in the [record](0032-tdd-bdd-delivery.md); behavior-driven test-first delivery, not existing feature-test evidence. |
+| 0036 | 0010, 0012 | [Decision outcome](0036-http-capability-recommendations.md#decision-outcome) explicitly preserves mapping uncertainty and extends revision-bound review; no automatic adoption. |
 
 ## Updating the ledger
 

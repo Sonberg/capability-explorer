@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link2, Pencil } from "lucide-react";
+import { Link2, Pencil, ScanSearch } from "lucide-react";
+import { HttpRecommendationInspector } from "../components/HttpRecommendations";
 import type { ArchNode, ArchEdge, Graph, ConnectionDraft, ManualConnection, ManualConnectionSnapshot } from "../architecture-types";
 import { ArchitectureConnectionEditor, connectionKinds, graphIconButton } from "../components/ArchitectureConnectionEditor";
 import { LiveArchitectureCanvas } from "../components/live-architecture";
@@ -104,6 +105,7 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
   const { data, error, loading, reload } = useApi<Graph>(`/api/architecture?level=${level}${focus ? `&focus=${encodeURIComponent(focus)}` : ""}&${scope}`);
   const connections = useApi<ManualConnectionSnapshot>("/api/architecture/connections");
   const [editor, setEditor] = useState<ConnectionDraft | null>(null);
+  const [recommendationsOpen, setRecommendationsOpen] = useState(false);
   const [hidden, setHidden] = useState<Set<string>>(rememberedHidden);
   const [selected, setSelected] = useState<Selected>(null);
   const graph = loading ? undefined : data;
@@ -131,19 +133,24 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
     const owner = node?.category === "capability" ? node.id.slice(4)
       : meta.capabilities.find(item => item.repositories.includes(repository ?? ""))?.id ?? capability ?? "";
     const from = owner || meta.capabilities[0]?.id || "";
+    setRecommendationsOpen(false);
     setEditor({ fromCapabilityId: from, toCapabilityId: meta.capabilities.find(item => item.id !== from)?.id ?? "",
       kind: connectionKinds.some(([kind]) => kind === edge?.kind) ? edge!.kind : "dependency",
       sourceRepositoryId: repository, sourceKey: fact?.from.key ?? (repository ? node?.symbolKey : undefined) });
   };
   const saved = () => { setEditor(null); setSelected(null); connections.reload(); reload(); };
   const capabilityName = (id: string) => meta.capabilities.find(item => item.id === id)?.name ?? id;
+  const selectedHttpFact = selected?.type === "edge" ? selected.edge.facts.find(fact => fact.relation === "REQUESTS")
+    : selected?.type === "node" && !selected.node.members ? graph?.edges.find(edge => edge.to === selected.node.id && edge.kind === "http")?.facts.find(fact => fact.relation === "REQUESTS") : undefined;
+  const recommendationFocus = selectedHttpFact?.to?.key.split("|")[1];
 
   return (
-    <div className={`architecture-workspace ${editor ? "is-connecting " : ""}flex flex-col gap-2`}>
+    <div className={`architecture-workspace ${editor || recommendationsOpen ? "is-connecting " : ""}flex flex-col gap-2`}>
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="secondary" onClick={() => { setCapability(""); window.location.hash = href("architecture", { level: "system" }); }}>All repositories</Button>
         <Button variant="secondary" onClick={() => { setCapability(""); window.location.hash = href("architecture", { level: "landscape" }); }}>Capability landscape</Button>
         <button type="button" className={graphIconButton} title="Connect capabilities" aria-label="Connect capabilities" disabled={meta.capabilities.length < 2} onClick={() => connect()}><Link2 size={17} /></button>
+        <button type="button" className={graphIconButton} title="Recommend capabilities" aria-label="Recommend capabilities" onClick={() => { setEditor(null); setRecommendationsOpen(open => !open); }}><ScanSearch size={17} /></button>
         <nav aria-label="Abstraction level" className="flex items-center gap-1 text-[13px]">
           {(graph?.breadcrumbs ?? [{ label: "Landscape", level: "landscape" }]).map((c, i, all) => (
             <span key={c.level} className="flex items-center gap-1">
@@ -197,15 +204,16 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
               }
               lastClick.current = { id: node.id, at: now };
               setSelected({ type: "node", node });
+              if (node.category === "host" || node.category === "unmatched") setRecommendationsOpen(true);
             }}
             onNodeDrill={item => { const node = graph?.nodes.find(node => node.id === item.id); if (node) drill(node); }}
-            onEdgeSelect={item => { const edge = graph?.edges.find(edge => edge.id === item.id); if (edge) setSelected({ type: "edge", edge }); }}
+            onEdgeSelect={item => { const edge = graph?.edges.find(edge => edge.id === item.id); if (edge) { setSelected({ type: "edge", edge }); if (edge.kind === "http" && ["candidate", "unresolved", "unbound", "broken"].includes(edge.certainty)) setRecommendationsOpen(true); } }}
             onClearSelection={() => setSelected(null)}
           />}
 
         </div>
         <aside className="min-h-0 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-3 text-[13px] dark:border-zinc-800 dark:bg-zinc-900">
-          {editor ? <ArchitectureConnectionEditor key={editor.id ?? `${editor.fromCapabilityId}|${editor.sourceKey ?? "new"}`} draft={editor} capabilities={meta.capabilities}
+          {recommendationsOpen ? <HttpRecommendationInspector scope={scope} focus={recommendationFocus} onClose={() => setRecommendationsOpen(false)} /> : editor ? <ArchitectureConnectionEditor key={editor.id ?? `${editor.fromCapabilityId}|${editor.sourceKey ?? "new"}`} draft={editor} capabilities={meta.capabilities}
             snapshot={connections.data} onClose={() => setEditor(null)} onSaved={saved} onReload={connections.reload} /> : selected?.type === "node" ? (
             <NodePanel node={selected.node} onDrill={() => drill(selected.node)} graph={graph} />
           ) : selected?.type === "edge" ? (

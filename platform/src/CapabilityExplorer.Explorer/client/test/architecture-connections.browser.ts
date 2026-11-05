@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import test from "node:test";
 import playwright from "../../../../../spikes/likec4/node_modules/playwright/index.js";
@@ -138,3 +138,143 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     }
   });
 }
+
+for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+  test(`HTTP recommendation at ${viewport.width}px requires explicit review after architecture handoff`, async () => {
+    const browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport });
+    page.setDefaultTimeout(5000);
+    const hint = "@unbound:pricing-node/@fixture/pricing:env=FORECAST_API_URL";
+    const target = "forecast-cs/Forecast.Api";
+    const source = { repositoryId: "pricing-node", commitSha: "a".repeat(40), unitPath: "tsconfig.json", artifactHash: "b".repeat(64) };
+    const destination = { repositoryId: "forecast-cs", commitSha: "c".repeat(40), unitPath: "Forecast.Api.csproj", artifactHash: "d".repeat(64) };
+    const sourceView = `pricing-node:${source.commitSha}`;
+    const targetView = `${sourceView},forecast-cs:${destination.commitSha}`;
+    const requestEvidence = { source, edgeId: "e:client", target: `http|${hint}|GET /api/forecasts/{}`, evidence: [] };
+    let fingerprint = "fixture-snapshot";
+    let mutationCount = 0;
+    let exports = 0;
+    const capabilities = [{ id: "consumer", name: "Pricing", repositories: ["pricing-node"] },
+      { id: "provider", name: "Forecast", repositories: ["forecast-cs"] }];
+    await page.route("**/api/**", async route => {
+      const request = route.request();
+      const url = new URL(request.url());
+      let payload: unknown = {};
+      if (url.pathname === "/api/meta") payload = { generation: 1, capabilities, githubAuth: { source: "none", hostManaged: true },
+        interpretation: { enabled: false, chat: false, provider: "none" }, similarity: { database: false }, revisions: [],
+        defaultView: {}, artifacts: 2, problems: [], hasSource: false, hasEvaluation: false, nodeKinds: [] };
+      else if (url.pathname === "/api/generation") payload = { generation: 1 };
+      else if (url.pathname === "/api/view") payload = { "pricing-node": source.commitSha };
+      else if (url.pathname === "/api/architecture/connections") {
+        if (request.method() !== "GET") mutationCount++;
+        payload = { version: 0, connections: [] };
+      } else if (url.pathname === "/api/architecture") payload = { level: "landscape", title: "Landscape",
+        breadcrumbs: [{ label: "Landscape", level: "landscape" }], notes: [], edges: [],
+        nodes: [{ id: "cap:consumer", category: "capability", label: "Pricing", badges: [] }] };
+      else if (url.pathname === "/api/binding-preview/recommendations") payload = {
+        fingerprint, algorithmVersion: "exact-http-v1", sourceView, targetView,
+        owners: [{ repositoryId: "forecast-cs", capabilityId: "provider", name: "Forecast" }],
+        groups: [{ id: "forecast-host", hint, label: hint, state: "candidate", requests: [requestEvidence], candidates: [{
+          target, score: 100, matchedRoutes: 1, totalRoutes: 1, state: "candidate", previewEligible: true,
+          features: [{ name: "Distinct method/route coverage (not confidence)", points: 100 }],
+          matches: [{ request: requestEvidence, endpoint: { source: destination, key: `http|${target}|GET /api/forecasts/{}`, evidence: [] } }],
+          unmatched: [], missingEvidence: ["Host ownership", "Response schema compatibility"],
+        }] }],
+      };
+      else if (url.pathname === "/api/binding-preview" && request.method() === "GET") payload = {
+        fingerprint, sources: [source], targetSources: [destination], targets: [target],
+        hints: [{ hint, existingTarget: null, occurrences: [{ source, edgeId: "e:client", relation: "REQUESTS", evidence: [] }] }],
+      };
+      else if (url.pathname.startsWith("/api/binding-preview") && request.method() === "POST") {
+        const body: unknown = request.postDataJSON();
+        assert.ok(body && typeof body === "object" && "entries" in body && Array.isArray(body.entries));
+        assert.ok("expectedFingerprint" in body);
+        assert.equal(body.expectedFingerprint, fingerprint);
+        assert.equal(url.searchParams.get("targetView"), targetView);
+        const entry: unknown = body.entries[0];
+        assert.ok(entry && typeof entry === "object" && "reviewed" in entry);
+        if (url.pathname.endsWith("/export")) { assert.equal(entry.reviewed, true); exports++; }
+        payload = { fingerprint, canExport: entry.reviewed === true, rows: [{ hint, target, state: "evidenced", message: "Human assertion", reviewed: entry.reviewed, edgeCount: 1 }] };
+      }
+      await route.fulfill({ json: payload });
+    });
+    try {
+      await page.goto(`${process.env.CE_GRAPH_TEST_URL ?? "http://127.0.0.1:5083"}/#/architecture?level=landscape`);
+      await page.getByRole("button", { name: "Recommend capabilities", exact: true }).click();
+      await page.getByRole("combobox", { name: "Unresolved HTTP host", exact: true }).selectOption("forecast-host");
+      await page.getByText("Forecast", { exact: true }).last().waitFor();
+      await page.getByRole("link", { name: `Review ${target}`, exact: true }).click();
+      const destinationInput = page.getByLabel(`Destination for ${hint}`, { exact: true });
+      await destinationInput.waitFor();
+      await page.waitForFunction(({ label, value }) => document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)?.value === value,
+        { label: `Destination for ${hint}`, value: target });
+      const reviewed = page.getByRole("checkbox", { name: "I reviewed this human mapping against the source and destination.", exact: true });
+      assert.equal(await reviewed.isChecked(), false);
+      await page.getByRole("button", { name: "Preview mappings", exact: true }).click();
+      await page.getByRole("status").filter({ hasText: "evidenced" }).waitFor();
+      assert.equal(await page.getByRole("button", { name: "Export reviewed proposal", exact: true }).isEnabled(), false);
+      await reviewed.check();
+      await page.getByRole("button", { name: "Preview mappings", exact: true }).click();
+      await page.waitForFunction(() => [...document.querySelectorAll("button")].some(button => button.textContent === "Export reviewed proposal" && !button.disabled));
+      const download = page.waitForEvent("download");
+      await page.getByRole("button", { name: "Export reviewed proposal", exact: true }).click();
+      await download;
+      assert.equal(exports, 1);
+      assert.equal(mutationCount, 0);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+      const output = resolve("../../../../.sandbox-cache/issue81-evidence");
+      await mkdir(output, { recursive: true });
+      await page.screenshot({ path: resolve(output, `recommendations-${viewport.width}.png`), fullPage: true });
+      fingerprint = "changed-provider-snapshot";
+      await page.getByRole("button", { name: "Reload source", exact: true }).click();
+      await page.getByRole("alert").filter({ hasText: "changed" }).waitFor();
+      assert.equal(await reviewed.isChecked(), false);
+      assert.equal(await page.getByRole("button", { name: "Export reviewed proposal", exact: true }).isEnabled(), false);
+    } finally { await browser.close(); }
+  });
+}
+
+test("HTTP recommendation real fixture API and browser export retain both source identities", { skip: !process.env.CE_GRAPH_TEST_REAL_URL }, async () => {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const parsed: unknown = JSON.parse(await readFile(resolve("../../../../fixtures/revisions.lock.json"), "utf8"));
+  assert.ok(parsed && typeof parsed === "object" && "pricing-node" in parsed && "forecast-cs" in parsed);
+  const pricing: unknown = parsed["pricing-node"];
+  const forecast: unknown = parsed["forecast-cs"];
+  assert.ok(pricing && typeof pricing === "object" && "v1-base" in pricing && typeof pricing["v1-base"] === "string");
+  assert.ok(forecast && typeof forecast === "object" && "v1-base" in forecast && typeof forecast["v1-base"] === "string");
+  const hint = "@unbound:pricing-node/@fixture/pricing:env=FORECAST_API_URL";
+  try {
+    await page.addInitScript(({ pricing, forecast }) => {
+      localStorage.setItem("ce.capability", JSON.stringify(""));
+      localStorage.setItem("ce.overrides", JSON.stringify({ "*": { "pricing-node": pricing, "forecast-cs": forecast } }));
+    }, { pricing: pricing["v1-base"], forecast: forecast["v1-base"] });
+    const errors: string[] = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.goto(`${process.env.CE_GRAPH_TEST_REAL_URL}/#/architecture?level=landscape`);
+    await page.getByRole("button", { name: "Recommend capabilities", exact: true }).click();
+    const hosts = page.getByRole("combobox", { name: "Unresolved HTTP host", exact: true });
+    const value = await hosts.locator("option").filter({ hasText: "FORECAST_API_URL" }).getAttribute("value");
+    assert.ok(value);
+    await hosts.selectOption(value);
+    await page.getByRole("link", { name: "Review forecast-cs/Forecast.Api", exact: true }).click();
+    const destination = page.getByLabel(`Destination for ${hint}`, { exact: true });
+    await page.waitForFunction(label => document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)?.value === "forecast-cs/Forecast.Api", `Destination for ${hint}`);
+    const article = page.locator("article").filter({ has: destination });
+    assert.equal(await article.getByRole("checkbox").isChecked(), false);
+    await article.getByRole("checkbox").check();
+    await page.getByRole("button", { name: "Preview mappings", exact: true }).click();
+    await page.waitForFunction(() => [...document.querySelectorAll("button")].some(button => button.textContent === "Export reviewed proposal" && !button.disabled));
+    const downloading = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Export reviewed proposal", exact: true }).click();
+    const downloadPath = await (await downloading).path();
+    assert.ok(downloadPath);
+    const exported: unknown = JSON.parse(await readFile(downloadPath, "utf8"));
+    assert.ok(exported && typeof exported === "object" && "reviewState" in exported && "sources" in exported && Array.isArray(exported.sources));
+    assert.equal(exported.reviewState, "reviewed-export-not-adopted");
+    for (const repository of ["pricing-node", "forecast-cs"]) assert.ok(exported.sources.some(source =>
+      source && typeof source === "object" && "repositoryId" in source && source.repositoryId === repository));
+    assert.deepEqual(errors, []);
+    await page.screenshot({ path: resolve("../../../../.sandbox-cache/issue81-evidence/real-fixture-review.png"), fullPage: true });
+  } finally { await browser.close(); }
+});
