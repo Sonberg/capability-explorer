@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using CapabilityExplorer.Explorer;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -83,10 +84,31 @@ public sealed class HealthApiTests
             Assert.Equal(new[] { "status", "timestamp", "uptime_seconds", "version" },
                 root.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
             Assert.Equal(TimeSpan.Zero, DateTimeOffset.Parse(root.GetProperty("timestamp").GetString()!, CultureInfo.InvariantCulture).Offset);
-            Assert.True(root.GetProperty("uptime_seconds").GetDouble() >= 0);
-            Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("version").GetString()));
+            Assert.True(root.GetProperty("uptime_seconds").TryGetInt64(out var uptimeSeconds) && uptimeSeconds >= 0);
+            Assert.Matches(@"^\d+\.\d+\.\d+$", root.GetProperty("version").GetString()!);
             Assert.NotEqual(Guid.Empty, id);
         }
+    }
+
+    [Fact]
+    public async Task Oversized_health_json_returns_the_contract_error()
+    {
+        using var factory = new HealthApiFactory();
+        using var body = new MemoryStream();
+        var context = new DefaultHttpContext
+        {
+            RequestServices = factory.Services,
+        };
+        context.Response.Body = body;
+
+        await new BoundedJsonResult(new { value = new string('x', 32) }, maximumBytes: 1,
+            oversizedStatusCode: StatusCodes.Status500InternalServerError,
+            oversizedBody: new { error = "response_too_large" }).ExecuteAsync(context);
+
+        Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
+        body.Position = 0;
+        using var json = await JsonDocument.ParseAsync(body);
+        Assert.Equal("response_too_large", json.RootElement.GetProperty("error").GetString());
     }
 
     [Fact]
@@ -192,7 +214,7 @@ public sealed class HealthApiTests
         Assert.DoesNotContain("InvalidOperationException", content, StringComparison.Ordinal);
         using var json = JsonDocument.Parse(content);
         Assert.Equal("degraded", json.RootElement.GetProperty("status").GetString());
-        Assert.Equal("noncritical", json.RootElement.GetProperty("checks").GetProperty("database").GetProperty("criticality").GetString());
+        Assert.Equal("non-critical", json.RootElement.GetProperty("checks").GetProperty("database").GetProperty("criticality").GetString());
         Assert.Equal("unavailable", json.RootElement.GetProperty("checks").GetProperty("database").GetProperty("error").GetString());
         using var readiness = await client.GetAsync("/health/ready");
         Assert.Equal(HttpStatusCode.OK, readiness.StatusCode);

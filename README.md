@@ -152,18 +152,19 @@ The Explorer exposes lightweight, unauthenticated `/health`, `/health/live`,
 `/health/ready`, and `/health/startup` endpoints. Their JSON uses `status`,
 `version`, `uptime_seconds`, and UTC `timestamp`; `/health` is in-process only.
 Startup becomes true once the host has started and remains true during shutdown;
-readiness returns 503 until startup and while shutdown is in progress. Readiness
-also checks configured fixed dependencies, in parallel, with a 2-second
-per-check timeout and a 5-second overall bound; only critical failures return
-503. These routes retain the existing `LocalRequestGuard` boundary and are not
+readiness returns 503 until startup and while shutdown is in progress. Public
+probes perform only in-process checks. Detailed results at `/internal/health`
+run configured fixed dependencies in parallel, with a 2-second per-check
+timeout and a 5-second overall bound; only critical failures return 503. These
+routes retain the existing `LocalRequestGuard` boundary and are not
 remote-service authentication. Detailed results at `/internal/health` and
 Prometheus text at `/metrics` are disabled unless
 `EXPLORER_INTERNAL_HEALTH_TOKEN` (or `internalHealth:token`) is configured, and
 require an `Authorization` header with that bearer token. The internal result cache defaults to
 4 seconds; `internalHealth:cacheSeconds` accepts values from 3 through 5.
 Internal health includes sanitized failure cause, process/heap memory statistics,
-and per-dependency status, criticality and latency. Critical timeout responses
-use exactly `{"status":"unhealthy","reason":"timeout"}`. Metrics include
+and per-dependency status, criticality and latency. Overall deadline expiration
+returns exactly `{"status":"unhealthy","reason":"timeout"}`. Metrics include
 `process_uptime_seconds`, `process_resident_memory_bytes`, HTTP request counters
 labelled by method/status/path, and `http_request_duration_seconds` histograms.
 Health responses are non-cacheable, carry a UUID request header, and are bounded

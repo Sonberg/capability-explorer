@@ -9,6 +9,9 @@ import { spawn } from "node:child_process";
 const root = resolve(import.meta.dirname, "..");
 const collection = resolve(root, process.env.MODEL_COLLECTIONS ?? ".sandbox-cache/model-fixtures/collection");
 const scratch = join(root, ".sandbox-cache", "model-fixture-autoload-test");
+const screenshotDir = process.env.MODEL_FIXTURE_SCREENSHOT_DIR
+  ? resolve(process.env.MODEL_FIXTURE_SCREENSHOT_DIR)
+  : undefined;
 const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const logs: string[] = [];
 
@@ -89,23 +92,74 @@ try {
   const { chromium } = await import(pathToFileURL(playwrightModule).href);
   browser = await chromium.launch({ headless: true });
   const tab = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  if (screenshotDir) await mkdir(screenshotDir, { recursive: true });
+  const capture = async (name: string) => {
+    if (screenshotDir) await tab.screenshot({ path: join(screenshotDir, name), fullPage: true });
+  };
   const external: string[] = [];
   tab.on("request", (request: { url(): string }) => {
     if (/^https?:/.test(request.url()) && new URL(request.url()).origin !== origin) external.push(request.url());
   });
   await tab.goto(`${origin}/#/processes-decisions`);
   await tab.getByRole("heading", { name: "Processes & decisions" }).waitFor();
+  await tab.getByRole("status", { name: /Service health: Healthy/ }).waitFor();
   await tab.getByRole("button", { name: /order\.bpmn/ }).click();
   await tab.getByText("BPMN model evidence", { exact: true }).waitFor();
+  await tab.getByRole("status").filter({ hasText: "Rendered" }).waitFor();
+  const orderFrame = tab.frameLocator('iframe[title="BPMN read-only model"]');
+  const orderLabels = orderFrame.locator(".djs-label:visible");
+  await orderLabels.first().waitFor();
+  assert.match((await orderLabels.allTextContents()).join(" "), /review/i);
+  const insights = tab.getByRole("complementary", { name: "Model insights" });
+  await insights.waitFor({ state: "hidden" });
+  const orderCanvas = await tab.locator(".model-viewer-frame").boundingBox();
+  assert(orderCanvas && orderCanvas.width >= 560 && orderCanvas.height >= 600,
+    `BPMN canvas should use the available window space, got ${JSON.stringify(orderCanvas)}`);
+  await capture("order-bpmn.png");
+  await tab.getByRole("button", { name: "Insights", exact: true }).click();
+  await insights.waitFor({ state: "visible" });
+  const insightsBounds = await insights.boundingBox();
+  assert(insightsBounds && orderCanvas && insightsBounds.x > orderCanvas.x + orderCanvas.width / 2,
+    "Model insights should overlay the right side of the diagram canvas");
+  await capture("order-bpmn-insights.png");
+  await tab.getByRole("button", { name: "Insights", exact: true }).click();
+  await insights.waitFor({ state: "hidden" });
   await tab.getByRole("button", { name: "Elements", exact: true }).click();
   await tab.getByText("review", { exact: true }).first().waitFor();
+  await tab.getByRole("button", { name: /workflow\.bpmn/ }).click();
+  await tab.getByRole("button", { name: "Diagram", exact: true }).click();
+  const workflowFrame = tab.frameLocator('iframe[title="BPMN read-only model"]');
+  const workflowLabels = workflowFrame.locator(".djs-label:visible");
+  await workflowLabels.first().waitFor();
+  assert.match((await workflowLabels.allTextContents()).join(" "), /review/i);
+  await capture("workflow-bpmn.png");
   await tab.getByRole("button", { name: /decision\.dmn/ }).click();
   await tab.getByText("DMN model evidence", { exact: true }).waitFor();
+  const decisionFrame = tab.frameLocator('iframe[title="DMN read-only model"]');
+  await decisionFrame.locator(".djs-element").first().waitFor();
+  assert.match(await decisionFrame.locator("body").innerText(), /eligibility/i);
+  await capture("decision-dmn.png");
+  assert((await decisionFrame.locator(".djs-element").count()) >= 1);
   await tab.getByRole("button", { name: "Decision table", exact: true }).click();
   const table = tab.getByRole("table").first();
   await table.waitFor();
   assert((await table.locator("tbody tr").count()) >= 2);
   assert.match(await table.innerText(), /18/);
+  await tab.getByRole("button", { name: /decision-rich\.dmn/ }).click();
+  await tab.getByRole("button", { name: "Requirements", exact: true }).click();
+  const richFrame = tab.frameLocator('iframe[title="DMN read-only model"]');
+  await richFrame.locator(".djs-element").first().waitFor();
+  assert.match(await richFrame.locator("body").innerText(), /order decision/i);
+  assert((await richFrame.locator(".djs-element").count()) >= 1);
+  await capture("decision-rich-dmn.png");
+  await tab.route("**/health", (route) => route.fulfill({
+    status: 503,
+    contentType: "application/json",
+    body: JSON.stringify({ status: "unhealthy", version: "1.0.0", uptime_seconds: 42, timestamp: new Date().toISOString() }),
+  }));
+  await tab.reload();
+  await tab.getByRole("status", { name: "Service health: Unhealthy · 42s uptime" }).waitFor();
+  await tab.unroute("**/health");
   assert.deepEqual(external, []);
   console.log("MODEL FIXTURE AUTOLOAD PASS: four validated fixtures, both BPMN/DMN kinds listed and viewable, source consent/revision verified, no external requests");
 } finally {

@@ -4,7 +4,12 @@ using Microsoft.Extensions.Options;
 namespace CapabilityExplorer.Explorer;
 
 /// <summary>Bounds serialized uncompressed output before headers/body are sent.</summary>
-internal sealed class BoundedJsonResult(object value, int statusCode = 200, int maximumBytes = 1024 * 1024) : IResult
+internal sealed class BoundedJsonResult(
+    object value,
+    int statusCode = 200,
+    int maximumBytes = 1024 * 1024,
+    int oversizedStatusCode = StatusCodes.Status413PayloadTooLarge,
+    object? oversizedBody = null) : IResult
 {
     public const int MaximumBytes = 1024 * 1024;
 
@@ -21,8 +26,10 @@ internal sealed class BoundedJsonResult(object value, int statusCode = 200, int 
         }
         catch (ResponseLimitException)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
-            await httpContext.Response.WriteAsJsonAsync(new { error = $"response exceeds its fixed {maximumBytes}-byte limit; narrow the request or reduce the page size" }, httpContext.RequestAborted);
+            httpContext.Response.StatusCode = oversizedStatusCode;
+            await httpContext.Response.WriteAsJsonAsync(
+                oversizedBody ?? new { error = $"response exceeds its fixed {maximumBytes}-byte limit; narrow the request or reduce the page size" },
+                httpContext.RequestAborted);
             return;
         }
         httpContext.Response.StatusCode = statusCode;

@@ -37,7 +37,7 @@ internal static class HealthApi
             if (!HealthToken.IsAuthorized(http.Request, options))
                 return Json(http, health, new { status = "unauthorized", error = "authorization required" }, 401);
             var snapshot = await health.CheckAsync(http.RequestAborted);
-            if (snapshot.FailureCause == "timeout") return TimeoutResponse();
+            if (snapshot.OverallTimedOut) return TimeoutResponse();
             return InternalHealth(http, health, snapshot, snapshot.Ready ? 200 : 503);
         });
         app.MapGet("/metrics", (HttpContext http, HealthDiagnosticsService health, HealthEndpointOptions options,
@@ -85,10 +85,10 @@ internal static class HealthApi
         {
             ["status"] = status,
             ["version"] = HealthDiagnosticsService.Version,
-            ["uptime_seconds"] = Math.Round(health.UptimeSeconds, 3),
+            ["uptime_seconds"] = (long)Math.Floor(health.UptimeSeconds),
             ["timestamp"] = DateTimeOffset.UtcNow,
         };
-        return new BoundedJsonResult(result, statusCode, HealthEndpointOptions.MaximumResponseBytes);
+        return HealthJson(result, statusCode);
     }
 
     private static BoundedJsonResult InternalHealth(HttpContext http, HealthDiagnosticsService health,
@@ -100,18 +100,18 @@ internal static class HealthApi
         {
             ["status"] = snapshot.Status,
             ["version"] = HealthDiagnosticsService.Version,
-            ["uptime_seconds"] = Math.Round(health.UptimeSeconds, 3),
+            ["uptime_seconds"] = (long)Math.Floor(health.UptimeSeconds),
             ["timestamp"] = DateTimeOffset.UtcNow,
             ["failure_cause"] = JsonSerializer.SerializeToElement(snapshot.FailureCause),
             ["memory"] = new
             {
                 heap_used_mb = Math.Round(GC.GetTotalMemory(false) / 1048576d, 2),
-                heap_total_mb = Math.Round(memory.TotalAvailableMemoryBytes / 1048576d, 2),
+                heap_total_mb = Math.Round(memory.HeapSizeBytes / 1048576d, 2),
                 rss_mb = Math.Round(process.WorkingSet64 / 1048576d, 2),
             },
             ["checks"] = snapshot.Checks,
         };
-        return new BoundedJsonResult(result, statusCode, HealthEndpointOptions.MaximumResponseBytes);
+        return HealthJson(result, statusCode);
     }
 
     private static IResult TimeoutResponse() =>
@@ -126,13 +126,17 @@ internal static class HealthApi
         {
             ["status"] = "unhealthy",
             ["version"] = HealthDiagnosticsService.Version,
-            ["uptime_seconds"] = Math.Round(health.UptimeSeconds, 3),
+            ["uptime_seconds"] = (long)Math.Floor(health.UptimeSeconds),
             ["timestamp"] = DateTimeOffset.UtcNow,
         };
         foreach (var property in fields.GetType().GetProperties())
             result[property.Name] = property.GetValue(fields);
-        return new BoundedJsonResult(result, statusCode, HealthEndpointOptions.MaximumResponseBytes);
+        return HealthJson(result, statusCode);
     }
+
+    private static BoundedJsonResult HealthJson(object result, int statusCode) =>
+        new(result, statusCode, HealthEndpointOptions.MaximumResponseBytes,
+            StatusCodes.Status500InternalServerError, new { error = "response_too_large" });
 }
 
 internal sealed class HealthApplicationLifecycle(IHostApplicationLifetime lifetime)

@@ -219,7 +219,9 @@ export function ProcessesDecisions({ scope, params, mode }: Props) {
       <p className="text-sm text-zinc-600 dark:text-zinc-400">Read-only evidence at selected revisions; nothing is executed or approved.</p>
     </header>
     {listState.error && <div role="alert" className={`${card} border-red-300 text-red-800 dark:border-red-900 dark:text-red-300`}>{listState.error} <button type="button" className={linkStyle} onClick={() => setListEpoch((value) => value + 1)}>Retry</button></div>}
-    {!listState.error && <div className="grid min-w-0 grid-cols-1 gap-4 min-[1024px]:grid-cols-[minmax(0,1fr)_clamp(300px,28vw,420px)] xl:grid-cols-[280px_minmax(0,1fr)_clamp(300px,20vw,420px)]">
+    {!listState.error && <div className={`grid min-w-0 grid-cols-1 gap-4 ${selected?.kind === "candidate"
+      ? "min-[1024px]:grid-cols-[minmax(0,1fr)_clamp(280px,24vw,360px)] xl:grid-cols-[clamp(210px,16vw,260px)_minmax(0,1fr)_clamp(250px,17vw,340px)]"
+      : "min-[1024px]:grid-cols-1 xl:grid-cols-[clamp(210px,16vw,260px)_minmax(0,1fr)]"}`}>
       <aside className={`${card} hidden min-w-0 xl:block`} aria-label="Model list">
         <ModelRail idPrefix="wide" items={filtered} allItems={summaries} selectedId={selectedId} query={query} setQuery={setQuery} kind={kind} setKind={setKind} selectModel={selectModel} listLoading={listState.loading || !scopeReady} deepLinkLoading={deepLinkLoading} cursor={cursor} pageBusy={pageBusy} appendPage={appendPage} candidateKindPending={kind !== "all" && summaries.some((item) => item.kind === "candidate" && item.id !== selectedId)} />
       </aside>
@@ -248,7 +250,7 @@ export function ProcessesDecisions({ scope, params, mode }: Props) {
             </ModelViewErrorBoundary>
           : <div className={card}><p className="font-semibold">Select a model</p><p className="mt-1 text-sm text-zinc-500">{selectedId ? deepLinkLoading ? "Finding the selected model in this immutable snapshot…" : "This ID is not in the loaded pages. Continue loading summaries or return to the list." : "Choose an authored model or a separately labelled code candidate."}</p></div>}
       </div>
-      {selected && <ModelViewErrorBoundary key={`provenance:${selected.id}:${scope}:${listEpoch}`} onRetry={() => setListEpoch((value) => value + 1)}>
+      {selected?.kind === "candidate" && <ModelViewErrorBoundary key={`provenance:${selected.id}:${scope}:${listEpoch}`} onRetry={() => setListEpoch((value) => value + 1)}>
         <Provenance summary={selected} evidence={currentEvidence.data} snapshot={listScope.current} selectedElement={selectedElement} sourceVerified={!!currentSource.data} renderStatus={viewerReport.key === selectedKey ? viewerReport.status : "not rendered"} />
       </ModelViewErrorBoundary>}
     </div>}
@@ -339,14 +341,18 @@ function ModelWorkspace(props: {
   const [frameStatus, setFrameStatus] = useState("idle");
   const [frameError, setFrameError] = useState("");
   const [renderedIds, setRenderedIds] = useState<string[]>([]);
+  const [insightsOpen, setInsightsOpen] = useState(false);
   const onViewerStateRef = useRef(onViewerState);
   onViewerStateRef.current = onViewerState;
   const selectedElementRef = useRef(selectedElement);
   selectedElementRef.current = selectedElement;
+  const isDmn = summary.modelKind === "dmn";
+  const activeTab = isDmn && tab === "diagram" ? "requirements" : !isDmn && (tab === "requirements" || tab === "table") ? "diagram" : tab;
 
   useEffect(() => {
     const verifiedSource = source.data;
-    if (!frameHost.current || summary.kind !== "authored" || !verifiedSource || !snapshot) return;
+    if (!frameHost.current || summary.kind !== "authored" || !verifiedSource || !snapshot ||
+        (activeTab !== "diagram" && activeTab !== "requirements")) return;
     const controller = new AbortController();
     let live = true;
     let instance: ModelSandbox | undefined;
@@ -412,12 +418,10 @@ function ModelWorkspace(props: {
       instance?.dispose();
       if (sandbox.current === instance) sandbox.current = undefined;
     };
-  }, [summary.id, summary.modelKind, source.data?.sha256, snapshot?.snapshot, snapshot?.generation]);
+  }, [activeTab, summary.id, summary.modelKind, source.data?.sha256, snapshot?.snapshot, snapshot?.generation]);
 
   const elements = authored?.elements ?? [];
   const orderedElements = useMemo(() => [...elements].sort((a, b) => a.order - b.order), [elements]);
-  const isDmn = summary.modelKind === "dmn";
-  const activeTab = isDmn && tab === "diagram" ? "requirements" : !isDmn && (tab === "requirements" || tab === "table") ? "diagram" : tab;
   const availableTabs: Array<[Tab, string]> = isDmn
     ? [["requirements", "Requirements"], ["table", "Decision table"], ["elements", "Elements"]]
     : [["diagram", "Diagram"], ["elements", "Elements"]];
@@ -454,15 +458,22 @@ function ModelWorkspace(props: {
     {authored && <section className="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
       <nav aria-label="Model evidence" className="flex flex-wrap gap-1 border-b border-zinc-200 p-2 dark:border-zinc-800">
         {availableTabs.map(([id, label]) => <button key={id} type="button" aria-pressed={activeTab === id} onClick={() => setTab(id)} className={`${button} ${activeTab === id ? "border-blue-500 bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-200" : ""}`}>{label}</button>)}
-        {!isDmn && <div className="ml-auto flex gap-1">
+        <div className="ml-auto flex gap-1">
+          <button type="button" className={`${button} ${insightsOpen ? "border-blue-500 bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-200" : ""}`}
+            aria-expanded={insightsOpen} aria-controls={insightsOpen ? "model-insights-panel" : undefined} onClick={() => setInsightsOpen((open) => !open)}>
+            Insights
+          </button>
+          {!isDmn && <>
           <button type="button" className={button} aria-label="Fit diagram" onClick={() => sandbox.current?.zoom("fit")}>Fit</button>
           <button type="button" className={button} aria-label="Zoom out" onClick={() => sandbox.current?.zoom("out")}>−</button>
           <button type="button" className={button} aria-label="Reset zoom" onClick={() => sandbox.current?.zoom("reset")}>100%</button>
           <button type="button" className={button} aria-label="Zoom in" onClick={() => sandbox.current?.zoom("in")}>+</button>
-        </div>}
+          </>}
+        </div>
       </nav>
       <p id="diagram-help" className="sr-only">Read-only diagram. Use the Elements tab for a complete keyboard-accessible text alternative. No model commands are available.</p>
-      <div className={activeTab === "diagram" || activeTab === "requirements" ? "block" : "hidden"}>
+      <div className="relative">
+      <div className={`relative ${activeTab === "diagram" || activeTab === "requirements" ? "block" : "hidden"}`}>
         <p className="px-3 pt-2 text-xs text-zinc-500">
           {source.data && frameStatus.startsWith("Rendered")
             ? "Original source SHA-256 verified; the viewer rendered its authored DI. This projection does not replace source evidence."
@@ -480,6 +491,11 @@ function ModelWorkspace(props: {
       </div>
       {activeTab === "elements" && <ElementList elements={orderedElements} relationships={authored.relationships} selected={selectedElement} renderedIds={renderedIds} onSelect={selectElement} />}
       {activeTab === "table" && <DmnTables elements={orderedElements} selected={selectedElement} onSelect={(id) => { setSelectedElement(id); sandbox.current?.selectElement(id); }} />}
+      <div id="model-insights-panel" hidden={!insightsOpen}
+        className="absolute right-2 top-2 z-10 max-h-[calc(100dvh-250px)] w-[min(360px,calc(100%-1rem))] overflow-y-auto rounded-lg shadow-xl">
+        <Provenance summary={summary} evidence={evidence.data} snapshot={snapshot} selectedElement={selectedElement} sourceVerified={!!source.data} renderStatus={frameStatus} />
+      </div>
+      </div>
     </section>}
     {candidate && <CandidateEvidence candidate={candidate} />}
     {authored && <Diagnostics diagnostics={authored.diagnostics} elements={authored.elements} />}

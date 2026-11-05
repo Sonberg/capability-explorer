@@ -25,8 +25,8 @@
 .model-viewer-frame {
   min-width: 0;
   width: 100%;
-  height: min(62vh, 720px);
-  min-height: 340px;
+  height: max(420px, calc(100dvh - 360px));
+  min-height: 420px;
   background: #fff;
 }
 .model-viewer-frame iframe {
@@ -38,5 +38,5 @@
   background: #fff;
 }
 @media (max-width: 650px) {
-  .model-viewer-frame { height: 52vh; min-height: 300px; }
+  .model-viewer-frame { height: max(360px, calc(100dvh - 280px)); min-height: 360px; }
 }

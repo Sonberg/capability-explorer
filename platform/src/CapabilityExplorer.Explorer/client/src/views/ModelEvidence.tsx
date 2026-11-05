@@ -282,8 +282,9 @@ export function Provenance({ summary, evidence, snapshot, selectedElement, sourc
     sourceVerified ? renderStatus.startsWith("Rendered") ? "Authored evidence · original source verified · viewer projection rendered" :
       `Authored evidence · original source verified · viewer projection unavailable (${renderStatus || "not rendered"})` :
       `Authored evidence · original source not verified (${summary.source.status})`;
-  return <aside className={`${card} min-w-0 self-start`} aria-label="Model provenance">
-    <h2 className="font-semibold">Provenance</h2>
+  return <aside className={`${card} min-w-0 self-start`} aria-label="Model insights">
+    <h2 className="font-semibold">Insights</h2>
+    <p className="mt-1 text-xs text-zinc-500">Source provenance and selected model details.</p>
     <dl className="mt-2 space-y-2 break-words text-sm">
       <Field label="Status">{sourceStatus}</Field>
       <Field label="Repository">{summary.repositoryId}</Field>

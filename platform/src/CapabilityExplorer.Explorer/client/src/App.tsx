@@ -17,6 +17,7 @@ import { Explore } from "./views/Explore";
 import { BindingPreview } from "./views/BindingPreview";
 import { Integrations } from "./views/Integrations";
 import { Settings } from "./views/Settings";
+import { HealthStatus } from "./components/HealthStatus";
 
 // Load the shared LikeC4 canvas only when Architecture is opened.
 const ArchitectureView = lazy(() => import("./views/Architecture").then((m) => ({ default: m.ArchitectureView })));
@@ -135,6 +136,7 @@ function Shell() {
             <span className="hidden md:inline">Search</span>
             <kbd className="font-sans text-xs">{mac ? "⌘K" : "Ctrl K"}</kbd>
           </button>
+          <HealthStatus />
           <button
             type="button"
             onClick={() => setChat((c) => !c)}

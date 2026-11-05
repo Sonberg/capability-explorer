@@ -62,7 +62,7 @@ public sealed record HealthDependencyResult(
     [property: JsonPropertyName("latency_ms")] double LatencyMs,
     [property: JsonPropertyName("error")] string? Error);
 public sealed record HealthCheckSnapshot(DateTimeOffset CheckedAt, string Status, bool Ready,
-    IReadOnlyDictionary<string, HealthDependencyResult> Checks, string? FailureCause);
+    IReadOnlyDictionary<string, HealthDependencyResult> Checks, string? FailureCause, bool OverallTimedOut = false);
 
 internal sealed class HealthDiagnosticsService(
     IEnumerable<IHealthDependencyCheck> checks,
@@ -77,7 +77,7 @@ internal sealed class HealthDiagnosticsService(
     private long _cachedAtTimestamp;
 
     public double UptimeSeconds => Math.Max(0, (DateTimeOffset.UtcNow - _processStarted).TotalSeconds);
-    public static string Version => typeof(Program).Assembly.GetName().Version?.ToString() ?? "unknown";
+    public static string Version => typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
 
     public async Task<HealthCheckSnapshot> CheckAsync(CancellationToken cancellationToken)
     {
@@ -87,7 +87,18 @@ internal sealed class HealthDiagnosticsService(
                 return cached;
         }
 
-        await _refreshLock.WaitAsync(cancellationToken);
+        using var totalTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        totalTimeout.CancelAfter(HealthEndpointOptions.TotalTimeout);
+        try
+        {
+            await _refreshLock.WaitAsync(totalTimeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return TimedOutSnapshot();
+        }
+
         try
         {
             lock (_cacheLock)
@@ -96,10 +107,9 @@ internal sealed class HealthDiagnosticsService(
                     return cached;
             }
 
-            using var totalTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            totalTimeout.CancelAfter(HealthEndpointOptions.TotalTimeout);
             var tasks = _checks.Select(check => Task.Run(() => RunCheck(check, totalTimeout.Token), CancellationToken.None)).ToArray();
             HealthCheckRun[] checkRuns;
+            var overallTimedOut = false;
             try
             {
                 checkRuns = await Task.WhenAll(tasks).WaitAsync(totalTimeout.Token);
@@ -107,9 +117,10 @@ internal sealed class HealthDiagnosticsService(
             catch (OperationCanceledException)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                overallTimedOut = true;
                 checkRuns = await Task.WhenAll(tasks.Select((task, index) => task.IsCompleted
                     ? task : Task.FromResult(new HealthCheckRun(_checks[index].Name,
-                        new HealthDependencyResult("unhealthy", _checks[index].Critical ? "critical" : "noncritical",
+                        new HealthDependencyResult("unhealthy", _checks[index].Critical ? "critical" : "non-critical",
                             HealthEndpointOptions.TotalTimeout.TotalMilliseconds, "timeout")))));
             }
 
@@ -124,11 +135,14 @@ internal sealed class HealthDiagnosticsService(
                 .Select(pair => pair.Key)
                 .Order(StringComparer.Ordinal)
                 .FirstOrDefault();
-            var snapshot = new HealthCheckSnapshot(DateTimeOffset.UtcNow, status, ready, checksByDependency, failureCause);
-            lock (_cacheLock)
+            var snapshot = new HealthCheckSnapshot(DateTimeOffset.UtcNow, status, ready, checksByDependency, failureCause, overallTimedOut);
+            if (!overallTimedOut)
             {
-                _cached = snapshot;
-                _cachedAtTimestamp = Stopwatch.GetTimestamp();
+                lock (_cacheLock)
+                {
+                    _cached = snapshot;
+                    _cachedAtTimestamp = Stopwatch.GetTimestamp();
+                }
             }
             return snapshot;
         }
@@ -137,6 +151,10 @@ internal sealed class HealthDiagnosticsService(
             _refreshLock.Release();
         }
     }
+
+    private static HealthCheckSnapshot TimedOutSnapshot() =>
+        new(DateTimeOffset.UtcNow, "unhealthy", false,
+            new Dictionary<string, HealthDependencyResult>(StringComparer.Ordinal), null, OverallTimedOut: true);
 
     public void Dispose() => _refreshLock.Dispose();
 
@@ -151,19 +169,19 @@ internal sealed class HealthDiagnosticsService(
             await task.WaitAsync(timeout.Token);
             var elapsed = timer.Elapsed.TotalMilliseconds;
             HealthMetrics.RecordDependency(SafeName(check.Name), elapsed);
-            return new(check.Name, new HealthDependencyResult("healthy", check.Critical ? "critical" : "noncritical", elapsed, null));
+            return new(check.Name, new HealthDependencyResult("healthy", check.Critical ? "critical" : "non-critical", elapsed, null));
         }
         catch (OperationCanceledException)
         {
             var elapsed = timer.Elapsed.TotalMilliseconds;
             HealthMetrics.RecordDependency(SafeName(check.Name), elapsed);
-            return new(check.Name, new HealthDependencyResult("unhealthy", check.Critical ? "critical" : "noncritical", elapsed, "timeout"));
+            return new(check.Name, new HealthDependencyResult("unhealthy", check.Critical ? "critical" : "non-critical", elapsed, "timeout"));
         }
         catch (Exception)
         {
             var elapsed = timer.Elapsed.TotalMilliseconds;
             HealthMetrics.RecordDependency(SafeName(check.Name), elapsed);
-            return new(check.Name, new HealthDependencyResult("unhealthy", check.Critical ? "critical" : "noncritical", elapsed, "unavailable"));
+            return new(check.Name, new HealthDependencyResult("unhealthy", check.Critical ? "critical" : "non-critical", elapsed, "unavailable"));
         }
     }
 
