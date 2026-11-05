@@ -93,7 +93,11 @@ app.Use(async (context, next) =>
 });
 app.UseResponseCompression();
 app.UseDefaultFiles();
-app.UseStaticFiles();
+var staticFiles = new StaticFileOptions
+{
+    OnPrepareResponse = context => context.Context.Response.Headers.CacheControl = "no-cache"
+};
+app.UseStaticFiles(staticFiles);
 app.MapHealthApi();
 app.MapDeprecationsApi();
 app.MapModelApi(source);
@@ -105,5 +109,5 @@ else
     app.MapGlossaryProposalApi();
     app.MapBindingPreviewApi();
 }
-app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html", staticFiles);
 app.Run();

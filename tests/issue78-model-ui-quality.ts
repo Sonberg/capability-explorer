@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { readFile } from "node:fs/promises";
+import { extractModelXml } from "../extractors/ts/src/models/extract.ts";
 
 const root = resolve(import.meta.dirname, "..");
 const client = resolve(root, "platform/src/CapabilityExplorer.Explorer/client");
@@ -16,6 +18,76 @@ const server = await createServer({
 });
 
 try {
+  const { buildModelIndex, elementLocation, lanesFor, relationshipName } = await server.ssrLoadModule("/src/models/model-index.ts");
+  const { resolveDecisionReference } = await server.ssrLoadModule("/src/models/decision-links.ts");
+  const sourceSummary = {
+    id: "workflow", kind: "authored", repositoryId: "repo-a", commitSha: "a".repeat(40),
+    unitPath: "workflow.bpmn", modelKind: "bpmn", coverage: "full", diagnosticCount: 0,
+    source: { status: "available" },
+  };
+  const targetSummary = {
+    id: "decision", kind: "authored", repositoryId: "repo-a", commitSha: "a".repeat(40),
+    unitPath: "decision-rich.dmn", modelKind: "dmn", coverage: "full", diagnosticCount: 0,
+    source: { status: "available" },
+  };
+  const decisionReference = "decision-rich.dmn#order-decision";
+  const resolvedDecision = resolveDecisionReference(decisionReference, sourceSummary, [
+    { ...targetSummary, id: "same-id-in-other-repo", repositoryId: "repo-b" },
+    { ...targetSummary, id: "same-id-in-other-revision", commitSha: "b".repeat(40) },
+    { ...targetSummary, id: "same-id-in-other-path", unitPath: "archive/decision-rich.dmn" },
+    targetSummary,
+  ]);
+  assert.equal(resolvedDecision.status, "available");
+  assert.equal(resolvedDecision.target?.id, targetSummary.id,
+    "An explicit reference must resolve only in its exact repository, commit, and relative path");
+  assert.equal(resolvedDecision.decisionId, "order-decision");
+
+  for (const reference of [
+    "../../../decision-rich.dmn#order-decision",
+    "/decision-rich.dmn#order-decision",
+    "https://example.test/decision-rich.dmn#order-decision",
+  ]) {
+    assert.equal(resolveDecisionReference(reference, sourceSummary, [targetSummary]).status, "external",
+      `unsafe or external reference should not resolve: ${reference}`);
+  }
+  const missingDecision = resolveDecisionReference(decisionReference, sourceSummary, []);
+  assert.equal(missingDecision.status, "missing");
+  assert.doesNotMatch(missingDecision.message, /does not exist|doesn't exist/i,
+    "A bounded summary list cannot establish that an unlisted decision does not exist");
+  assert.equal(resolveDecisionReference(decisionReference, sourceSummary, [
+    { ...targetSummary, source: { status: "denied" } },
+  ]).status, "denied");
+  assert.notEqual(resolveDecisionReference(decisionReference, sourceSummary, [
+    { ...targetSummary, modelKind: "bpmn" },
+  ]).status, "available", "A BPMN model must never be treated as a DMN decision target");
+  assert.equal(resolveDecisionReference(decisionReference, sourceSummary, [
+    targetSummary, { ...targetSummary, id: "duplicate-decision" },
+  ]).status, "ambiguous");
+
+  const workflow = await extractModelXml(await readFile(resolve(root, "fixtures/models/workflow.bpmn"), "utf8"), {
+    repositoryId: "fixtures", commitSha: "a".repeat(40), unitPath: "workflow.bpmn", contentProfile: "model-content",
+  });
+  const index = buildModelIndex(workflow);
+  assert.equal(index.diagrams.length, 3);
+  assert.equal(index.diagrams[0].rootId, "order-collaboration");
+  assert.deepEqual(index.diagrams.map(diagram => diagram.name), ["Order fulfilment", "Prepare order", "Shipment"]);
+  assert.deepEqual(index.occurrences.get("nested-task").map((item) => item.diagramId), ["preparation-diagram"]);
+  assert.deepEqual(index.occurrences.get("child-task").map((item) => item.diagramId), ["shipment-diagram"]);
+  assert.equal(elementLocation(index, index.byId.get("child-task"), "workflow-diagram").kind, "elsewhere");
+  assert.equal(elementLocation(index, index.byId.get("nested-task"), "workflow-diagram").kind, "elsewhere");
+  assert.equal(elementLocation(index, index.byId.get("review-record-ref"), "workflow-diagram").kind, "unplaced");
+  assert.equal(elementLocation(index, index.byId.get("order-process"), "workflow-diagram").kind, "supporting");
+  assert.equal(index.layout.some((item) => item.type === "Bounds"), true);
+  assert.equal(index.semantic.some((item) => item.type === "Bounds"), false);
+  assert.deepEqual(lanesFor(index, index.byId.get("review-task")).map((item) => item.attributes.name), ["Review"]);
+  const dmn = await extractModelXml(await readFile(resolve(root, "fixtures/models/decision-rich.dmn"), "utf8"), {
+    repositoryId: "fixtures", commitSha: "b".repeat(40), unitPath: "decision-rich.dmn", contentProfile: "model-content",
+  });
+  const decisionIndex = buildModelIndex(dmn);
+  assert.equal(elementLocation(decisionIndex, decisionIndex.byId.get("adult-rule"), decisionIndex.diagrams[0].id).kind, "logic");
+  assert.equal(elementLocation(decisionIndex, decisionIndex.byId.get("threshold-policy"), decisionIndex.diagrams[0].id).kind, "here");
+  assert.deepEqual(dmn.relationships.map((relationship) => relationshipName(decisionIndex, relationship)),
+    ["informationRequirement", "informationRequirement", "knowledgeRequirement", "authorityRequirement"]);
   const { DmnTables, Diagnostics, Provenance, groupModelDiagnostics } = await server.ssrLoadModule("/src/views/ModelEvidence.tsx");
   const { modelSelectionUpdates } = await server.ssrLoadModule("/src/views/model-view-data.ts");
   const namespace = "https://www.omg.org/spec/DMN/20191111/MODEL/";
@@ -118,7 +190,7 @@ try {
   }));
   assert.match(deniedProvenance, /original source not verified \(denied\)/);
   assert.match(deniedProvenance, /Source access[\s\S]*denied · source bytes not verified/);
-  assert.deepEqual(modelSelectionUpdates("model-dmn"), { id: "model-dmn", element: undefined });
+  assert.deepEqual(modelSelectionUpdates("model-dmn"), { id: "model-dmn", element: undefined, diagram: undefined });
 
   console.log("Model UI presentation cases passed: DMN value/column association, literal text, missing declarations, grouped diagnostics and full locators.");
 } finally {

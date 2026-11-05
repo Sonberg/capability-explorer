@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="defs-order" targetNamespace="urn:example:orders">
-  <bpmn:process id="order-process" isExecutable="false">
+  <bpmn:process id="order-process" name="Order review" isExecutable="false">
     <bpmn:startEvent id="start" name="Start order review"/>
     <bpmn:task id="review" name="Review order"/>
     <bpmn:sequenceFlow id="flow-review" sourceRef="start" targetRef="review">
@@ -8,7 +8,7 @@
     </bpmn:sequenceFlow>
   </bpmn:process>
   <bpmn:collaboration id="order-collaboration">
-    <bpmn:participant id="order-participant" processRef="order-process"/>
+    <bpmn:participant id="order-participant" name="Order review" processRef="order-process"/>
     <bpmn:messageFlow id="review-message" sourceRef="start" targetRef="review"/>
   </bpmn:collaboration>
   <bpmndi:BPMNDiagram id="order-diagram">

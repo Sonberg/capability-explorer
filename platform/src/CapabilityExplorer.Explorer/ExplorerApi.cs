@@ -104,8 +104,12 @@ public static class ExplorerApi
     {
         var api = app.MapGroup("/api");
 
-        // Cheap poll target: the client reloads when the generation changes (artifacts or capabilities on disk changed).
-        api.MapGet("/generation", (ExplorerState state) => new { generation = state.Current.Generation });
+        // Snapshot identity also changes on restart, when the numeric generation can still be zero.
+        api.MapGet("/generation", (ExplorerState state) =>
+        {
+            var current = state.Current;
+            return new { generation = current.Generation, snapshotId = current.ModelSnapshotId };
+        });
 
         api.MapGet("/meta", (ExplorerState state, InterpretationLayer interpretation, Intelligence intelligence) => SourceCheckApi.Respond(() =>
         {
