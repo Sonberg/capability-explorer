@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# Verify the full local gate still covers the exact source and current main target.
+# Verify the approved local gate covers exact source and current main target.
 set -euo pipefail
 fail() { echo "pr-check: $*" >&2; exit 1; }
 [[ $# -eq 0 ]] || fail 'usage: scripts/pr-check'
 root="$(git rev-parse --show-toplevel)" || fail 'run inside a Git checkout'
 cd "$root"
-source "$root/scripts/lib/container-engine.sh"
-ce_require_docker 'legacy local CI receipt verification'
 [[ "$(git symbolic-ref --quiet --short HEAD || true)" != main ]] ||
   fail 'work on a feature branch targeting main; do not work directly on main'
 clean() {
@@ -30,5 +28,14 @@ evidence="$(cat "$receipt")"
 [[ "$(printf '%s\n' "$evidence" | sed -n 's/^target=//p')" == main ]] || fail 'receipt target does not match main; rerun the full local gate'
 [[ "$(printf '%s\n' "$evidence" | sed -n 's/^head=//p')" == "$head" ]] || fail 'receipt does not match HEAD; rerun the full local gate'
 [[ "$(printf '%s\n' "$evidence" | sed -n 's/^base=//p')" == "$base" ]] || fail 'target branch changed since CI; integrate it and rerun the full local gate'
+mode="$(python3 scripts/ci/docs-check.py mode "$base" "$head")"
+recorded_mode="$(printf '%s\n' "$evidence" | sed -n 's/^mode=//p')"
+[[ "${recorded_mode:-full}" == "$mode" ]] || fail 'receipt CI profile does not match the current diff'
+if [[ "$mode" == full ]]; then
+  source "$root/scripts/lib/container-engine.sh"
+  ce_require_docker 'full local CI receipt verification'
+elif [[ "$mode" != docs ]]; then
+  fail 'unknown CI profile'
+fi
 [[ "$(git rev-parse --verify HEAD)" == "$head" ]] && clean || fail 'source changed during PR preparation'
 echo "pr-check: verified HEAD $head against main $base"

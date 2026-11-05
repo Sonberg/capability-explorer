@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# Run the complete GitHub CI job locally against a clean, exact HEAD.
+# Run the approved CI profile locally against a clean, exact HEAD.
 set -euo pipefail
 
 fail() { echo "local-check: $*" >&2; exit 1; }
 [[ $# -eq 0 ]] || fail 'usage: scripts/local-check (no extra act flags are accepted)'
 root="$(git rev-parse --show-toplevel)" || fail 'run inside a Git checkout'
 cd "$root"
-source "$root/scripts/lib/container-engine.sh"
-ce_require_docker 'full local act CI'
 [[ "$(git symbolic-ref --quiet --short HEAD || true)" != main ]] ||
   fail 'work on a feature branch targeting main; do not work directly on main'
 [[ -f .github/workflows/ci.yml ]] || fail '.github/workflows/ci.yml is missing'
@@ -34,6 +32,29 @@ rm -f "$receipt"
 
 # Fail before spending runner time when this source omits current main target.
 base="$("$root/scripts/check-target-alignment")"
+mode="$(python3 scripts/ci/docs-check.py mode "$base" "$head")"
+if [[ "$mode" == docs ]]; then
+  PYTHONDONTWRITEBYTECODE=1 python3 tests/docs-ci.test.py
+  python3 scripts/ci/docs-check.py check "$base" "$head"
+  [[ "$(git rev-parse --verify HEAD)" == "$head" ]] && clean || fail 'source changed during documentation checks'
+  latest_base="$("$root/scripts/check-target-alignment")"
+  [[ "$latest_base" == "$base" ]] || fail 'target branch changed during documentation checks; integrate it and rerun'
+  [[ "$(git rev-parse --verify HEAD)" == "$head" ]] && clean || fail 'source changed during final alignment check'
+  {
+    echo "head=$head"
+    echo 'target=main'
+    echo "base=$base"
+    echo 'mode=docs'
+    echo 'gate=scripts/ci/docs-check.py (no application build)'
+    echo "finished=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    echo 'reusable=false'
+  } > "$receipt"
+  echo "local-check: documentation checks passed for $head; no application build"
+  exit 0
+fi
+[[ "$mode" == full ]] || fail 'unknown CI profile'
+source "$root/scripts/lib/container-engine.sh"
+ce_require_docker 'full local act CI'
 
 command -v gh >/dev/null || fail 'install GitHub CLI and the nektos/gh-act extension'
 command -v docker >/dev/null || fail 'Docker is required'
@@ -109,6 +130,7 @@ latest_base="$("$root/scripts/check-target-alignment")"
   echo "head=$head"
   echo "target=main"
   echo "base=$base"
+  echo 'mode=full'
   echo "runner=$version"
   echo "runner-image=$runner"
   echo "finished=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"

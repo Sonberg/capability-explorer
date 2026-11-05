@@ -37,6 +37,37 @@ can provide that environment while preserving the existing containerized gate.
 
 ## Decision outcome
 
+### Markdown-only exception authorized on 2026-11-05
+
+The operator authorized a bounded no-build profile. `scripts/ci/docs-check.py`
+is the shared classifier for the local hook and hosted `ci` job. Only additions
+or edits of regular, non-executable files qualify: `docs/**/*.md` except
+`docs/adr/**`, `README.md`,
+`AGENTS.md`, `CLAUDE.md` and `.github/copilot-instructions.md`. Compare the entire
+current-main-to-head diff, not only the latest commit or a path-filtered sample.
+An empty diff, deletion, rename from code, symlink, executable mode, unknown path,
+code, workflow, issue form, script or dependency change requires full CI.
+ADRs have source-bound ledger obligations and remain in the full profile.
+Unavailable or invalid Git identity never yields lightweight success.
+
+The documentation profile runs classifier regressions, `git diff --check`,
+UTF-8/NUL checks and local Markdown link-target checks. It does not validate
+anchors, external websites, rendered diagrams, private-data absence or technical
+claims. Human review still applies. It starts no application build, dependency
+restore, Docker runner or model service. The required hosted result remains `ci`;
+do not use workflow path filters that leave the required check pending.
+
+Both profiles require clean exact source, current-main ancestry and fresh target
+verification. Local receipts record `mode=docs|full`; `make pr-check` recomputes
+the profile and rejects mismatched source, target or mode. Receipts do not skip
+future checks. Hosted PR alignment remains required in both profiles. Main
+pushes qualify only if their exact before/after diff is Markdown-only; existing
+protected post-merge evidence rules remain unchanged for other changes.
+
+This policy change itself requires full local and hosted CI. It supersedes the
+unconditional full-build statements below only for the specified Markdown
+profile; it grants no push, merge, release or contributor-adoption authority.
+
 Choose option 3, with Trivy filesystem dependency scanning and an Actions
 advisory audit. Keep remote CI as the shared independent gate; local success does
 not certify hosted-runner parity or authorize a push, merge or release.

@@ -59,6 +59,9 @@ new_repo() {
   mkdir -p "$repo/scripts" "$repo/config/git-hooks" "$repo/.github/workflows"
   cp "$source_root/scripts/local-check" "$source_root/scripts/install-git-hooks" "$source_root/scripts/check-main-alignment" "$source_root/scripts/check-target-alignment" "$source_root/scripts/pr-check" "$repo/scripts/"
   mkdir -p "$repo/scripts/lib"
+  mkdir -p "$repo/scripts/ci" "$repo/tests"
+  cp "$source_root/scripts/ci/docs-check.py" "$repo/scripts/ci/"
+  cp "$source_root/tests/docs-ci.test.py" "$repo/tests/"
   cp "$source_root/scripts/lib/container-engine.sh" "$repo/scripts/lib/"
   printf '#!/bin/sh\nexit "${ACT_TEST_AUDIT_FAIL:-0}"\n' > "$repo/scripts/actions-audit"
   chmod +x "$repo/scripts/actions-audit"
@@ -415,6 +418,35 @@ cp "$scratch/old-receipt" .sandbox-cache/local-ci/last-success.txt
 expect_failure scripts/pr-check
 contains 'target branch changed since CI' "$scratch/output"
 pass 'legacy receipt without tested target is rejected'
+
+new_repo
+mkdir -p docs
+printf '# Example\n\n[Source](../file.txt)\n' > docs/example.md
+git add docs/example.md
+git commit -qm documentation
+head="$(git rev-parse HEAD)"
+export ACT_TEST_DOCKER_FAIL=1 ACT_TEST_AUDIT_FAIL=19
+refs | config/git-hooks/pre-push origin ignored > "$scratch/output" 2>&1
+not_run
+contains 'mode=docs' .sandbox-cache/local-ci/last-success.txt
+scripts/pr-check >> "$scratch/output" 2>&1
+pass 'approved Markdown push and PR check need no Docker or full runner'
+sed 's/^mode=docs/mode=full/' .sandbox-cache/local-ci/last-success.txt > "$scratch/wrong-profile"
+cp "$scratch/wrong-profile" .sandbox-cache/local-ci/last-success.txt
+expect_failure scripts/pr-check
+contains 'receipt CI profile does not match' "$scratch/output"
+pass 'PR check rejects a mismatched documentation receipt profile'
+
+new_repo
+mkdir -p docs
+printf '# Example\n\n[Missing](missing.md)\n' > docs/example.md
+git add docs/example.md
+git commit -qm broken-documentation
+expect_failure scripts/local-check
+not_run
+contains 'missing local link' "$scratch/output"
+[[ ! -f .sandbox-cache/local-ci/last-success.txt ]] || fail 'broken documentation received success evidence'
+pass 'broken documentation blocks push without producing a success receipt'
 
 new_repo
 mkdir -p .sandbox-cache/local-ci/run.lock

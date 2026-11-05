@@ -1,0 +1,42 @@
+name: Request a change
+description: State a goal, its boundaries and observable acceptance checks.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use plain technical English without changing project definitions.
+        Read [the communication guide](https://github.com/Sonberg/capability-explorer/blob/main/docs/communication-style.md).
+        Keep technical detail and uncertainty. Do not include secrets, private URLs or confidential examples.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal and problem
+      description: What outcome is needed, and why?
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Current and expected behavior
+      description: State what happens now and what must change. Distinguish requirements from recommendations.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and exclusions
+      description: State what is included and excluded. Retain strict definitions and cardinalities where needed.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance checks
+      description: Give observable checks and relevant measurable targets. Mark undecided targets explicitly; do not invent measurements.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Safe evidence and dependencies
+      description: Add public-safe evidence, alternatives, prerequisites or related issues when useful. Evidence does not imply approval.
