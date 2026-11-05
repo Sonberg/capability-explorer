@@ -1,4 +1,5 @@
-import React, {useEffect, useMemo, useRef, useState} from 'react';
+import React, {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
+import type {Dispatch, SetStateAction} from 'react';
 import {LikeC4Model} from 'likec4/model';
 import type {DiagramNode, LayoutedView} from 'likec4/model';
 import {createLikeC4Editor, LikeC4EditorProvider, LikeC4ModelProvider, ReactLikeC4} from 'likec4/react';
@@ -32,13 +33,23 @@ export interface LiveArchitectureCanvasProps<N extends LiveNode=LiveNode, E exte
   onClearSelection?:()=>void;
 }
 
+type CanvasReadiness = {identity:string; generation:number; leaves:number};
+type ReadinessProps = {result:LiveModelResult; readiness:{identity:string; generation:number; report:Dispatch<SetStateAction<CanvasReadiness|null>>}};
+const MAX_MEASURE_FRAMES = 600;
+const isLeaf = (node:DiagramNode) => node.kind !== '@group' && !node.children.length;
+
 export function LiveArchitectureCanvas<N extends LiveNode, E extends LiveEdge>(props:LiveArchitectureCanvasProps<N,E>) {
   const compiled = useLiveModel(props.graph, props.snapshotKey, props.associationIds);
+  const [readiness, setReadiness] = useState<CanvasReadiness|null>(null);
   const label = 'level' in props.graph && props.graph.level === 'glossary-flow' ? 'Glossary connection canvas' : 'Architecture canvas';
+  // Derived in render: a new input identity or generation can never reuse an older readiness report.
+  const canvasReady = Boolean(props.snapshotKey) && !compiled.error && Boolean(compiled.result)
+    && readiness?.identity === compiled.identity && readiness.generation === compiled.generation;
   return <div className="live-architecture-canvas" aria-label={label} data-input-identity={props.snapshotKey}
-    data-generation={compiled.generation} data-status={compiled.error ? 'error' : compiled.result ? 'ready' : 'loading'}>
+    data-generation={compiled.generation} data-status={compiled.error ? 'error' : compiled.result ? 'ready' : 'loading'}
+    data-canvas-identity={props.snapshotKey} data-canvas-ready={canvasReady ? 'true' : 'false'} data-canvas-leaf-count={canvasReady ? readiness?.leaves : undefined}>
     {compiled.error ? <div className="live-model-status" role="alert"><p>{compiled.error}</p><button onClick={compiled.retry}>Retry diagram</button></div>
-      : compiled.result ? <ReadyCanvas key={compiled.identity} {...props} result={compiled.result}/>
+      : compiled.result ? <ReadyCanvas key={compiled.identity} {...props} result={compiled.result} readiness={{identity:compiled.identity, generation:compiled.generation, report:setReadiness}}/>
       : <div className="live-model-status" role="status">Compiling selected architecture snapshot…</div>}
   </div>;
 }
@@ -54,7 +65,44 @@ function savedGroups(result:LiveModelResult) {
   return {groups:result.groups, notice:''};
 }
 
-function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey, selectedId, hiddenEdgeIds, onNodeSelect, onEdgeSelect, onNodeDrill, onClearSelection, result}:LiveArchitectureCanvasProps<N,E> & {result:LiveModelResult}) {
+/**
+ * Counts measured, visible leaf wrappers that ReactFlow actually rendered for `view`.
+ * Runs only while every other readiness condition holds and confirms the same count on two
+ * consecutive animation frames, so the matching DOM has been committed and painted once.
+ */
+function CanvasReadinessProbe({armed, view, flow, viewportReady, onMeasured, onStalled}:{armed:boolean; view:LayoutedView; flow:string;
+  viewportReady:()=>boolean; onMeasured:(view:LayoutedView, flow:string, leaves:number)=>void; onStalled:(view:LayoutedView, flow:string, rendered:number, expected:number)=>void}) {
+  const marker = useRef<HTMLSpanElement>(null);
+  const callbacks = useRef({onMeasured, onStalled, viewportReady});
+  callbacks.current = {onMeasured, onStalled, viewportReady};
+  useLayoutEffect(() => {
+    if (!armed) return;
+    const leafIds = new Set<string>(view.nodes.filter(isLeaf).map(node => node.id));
+    const count = () => {
+      const root = marker.current?.closest('.ce-live-diagram') ?? marker.current?.getRootNode();
+      if (!(root instanceof Element || root instanceof ShadowRoot) || !callbacks.current.viewportReady()) return -1;
+      const seen = new Set<string>();
+      for (const element of root.querySelectorAll<HTMLElement>('.react-flow__node[data-id]')) {
+        const id = element.getAttribute('data-id') ?? '';
+        if (leafIds.has(id) && element.style.visibility !== 'hidden') seen.add(id);
+      }
+      return seen.size;
+    };
+    let frame = 0, frames = 0, confirmed = -1;
+    const tick = () => {
+      const rendered = count();
+      if (rendered === leafIds.size && confirmed === rendered) {callbacks.current.onMeasured(view, flow, rendered); return;}
+      confirmed = rendered === leafIds.size ? rendered : -1;
+      if (++frames >= MAX_MEASURE_FRAMES) {callbacks.current.onStalled(view, flow, rendered, leafIds.size); return;}
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [armed, view, flow]);
+  return <span ref={marker} hidden aria-hidden="true"/>;
+}
+
+function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey, selectedId, hiddenEdgeIds, onNodeSelect, onEdgeSelect, onNodeDrill, onClearSelection, result, readiness}:LiveArchitectureCanvasProps<N,E> & ReadinessProps) {
   const sourceModel = useMemo(() => LikeC4Model.create(result.modelData), [result]);
   const [initial] = useState(() => savedGroups(result));
   const [groups, setGroups] = useState<Group[]>(initial.groups);
@@ -108,7 +156,31 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
   const selectedLeaves = selected.filter(id => currentView.nodes.some(node => node.id === id && node.kind !== '@group' && !node.children.length));
   const activeGroup = groups.find(group => selected.includes(group.id));
   const motion = animations && !reduced;
+  const flowKey = `${view}-${resetKey}`;
+  const [initializedFlow, setInitializedFlow] = useState<string|null>(null);
+  const [measured, setMeasured] = useState<{view:LayoutedView; flow:string; leaves:number}|null>(null);
+  const [stalled, setStalled] = useState<{view:LayoutedView; flow:string; rendered:number; expected:number}|null>(null);
+  const marked = useRef(false);
+  const routingSettled = routing.state === 'ready' || routing.state === 'off';
+  const armed = Boolean(snapshotKey) && initialViewport.ready && initializedFlow === flowKey && routingSettled;
+  const canvasReady = armed && measured?.view === currentView && measured.flow === flowKey;
+  const readyLeaves = canvasReady ? measured.leaves : null;
+  const isStalled = armed && !canvasReady && stalled?.view === currentView && stalled.flow === flowKey;
+  const readinessState = canvasReady ? 'ready' : !initialViewport.ready || initializedFlow !== flowKey ? 'initializing'
+    : routing.state === 'error' ? 'routing-error' : !routingSettled ? 'routing' : isStalled ? 'leaf-mismatch' : 'measuring';
+  const {identity:readinessIdentity, generation:readinessGeneration, report:reportReadiness} = readiness;
 
+  useLayoutEffect(() => {
+    reportReadiness(readyLeaves === null ? null : {identity:readinessIdentity, generation:readinessGeneration, leaves:readyLeaves});
+  }, [readyLeaves, readinessIdentity, readinessGeneration, reportReadiness]);
+  useLayoutEffect(() => () => reportReadiness(current => current?.identity === readinessIdentity && current.generation === readinessGeneration ? null : current),
+    [readinessIdentity, readinessGeneration, reportReadiness]);
+  function canvasMeasured(measuredView:LayoutedView, flow:string, leaves:number) {
+    setMeasured({view:measuredView, flow, leaves});
+    if (marked.current) return;
+    marked.current = true;
+    performance.mark('ce:canvas-ready', {detail:{identity:snapshotKey, view:measuredView.id, leaves}});
+  }
   useEffect(() => {configureTracing(tracing); return () => configureTracing(false);}, [tracing]);
   useEffect(() => {setEdgeChoices(choices => choices.some(edge => !hiddenEdgeIds?.has(edge.id)) ? choices : []);}, [hiddenEdgeIds]);
   useEffect(() => {
@@ -176,7 +248,7 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
         {...{labels:{flow:graph.title ?? 'Selected architecture', vertical:`${graph.title ?? 'Selected architecture'} · vertical`, index:'Selected scope · overview'}}}
         coverage={<details><summary>Snapshot coverage · {graph.nodes.length} elements</summary><p>Selected analyzed artifacts. Missing relationships may be unextracted or unresolved.</p><code>{snapshotKey}</code></details>}
         settings={{tracing, setTracing, downloadTrace, orthogonal, setOrthogonal, motion, setAnimations, reduced, dark, setDark, embedded:false}}/>
-      <section ref={canvas} className="canvas" aria-label="Live LikeC4 diagram" data-routing-generation={routing.generation} data-routing-state={routing.state} data-preview-ms={routing.previewMs} data-refinement-ms={routing.refinementMs}
+      <section ref={canvas} className="canvas" aria-label="Live LikeC4 diagram" data-routing-generation={routing.generation} data-routing-state={routing.state} data-canvas-readiness={readinessState} data-canvas-expected-leaves={isStalled ? stalled.expected : undefined} data-canvas-rendered-leaves={isStalled ? stalled.rendered : undefined} data-preview-ms={routing.previewMs} data-refinement-ms={routing.refinementMs}
         onPointerDownCapture={event => {const target = event.nativeEvent.composedPath().find((part):part is Element => part instanceof Element && part.matches('.react-flow__node')); if (target) {const node=currentView.nodes.find(node => node.id === target.getAttribute('data-id')); tracePointerDown(node?.children.length ? 'group' : 'node', event.pointerId);}}}>
         <DiagramLegend/>
         <div className="live-zoom-controls" role="group" aria-label="Diagram zoom">
@@ -200,13 +272,15 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
           {initialViewport.ready && <ReactLikeC4 key={`${view}-${resetKey}`} className="ce-live-diagram" viewId={view} initialZoom={initialViewport.zoom} fitView={false} injectFontCss={false} onNodeClick={nodeClick}
             onEdgeClick={edge => {const originals=graph.edges.filter(original => result.edgeSourceIds[edge.id]?.includes(original.id)); setNodeChoices([]); if (originals.length===1) {setEdgeChoices([]); onEdgeSelect(originals[0]);} else setEdgeChoices(originals);}}
             onCanvasClick={() => {if (!editing) {setSelected([]); clear();}}}
-            onInitialized={initialized => {detachImmediate.current?.(); api.current=initialized.diagram; xyflow.current=initialized.xyflow; acceptedGeometry.current=null; detachImmediate.current=editable ? attachImmediateLayout(initialized, layout => acceptLayout.current(layout)) : null;}}
+            onInitialized={initialized => {detachImmediate.current?.(); api.current=initialized.diagram; xyflow.current=initialized.xyflow; acceptedGeometry.current=null; detachImmediate.current=editable ? attachImmediateLayout(initialized, layout => acceptLayout.current(layout)) : null; setInitializedFlow(flowKey);}}
             reactFlowProps={{nodesDraggable:editable, elementsSelectable:true, multiSelectionKeyCode:['Shift','Control','Meta']}}
             onNavigateTo={switchView} pannable zoomable controls={false} keepAspectRatio={false} reduceGraphics={!motion} enableDynamicViewWalkthrough={false}
             enableElementDetails={false} enableRelationshipDetails={false} showNavigationButtons background="dots" colorScheme={dark ? 'dark' : 'light'}
             mantineTheme={{fontFamily:'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'}} style={{width:'100%', height:'100%'}}>
             <SelectionBridge onSelection={setSelected}/><LiveSourceBridge graph={visibleGraph} result={result} selectedId={selectedId}/>
             <RoutingTraceBridge view={currentView} context={routing.trace} ready={routing.state === 'ready'}/>
+            <CanvasReadinessProbe armed={armed} view={currentView} flow={flowKey} viewportReady={() => xyflow.current?.viewportInitialized === true}
+              onMeasured={canvasMeasured} onStalled={(stalledView, flow, rendered, expected) => setStalled({view:stalledView, flow, rendered, expected})}/>
             <style>{`:host(.ce-live-diagram) .react-flow__node[data-neighborhood="outside"], :host(.ce-live-diagram) .react-flow__edge[data-neighborhood="outside"] { opacity:.18; }
               :host(.ce-live-diagram) .react-flow__node[data-source-selected="true"] { outline:3px solid #60a5fa; outline-offset:3px; }
               :host(.ce-live-diagram) .react-flow__edge[data-source-selected="true"] .react-flow__edge-path { stroke-width:4; }
