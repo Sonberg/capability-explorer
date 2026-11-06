@@ -4,6 +4,13 @@ using Xunit;
 
 namespace CapabilityExplorer.Tests;
 
+[CollectionDefinition(GitProcessEnvironmentCollection.Name, DisableParallelization = true)]
+public sealed class GitProcessEnvironmentCollection
+{
+    public const string Name = "Git process environment";
+}
+
+[Collection(GitProcessEnvironmentCollection.Name)]
 public sealed class SourceSecurityTests
 {
     [Theory]
@@ -38,6 +45,40 @@ public sealed class SourceSecurityTests
         var output = Path.Combine(fixture.Root, "empty output"); Directory.CreateDirectory(output);
         Assert.Equal(1, (await fixture.Sync.ExportAsync(fixture.Source, fixture.Sha, output)).Files);
         Assert.Equal("payload", await File.ReadAllTextAsync(Path.Combine(output, "file.txt")));
+    }
+
+    [Fact]
+    public async Task Given_explicit_bare_repository_policy_when_locking_a_bare_source_then_head_is_resolved()
+    {
+        using var fixture = await Repository.Create();
+        var bare = Path.Combine(fixture.Root, "bare.git");
+        await fixture.Git("clone", "--bare", fixture.Source.Location, bare);
+        var previous = new[]
+        {
+            Environment.GetEnvironmentVariable("GIT_CONFIG_COUNT"),
+            Environment.GetEnvironmentVariable("GIT_CONFIG_KEY_0"),
+            Environment.GetEnvironmentVariable("GIT_CONFIG_VALUE_0"),
+        };
+        Environment.SetEnvironmentVariable("GIT_CONFIG_COUNT", "1");
+        Environment.SetEnvironmentVariable("GIT_CONFIG_KEY_0", "safe.bareRepository");
+        Environment.SetEnvironmentVariable("GIT_CONFIG_VALUE_0", "explicit");
+        try
+        {
+            var sync = new SourceSync(Path.Combine(fixture.Root, "workspace"));
+            var source = new RepositorySource("bare", bare, SourceKind.Local);
+            var locked = await sync.LockAsync(source);
+            Assert.Null(locked.Error);
+            Assert.Equal(fixture.Sha, locked.CommitSha);
+            var output = Path.Combine(fixture.Root, "bare export");
+            Assert.Equal(1, (await sync.ExportAsync(source, fixture.Sha, output)).Files);
+            Assert.Equal("payload", await File.ReadAllTextAsync(Path.Combine(output, "file.txt")));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("GIT_CONFIG_COUNT", previous[0]);
+            Environment.SetEnvironmentVariable("GIT_CONFIG_KEY_0", previous[1]);
+            Environment.SetEnvironmentVariable("GIT_CONFIG_VALUE_0", previous[2]);
+        }
     }
 
     [Fact]

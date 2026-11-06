@@ -174,6 +174,7 @@ internal static class AnalysisWorkerCommand
         catch (Exception e)
         {
             // A publication permit records uncertain/partial effects itself. Never rewrite that result.
+            process.LogFailure(e);
             var current = store.ReadRun(run.RunId);
             if (current.State is "running" or "cancelling") store.FinishExecution(owner, attempt, 1, process.TerminationConfirmed);
             Console.Error.WriteLine($"analysis {run.RunId}/{run.AttemptId}: {e.GetType().Name}; inspect run record and log");

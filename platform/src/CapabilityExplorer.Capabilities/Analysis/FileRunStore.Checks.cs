@@ -32,7 +32,7 @@ public sealed partial class FileRunStore
         var check = AnalysisPaths.Read<SourceCheck>(path);
         if (check.RequestId != requestId || check.ConfigurationPath != "capabilities.json" ||
             check.ConfigurationHash is not { Length: 64 } || !check.ConfigurationHash.All(char.IsAsciiHexDigit) ||
-            check.GitHubAuth is not ("auto" or "git" or "none") ||
+            !GitHubAuth.IsValidMode(check.GitHubAuth) ||
             check.State is not ("queued" or "working" or "cancelling" or "done" or "failed" or "cancelled" or "unknown"))
             throw new InvalidDataException("invalid source check record");
         AnalysisPaths.Capability(check.CapabilityId);
@@ -65,7 +65,7 @@ public sealed partial class FileRunStore
     public static bool CheckMatches(SourceCheck check, string configurationPath, string gitHubAuth) =>
         CheckHash(CaptureConfiguration(configurationPath), gitHubAuth) == check.ConfigurationHash;
 
-    public SourceCheckAdmission AdmitCheck(string capId, string configurationPath)
+    public SourceCheckAdmission AdmitCheck(string capId, string configurationPath, string? gitHubAuth = null)
     {
         AnalysisPaths.Capability(capId);
         using var gate = Gate();
@@ -78,7 +78,8 @@ public sealed partial class FileRunStore
             throw new InvalidOperationException("unreconciled execution blocks source check admission");
         if (checks.Count >= Math.Min(1000, _maxRunRecords)) throw new InvalidOperationException("source check retention limit reached");
         var bytes = CaptureConfiguration(configurationPath);
-        var auth = ReadWorkerDefaults()?.Settings.GitHubAuth ?? "auto";
+        var auth = gitHubAuth ?? ReadWorkerDefaults()?.Settings.GitHubAuth ?? "auto";
+        if (!GitHubAuth.IsValidMode(auth)) throw new ArgumentException("invalid GitHub authentication policy", nameof(gitHubAuth));
         var id = Guid.NewGuid().ToString("N");
         // Validate the effective definition before creating operational evidence.
         using (var document = JsonDocument.Parse(bytes))

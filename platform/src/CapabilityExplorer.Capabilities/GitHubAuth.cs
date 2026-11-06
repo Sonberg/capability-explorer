@@ -11,6 +11,7 @@ namespace CapabilityExplorer.Capabilities;
 public sealed class GitHubAuth
 {
     private readonly string? _header;
+    private const int MaxLoginLength = 39;
 
     private GitHubAuth(string? token, string source)
     {
@@ -42,6 +43,30 @@ public sealed class GitHubAuth
     }
 
     public static GitHubAuth FromToken(string token, string source) => new(token, source);
+
+    public static bool IsValidMode(string mode) =>
+        mode is "auto" or "git" or "none" ||
+        mode.StartsWith("account:", StringComparison.Ordinal) && IsValidLogin(mode["account:".Length..]);
+
+    public static string AccountMode(string login)
+    {
+        if (!IsValidLogin(login)) throw new ArgumentException("invalid GitHub account login", nameof(login));
+        return "account:" + login;
+    }
+
+    private static bool IsValidLogin(string login)
+    {
+        if (login.Length is < 1 or > MaxLoginLength || !char.IsAsciiLetterOrDigit(login[0]) || !char.IsAsciiLetterOrDigit(login[^1]))
+            return false;
+        var previousHyphen = false;
+        foreach (var character in login)
+        {
+            if (!char.IsAsciiLetterOrDigit(character) && character is not ('-' or '_')) return false;
+            if (character == '-' && previousHyphen) return false;
+            previousHyphen = character == '-';
+        }
+        return true;
+    }
 
     /// <summary>Adds the header for github.com to a git process, preserving any GIT_CONFIG_* entries already set.</summary>
     public void Apply(ProcessStartInfo start)
