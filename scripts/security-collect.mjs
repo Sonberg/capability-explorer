@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { snapshot, sha, readJson, findings } from './security-audit-lib.mjs';
+import { snapshot, sha, readJson, findings, copySealed } from './security-audit-lib.mjs';
 import { requireDockerRuntime } from './lib/docker-only.mjs';
 
 const need = (ok, message) => { if (!ok) throw new Error(message); };
@@ -34,18 +34,7 @@ export function outputDirectory(root, relative) {
   need(!fs.existsSync(full), 'refuse existing output directory: prevents stale report reuse');
   fs.mkdirSync(full, { recursive: true, mode: 0o700 }); return full;
 }
-export function copySealed(root, destination, source) {
-  need(source.files.length <= 100_000, 'source file limit exceeded');
-  let bytes = 0;
-  for (const entry of source.files) {
-    const input = path.resolve(root, entry.path), output = path.resolve(destination, entry.path);
-    need(input.startsWith(root + path.sep) && output.startsWith(destination + path.sep), 'unsafe snapshot path');
-    const stat = fs.lstatSync(input); need(stat.isFile() && !stat.isSymbolicLink(), 'source changed to non-file');
-    bytes += stat.size; need(bytes <= 512 * 1024 * 1024, 'source byte limit exceeded');
-    fs.mkdirSync(path.dirname(output), { recursive: true }); fs.copyFileSync(input, output, fs.constants.COPYFILE_EXCL);
-    need(sha(fs.readFileSync(output)) === entry.sha256, 'source changed while sealing');
-  }
-}
+export { copySealed } from './security-audit-lib.mjs';
 export function ensureImage(reference, targetPlatform, run, record) {
   requireDockerRuntime('full audit image preparation');
   need(typeof reference === 'string' && /^[\w./:-]+@sha256:[a-f0-9]{64}$/.test(reference) && /^linux\/(arm64|amd64)$/.test(targetPlatform), 'image acquisition requires a digest pin and explicit platform');
@@ -103,6 +92,10 @@ function runner(command, args, options = {}) {
   if (result.error) throw result.error;
   return { status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
 }
+
+export { cosignVerifyArgs, validateCosignOutput, selectedIndexManifest, selectedChildConfig,
+  standardDependencyDockerArgs, runStandardSecurityCheck, validateVerifiedTrivyReference } from './lib/security-check.mjs';
+
 export function historyInventory(root, run = runner) {
   const git = args => { const r = run('git', ['-C', root, ...args]); need(r.status === 0, 'Git history inventory failed'); return r.stdout.trim(); };
   need(git(['rev-parse', '--is-shallow-repository']) === 'false', 'shallow history cannot satisfy audit');
@@ -247,5 +240,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (command === 'history-check' && args.length === 1) historyCheck(process.cwd(), args[0]);
     else if (command === 'run' && [1, 3].includes(args.length)) { const result = await collect(process.cwd(), args[0], args[1], args[2]); console.log(JSON.stringify(result, null, 2)); if (result.collectionErrors.length) process.exitCode = 1; }
     else throw new Error('usage: security-collect run <new-cache-directory> [ledger.json manual-review.json] | history-check <manifest.json>');
-  } catch (error) { console.error(`security-collect: ${error.message}`); process.exitCode = 1; }
+  } catch (error) { console.error(`security-collect: ${error.message}`); process.exitCode = error.exitCode ?? 1; }
 }

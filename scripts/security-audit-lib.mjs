@@ -4,6 +4,18 @@ import crypto from 'node:crypto';
 import { inventories, validateConfig, runtimeInventory } from './security-collect-inventory.mjs';
 
 export const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
+export function copySealed(root, destination, source) {
+  need(source.files.length <= 100_000, 'source file limit exceeded');
+  let bytes = 0;
+  for (const entry of source.files) {
+    const input = path.resolve(root, entry.path), output = path.resolve(destination, entry.path);
+    need(input.startsWith(root + path.sep) && output.startsWith(destination + path.sep), 'unsafe snapshot path');
+    const stat = fs.lstatSync(input); need(stat.isFile() && !stat.isSymbolicLink(), 'source changed to non-file');
+    bytes += stat.size; need(bytes <= 512 * 1024 * 1024, 'source byte limit exceeded');
+    fs.mkdirSync(path.dirname(output), { recursive: true }); fs.copyFileSync(input, output, fs.constants.COPYFILE_EXCL);
+    need(sha(fs.readFileSync(output)) === entry.sha256, 'source changed while sealing');
+  }
+}
 const fail = message => { throw new Error(message); };
 const need = (condition, message) => { if (!condition) fail(message); };
 const nonempty = value => typeof value === 'string' && value.trim().length > 0;
@@ -93,6 +105,71 @@ export function findings(scan, raw) {
     need(nonempty(row.rule) && nonempty(row.location), `${scan.id}: malformed finding`);
     return { id: sha(JSON.stringify([scan.id, row.rule, row.location])), scanId: scan.id, ...row };
   });
+}
+export function validateTrivyDatabase(databaseDirectory, now = Date.now()) {
+  const file = path.join(databaseDirectory, 'trivy.db'), metadataFile = path.join(databaseDirectory, 'metadata.json');
+  for (const candidate of [file, metadataFile]) need(fs.lstatSync(candidate).isFile(), 'Trivy database artifact is not a regular file');
+  const stat = fs.lstatSync(file), metadataStat = fs.lstatSync(metadataFile);
+  need(stat.size > 0 && stat.size <= 2 * 1024 * 1024 * 1024, 'Trivy database is missing or exceeds size limit');
+  need(metadataStat.size > 0 && metadataStat.size <= 64 * 1024, 'Trivy database metadata exceeds size limit');
+  const hash = crypto.createHash('sha256'), buffer = Buffer.alloc(64 * 1024), descriptor = fs.openSync(file, 'r');
+  let total = 0;
+  try {
+    let length;
+    while ((length = fs.readSync(descriptor, buffer, 0, buffer.length, null)) > 0) {
+      total += length;
+      need(total <= 2 * 1024 * 1024 * 1024, 'Trivy database exceeds size limit while hashing');
+      hash.update(buffer.subarray(0, length));
+    }
+    need(total === stat.size, 'Trivy database size changed while hashing');
+  } finally { fs.closeSync(descriptor); }
+  const metadataBytes = fs.readFileSync(metadataFile), metadata = JSON.parse(metadataBytes.toString('utf8'));
+  need(metadata.Version === 2, 'Trivy database schema version is missing or unsupported');
+  const updatedAt = Date.parse(metadata.UpdatedAt), nextUpdate = Date.parse(metadata.NextUpdate);
+  const downloadedAt = Date.parse(metadata.DownloadedAt);
+  need(Number.isFinite(updatedAt) && Number.isFinite(nextUpdate) && updatedAt <= now &&
+    Number.isFinite(downloadedAt) && downloadedAt >= updatedAt && downloadedAt <= now && nextUpdate > updatedAt &&
+    now < nextUpdate && now < updatedAt + 24 * 60 * 60 * 1000,
+  'Trivy database timestamp missing, inconsistent, future, or stale');
+  return {
+    sha256: hash.digest('hex'),
+    metadataSha256: sha(metadataBytes),
+    version: metadata.Version,
+    updatedAt: new Date(updatedAt).toISOString(),
+    nextUpdate: new Date(nextUpdate).toISOString(),
+    downloadedAt: new Date(downloadedAt).toISOString(),
+  };
+}
+export function validateDependencyReport(root, raw, source) {
+  const scan = { id: 'dependencies', tool: { name: 'trivy' } };
+  need(raw?.SchemaVersion === 2 && Array.isArray(raw.Results) &&
+    (raw.Errors === undefined || (Array.isArray(raw.Errors) && raw.Errors.length === 0)),
+  'Trivy dependency report is malformed or incomplete');
+  const targets = Array.isArray(source.targets) ? source.targets : source.files.map(file => file.path);
+  const available = new Set(source.files.map(file => file.path));
+  need(targets.length > 0 && targets.every(target => nonempty(target) && available.has(target)) &&
+    new Set(targets).size === targets.length, 'dependency report has no valid inventoried targets');
+  const expected = new Map(targets.map(target => [target, source.files.find(file => file.path === target)]));
+  const seen = new Set();
+  for (const result of raw.Results) {
+    need(nonempty(result.Target), 'Trivy dependency report has a missing target');
+    const target = result.Target.replaceAll('\\', '/').replace(/^\.\//, '');
+    need(expected.has(target) && !seen.has(target), `Trivy reported unexpected or duplicate dependency target: ${target}`);
+    seen.add(target);
+    for (const vulnerability of result.Vulnerabilities ?? [])
+      need(['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].includes(vulnerability.Severity), `Trivy reported unsupported severity: ${vulnerability.Severity}`);
+  }
+  for (const [target, file] of expected) {
+    if (seen.has(target)) continue;
+    if (/packages\.lock\.json$/.test(target)) {
+      const lock = JSON.parse(fs.readFileSync(path.join(root, target), 'utf8'));
+      if (lock.version === 2 && lock.dependencies && Object.keys(lock.dependencies).length > 0 &&
+        Object.values(lock.dependencies).every(group => group && typeof group === 'object' && Object.keys(group).length === 0)) continue;
+    }
+    need(false, `Trivy dependency report omitted inventoried input: ${target}`);
+  }
+  const rows = findings(scan, raw);
+  return { findings: rows, targets: [...seen].sort() };
 }
 export function validate(root, manifest, mode, now = Date.now()) {
   const p = policy(root);

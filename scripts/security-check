@@ -1,36 +1,5 @@
 #!/usr/bin/env bash
-# Full-project lockfile vulnerability gate; no credentials or Docker socket in scanner.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
-source "$root/scripts/lib/container-engine.sh"
 [[ $# -eq 0 ]] || { echo 'usage: scripts/security-check' >&2; exit 2; }
-image="$(cat "$root/config/security/trivy-image")"
-[[ "$image" =~ ^aquasec/trivy:[0-9]+\.[0-9]+\.[0-9]+@sha256:[a-f0-9]{64}$ ]] || {
-  echo 'Invalid pinned Trivy image' >&2; exit 2;
-}
-if [[ -n "${SANDBOX_EXTRA_CA_FILE:-}" ]]; then
-  [[ "$SANDBOX_EXTRA_CA_FILE" == /* && -f "$SANDBOX_EXTRA_CA_FILE" && -r "$SANDBOX_EXTRA_CA_FILE" && "$SANDBOX_EXTRA_CA_FILE" != *[[:cntrl:]]* && "$SANDBOX_EXTRA_CA_FILE" != *:* ]] || {
-    echo 'SANDBOX_EXTRA_CA_FILE must be a readable absolute certificate file' >&2; exit 2;
-  }
-fi
-ce_engine_init
-image="$(ce_image_ref "$image")"
-cache="$root/.sandbox-cache/trivy"
-mkdir -p "$cache"
-if ! ce_engine image inspect "$image" >/dev/null 2>&1; then ce_engine pull "$image"; fi
-printf 'Scanning project dependencies with %s (all severities fail)\n' "$image"
-extra=(run --rm)
-[[ "$CE_ENGINE" != podman ]] || extra+=(--userns keep-id)
-if [[ -n "${SANDBOX_EXTRA_CA_FILE:-}" ]]; then
-  extra+=(-v "$SANDBOX_EXTRA_CA_FILE:/etc/sandbox/extra-ca.crt:ro" -e SSL_CERT_FILE=/etc/sandbox/extra-ca.crt)
-fi
-ce_engine_exec "${extra[@]}" --user "$(id -u):$(id -g)" --read-only \
-  --tmpfs /tmp:rw,nosuid,size=2g --cap-drop ALL --security-opt no-new-privileges \
-  --pids-limit 512 -v "$root:/work:ro" -v "$cache:/cache" -w /work \
-  "$image" fs --scanners vuln --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 1 \
-  --include-dev-deps --disable-telemetry --cache-dir /cache \
-  --config '' --ignorefile '' \
-  --skip-dirs .git --skip-dirs .sandbox-cache \
-  --skip-dirs fixtures/.repos --skip-dirs fixtures/.work \
-  --skip-dirs '**/node_modules' --skip-dirs '**/bin' --skip-dirs '**/obj' \
-  --skip-dirs platform/src/CapabilityExplorer.Explorer/wwwroot .
+exec node "$root/scripts/lib/security-check.mjs" "$root"
