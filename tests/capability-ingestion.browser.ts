@@ -36,6 +36,8 @@ async function withIngestionPage(run: (page: Page, origin: string) => Promise<vo
         await route.fulfill({ json: [capability] });
       } else if (path === "/api/generation") {
         await route.fulfill({ json: { generation: 0 } });
+      } else if (path === "/api/github-accounts") {
+        await route.fulfill({ json: { available: true, accounts: [] } });
       } else {
         await route.fulfill({ json: {} });
       }
@@ -459,5 +461,42 @@ test("Given pending capability removal, when actions are shown, then competing m
     assert.equal(await page.getByRole("button", { name: "Check sources", exact: true }).isDisabled(), true, "source checking must not race pending deletion");
     assert.equal(await page.getByRole("button", { name: /Remov/ }).isDisabled(), true, "removal cannot be submitted twice");
     release();
+  });
+});
+test("Given a named host GitHub account, when analysis and source check are queued, then only the account name is sent", async () => {
+  await withIngestionPage(async (page, origin) => {
+    await page.route("**/api/github-accounts", (route) => route.fulfill({ json: {
+      available: true, accounts: [{ login: "synthetic-octo", active: false }, { login: "synthetic-active", active: true }],
+    } }));
+    await page.goto(`${origin}#/capabilities`);
+    await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => button.textContent === "Analyze code" && !button.disabled));
+    const selector = page.getByRole("combobox", { name: /^GitHub account/ });
+    await selector.locator("option", { hasText: "synthetic-active (active)" }).waitFor({ state: "attached" });
+    await selector.selectOption("synthetic-octo");
+    const analyze = page.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/capabilities/orders/analyze");
+    await page.getByRole("button", { name: "Analyze code", exact: true }).click();
+    const analyzeRequest = await analyze;
+    assert.equal(new URL(analyzeRequest.url()).search, "?githubAccount=synthetic-octo");
+    assert.equal(analyzeRequest.postData(), null, "analysis admission must not carry credential material");
+    const check = page.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/capabilities/orders/check");
+    await page.getByRole("button", { name: "Check sources", exact: true }).click();
+    const checkRequest = await check;
+    assert.equal(new URL(checkRequest.url()).search, "?githubAccount=synthetic-octo");
+    assert.equal(checkRequest.postData(), null, "source check admission must not carry credential material");
+  });
+});
+
+test("Given unavailable host account names, when analysis is queued, then automatic host credentials remain usable", async () => {
+  await withIngestionPage(async (page, origin) => {
+    await page.route("**/api/github-accounts", (route) => route.fulfill({ status: 503, json: { error: "GitHub CLI account list failed" } }));
+    await page.goto(`${origin}#/capabilities`);
+    await page.getByText("Host account names are unavailable: GitHub CLI account list failed. Automatic host credentials remain available.", { exact: true }).waitFor();
+    const selector = page.getByRole("combobox", { name: /^GitHub account/ });
+    assert.deepEqual(await selector.locator("option").allTextContents(), ["Automatic host credentials"]);
+    assert.equal(await selector.inputValue(), "");
+    await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => button.textContent === "Analyze code" && !button.disabled));
+    const analyze = page.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/capabilities/orders/analyze");
+    await page.getByRole("button", { name: "Analyze code", exact: true }).click();
+    assert.equal(new URL((await analyze).url()).search, "", "automatic host credentials must not send an account name");
   });
 });
