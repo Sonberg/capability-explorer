@@ -8,10 +8,10 @@
     "config/build/platform.mk": "624eaac4c6f9093035dc59c82510b9ae3f450ecd4a9bc86a70bd15df7d50baad",
     "config/build/container-engine.mk": "25f1dabdfef394ba7fcb0993fb7b0bbada1bebcf64f161c7226804d5874f4a30",
     "config/runtime/images.env": "1128bce98fa3305188df4d75809c643c75ae72a85b518dc8bbcdd4b3cb4af4cd",
-    ".github/workflows/ci.yml": "b085f506df198daf31db0682438da03facdcc3d99f138e11e3008866d27ac116",
+    ".github/workflows/ci.yml": "85350ce422ced6875fce1da89345752362b192948960fefaa4a229965ec50e48",
     "scripts/local-check": "cc288933eeecf9974977a3653f694ca69f442acde2f601fc3f249f23866f5527",
     "scripts/sandbox": "3efb3018dcfe7eb09b5e6ec9ff5acdb131825e6768fdc5a0bdd3464d26043e5c",
-    "scripts/security-check": "cf188b4c9db3af854a018595bcbb77965c9ad4818f3af6b9d495b995b1f805ef",
+    "scripts/security-check": "27bdf9f91f4dbda3cbfe99fc71a4e4b9b67182231c46b7998ed9ed2ef8bfd836",
     "scripts/compile-fixtures.sh": "491d99f773ee0f247d113a59f7d262052cd8c00dc6a4102009b242637c718569",
     "scripts/ci/check-frugal-ci": "e2f0e04fbf475a831ddb40f14ca36144ef7526eb6286a8ecc145aeae8140aacf",
     "scripts/ci/check-frugal-ci.mjs": "721149e1321147c164b23a9a8305bfd45dccdca58a312a8582307306b426b310"
