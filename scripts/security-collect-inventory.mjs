@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 const need = (ok, message) => { if (!ok) throw new Error(message); };
 const pin = value => typeof value === 'string' && /^[\w./:-]+@sha256:[a-f0-9]{64}$/.test(value);
 const platform = value => /^linux\/(arm64|amd64)$/.test(value ?? '');
@@ -27,6 +28,59 @@ export function inventories(files) {
     misconfiguration: names.filter(x => /(?:^|\/)(?:Dockerfile(?:\.[^/]*)?|[^/]+\.tf)$/.test(x)),
     unsupportedConfiguration: names.filter(x => /\.(?:json|ya?ml|toml|props|targets|xml|config|env|sh|mk)$/.test(x) || x.startsWith('scripts/') || x === 'Makefile'),
   };
+}
+
+const dependencyInput = /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|yarn\.lock|bun\.lock|Gemfile\.lock|Gemfile|Pipfile\.lock|Pipfile|poetry\.lock|uv\.lock|pylock\.toml|pyproject\.toml|requirements[^/]*\.txt|composer\.lock|composer\.json|installed\.json|packages\.lock\.json|packages\.config|[^/]+\.deps\.json|(?:Directory\.)?Packages\.props|pom\.xml|gradle\.lockfile|[^/]+\.gradle\.lockfile|[^/]+\.sbt\.lock|go\.mod|go\.sum|Cargo\.lock|conan\.lock|mix\.lock|pubspec\.lock|Podfile|Podfile\.lock|Package\.resolved|Manifest\.toml)$/;
+const dependencyTarget = /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lock|Gemfile\.lock|Pipfile\.lock|poetry\.lock|uv\.lock|pylock\.toml|requirements[^/]*\.txt|composer\.lock|installed\.json|packages\.lock\.json|packages\.config|[^/]+\.deps\.json|(?:Directory\.)?Packages\.props|pom\.xml|gradle\.lockfile|[^/]+\.gradle\.lockfile|[^/]+\.sbt\.lock|go\.mod|Cargo\.lock|conan\.lock|mix\.lock|pubspec\.lock|Podfile\.lock|Package\.resolved|Manifest\.toml)$/;
+const ignoredDirectories = new Set(['.git', '.sandbox-cache', 'node_modules', 'bin', 'obj']);
+const ignoredPaths = ['fixtures/.repos', 'fixtures/.work', 'platform/src/CapabilityExplorer.Explorer/wwwroot'];
+
+export function dependencyTargets(files) {
+  return files.filter(file => dependencyTarget.test(file.path)).map(file => file.path).sort();
+}
+
+function hashFile(file, deadline) {
+  const descriptor = fs.openSync(file, 'r'), buffer = Buffer.alloc(64 * 1024), hash = crypto.createHash('sha256');
+  try {
+    let bytes;
+    while ((bytes = fs.readSync(descriptor, buffer, 0, buffer.length, null)) > 0) {
+      if (Date.now() >= deadline) throw new Error('dependency inventory exceeded wall-clock limit');
+      hash.update(buffer.subarray(0, bytes));
+    }
+    return hash.digest('hex');
+  } finally { fs.closeSync(descriptor); }
+}
+
+export function dependencySnapshot(root, { maximumFiles = 100_000, maximumBytes = 512 * 1024 * 1024, deadline = Infinity } = {}) {
+  const base = fs.realpathSync(root), files = [];
+  let bytes = 0, visited = 0;
+  const walk = (directory, prefix = '') => {
+    if (Date.now() >= deadline) throw new Error('dependency inventory exceeded wall-clock limit');
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
+      if (Date.now() >= deadline) throw new Error('dependency inventory exceeded wall-clock limit');
+      if (++visited > maximumFiles * 4) throw new Error('dependency inventory entry limit exceeded');
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (ignoredDirectories.has(entry.name) || ignoredPaths.some(item => relative === item || relative.startsWith(`${item}/`))) continue;
+      const absolute = path.join(directory, entry.name);
+      if (entry.isSymbolicLink()) throw new Error(`dependency inventory rejects symbolic link: ${relative}`);
+      if (entry.isDirectory()) { walk(absolute, relative); continue; }
+      if (!entry.isFile() || !dependencyInput.test(relative)) continue;
+      const stat = fs.statSync(absolute);
+      if (!stat.isFile()) throw new Error(`dependency input is not a regular file: ${relative}`);
+      if (files.length >= maximumFiles) throw new Error('dependency input file limit exceeded');
+      bytes += stat.size;
+      if (bytes > maximumBytes) throw new Error('dependency input byte limit exceeded');
+      files.push({ path: relative, sha256: hashFile(absolute, deadline), size: stat.size });
+    }
+  };
+  walk(base);
+  if (!files.length) throw new Error('dependency inventory is empty');
+  const identity = files.map(({ path: file, sha256, size }) => ({ path: file, sha256, size }));
+  const targets = dependencyTargets(identity);
+  if (!targets.length) throw new Error('dependency inventory has no supported lockfile targets');
+  if (Date.now() >= deadline) throw new Error('dependency inventory exceeded wall-clock limit');
+  return { schemaVersion: 1, sha256: crypto.createHash('sha256').update(JSON.stringify(identity)).digest('hex'), files: identity,
+    targets, fileCount: files.length, byteCount: bytes };
 }
 
 // A reviewed central registry is authoritative; do not infer image dependencies

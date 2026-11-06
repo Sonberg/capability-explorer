@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { inventories } from '../scripts/security-collect-inventory.mjs';
-import { sha, snapshot, validate, findings, safeFile } from '../scripts/security-audit-lib.mjs';
+import { sha, snapshot, validate, findings, safeFile, validateTrivyDatabase, validateDependencyReport } from '../scripts/security-audit-lib.mjs';
 const image = `scanner:1@sha256:${'a'.repeat(64)}`;
 function fixture(t, vulnerability = false) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'security-audit-'));
@@ -49,6 +49,51 @@ test('complete baseline is collection success, not a vulnerability pass', t => {
 });
 test('complete clean collection passes verification', t => {
   const f = fixture(t); assert.equal(validate(f.root, f.manifest, 'verify', f.now).scans, 7);
+});
+test('Trivy bbolt database identity requires schema 2, acquisition metadata and a current update window', t => {
+  const f = fixture(t), directory = path.join(f.root, 'database'); fs.mkdirSync(directory);
+  const database = path.join(directory, 'trivy.db'), metadata = path.join(directory, 'metadata.json');
+  fs.writeFileSync(database, Buffer.from('synthetic opaque bbolt bytes'));
+  const now = Date.now(), valid = { Version: 2, UpdatedAt: new Date(now - 60_000).toISOString(),
+    NextUpdate: new Date(now + 12 * 60 * 60 * 1000).toISOString(), DownloadedAt: new Date(now - 30_000).toISOString() };
+  fs.writeFileSync(metadata, JSON.stringify(valid));
+  const readFile = fs.readFileSync;
+  t.mock.method(fs, 'readFileSync', (file, ...args) => {
+    assert.notEqual(file, database, 'database hashing must not allocate the whole database');
+    return readFile(file, ...args);
+  });
+  const identity = validateTrivyDatabase(directory, now);
+  assert.equal(identity.downloadedAt, valid.DownloadedAt);
+  assert.equal(identity.sha256, sha(Buffer.from('synthetic opaque bbolt bytes')));
+  for (const invalid of [
+    { ...valid, UpdatedAt: new Date(now + 1).toISOString() },
+    { ...valid, NextUpdate: valid.UpdatedAt },
+    { ...valid, NextUpdate: new Date(now - 1).toISOString() },
+    { ...valid, UpdatedAt: new Date(now - 24 * 60 * 60 * 1000).toISOString() },
+    { ...valid, DownloadedAt: undefined },
+    { ...valid, DownloadedAt: new Date(now + 1).toISOString() },
+    { ...valid, DownloadedAt: new Date(now - 60_001).toISOString() },
+    { ...valid, Version: 999 },
+  ]) {
+    fs.writeFileSync(metadata, JSON.stringify(invalid));
+    assert.throws(() => validateTrivyDatabase(directory, now), /timestamp|schema version/);
+  }
+  fs.writeFileSync(metadata, JSON.stringify(valid));
+  const fd = fs.openSync(database, 'w');
+  fs.ftruncateSync(fd, 2 * 1024 * 1024 * 1024 + 1); fs.closeSync(fd);
+  assert.throws(() => validateTrivyDatabase(directory, now), /exceeds size limit/);
+});
+test('dependency report covers lockfile targets while companion manifests stay sealed inputs', t => {
+  const f = fixture(t);
+  const source = { files: [{ path: 'package-lock.json' }, { path: 'package.json' }], targets: ['package-lock.json'] };
+  const report = { SchemaVersion: 2, Results: [{ Target: 'package-lock.json', Vulnerabilities: [
+    { VulnerabilityID: 'CVE-UNKNOWN', PkgName: 'example', InstalledVersion: '1', Severity: 'UNKNOWN' },
+    { VulnerabilityID: 'CVE-CRITICAL', PkgName: 'example', InstalledVersion: '1', Severity: 'CRITICAL' },
+  ] }] };
+  assert.equal(validateDependencyReport(f.root, report, source).findings.length, 2);
+  assert.throws(() => validateDependencyReport(f.root, { SchemaVersion: 2, Results: [] }, source), /omitted inventoried input/);
+  report.Results[0].Vulnerabilities[1].Severity = 'UNSPECIFIED';
+  assert.throws(() => validateDependencyReport(f.root, report, source), /unsupported severity/);
 });
 for (const [name, mutate, error] of [
   ['missing scanner', f => f.manifest.scans.pop(), /missing/],

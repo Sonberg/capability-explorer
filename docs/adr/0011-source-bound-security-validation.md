@@ -88,6 +88,51 @@ its own explicitly scoped evidence and authority.
 
 ## CI, cost and compatibility
 
+### Dependency gate acquisition and verification
+
+Issue #104 separates the ordinary `make security-check` into source-free online
+database acquisition and a network-disabled dependency scan. The standard gate
+does not acquire a checks bundle: it runs only Trivy's vulnerability scanner.
+Gitleaks, Semgrep and the broader Docker-only audit retain their separate scope.
+
+Provision Cosign v3.1.4 outside the checkout and set `COSIGN_BINARY` to its absolute
+executable path. The gate checks the reviewed platform-specific SHA-256 before
+executing it. CI provisions the fixed Linux asset and hash in `ci.yml`; local
+Linux act uses that same step. macOS ARM64 operators can download
+`cosign-darwin-arm64` from the exact `sigstore/cosign` v3.1.4 release, verify SHA-256
+`9f9b8cd557cf2e5b3df3373a00baa005a86b02391e3e06dd0ce37b3a1533d3a4`,
+and run `gh release verify-asset v3.1.4 <binary> --repo sigstore/cosign` before
+making it executable. The reviewed bootstrap establishes release origin, not
+SLSA build provenance. A new verifier version/hash requires a fresh trust review.
+
+Every invocation verifies the exact Trivy index against GitHub's OIDC issuer and
+`aquasecurity/trivy/.github/workflows/reusable-release.yaml@refs/tags/v0.76.1`,
+then binds the selected Linux ARM64/AMD64 child to local engine metadata. Missing
+verifier, rejected signature, platform mismatch or unavailable registry fails
+closed. No credentials are forwarded to scanner containers. A signature, checksum
+or successful scan is not proof that upstream content is benign.
+
+The database originates from `ghcr.io/aquasecurity/trivy-db`. Its publisher
+signature is not verified: registry TLS, the verified scanner, schema-2 metadata
+and sealed byte hashes are the recorded trust basis. Registry/publisher compromise
+remains a residual risk. `trivy.db` is bbolt, not SQLite. Metadata must satisfy
+`UpdatedAt <= DownloadedAt <= now`, `NextUpdate > UpdatedAt`,
+`now < NextUpdate`, and `now < UpdatedAt + 24 hours`; no stale-data override exists.
+Failure recovery is to restore registry/verifier availability or obtain fresh
+valid data and rerun, not to suppress findings or reuse a previous success.
+
+Each invocation uses a private, ephemeral acquisition cache and a separate sealed
+scan cache, never a shared writable database. Cleanup targets only that run.
+CPU (2), memory (2 GiB), processes (512), temporary storage (1 GiB), command output
+and total wall time (20 minutes) are bounded. The acquisition bind cache has a
+2-GiB/4,096-entry periodic guard and a 1-GiB free-space reserve, not a filesystem
+quota; writes may transiently exceed it between checks. The measured 2026-11-06
+upstream database is 1,675,603,968 bytes, exceeding the initial 1-GiB proposal.
+Sealing moves closed acquisition files without duplicating database bytes, and
+hashing uses bounded buffers. Runtime qualification and exact-source receipts must
+disclose that limitation. No performance or full-engine compatibility claim
+follows from unit tests alone.
+
 Pin Actions revisions and multi-platform image references. Scan each distinct image
 digest/platform once per recorded DB snapshot; a new DB requires fresh vulnerability
 evaluation. Do not equate arm64 results to amd64. Source/rule changes invalidate
