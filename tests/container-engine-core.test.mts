@@ -51,19 +51,56 @@ if(process.env.MOCK_METADATA_FAIL===engine+':'+op){console.error('PRIVATE-METADA
 if(engine==='docker'){
  if(op==='context')console.log(args[1]==='show'?'fixture-context':(process.env.MOCK_DOCKER_ENDPOINT??'unix:///fixture/docker.sock'));
  else if(op==='version')console.log(process.env.MOCK_DOCKER_METADATA??'29.0.0|29.0.0|linux|arm64|Docker Engine');
- else if(op==='info')console.log(process.env.MOCK_DOCKER_ID??'fixture-daemon');
+ else if(op==='info')console.log(args.includes('{{.OSType}}/{{.Architecture}}')?'linux/arm64':(process.env.MOCK_DOCKER_ID??'fixture-daemon'));
 } else if(engine==='podman'){
  if(op==='machine'&&args[1]==='list')console.log(process.env.MOCK_PODMAN_MACHINES??'ce-validation|true');
  else if(op==='system'&&args[1]==='connection')console.log(process.env.MOCK_PODMAN_CONNECTION
    ??('ssh://core@127.0.0.1:34567/run/user/501/podman/podman.sock|true|'+process.env.TEST_PODMAN_IDENTITY));
- else if(op==='info')console.log(full.some(a=>a.includes('.Store.GraphRoot'))
+ else if(op==='info')console.log(args.includes('{{.OSType}}/{{.Architecture}}')?'linux/arm64':full.some(a=>a.includes('.Store.GraphRoot'))
    ?(process.env.MOCK_PODMAN_STORAGE??'/home/core/.local/share/containers/storage|fixture-machine')
    :(process.env.MOCK_PODMAN_METADATA??'true|arm64|6.1.4|linux'));
  else if(op==='version')console.log(process.env.MOCK_PODMAN_VERSION??'6.1.4|6.1.4');
 }
-if(op==='image'&&args[1]==='inspect')process.exit(Number(process.env.MOCK_IMAGE_MISSING??0));
+if(op==='manifest'&&args[1]==='inspect'){
+ console.log(args[2]?.endsWith('sha256:'+'c'.repeat(64))
+  ?JSON.stringify({schemaVersion:2,config:{digest:'sha256:'+'b'.repeat(64)}})
+  :JSON.stringify({schemaVersion:2,manifests:[{digest:'sha256:'+'c'.repeat(64),
+   platform:{os:'linux',architecture:'arm64',variant:'v8'}}]}));
+}
+if(op==='image'&&args[1]==='inspect'){
+ if(Number(process.env.MOCK_IMAGE_MISSING??0)!==0)process.exit(Number(process.env.MOCK_IMAGE_MISSING));
+ console.log(JSON.stringify({Id:'sha256:'+'b'.repeat(64),Os:'linux',Architecture:'arm64',
+  RepoDigests:['aquasec/trivy@sha256:'+'c'.repeat(64)]}));
+}
 if(op==='pull')process.exit(Number(process.env.MOCK_PULL_EXIT??0));
-if(op==='run')process.exit(Number(process.env.MOCK_RUN_EXIT??0));
+if(op==='create'){
+ const file=args[args.indexOf('--cidfile')+1],id=args.includes('--download-db-only')?'a'.repeat(64):'b'.repeat(64);
+ fs.writeFileSync(file,id);console.log(id);
+}
+if(op==='start'&&args[1]==='-a'){
+ if(args[2]?.startsWith('a')){
+  if(Number(process.env.MOCK_ACQUIRE_EXIT??0)!==0)process.exit(Number(process.env.MOCK_ACQUIRE_EXIT));
+  const calls=fs.readFileSync(process.env.TEST_ENGINE_LOG,'utf8').trim().split(String.fromCharCode(10)).map(JSON.parse);
+  const acquisition=calls.find(call=>call.args.includes('--download-db-only'));
+  const mount=acquisition.args.find(arg=>arg.startsWith('type=bind,source=')&&arg.endsWith('target=/cache'));
+  const destination=path.join(mount.slice('type=bind,source='.length).split(',target=')[0],'db');
+  fs.mkdirSync(destination,{recursive:true});
+  fs.writeFileSync(path.join(destination,'trivy.db'),Buffer.from('synthetic opaque bbolt bytes'));
+  const now=Date.now();
+  fs.writeFileSync(path.join(destination,'metadata.json'),JSON.stringify({Version:2,UpdatedAt:new Date(now-60000).toISOString(),
+   NextUpdate:new Date(now+43200000).toISOString(),DownloadedAt:new Date(now-30000).toISOString()}));
+  process.exit(0);
+ }
+ if(Number(process.env.MOCK_RUN_EXIT??0)!==0)process.exit(Number(process.env.MOCK_RUN_EXIT));
+ process.stdout.write(JSON.stringify({SchemaVersion:2,Results:[{Target:'package-lock.json',Vulnerabilities:[]}]}));
+}
+if(op==='cp'){
+ const destination=args.at(-1);fs.mkdirSync(destination,{recursive:true});
+ fs.writeFileSync(path.join(destination,'trivy.db'),Buffer.from('synthetic opaque bbolt bytes'));
+ const now=Date.now();
+ fs.writeFileSync(path.join(destination,'metadata.json'),JSON.stringify({Version:2,UpdatedAt:new Date(now-60000).toISOString(),
+  NextUpdate:new Date(now+43200000).toISOString(),DownloadedAt:new Date(now-30000).toISOString()}));
+}
 `;
 
 function fixture(t: TestContext, engines: string[] = ['docker', 'podman']) {
@@ -353,18 +390,21 @@ test('Explorer public feed mount rejects a symbolic-link directory', t => {
   assert.ok(!f.calls().some(c => operation(c)[0] === 'run'));
 });
 
-for (const engine of ['docker', 'podman']) test(`${engine} scanner preserves pinned policy and propagates findings failure`, t => {
-  const f = fixture(t), r = f.run('scripts/security-check', [], { CE_CONTAINER_ENGINE: engine, MOCK_RUN_EXIT: '7' });
+for (const engine of ['docker', 'podman']) test(`${engine} scanner preserves pinned policy and propagates findings failure`,
+  { skip: !process.env.COSIGN_BINARY }, t => {
+  const f = fixture(t);
+  writeFileSync(join(f.root, 'package-lock.json'), JSON.stringify({ name: 'synthetic', lockfileVersion: 3, packages: {} }));
+  const r = f.run('scripts/security-check', [], { CE_CONTAINER_ENGINE: engine, MOCK_RUN_EXIT: '7' });
   assert.equal(r.status, 7, resultError(r));
-  const args = operation(f.calls().find(c => operation(c)[0] === 'run'));
-  assert.ok(args.includes(`${f.root}:/work:ro`)); assert.ok(args.includes('--include-dev-deps'));
+  const args = f.calls().map(operation).find(a => a[0] === 'create' && a.includes('--offline-scan'));
+  assert.ok(args); assert.ok(args.includes('--include-dev-deps'));
   assert.ok(args.includes('UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL')); assert.ok(args.includes('--disable-telemetry'));
   assert.ok(args.some(a => a.includes('aquasec/trivy:') && /@sha256:[a-f0-9]{64}$/.test(a)));
-  for (const flag of ['--config', '--ignorefile']) assert.equal(args[args.indexOf(flag) + 1], '');
+  assert.equal(args[args.indexOf('--network') + 1], 'none');
   assert.ok(!args.join('\n').includes('.sock')); assert.ok(f.calls().every(c => c.engine === engine));
 });
 
-test('missing scanner image is acquired using only selected Podman; pull failure prevents run', t => {
+test('missing scanner image is acquired using only selected Podman; pull failure prevents run', { skip: !process.env.COSIGN_BINARY }, t => {
   const f = fixture(t), r = f.run('scripts/security-check', [], { CE_CONTAINER_ENGINE: 'podman', MOCK_IMAGE_MISSING: '1', MOCK_PULL_EXIT: '17' });
   assert.equal(r.status, 17, resultError(r));
   const ops = f.calls().map(operation); assert.ok(ops.some(a => a[0] === 'pull'));
@@ -373,21 +413,31 @@ test('missing scanner image is acquired using only selected Podman; pull failure
 
 test('scanner rejects a mutable image before any engine call', t => {
   const f = fixture(t); writeFileSync(join(f.root, 'config/security/trivy-image'), 'aquasec/trivy:latest\n');
-  refused(f.run('scripts/security-check', [], { CE_CONTAINER_ENGINE: 'podman' }), /Invalid pinned Trivy image/);
+  refused(f.run('scripts/security-check', [], { CE_CONTAINER_ENGINE: 'podman' }), /approved exact digest/);
   assert.equal(f.calls().length, 0);
 });
 
-test('scanner mounts an explicit certificate with spaces read-only without forwarding secret content', t => {
+test('security gate fails closed when the externally hash-pinned Cosign binary is absent', t => {
+  const f = fixture(t);
+  refused(f.run('scripts/security-check', [], { COSIGN_BINARY: '' }), /set COSIGN_BINARY/);
+  assert.equal(f.calls().length, 0);
+});
+
+test('scanner mounts an explicit certificate with spaces read-only without forwarding secret content',
+  { skip: !process.env.COSIGN_BINARY }, t => {
   const f = fixture(t), ca = join(f.dir, 'operator certificate.pem');
-  writeFileSync(ca, 'SYNTHETIC-CERTIFICATE-CONTENT', { mode: 0o600 });
+  const systemCa = ['/etc/ssl/cert.pem', '/etc/ssl/certs/ca-certificates.crt'].find(existsSync);
+  assert.ok(systemCa, 'the live verifier certificate test requires a public system CA bundle');
+  writeFileSync(join(f.root, 'package-lock.json'), JSON.stringify({ name: 'synthetic', lockfileVersion: 3, packages: {} }));
+  writeFileSync(ca, readFileSync(systemCa), { mode: 0o600 });
   const r = f.run('scripts/security-check', [], { CE_CONTAINER_ENGINE: 'podman',
     MOCK_HOST_OS: 'Darwin', CE_PODMAN_CONNECTION: 'ce-validation', MOCK_REPOINT_MACHINE: '1',
     SANDBOX_EXTRA_CA_FILE: ca, TEST_PRIVATE_TOKEN: 'NEVER-FORWARD-THIS' }); passed(r);
-  const call = f.calls().find(c => operation(c)[0] === 'run'); assert.ok(call);
+  const call = f.calls().find(c => operation(c)[0] === 'create' && operation(c).includes('--download-db-only')); assert.ok(call);
   const args = operation(call);
   assert.deepEqual(call.args.slice(0, 4), ['--url', 'ssh://core@127.0.0.1:34567/run/user/501/podman/podman.sock', '--identity', f.identity]);
   assert.ok(!call.args.includes('--connection'));
-  assert.ok(args.includes(`${ca}:/etc/sandbox/extra-ca.crt:ro`));
+  assert.ok(args.includes(`type=bind,source=${ca},target=/etc/sandbox/extra-ca.crt,readonly`));
   assert.ok(args.includes('SSL_CERT_FILE=/etc/sandbox/extra-ca.crt'));
   assert.ok(!args.join('\n').includes('SYNTHETIC-CERTIFICATE-CONTENT'));
   assert.ok(!args.join('\n').includes('TEST_PRIVATE_TOKEN')); assert.ok(!args.join('\n').includes('NEVER-FORWARD-THIS'));
@@ -398,7 +448,7 @@ for (const kind of ['relative', 'missing', 'newline', 'colon'] as const) test(`s
     newline: join(f.dir, 'bad\ncertificate.pem'), colon: join(f.dir, 'bad:certificate.pem') };
   if (kind !== 'missing') writeFileSync(kind === 'relative' ? join(f.root, paths[kind]) : paths[kind], 'test-only certificate');
   const r = f.run('scripts/security-check', [], { CE_CONTAINER_ENGINE: 'podman', SANDBOX_EXTRA_CA_FILE: paths[kind] });
-  refused(r, /SANDBOX_EXTRA_CA_FILE/); assert.ok(!f.calls().some(c => operation(c)[0] === 'run'));
+  refused(r, /SANDBOX_EXTRA_CA_FILE/); assert.ok(!f.calls().some(c => operation(c)[0] === 'create'));
 });
 
 for (const [script, args, command, expectedArgs] of [
