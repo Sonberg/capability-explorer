@@ -13,6 +13,8 @@ const codeSplitting = {
     { name: "vendor", test: /node_modules[\\/]/, maxSize: 400_000, priority: 1 },
   ],
 };
+// maxSize splits can create cyclic vendor chunks; keep source evaluation order across them.
+const splitOutput = { codeSplitting, strictExecutionOrder: true };
 
 // Built into the server's wwwroot; `npm run dev` proxies the API to a running explorer.
 export default defineConfig({
@@ -32,7 +34,7 @@ export default defineConfig({
   worker: {
     format: "es",
     rolldownOptions: {
-      output: { codeSplitting },
+      output: splitOutput,
     },
   },
   plugins: [react(), tailwindcss(), {
@@ -53,7 +55,7 @@ export default defineConfig({
         entryFileNames: "assets/[name].js",
         chunkFileNames: "assets/[name].js",
         assetFileNames: "assets/[name][extname]",
-        codeSplitting,
+        ...splitOutput,
       },
     },
   },
