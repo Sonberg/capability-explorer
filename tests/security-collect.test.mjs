@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { validateConfig, inventories, parseVersion, trivyScanArgs, ensureImage, copyCacheSnapshot, recordAttempt, inventoryFindings, dockerArgs, outputDirectory, copySealed, historyInventory, historyCheck } from '../scripts/security-collect.mjs';
 import { runtimeInventory } from '../scripts/security-collect-inventory.mjs';
 import { sha } from '../scripts/security-audit-lib.mjs';
@@ -158,4 +160,58 @@ test('unsupported image inventory preserves explicit failure while finalizing ot
   assert.equal(raw.Results, undefined);
   assert.throws(() => inventoryFindings({ ...scan, completed: true }, raw), /unsupported image/);
   assert.throws(() => inventoryFindings({ ...scan, error: '' }, raw), /unsupported image/);
+});
+
+
+function runStandardGate(t) {
+  const root = temp(t), bin = path.join(root, 'bin'), project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const scriptRoot = path.join(root, 'checkout'), log = path.join(root, 'engine.jsonl'), tempDir = path.join(root, 'engine-tmp');
+  fs.mkdirSync(path.join(scriptRoot, 'scripts/lib'), { recursive: true }); fs.mkdirSync(bin); fs.mkdirSync(tempDir);
+  fs.mkdirSync(path.join(scriptRoot, 'config/security'), { recursive: true });
+  for (const relative of ['scripts/security-check', 'scripts/lib/container-engine.sh', 'config/security/trivy-image']) {
+    fs.copyFileSync(path.join(project, relative), path.join(scriptRoot, relative));
+  }
+  fs.writeFileSync(path.join(bin, 'docker'), `#!${process.execPath}
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+fs.appendFileSync(process.env.TEST_ENGINE_LOG, JSON.stringify(args) + '\\n');
+const operation = [...args];
+while (operation[0] === '--host') operation.splice(0, 2);
+if (operation[0] === 'context' && operation[1] === 'show') console.log('fixture-context');
+else if (operation[0] === 'context' && operation[1] === 'inspect') console.log('unix:///fixture/docker.sock');
+else if (operation[0] === 'version') console.log('29.0.0|29.0.0|linux|arm64|Docker Engine');
+else if (operation[0] === 'info') console.log('fixture-daemon');
+else if (operation[0] === 'run') process.exit(Number(process.env.TEST_RUN_EXIT ?? 0));
+`, { mode: 0o755 });
+  const env = { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, TMPDIR: tempDir,
+    CE_CONTAINER_ENGINE: 'docker', TEST_ENGINE_LOG: log };
+  const result = spawnSync('/bin/bash', [path.join(scriptRoot, 'scripts/security-check')], { cwd: scriptRoot, env, encoding: 'utf8', timeout: 10000 });
+  assert.equal(result.status, 0, `status=${result.status}\n${result.stderr}`);
+  const calls = fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
+  return { root: scriptRoot, runs: calls.map(args => { const copy = [...args]; while (copy[0] === '--host') copy.splice(0, 2); return copy; }).filter(args => args[0] === 'run') };
+}
+
+test('SEC104 Trivy database/check acquisition is source-free', t => {
+  const { root, runs } = runStandardGate(t);
+  const networkedAcquisitions = runs.filter(args => {
+    const network = args.indexOf('--network');
+    const networkEnabled = network < 0 || args[network + 1] !== 'none';
+    const db = args.includes('--download-db-only');
+    const checks = args.includes('fs') && args.includes('--scanners') && args[args.indexOf('--scanners') + 1].includes('misconfig');
+    return networkEnabled && (db || checks);
+  });
+  assert.ok(networkedAcquisitions.length > 0, 'standard gate must make its DB/check acquisition phase observable');
+  assert.ok(networkedAcquisitions.every(args => !args.some(arg => arg.includes(`${root}:/work`))),
+    'network-enabled acquisition must not mount the checkout, including private and ignored files');
+});
+
+test('SEC104 standard dependency scan is offline, minimized, and preserves all-severity dev coverage', t => {
+  const { root, runs } = runStandardGate(t);
+  const scans = runs.filter(args => args.includes('UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL'));
+  assert.ok(scans.length > 0, 'standard gate must invoke the dependency scan');
+  for (const args of scans) {
+    assert.equal(args[args.indexOf('--network') + 1], 'none', 'dependency scanning must be offline');
+    assert.ok(args.includes('--include-dev-deps'), 'development dependencies remain in scope');
+    assert.ok(!args.some(arg => arg.includes(`${root}:/work`)), 'scan must not mount the full checkout');
+  }
 });
