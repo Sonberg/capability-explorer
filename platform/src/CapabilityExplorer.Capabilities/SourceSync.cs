@@ -34,6 +34,12 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
         return target;
     }
 
+    private static bool IsBareRepository(string path) =>
+        File.Exists(Path.Combine(path, "HEAD")) &&
+        Directory.Exists(Path.Combine(path, "objects")) &&
+        Directory.Exists(Path.Combine(path, "refs")) &&
+        !Directory.Exists(Path.Combine(path, ".git"));
+
     /// <summary>
     /// Expands a leading ~ to the user's home on the machine that owns the paths. In the sandbox that is the host's
     /// home (CE_HOST_HOME, forwarded by `make explore`), not the container's.
@@ -66,6 +72,7 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
     {
         ArgumentNullException.ThrowIfNull(source);
         var dir = GitDirectory(source);
+        var bare = source.Kind == SourceKind.GitHub || IsBareRepository(dir);
         try
         {
             if (source.Kind == SourceKind.GitHub)
@@ -77,19 +84,19 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
                 return new LockedRepository(source.Id, source.Ref, null, null, null,
                     $"{dir} is not visible to the explorer. Local repositories in capabilities.json are mounted read-only when `make explore` starts: restart it (or add SOURCES={Path.GetDirectoryName(dir)})");
             }
-            else if (!(await GitAsync(dir, ["rev-parse", "--git-dir"], cancellationToken)).Ok)
+            else if (!(await GitAsync(dir, ["rev-parse", "--git-dir"], cancellationToken, bare: bare)).Ok)
             {
                 return new LockedRepository(source.Id, source.Ref, null, null, null, $"{dir} is not a git repository");
             }
 
-            var (ok, sha) = await GitAsync(dir, ["rev-parse", "--verify", "--quiet", "--end-of-options", $"{source.Ref}^{{commit}}"], cancellationToken);
+            var (ok, sha) = await GitAsync(dir, ["rev-parse", "--verify", "--quiet", "--end-of-options", $"{source.Ref}^{{commit}}"], cancellationToken, bare: bare);
             if (!ok)
             {
                 return new LockedRepository(source.Id, source.Ref, null, null, null, $"ref '{source.Ref}' not found");
             }
 
             sha = sha.Trim();
-            var (_, info) = await GitAsync(dir, ["show", "-s", "--format=%ct%n%s", sha], cancellationToken);
+            var (_, info) = await GitAsync(dir, ["show", "-s", "--format=%ct%n%s", sha], cancellationToken, bare: bare);
             var lines = info.Split('\n', 2);
             DateTimeOffset? time = long.TryParse(lines[0].Trim(), out var seconds) ? DateTimeOffset.FromUnixTimeSeconds(seconds) : null;
             return new LockedRepository(source.Id, source.Ref, sha, lines.Length > 1 ? lines[1].Trim() : null, time, null);
@@ -105,10 +112,10 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
         if (Directory.Exists(dir))
         {
             string[] fetchArgs = ["fetch", "--prune", "--tags", "--filter=blob:none", source.Location, "+refs/heads/*:refs/heads/*"];
-            var fetch = await GitAsync(dir, fetchArgs, cancellationToken);
+            var fetch = await GitAsync(dir, fetchArgs, cancellationToken, bare: true);
             if (!fetch.Ok && Auth.Configured && GitHubAuth.IsAuthError(fetch.Output))
             {
-                fetch = await GitAsync(dir, fetchArgs, cancellationToken, anonymous: true);
+                fetch = await GitAsync(dir, fetchArgs, cancellationToken, anonymous: true, bare: true);
             }
 
             if (!fetch.Ok)
@@ -166,7 +173,8 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
 
         Directory.CreateDirectory(destination);
         var root = Path.GetFullPath(destination) + Path.DirectorySeparatorChar;
-        var start = Start(dir, ["archive", "--format=tar", commitSha], anonymous: false);
+        var bare = source.Kind == SourceKind.GitHub || IsBareRepository(dir);
+        var start = Start(dir, ["archive", "--format=tar", commitSha], anonymous: false, bare: bare);
         start.Environment["GIT_NO_LAZY_FETCH"] = "1"; // everything needed was fetched above
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(_timeout * 4);
@@ -253,7 +261,7 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
     /// <summary>Fetches the blobs a commit's tree needs in one request, the way git's own lazy fetch does per object.</summary>
     private async Task PrefetchAsync(string dir, string location, string commitSha, CancellationToken cancellationToken)
     {
-        var (ok, listing) = await GitAsync(dir, ["rev-list", "--objects", "--missing=print", commitSha], cancellationToken);
+        var (ok, listing) = await GitAsync(dir, ["rev-list", "--objects", "--missing=print", commitSha], cancellationToken, bare: true);
         if (!ok)
         {
             throw new InvalidOperationException($"commit {commitSha[..12]} is not in the clone: {Last(listing)}");
@@ -267,10 +275,10 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
 
         string[] fetchArgs = ["-c", "fetch.negotiationAlgorithm=noop", "fetch", location, "--no-tags", "--no-write-fetch-head", "--recurse-submodules=no", "--filter=blob:none", "--stdin"];
         var input = string.Join('\n', missing) + "\n";
-        var fetch = await GitAsync(dir, fetchArgs, cancellationToken, input: input);
+        var fetch = await GitAsync(dir, fetchArgs, cancellationToken, input: input, bare: true);
         if (!fetch.Ok && Auth.Configured && GitHubAuth.IsAuthError(fetch.Output))
         {
-            fetch = await GitAsync(dir, fetchArgs, cancellationToken, anonymous: true, input: input);
+            fetch = await GitAsync(dir, fetchArgs, cancellationToken, anonymous: true, input: input, bare: true);
         }
 
         if (!fetch.Ok)
@@ -279,7 +287,7 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
         }
     }
 
-    private ProcessStartInfo Start(string? directory, string[] args, bool anonymous)
+    private ProcessStartInfo Start(string? directory, string[] args, bool anonymous, bool bare = false)
     {
         var start = new ProcessStartInfo("git") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
         // Never run repository-provided code or prompt for credentials.
@@ -290,8 +298,16 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
 
         if (directory is not null)
         {
-            start.ArgumentList.Add("-C");
-            start.ArgumentList.Add(directory);
+            if (bare)
+            {
+                start.ArgumentList.Add("--git-dir");
+                start.ArgumentList.Add(directory);
+            }
+            else
+            {
+                start.ArgumentList.Add("-C");
+                start.ArgumentList.Add(directory);
+            }
         }
 
         foreach (var a in args)
@@ -313,9 +329,9 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
         return start;
     }
 
-    private async Task<(bool Ok, string Output)> GitAsync(string? directory, string[] args, CancellationToken cancellationToken, bool anonymous = false, string? input = null)
+    private async Task<(bool Ok, string Output)> GitAsync(string? directory, string[] args, CancellationToken cancellationToken, bool anonymous = false, string? input = null, bool bare = false)
     {
-        var start = Start(directory, args, anonymous);
+        var start = Start(directory, args, anonymous, bare);
         start.RedirectStandardInput = input is not null;
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

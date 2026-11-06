@@ -9,6 +9,24 @@ public sealed class AnalysisApiTests
 {
     private const string Url = "/api/capabilities/demand-pricing/analyze";
 
+    [Fact]
+    public async Task Given_host_github_accounts_when_the_account_list_is_requested_then_only_login_metadata_is_returned()
+    {
+        using var factory = new CapabilityExplorerFactory();
+        using var client = factory.CreateClient();
+        var response = await client.GetAsync("/api/github-accounts");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(result.GetProperty("available").ValueKind is JsonValueKind.True or JsonValueKind.False);
+        foreach (var account in result.GetProperty("accounts").EnumerateArray())
+        {
+            Assert.False(string.IsNullOrWhiteSpace(account.GetProperty("login").GetString()));
+            Assert.True(account.GetProperty("active").ValueKind is JsonValueKind.True or JsonValueKind.False);
+            Assert.False(account.TryGetProperty("token", out _));
+        }
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -302,6 +320,19 @@ public sealed class AnalysisApiTests
         Assert.Equal(defaults with { IncludeTests = expectedIncludeTests }, frozen.Settings);
         store.PublishWorkerDefaults(owner, new CapabilityExplorer.Capabilities.Analysis.AnalysisSettings(), !expectedIncludeTests);
         Assert.Equal(frozen, store.ReadRun(runId));
+    }
+
+    [Fact]
+    public async Task Given_a_selected_host_github_account_when_analysis_is_queued_then_the_run_uses_that_account()
+    {
+        using var factory = new CapabilityExplorerFactory();
+        using var client = factory.CreateClient();
+        var response = await client.PostAsync(Url + "?githubAccount=fixture-account", null);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var job = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var store = new CapabilityExplorer.Capabilities.Analysis.FileRunStore(factory.RequestsDirectory);
+        Assert.Equal("account:fixture-account", store.ReadRun(job.GetProperty("runId").GetString()!).Settings.GitHubAuth);
     }
 
 }

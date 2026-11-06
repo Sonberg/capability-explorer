@@ -50,7 +50,7 @@ public sealed class CapabilityService(CapabilityStore store, ExplorerOptions opt
     public SourceCheckStatus CheckStatus(SourceCheck check, bool duplicate = false) =>
         SourceCheckStatus.Project(check, !Checks.CheckMatches(check, options.CapabilitiesFile), duplicate);
 
-    public SourceCheckAdmission AdmitCheck(string id) => Checks.AdmitCheck(id, options.CapabilitiesFile);
+    public SourceCheckAdmission AdmitCheck(string id, string? gitHubAuth = null) => Checks.AdmitCheck(id, options.CapabilitiesFile, gitHubAuth);
 
     private CapabilitySnapshot? CurrentSnapshot(string id)
     {
@@ -91,10 +91,11 @@ public static class SourceCheckApi
 {
     public static void MapSourceChecks(this RouteGroupBuilder api)
     {
-        api.MapPost("/capabilities/{id}/check", (CapabilityService caps, string id) => Respond(() =>
+        api.MapPost("/capabilities/{id}/check", (CapabilityService caps, string id, string? githubAccount) => Respond(() =>
         {
             if (caps.Store.Find(id) is null) return Results.NotFound(new { error = $"no capability '{id}'" });
-            var admission = caps.AdmitCheck(id);
+            var auth = githubAccount is null ? null : CapabilityExplorer.Capabilities.GitHubAuth.AccountMode(githubAccount);
+            var admission = caps.AdmitCheck(id, auth);
             var check = caps.CheckStatus(admission.Check, !admission.Accepted);
             return Results.Accepted(check.StatusUrl, check);
         }));

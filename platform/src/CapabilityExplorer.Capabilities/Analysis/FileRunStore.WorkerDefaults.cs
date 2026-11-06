@@ -38,7 +38,7 @@ public sealed partial class FileRunStore
         if (settings.ExtractionJobs is < 1 or > 4 || settings.CapabilityWorkers is < 1 or > 4 ||
             settings.ExtractionJobs * settings.CapabilityWorkers > 16)
             throw new InvalidDataException("worker and extraction limits exceed the bounded analysis resource ceiling");
-        if (settings.GitHubAuth is not ("auto" or "git" or "none")) throw new InvalidDataException("invalid worker authentication policy");
+        if (!GitHubAuth.IsValidMode(settings.GitHubAuth)) throw new InvalidDataException("invalid worker authentication policy");
         if (settings.RuntimeIdentity is not null && (settings.RuntimeIdentity.Length != 64 || !settings.RuntimeIdentity.All(char.IsAsciiHexDigit)))
             throw new InvalidDataException("worker runtime identity must be a hash or unresolved");
         if (settings.NugetPassEnv is null || settings.NugetPassEnv.Length > 5050) throw new InvalidDataException("invalid worker credential environment names");

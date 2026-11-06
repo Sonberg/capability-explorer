@@ -4,6 +4,19 @@ import tailwindcss from "@tailwindcss/vite";
 import { buildModelFrame } from "./vite.model-frame.ts";
 const clientUrl = new URL(".", import.meta.url);
 let modelFrameOutDir = new URL("../wwwroot", clientUrl).pathname;
+const codeSplitting = {
+  minSize: 20_000,
+  groups: [
+    { name: "react", test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/, priority: 50 },
+    { name: "likec4-react", test: /node_modules[\\/]likec4[\\/]react[\\/]index\.mjs$/, priority: 40 },
+    { name: "graphviz-wasm", test: /node_modules[\\/]@hpcc-js[\\/]wasm-graphviz[\\/]/, priority: 30 },
+    { name: "architecture-vendor", test: /node_modules[\\/](?:@likec4|likec4|@xyflow|@dagrejs)[\\/]/, priority: 20 },
+    { name: "vendor", test: /node_modules[\\/]/, priority: 1 },
+  ],
+};
+// No maxSize: size splits created cyclic vendor chunks that ran CommonJS wrappers before
+// initialization, and strictExecutionOrder would reduce the app entry to a facade.
+const splitOutput = { codeSplitting };
 
 // Built into the server's wwwroot; `npm run dev` proxies the API to a running explorer.
 export default defineConfig({
@@ -20,7 +33,12 @@ export default defineConfig({
       replacement: new URL("node_modules/likec4", clientUrl).pathname,
     }],
   },
-  worker: { format: "es" },
+  worker: {
+    format: "es",
+    rolldownOptions: {
+      output: splitOutput,
+    },
+  },
   plugins: [react(), tailwindcss(), {
     name: "issue78-isolated-model-viewer",
     apply: "build",
@@ -39,6 +57,7 @@ export default defineConfig({
         entryFileNames: "assets/[name].js",
         chunkFileNames: "assets/[name].js",
         assetFileNames: "assets/[name][extname]",
+        ...splitOutput,
       },
     },
   },

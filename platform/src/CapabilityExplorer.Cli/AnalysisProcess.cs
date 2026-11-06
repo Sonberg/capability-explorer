@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 using CapabilityExplorer.Capabilities;
 using CapabilityExplorer.Capabilities.Analysis;
 
@@ -20,6 +21,27 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
     private string Label => "ce-analyze=" + AnalysisWorkerCommand.HashText(root)[..16] + "-" + run.RunId + "-" + run.AttemptId;
     internal AnalysisTelemetryStage Measure(string stage, string? repositoryId = null, string? language = null) =>
         new(WriteTelemetry,run.RunId,run.AttemptId!,stage,repositoryId,language);
+
+    internal void LogFailure(Exception error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        LogFailure(error.GetType().Name + ": " + error.Message);
+    }
+
+    internal void LogFailure(string message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        var detail = message;
+        foreach (var name in new[] { "GITHUB_TOKEN", "GH_TOKEN" })
+            if (Environment.GetEnvironmentVariable(name) is { Length: > 0 } secret)
+                detail = detail.Replace(secret, "[redacted]", StringComparison.Ordinal);
+        detail = Regex.Replace(detail, @"(?i)(https?://)[^/\s@]+@", "$1[redacted]@");
+        detail = Regex.Replace(detail, @"(?i)(authorization:\s*(?:basic|bearer)\s+)\S+", "$1[redacted]");
+        detail = Regex.Replace(detail, @"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b", "[redacted]");
+        detail = string.Concat(detail.Where(character => !char.IsControl(character) || character == ' '));
+        if (detail.Length > 2048) detail = detail[..2048] + "...";
+        WriteTelemetry("-- failure: " + detail + "\n");
+    }
 
     private void WriteTelemetry(string line)
     {

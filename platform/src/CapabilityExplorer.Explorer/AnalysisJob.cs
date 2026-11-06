@@ -2,7 +2,7 @@ using CapabilityExplorer.Capabilities.Analysis;
 
 namespace CapabilityExplorer.Explorer;
 
-public sealed record RetryAnalysisRequest(string RunId, string AttemptId, bool AcknowledgeUnverifiedExecution);
+public sealed record RetryAnalysisRequest(string RunId, string AttemptId, bool AcknowledgeUnverifiedExecution, string? GitHubAccount = null);
 
 /// <summary>Public compatibility projection of the host-local run journal. No engine access belongs here.</summary>
 public sealed record AnalysisJob(string State, DateTimeOffset? Since, string? Log,

@@ -23,7 +23,7 @@ internal static class AnalysisPreparation
         if (settings.ExtractionJobs is < 1 or > 4 || settings.CapabilityWorkers is < 1 or > 4 ||
             settings.ExtractionJobs * settings.CapabilityWorkers > 16)
             throw new ArgumentOutOfRangeException(nameof(settings), "worker and extraction limits exceed the bounded analysis resource ceiling");
-        if (settings.GitHubAuth is not ("auto" or "git" or "none")) throw new ArgumentException("github-auth must be auto, git or none");
+        if (!GitHubAuth.IsValidMode(settings.GitHubAuth)) throw new ArgumentException("github-auth must be auto, git, none or account:<login>");
         var names = settings.NugetPassEnv.Split(',', StringSplitOptions.RemoveEmptyEntries);
         if (names.Length > 50 || names.Any(n => !Regex.IsMatch(n, "^[A-Z_][A-Z0-9_]{0,99}\\z") ||
             n is "HOME" or "PATH" or "TMPDIR" or "CI" or "NUGET_PACKAGES" or "NUGET_HTTP_CACHE_PATH" or "NUGET_XMLDOC_MODE" ||
@@ -93,7 +93,11 @@ internal static class AnalysisPreparation
                 if (sync.ExecutionUncertain) { process.MarkUncertainAcquisition(); throw new InvalidOperationException("source acquisition requires reconciliation"); }
                 process.CheckCancellation();
                 if (snapshot.Repositories.Count != definition.Repositories.Count || snapshot.Repositories.Any(repo => repo.CommitSha is null || repo.Error is not null))
+                {
+                    foreach (var repository in snapshot.Repositories.Where(repository => repository.Error is not null).Take(100))
+                        process.LogFailure($"Source '{repository.Id}' check failed: {repository.Error}");
                     throw new InvalidOperationException("source acquisition failed");
+                }
                 timing.Complete();
             }
             foreach (var repository in snapshot.Repositories)

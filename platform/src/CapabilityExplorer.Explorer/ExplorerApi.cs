@@ -137,6 +137,24 @@ public static class ExplorerApi
         }));
 
         // Every view can be scoped to a capability (cap=<id>): only its repositories, starting from its locked revisions.
+        api.MapGet("/github-accounts", async (CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                var accounts = await HostGitHubAccounts.ListAsync(cancellationToken);
+                return Results.Ok(new { available = true, accounts });
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                return Results.Ok(new { available = false, accounts = Array.Empty<HostGitHubAccount>() });
+            }
+            catch (Exception error) when (error is IOException or InvalidOperationException or System.Text.Json.JsonException)
+            {
+                return Results.Json(new { error = "Unable to read GitHub account names from the host." },
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        });
+
         api.MapGet("/view", (ExplorerIndex index, CapabilityService caps, string? view, string? cap) => index.View(view, caps.Scope(cap)).Selection);
 
         api.MapGet("/search", (ExplorerState state, ExplorerQueryCursor cursors, string? q, string? kind, string? repo, string? view, string? cap, int? limit, string? cursor, Guid? snapshot) =>
@@ -495,7 +513,7 @@ public static class ExplorerApi
         });
 
         // Admission is one journal operation. The host worker consumes frozen accepted inputs.
-        api.MapPost("/capabilities/{id}/analyze", (CapabilityService caps, ExplorerOptions options, string id) =>
+        api.MapPost("/capabilities/{id}/analyze", (CapabilityService caps, ExplorerOptions options, string id, string? githubAccount) =>
             AnalysisJob.Respond(() =>
             {
                 var definition = caps.Store.Find(id);
@@ -505,6 +523,8 @@ public static class ExplorerApi
                 var settings = (profile?.Settings ?? new CapabilityExplorer.Capabilities.Analysis.AnalysisSettings()) with
                 {
                     IncludeTests = profile?.IncludeTestsOverride ?? definition.IncludeTests,
+                    GitHubAuth = githubAccount is null ? profile?.Settings.GitHubAuth ?? "auto"
+                        : CapabilityExplorer.Capabilities.GitHubAuth.AccountMode(githubAccount),
                 };
                 var result = store.Admit(id, options.CapabilitiesFile, options.BindingsFile, settings);
                 var job = AnalysisJob.Project(store, result.Run);
@@ -526,6 +546,8 @@ public static class ExplorerApi
                 var settings = (profile?.Settings ?? new CapabilityExplorer.Capabilities.Analysis.AnalysisSettings()) with
                 {
                     IncludeTests = profile?.IncludeTestsOverride ?? definition.IncludeTests,
+                    GitHubAuth = request.GitHubAccount is null ? profile?.Settings.GitHubAuth ?? "auto"
+                        : CapabilityExplorer.Capabilities.GitHubAuth.AccountMode(request.GitHubAccount),
                 };
                 try { store.RetireCancelledExecution(owner,id,new(request.RunId,request.AttemptId)); }
                 catch (InvalidOperationException)
