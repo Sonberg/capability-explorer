@@ -233,6 +233,22 @@ public sealed class SourceSyncTests
 
 public sealed class GitHubAuthTests
 {
+    [Theory]
+    [InlineData("account:per-sonberg")]
+    [InlineData("account:fixture_user")]
+    [InlineData("account:a")]
+    public void Named_host_accounts_are_valid_authentication_modes(string mode) =>
+        Assert.True(GitHubAuth.IsValidMode(mode));
+
+    [Theory]
+    [InlineData("account:")]
+    [InlineData("account:-name")]
+    [InlineData("account:name-")]
+    [InlineData("account:two--hyphens")]
+    [InlineData("account:../other")]
+    public void Invalid_named_host_accounts_are_rejected(string mode) =>
+        Assert.False(GitHubAuth.IsValidMode(mode));
+
     [Fact]
     public void Token_is_passed_as_a_github_scoped_header_through_the_environment()
     {

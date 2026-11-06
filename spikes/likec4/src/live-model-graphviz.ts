@@ -1,4 +1,4 @@
-import {Graphviz} from '@hpcc-js/wasm-graphviz';
+import type {Graphviz} from '@hpcc-js/wasm-graphviz';
 import {LikeC4Styles} from '@likec4/core/styles';
 import {flattenMarkdownOrString} from '@likec4/core';
 import {hierarchyDistance} from '@likec4/core/utils';
@@ -204,6 +204,7 @@ export function layoutGraphvizView(view:ComputedElementView,runtime:Pick<Graphvi
   return {...view,_stage:'layouted',routing:'ortho',nodes,edges,bounds:box(json.bb)};
 }
 export async function loadGraphvizLayout():Promise<LiveViewLayout> {
+  const {Graphviz}=await import('@hpcc-js/wasm-graphviz');
   const runtime=await Graphviz.load();
   return view=>layoutGraphvizView(view,runtime);
 }

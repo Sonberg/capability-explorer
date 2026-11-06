@@ -298,6 +298,31 @@ public sealed partial class AnalysisExecutionTests(PostgresFixture database)
     }
 
     [Fact]
+    public async Task Given_a_preparation_failure_when_the_worker_finishes_then_the_run_log_shows_the_reason()
+    {
+        using var f = new ExecutionFixture();
+        var execute = typeof(AnalysisWorkerCommand).GetMethod("Execute", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var task = (Task<int>)execute.Invoke(null,
+            [f.Root, f.Store, f.Owner, f.Run, new FakeRuntime(), new Dictionary<string, string>(), CancellationToken.None])!;
+
+        Assert.Equal(1, await task);
+        Assert.Contains("failure:", f.Store.ReadLog(f.Run.RunId) ?? "", StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Given_a_failure_message_with_credentials_when_logged_then_secret_material_is_redacted()
+    {
+        using var f = new ExecutionFixture();
+        using var process = new AnalysisProcess(f.Root, f.Store, f.Run, CancellationToken.None, new FakeRuntime());
+        const string secret = "ghp_abcdefghijklmnopqrstuvwxyz123456";
+        process.LogFailure("fetch failed: https://user:" + secret + "@github.com/private");
+        var log = f.Store.ReadLog(f.Run.RunId) ?? "";
+
+        Assert.Contains("[redacted]@", log, StringComparison.Ordinal);
+        Assert.DoesNotContain(secret, log, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Cancellation_before_spawn_prevents_process_effects()
     {
         using var f = new ExecutionFixture();

@@ -304,6 +304,16 @@ export interface AnalysisJob {
   blockReason?: string;
 }
 
+export interface GitHubAccount {
+  login: string;
+  active: boolean;
+}
+
+export interface GitHubAccounts {
+  available: boolean;
+  accounts: GitHubAccount[];
+}
+
 export interface RebuildResult {
   imported: number;
   unchanged: number;
