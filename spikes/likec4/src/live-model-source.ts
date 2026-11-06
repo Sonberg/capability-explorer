@@ -20,6 +20,7 @@ export function serializeLiveProjection(model:ParsedLikeC4ModelData):string {
   function element(el:Element,indent:string):void {
     lines.push(`${indent}${el.id.split('.').at(-1)} = ${el.kind} ${quote(el.title)} {`);
     if(el.description)lines.push(`${indent}  description ${quote('txt' in el.description?el.description.txt??'':el.description.md??'')}`);
+    if(el.technology)lines.push(`${indent}  technology ${quote(el.technology)}`);
     if(el.metadata) {
       lines.push(`${indent}  metadata {`);
       for(const [key,value] of Object.entries(el.metadata))if(typeof value==='string')lines.push(`${indent}    ${key} ${quote(value)}`);
