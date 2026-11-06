@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { validateConfig, inventories, parseVersion, trivyScanArgs, ensureImage, copyCacheSnapshot, recordAttempt, inventoryFindings, dockerArgs, outputDirectory, copySealed, historyInventory, historyCheck, cosignVerifyArgs, validateCosignOutput, selectedIndexManifest, selectedChildConfig } from '../scripts/security-collect.mjs';
 import { dependencySnapshot, runtimeInventory } from '../scripts/security-collect-inventory.mjs';
-import { cosignPlatform, imageInspectArgs, inspectSelectedImage, controlledRunner, acquisitionCacheBound, runOwnedContainer,
+import { cosignPlatform, imageInspectArgs, selectedChildReference, inspectSelectedImage, controlledRunner, acquisitionCacheBound, runOwnedContainer,
   standardDependencyDockerArgs } from '../scripts/lib/security-check.mjs';
 import { sha } from '../scripts/security-audit-lib.mjs';
 const image = `scanner:1@sha256:${'a'.repeat(64)}`;
@@ -67,6 +67,13 @@ test('image inspection supports older Docker clients without weakening image ide
   assert.equal(inspectSelectedImage(inspected, 'linux/amd64', child, config).childDigest, child);
   assert.throws(() => inspectSelectedImage(inspected, 'linux/arm64', child, config), /platform mismatch/);
   assert.throws(() => inspectSelectedImage(inspected, 'linux/amd64', child, child), /selected index child/);
+});
+test('selected child lookup omits the index tag while retaining its exact digest', () => {
+  const index = 'aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c';
+  const child = 'sha256:2e6c00d711ab4ae41d8a30c2c1fd3bd3b62704c177bb120f95012e939edfb3df';
+  assert.equal(selectedChildReference(index, child), `aquasec/trivy@${child}`);
+  assert.throws(() => selectedChildReference('aquasec/trivy:latest', child), /approved Trivy index/);
+  assert.throws(() => selectedChildReference(index, 'latest'), /selected digest/);
 });
 test('bounded command runner waits for termination on timeout and output overflow', async () => {
   for (const [source, options, expected] of [

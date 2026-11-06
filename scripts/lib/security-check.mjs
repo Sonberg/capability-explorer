@@ -149,6 +149,11 @@ export function selectedChildConfig(output) {
     'selected Trivy child manifest has no valid image configuration digest');
   return child.config.digest;
 }
+export function selectedChildReference(reference, digest) {
+  need(reference === publisher.reference && /^sha256:[a-f0-9]{64}$/.test(digest),
+    'child reference requires the approved Trivy index and a selected digest');
+  return `aquasec/trivy@${digest}`;
+}
 export function inspectSelectedImage(output, platform, childDigest, configDigest) {
   const parsed = JSON.parse(output), image = Array.isArray(parsed) ? parsed[0] : parsed;
   need(image && `${image.Os}/${image.Architecture}` === platform, 'selected local Trivy image platform mismatch');
@@ -268,7 +273,7 @@ export async function runStandardSecurityCheck(root, injectedRun) {
     const parsed = JSON.parse(inspected.stdout), local = Array.isArray(parsed) ? parsed[0] : parsed;
     let configDigest;
     if (!local?.Descriptor) configDigest = selectedChildConfig((await engine(['manifest', 'inspect',
-      `${reference.slice(0, reference.indexOf('@'))}@${childDigest}`])).stdout);
+      selectedChildReference(reference, childDigest)])).stdout);
     const image = inspectSelectedImage(inspected.stdout, platform, childDigest, configDigest);
     const inventory = () => dependencySnapshot(root, { deadline: startedAt + 1200_000 });
     const source = inventory(), sourceDirectory = path.join(directory, 'source');
