@@ -73,7 +73,9 @@ Freeze these rules before any trial. Do not change them to improve results.
 ### Models disabled
 
 The primary condition runs without Laya or any LLM. Every expected answer below
-is reachable from deterministic artifacts and source. A model-enabled run is a
+is derivable from source bytes and the hand-written golden subset. The
+deterministic extraction products are pending (P0, E1), so completing the tasks
+with models disabled is untested. A model-enabled run is a
 separate condition. Model output never upgrades an evidence status.
 
 ## Frozen input identities
@@ -122,7 +124,7 @@ produced for this draft. See prerequisite P0.
 golden reference artifacts in `fixtures/expected`. They are hand-written
 expected facts and a **reference subset**, not complete extractor output.
 
-| Repository @ tag | Commit | Unit artifact | Git blob | Unit status |
+| Repository @ tag | Commit | Unit artifact | Git blob | Golden-declared unit status |
 |---|---|---|---|---|
 | `api-cs@v3-filter` (provider) | `29571e3528e537313f938a1fedae43aaeb4dbef9` | `api-cs/v3-filter/Sales.Api.jsonl` | `8dbb5ba35147` | full |
 | `web-ts@v1-base` | `4f254bb0209550bfe8fd40459ae4136b1d37ebe4` | `web-ts/v1-base/_fixture_web.jsonl` | `aed646fda651` | full |
@@ -132,7 +134,7 @@ expected facts and a **reference subset**, not complete extractor output.
 
 Wrong-revision comparison: `worker-cs@v1-base`
 `d9a6b7e1740388e3111cfa476ef3d78bff352b3e`, artifact blob `c0dd3730044c`,
-unit status full.
+golden-declared unit status full.
 
 Source rights: the fixtures are public synthetic code in this repository.
 No collection plan with `native-content` permissions exists for this
@@ -179,7 +181,9 @@ The answer must not claim anything about them.
 4. The DMN `authorityRequirement` to knowledge source "Approval policy" is
    authored model content. It does not establish business approval.
 
-Acceptable variants: decision ID or name alone; mention of the decision's
+Acceptable variants: decision ID or name alone; the definitions name
+"Order Decision" (capital D) cited alongside the decision, which is distinct
+from the decision name "Order decision" but not an error; mention of the decision's
 requirements (input `age-data`, required decision `base-decision`, knowledge
 model `threshold-policy`) as dependencies. Abstention is non-success because
 the oracle has a definite answer.
@@ -249,7 +253,7 @@ out of scope.
 Provider: `ArticlesController.GetWeeklySales` handles
 `http|api-cs/Sales.Api|GET /api/articles/{}/weekly-sales` (edge
 `e:f95babcd5563781d`, evidence `ev:da9329dca566c0d0` at
-`src/Sales.Api/Controllers/ArticlesController.cs` line 13, unit status full).
+`src/Sales.Api/Controllers/ArticlesController.cs` line 13, golden-declared unit status full).
 
 **At least three structural candidate consumers.** Each matches method and
 normalized route only. Each edge has `resolution: unresolved`,
@@ -278,24 +282,33 @@ Evidence kinds:
 **Completeness: not established.**
 
 - `worker-cs@v2-broken` is partial: `src/Sales.Worker/Calculations/CurrencyNormalizer.cs`
-  was not analyzed (diagnostics `COMPILER_CS0234`, `MISSING_PROJECT_REFERENCE`). Absence of a
-  consumer there is unknown.
-- `pricing-node` `SalesApi.request` (edge `e:8079a13aa62054f6`) has
-  `unresolvedReason: dynamic-string`. Its target is unknown. Do not count it
-  as a separate consumer and do not dismiss it.
+  was not analyzed (`COMPILER_CS0234` on that file; `MISSING_PROJECT_REFERENCE`
+  on `src/Sales.Worker/Sales.Worker.csproj`, because `Sales.Shared` is missing).
+  Absence of a consumer there is unknown.
 - The goldens are a reference subset (prerequisite E1).
 - Repositories outside the five are unknown.
 
+Not a completeness reason: `pricing-node` `SalesApi.request` (edge
+`e:8079a13aa62054f6`, `unresolvedReason: dynamic-string`) is the private
+generic transport of the generated client. Its only known caller is
+`SalesApi.getWeeklySales` (golden `CALLS` edge `e:cdf4c199cd3121db`;
+`src/generated/salesApi.ts:25`). It sits inside the already listed
+pricing-node consumer and cannot reveal another consumer component.
+
 Acceptable variants: consumers named by repository or symbol; pricing-node
 described as a generated client; any wording that keeps "at least",
-the four evidence kinds and incompleteness. Abstention from the whole answer
+the four evidence kinds and incompleteness; optionally citing the
+dynamic-string transport edge as pricing-node's unresolved generic transport,
+with its target unknown. Abstention from the whole answer
 is non-success, because the oracle lists evidenced consumers.
 
 ### Required citations
 
 Each listed consumer needs its repository, frozen commit, path and line, and
 its edge resolution. The provider needs its edge and line. Completeness needs
-the `worker-cs@v2-broken` partial status and the dynamic-string edge.
+the `worker-cs@v2-broken` partial status, the reference-subset limit and the
+unknown status of other repositories. Citing the dynamic-string transport edge
+is optional.
 
 ### Critical traps and fixture availability
 
@@ -303,7 +316,7 @@ the `worker-cs@v2-broken` partial status and the dynamic-string edge.
 |---|---|---|---|
 | E1-T1 | Wrong revision | uses `worker-cs@v1-base` (full, no consumer) to conclude worker-cs is checked and does not consume; or cites any commit other than the frozen ones | **Available** |
 | E1-T2 | Partial as complete or as absence | says "exactly three" or "worker-cs has none" | **Available** |
-| E1-T3 | Unresolved as absent | drops the dynamic-string request without stating it is unknown | **Available** |
+| E1-T3 | Unresolved transport misread | counts the dynamic-string `SalesApi.request` as an additional consumer, claims its target is resolved or verified, or uses it to assert absence or completeness. Omitting it is not an error. | **Available** |
 | E1-T4 | Name match as semantic correspondence | treats the `operationId` or route name as semantic or code-verified correspondence | **Available** |
 | E1-T5 | Configured value as binding | treats `http://sales-api/` as proof of connection to `api-cs` | **Available** |
 | E1-T6 | Observation overclaim | claims observed traffic or absence of traffic | **Available** (no observation evidence) |
