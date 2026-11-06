@@ -109,6 +109,90 @@ default to a read-only plan and require separate authorization to apply it.
 This proposal does not claim that such automation or a project-wide cache
 reachability checker is implemented.
 
+## Recurring dependency hygiene
+
+This section answers [issue #109](https://github.com/Sonberg/capability-explorer/issues/109).
+It extends the upgrade lifecycle above to unused package declarations. It is
+proposed together with this record. It authorizes no package removal, prune,
+cache cleanup, new dependency, detector, daemon or automation. Resource
+objectives, measurement and the optimization stop rule come from
+[MADR-0038](0038-balanced-resource-use.md) and are not repeated here.
+
+### Ecosystems and ownership
+
+At each review, inventory the ecosystems in the checkout. Currently these are
+npm with `package-lock.json` (for example the TypeScript extractor and the
+Vite Explorer client), NuGet with central versions in
+`platform/Directory.Packages.props` and per-project `packages.lock.json`, the
+.NET SDK pin in `platform/global.json`, and container images. Classify each
+entry as direct, development, optional, peer, transitive, centrally managed,
+platform-specific or tool. The integration owner of each manifest and lockfile,
+as [AGENTS.md](../../AGENTS.md) requires, owns its review.
+
+### Cadence and triggers
+
+Run a lightweight review once per calendar quarter, as a proposed default for
+owner confirmation. Also review when a feature or module is removed, a
+dependency is added or upgraded, a framework or toolchain is upgraded, or a
+contributor reports install-time or disk pressure. A review with no candidates
+records "no change" briefly. This cadence is separate from the backlog-ranking
+review after every five merged PRs; it does not use or change that cadence.
+Contributors start a review manually as an ordinary issue or PR. No scheduled
+job or always-running service performs it.
+
+### Evidence for a removal candidate
+
+A detector report or an import count is a candidate list, not proof. Before
+proposing removal, examine and record each relevant path:
+
+* static and dynamic imports, `require`, reflection and assembly loading;
+* plugins and framework discovery, such as Vite configuration plugins, MSBuild
+  analyzers, source generators and test adapters;
+* generated code and the inputs of its generator;
+* package scripts, Make targets, CI workflows, sandbox commands and tools
+  invoked through `npx` or `dotnet`;
+* type-only packages and peer requirements of retained packages;
+* optional and platform-specific packages for each supported OS and
+  architecture;
+* container, deployment, runtime, test and fixture paths.
+
+If a path cannot be examined, the package stays. Record a justified exception
+with its reason, owner and review trigger.
+
+### Declarations and caches are separate
+
+Removing a declaration and evicting a cache entry are different operations.
+Removing a declaration never makes its cached artifact disposable; another
+checkout, project, platform, rollback or offline build can still need it.
+Evicting a cache never changes a declaration. Cache entries follow the
+lifecycle above: exact owned scope, recorded selection and explicit approval
+for shared, destructive or uncertain cleanup.
+
+### Removal changes, validation and rollback
+
+Keep each removal change small and reversible: one ecosystem or cohesive group,
+without unrelated upgrades. Use the package manager so that manifest and
+lockfile change consistently. For npm, run `npm uninstall <package>` in the
+owning package directory, then `npm ci`. For NuGet, remove the
+`PackageReference`; remove the central `PackageVersion` only when no project
+references it; regenerate the affected lockfiles with an ordinary
+`dotnet restore`, then verify with `dotnet restore --locked-mode`. Do not hand-edit transitive
+lockfile entries or remove required tooling.
+
+Validate the affected build and tests, and run the relevant real runtime paths,
+such as the CLI command, Vite build or extractor that used the package. List
+optional and platform-specific paths as tested or untested; untested is not
+success. Manifest and lockfile changes then need the ordinary full local and
+hosted gate. Measure install, build or disk effects only when material,
+following MADR-0038.
+
+If validation fails, do not remove the package. If a missed path breaks after
+merge, revert the manifest and lockfile change together first, then record an
+exception or a corrected candidate. Each review reports candidates, examined
+evidence, exceptions, approved removals, validation commands and results,
+untested paths and the cache disposition. A reviewer of the affected area
+approves each removal; cache cleanup keeps the separate approval above.
+
 ## Consequences
 
 Upgrades include storage hygiene rather than leaving unbounded historical

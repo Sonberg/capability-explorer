@@ -15,12 +15,13 @@ No existing status was changed to produce this index.
 | Red | D: draft | Not yet ready for decision review; not a severity rating. |
 | Gray | H: historical | Rejected, deprecated or superseded; retain the decision and replacement links. |
 
-There are **37 local records: 1 scoped accepted, 36 proposed, 0 draft,
+There are **38 local records: 1 scoped accepted, 37 proposed, 0 draft,
 0 historical**. MADR-0016 is accepted for the **operator workflow only**.
 Both `0005` paths are distinct records, named `0005-G` and `0005-PR` below solely
 for navigation. No `0015` exists; this is a numbering gap, not a missing file
 invented by the index. MADR-0035 covers measurable SLOs, MADR-0036 covers
-configurable evidence retention, and MADR-0037 covers HTTP recommendations.
+configurable evidence retention, MADR-0037 covers HTTP recommendations, and
+MADR-0038 covers balanced RAM and disk use.
 MADR-0025 landed in owner-merged #55 and remains proposed.
 
 | ID | Title / record | Declared status and scope |
@@ -54,7 +55,7 @@ MADR-0025 landed in owner-merged #55 and remains proposed.
 | 0027 | [Proposed source-bound assessment of business objects and events](0027-domain-object-event-assessment.md) | P: research contract only; no production grading |
 | 0028 | [Portable, source-bound decision navigation](0028-portable-decision-ledger.md) | P: bounded portable contract; no ontology reasoning or adoption |
 | 0029 | [Frugal CI with executable local and hosted parity](0029-frugal-ci-and-executable-parity.md) | P: proposed; full gates retained, measured optimization required |
-| 0030 | [Govern dependency caches across framework and toolchain upgrades](0030-dependency-cache-lifecycle.md) | P: proposed; scoped cleanup and retention policy, not implemented automation |
+| 0030 | [Govern dependency caches across framework and toolchain upgrades](0030-dependency-cache-lifecycle.md) | P: proposed; scoped cleanup, retention and recurring dependency-hygiene policy, not implemented automation |
 | 0031 | [Convert maintained JavaScript to TypeScript 7 when modified](0031-typescript7-on-touch.md) | P: repository-wide adoption proposed; operator-directed workstream rule, no compiler upgrade yet |
 | 0032 | [Drive implementation with behavior scenarios and red-green-refactor tests](0032-tdd-bdd-delivery.md) | P: repository-wide adoption proposed; operator-directed TDD/BDD workflow, no new framework mandated |
 | 0033 | [Keep authored models, code candidates and collector authority separate](0033-bounded-model-and-collector-evidence.md) | P: bounded evidence and offline collection; no central deployment or business approval |
@@ -62,6 +63,7 @@ MADR-0025 landed in owner-merged #55 and remains proposed.
 | 0035 | [Require measurable objectives for performance and operational-quality issues](0035-measurable-service-level-objectives.md) | P: operator-directed SLO rule; quantitative targets and evidence required, not measured compliance |
 | 0036 | [Configure evidence retention and age-based historical resolution](0036-configurable-evidence-retention.md) | P: configurable minimum/default and coarser history; durations/central custody need owner approval, no cleanup or UI implemented |
 | 0037 | [Recommend HTTP capabilities from observed route coverage without adopting bindings](0037-http-capability-recommendations.md) | P: bounded HTTP recommendations and explicit revision-bound review; route coverage is not confidence or deployment proof |
+| 0038 | [Balance RAM and disk use with performance and developer productivity](0038-balanced-resource-use.md) | P: proposed; owner review pending, workload-specific budgets with a stop rule, no limits, monitoring or cleanup implemented |
 
 ## Relationship map
 
@@ -95,6 +97,7 @@ flowchart LR
     a32["0032 TDD and BDD [P]"]:::proposed
     a35["0035 Measurable SLOs [P]"]:::proposed
     a36["0036 Evidence retention [P]"]:::proposed
+    a38["0038 Balanced resource use [P]"]:::proposed
   end
   subgraph Evidence_and_language
     a02["0002 Ubiquitous language [P]"]:::proposed
@@ -170,6 +173,10 @@ flowchart LR
   a36 -.-> a33
   a36 -.-> a30
   a36 -.-> a35
+  a38 -.-> a35
+  a38 -.-> a29
+  a38 -.-> a30
+  a38 -.-> a36
   a37 -->|preserves uncertainty| a10
   a37 -->|extends revision review| a12
   classDef accepted fill:#dcfce7,stroke:#166534,color:#14532d
@@ -218,6 +225,7 @@ referencing/extending/overriding record to its target.
 | 0035 | 0024, 0029, 0032 | Related metadata in the [record](0035-measurable-service-level-objectives.md); issue applicability, measured optimization and behavioral guardrails, not measured compliance. |
 | 0036 | 0033, 0030, 0035 | Related metadata in the [record](0036-configurable-evidence-retention.md); collector custody, cache ownership and measurable lifecycle objectives, not deletion authority. |
 | 0037 | 0010, 0012 | [Decision outcome](0037-http-capability-recommendations.md#decision-outcome) explicitly preserves mapping uncertainty and extends revision-bound review; no automatic adoption. |
+| 0038 | 0035, 0029, 0030, 0036 | Related metadata in the [record](0038-balanced-resource-use.md); resource objectives join SLOs and reuse CI, cache and retention rules, no adoption or limits inferred. |
 
 ## Updating the ledger
 

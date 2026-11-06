@@ -58,6 +58,16 @@ own tools; this file does not configure other sessions automatically.
 - Preserve others' changes and active worktrees. Claims and council recommendations
   grant no permission to commit, push, merge, delete worktrees or publish releases.
 
+## Resource use and dependency hygiene
+
+Before RAM-, disk- or process-heavy work, check headroom and budget the work as
+proposed in [MADR-0038](docs/adr/0038-balanced-resource-use.md). Add its short
+resource-impact review to relevant plans and PRs. When a change adds, removes or
+upgrades dependencies, follow the proposed recurring hygiene and cache rules in
+[MADR-0030](docs/adr/0030-dependency-cache-lifecycle.md#recurring-dependency-hygiene).
+Both records are proposed. They grant no permission to remove packages, purge
+caches or start daemons.
+
 ## Publication and policy changes
 
 Use authorized feature branches and PRs targeting **`main` only**. Follow the
