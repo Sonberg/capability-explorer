@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
-  chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync,
+  chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync,
   rmSync, writeFileSync
 } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -151,6 +151,19 @@ function validateTypescript(bundle: string): void {
 }
 function descriptor(bundle: string): Descriptor {
   return JSON.parse(json(`${bundle}/collection.json`));
+}
+function copyFixtureTree(source: string, destination: string): void {
+  assert.ok(lstatSync(source).isDirectory(), "fixture copy source must be a directory");
+  mkdirSync(destination);
+  for (const name of readdirSync(source)) {
+    const from = join(source, name), to = join(destination, name), entry = lstatSync(from);
+    if (entry.isDirectory()) copyFixtureTree(from, to);
+    else {
+      assert.ok(entry.isFile(), `fixture copy rejects nonregular entry: ${from}`);
+      // Native recursive copy fails on the local Colima virtiofs mount.
+      writeFileSync(to, readFileSync(from));
+    }
+  }
 }
 function verifyPrivacy(bundle: string): void {
   const manifest = descriptor(bundle);
@@ -327,7 +340,7 @@ public static class Pricing {
       const after = descriptor("changed-collection").content.inputs.find(item => item.repositoryId === "policy" && item.profile === profile)!;
       assert.notEqual(before.sha256, after.sha256, `committed mutation must replace both policy ${profile} products`);
     }
-    cpSync(join(directory, "collection"), join(directory, "tampered"), { recursive: true });
+    copyFixtureTree(join(directory, "collection"), join(directory, "tampered"));
     const item = descriptor("tampered").content.inputs[0]!;
     const path = join(directory, "tampered", item.artifactPath);
     writeFileSync(path, `${readFileSync(path, "utf8")}\n`);
