@@ -23,6 +23,7 @@ const string Usage = """
       ce analysis-all [--capabilities <file>]
     ce match-integrations
       ce collection-freshness --previous <input-vector.json> --current <input-vector.json> [--as-of <ISO-8601-offset-time> --policy <observation-policy.json>]
+      ce adapter-plan --root <source-dir> --manifest <manifest.json> --repository <id> --commit <sha> --tree <sha>
       ce collect --plan <plan.json> --out <directory>
       ce validate-collection <directory>
       ce package-feeds --import <legacy-settings> --catalog <public-catalog> [--host-file <outside-workspace>]
@@ -46,7 +47,7 @@ if (args.Length == 0)
 }
 
 var command = args[0];
-var strictCollectionOptions = command is "collect" or "validate-collection" or "collection-freshness" or "embed";
+var strictCollectionOptions = command is "collect" or "validate-collection" or "collection-freshness" or "adapter-plan" or "embed";
 var options = new Dictionary<string, string>(StringComparer.Ordinal);
 var files = new List<string>();
 for (var i = 1; i < args.Length; i++)
@@ -85,6 +86,8 @@ switch (command)
     case "collection-freshness":
         if (files.Count != 0) { Console.Error.WriteLine(Usage); return 2; }
         return await CollectionFreshnessCommand.RunAsync(options);
+    case "adapter-plan":
+        return await NativeAdapterPlanningCommand.RunAsync(options, files);
     case "package-feeds":
         return HostPackageFeeds.Command(Path.GetFullPath(Environment.CurrentDirectory), options);
     case "analysis-worker":
