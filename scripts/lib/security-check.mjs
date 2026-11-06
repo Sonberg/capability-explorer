@@ -30,6 +30,10 @@ const cosignHashes = Object.freeze({
 export function cosignPlatform(os = process.platform, architecture = process.arch) {
   return `${os}/${architecture === 'x64' ? 'amd64' : architecture}`;
 }
+export function imageInspectArgs(backend, platform, reference, help) {
+  return ['image', 'inspect', ...(backend === 'docker' && /(?:^|\s)--platform(?:[=\s]|$)/.test(help)
+    ? ['--platform', platform] : []), '--format', '{{json .}}', reference];
+}
 export function validateVerifiedTrivyReference(reference) {
   need(reference === publisher.reference, 'Trivy image does not match the approved exact digest');
   return { ...publisher, publisherSignatureVerified: false, benignContentProven: false };
@@ -255,8 +259,8 @@ export async function runStandardSecurityCheck(root, injectedRun) {
     const platform = reported.replace(/x86_64$/, 'amd64').replace(/aarch64$/, 'arm64');
     need(/^linux\/(?:amd64|arm64)$/.test(platform), `unsupported container engine platform: ${reported}`);
     const childDigest = selectedIndexManifest((await engine(['manifest', 'inspect', reference])).stdout, platform);
-    const inspectArgs = ['image', 'inspect', ...(runtime.backend === 'docker' ? ['--platform', platform] : []),
-      '--format', '{{json .}}', reference];
+    const inspectHelp = runtime.backend === 'docker' ? (await engine(['image', 'inspect', '--help'])).stdout : '';
+    const inspectArgs = imageInspectArgs(runtime.backend, platform, reference, inspectHelp);
     let inspected = await engine(inspectArgs, [0, 1]);
     if (inspected.status !== 0) {
       await engine(['pull', '--platform', platform, reference]); inspected = await engine(inspectArgs);

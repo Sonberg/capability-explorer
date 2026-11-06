@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { validateConfig, inventories, parseVersion, trivyScanArgs, ensureImage, copyCacheSnapshot, recordAttempt, inventoryFindings, dockerArgs, outputDirectory, copySealed, historyInventory, historyCheck, cosignVerifyArgs, validateCosignOutput, selectedIndexManifest, selectedChildConfig } from '../scripts/security-collect.mjs';
 import { dependencySnapshot, runtimeInventory } from '../scripts/security-collect-inventory.mjs';
-import { cosignPlatform, inspectSelectedImage, controlledRunner, acquisitionCacheBound, runOwnedContainer,
+import { cosignPlatform, imageInspectArgs, inspectSelectedImage, controlledRunner, acquisitionCacheBound, runOwnedContainer,
   standardDependencyDockerArgs } from '../scripts/lib/security-check.mjs';
 import { sha } from '../scripts/security-audit-lib.mjs';
 const image = `scanner:1@sha256:${'a'.repeat(64)}`;
@@ -56,6 +56,17 @@ test('containerd platform manifest identity binds the selected child without ass
   assert.throws(() => inspectSelectedImage(JSON.stringify(image), 'linux/amd64', child), /platform mismatch/);
   assert.throws(() => inspectSelectedImage(JSON.stringify({ ...image, Descriptor: { ...image.Descriptor, digest: index } }),
     'linux/arm64', child), /selected index child/);
+});
+test('image inspection supports older Docker clients without weakening image identity checks', () => {
+  const child = `sha256:${'c'.repeat(64)}`, config = `sha256:${'b'.repeat(64)}`;
+  const legacy = imageInspectArgs('docker', 'linux/amd64', image, 'Options:\n  --format string');
+  assert.ok(!legacy.includes('--platform'));
+  assert.ok(imageInspectArgs('docker', 'linux/amd64', image, '  --platform string').includes('--platform'));
+  assert.ok(!imageInspectArgs('podman', 'linux/amd64', image, '  --platform string').includes('--platform'));
+  const inspected = JSON.stringify({ Id: config, Os: 'linux', Architecture: 'amd64' });
+  assert.equal(inspectSelectedImage(inspected, 'linux/amd64', child, config).childDigest, child);
+  assert.throws(() => inspectSelectedImage(inspected, 'linux/arm64', child, config), /platform mismatch/);
+  assert.throws(() => inspectSelectedImage(inspected, 'linux/amd64', child, child), /selected index child/);
 });
 test('bounded command runner waits for termination on timeout and output overflow', async () => {
   for (const [source, options, expected] of [
