@@ -7,14 +7,16 @@ let modelFrameOutDir = new URL("../wwwroot", clientUrl).pathname;
 const codeSplitting = {
   minSize: 20_000,
   groups: [
-    { name: "likec4-react", test: /node_modules[\\/]likec4[\\/]react[\\/]index\.mjs$/, maxSize: 400_000, priority: 40 },
-    { name: "graphviz-wasm", test: /node_modules[\\/]@hpcc-js[\\/]wasm-graphviz[\\/]/, maxSize: 400_000, priority: 30 },
-    { name: "architecture-vendor", test: /node_modules[\\/](?:@likec4|likec4|@xyflow|@dagrejs)[\\/]/, maxSize: 400_000, priority: 20 },
-    { name: "vendor", test: /node_modules[\\/]/, maxSize: 400_000, priority: 1 },
+    { name: "react", test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/, priority: 50 },
+    { name: "likec4-react", test: /node_modules[\\/]likec4[\\/]react[\\/]index\.mjs$/, priority: 40 },
+    { name: "graphviz-wasm", test: /node_modules[\\/]@hpcc-js[\\/]wasm-graphviz[\\/]/, priority: 30 },
+    { name: "architecture-vendor", test: /node_modules[\\/](?:@likec4|likec4|@xyflow|@dagrejs)[\\/]/, priority: 20 },
+    { name: "vendor", test: /node_modules[\\/]/, priority: 1 },
   ],
 };
-// maxSize splits can create cyclic vendor chunks; keep source evaluation order across them.
-const splitOutput = { codeSplitting, strictExecutionOrder: true };
+// No maxSize: size splits created cyclic vendor chunks that ran CommonJS wrappers before
+// initialization, and strictExecutionOrder would reduce the app entry to a facade.
+const splitOutput = { codeSplitting };
 
 // Built into the server's wwwroot; `npm run dev` proxies the API to a running explorer.
 export default defineConfig({
