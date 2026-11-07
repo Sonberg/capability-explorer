@@ -523,3 +523,30 @@ test("Given a completed source check with a failed repository lock, when Explore
     assert.equal(await page.getByText(/^Run\s+\S+\s+·/).count(), 0, "a repository check failure must not invent or render an analysis run/stage identity");
   });
 });
+
+// Backend provenance check (Capabilities.cs `Status`): `repositories[].error` is only ever populated from
+// `check.Snapshot` when the capability's `check` is `{ State: "done", Stale: false, CancellationRequested: false }`
+// — the same object serialized as `check` on this response. The real API therefore cannot send a stale/in-progress/
+// cancelled `check` alongside a populated `error`. This test defends the client independently of that backend
+// guarantee: if the two ever desynchronize, Explorer must never attribute a failure reason to a request ID that is
+// stale, still running or cancelled.
+test("Given a stale or in-progress check paired with a repository error, when Explorer renders it, then no check identity is claimed for that reason", async () => {
+  await withIngestionPage(async (page, origin) => {
+    const staleCapability = {
+      ...capability,
+      repositories: [{ ...capability.repositories[0], error: "source acquisition failed" }],
+      check: {
+        requestId: "check-superseded", capabilityId: "orders", configurationHash: "cfg", state: "queued",
+        acceptedAt: "2026-11-07T00:00:00Z", cancellationRequested: false, stale: false,
+        statusUrl: "/api/source-checks/check-superseded", duplicate: false,
+      },
+      checkStale: true,
+    };
+    await page.route("**/api/capabilities?*", (route) => route.fulfill({ json: [staleCapability] }));
+    await page.goto(`${origin}#/capabilities`);
+    await page.getByText("source acquisition failed", { exact: false }).waitFor();
+    await page.getByText("Verify this repository's location, ref and access, then view the latest check's host worker logs before retrying.", { exact: false }).waitFor();
+    assert.equal(await page.getByText("could not lock this repository", { exact: false }).count(), 0,
+      "a reason must never be attributed to a specific check's request ID while that check is stale, in progress or cancelled");
+  });
+});
