@@ -435,3 +435,42 @@ fixtures. They are automated source-identity evidence only.
 
 Not run: model or native extraction, collection sealing, the Explorer, any
 browser or assistive-technology check, and any human session.
+
+### Verification performed for prerequisites P0 and E1 (re-run at `cd525d0`)
+
+Re-checked at current HEAD `cd525d0` (base `43b90cc` plus merged PR
+#107/#110/#111/#112): `git diff --stat 43b90cc..HEAD -- fixtures/
+scripts/prepare-model-fixtures.mjs scripts/build-fixtures.sh` is empty, so
+the frozen identities above are unaffected. All runs below used the actual
+`ce`/`ce-cs`/TS-compiler extractors (no mocks), in private
+`.sandbox-cache/`/`fixtures/.work/`/`fixtures/.repos/` locations; no tracked
+fixture, golden or oracle text was changed. Full commands, per-artifact
+SHA-256 digests and a findings table are recorded privately (not in Git).
+
+| Check | Result |
+|---|---|
+| P0: `node scripts/prepare-model-fixtures.mjs --collection-key` | `85a0923e4aaaab2f7c34`, matches the frozen value above |
+| P0: `ce collect` on the sealed plan | `isValid:true`, `contentSha256:7423e588…98262`; `ce.models.v1`/`ce.model-source.v1`/`collection.json` digests newly recorded (not previously produced) |
+| E1: `make fixtures` | all 10 locked tag SHAs reproduced byte-for-byte |
+| E1: `make fixtures-compile` | all 10 revisions compile/fail exactly as intended, including the expected `worker-cs@v2-broken` `CS0234` |
+| E1: `make extract-ts` + `evaluate-ts` | 3/3 golden artifacts PASS, thresholds passed; oracle edges `e:0c7e09536422f6c5`, `e:13f76b548e800f60`, `e:8079a13aa62054f6` reproduced with the same literal ids |
+| E1: `make extract-cs` + `evaluate-cs` | 8/10 golden artifacts PASS after populating the NuGet package cache via `ce-cs fetch-packages` (documented, data-only network step; degraded 3/10 PASS beforehand with the cache empty) |
+| E1 finding (unresolved, not fixed here) | `worker-cs/v1-base`: golden declares `complete.status:full`; real extraction reports `partial` (4 `UNRESOLVED_TRANSITIVE_PACKAGE` diagnostics); re-running `fetch-packages` found no further packages to add |
+| E1 finding (unresolved, not fixed here) | The api-cs provider edge (`e:f95babcd5563781d`/`ev:da9329dca566c0d0`) is semantically reproduced (same `from`/`relation`/`to`, scored 100% by `evaluate-cs`) but not under the same literal id: the golden evidence span is hand-authored (`extractor:"golden"`) and bracket-inclusive (`13:5-13:42`); the real `roslyn 0.2.0` extractor's span is bracket-exclusive (`13:6-13:41`) |
+| E1 finding (unresolved, not fixed here) | forecast-cs's REQUESTS edge to `api-cs` (oracle id `e:2a67e51c60549753`) is reproduced by the same `from`/`relation`/`to`, but the installed `dotnet.httpclient` rule is now **version 2**, not the **version 1** the golden/oracle props were authored against; version 2 no longer emits `baseUrlConfigKey`/`configuredBaseUrl`/`configSource`/`relativeToBaseAddress`/`responseType` on that edge, so a fresh run would not reproduce the oracle's cited "Configuration cited: `SalesApi:BaseUrl` = `http://sales-api/`" column as an edge property today |
+
+Not run this pass: `e:cdf4c199cd3121db` individual re-check (time-boxed, low
+risk — same family as the two confirmed pricing-node edges); the
+worker-cs@v1-base transitive-package gap was not resolved; no model/native
+collection interop; no human or independent oracle review. Oracle status is
+unchanged: **unreviewed — qualification blocked**.
+
+Acceptance mapping of the table above against raw artifacts was re-checked
+with a private, mutation-calibrated script (`node
+next-phase/tasks/source-evidence-check.mjs`, not tracked in Git): 7/7 real
+checks pass (digest well-formed, extractor outputs are not golden echoes,
+the C# report genuinely shows a <1.0 coverage metric rather than a
+fabricated uniform pass, this table's claims match the raw files); all 3
+deliberately injected mutations (missing digest, wrong commit, golden-as-
+real-output) were correctly detected as failures, confirming the checker
+itself is not a rubber stamp. Full S/P/A/R/C scoring is recorded privately.
