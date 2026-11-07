@@ -269,7 +269,13 @@ export function Capabilities() {
               </span>,
               <Mono className="text-xs">{r.ref}</Mono>,
               r.error ? (
-                <span className="text-xs text-red-700 dark:text-red-300">{r.error}</span>
+                <span className="text-xs text-red-700 dark:text-red-300">
+                  {r.error}
+                  {c.check && <span className="block text-zinc-500">
+                    Check <Mono>{c.check.requestId}</Mono> could not lock this repository. Verify its location, ref and
+                    access, then view the host worker logs before retrying.
+                  </span>}
+                </span>
               ) : r.lockedSha ? (
                 <span className="text-xs">
                   <Mono>{shortSha(r.lockedSha)}</Mono> <span className="text-zinc-500">{r.lockedSubject}</span>
