@@ -153,7 +153,7 @@ public sealed class SourceSecurityTests
 
     private sealed class Repository : IDisposable
     {
-        public string Root { get; } = Directory.CreateTempSubdirectory("source-security-").FullName;
+        public string Root { get; } = Directory.CreateTempSubdirectory("source-security-").FullName.Replace("/var/", "/private/var/", StringComparison.Ordinal);
         public SourceSync Sync => new(Path.Combine(Root, "workspace"));
         public RepositorySource Source => new("repo", Path.Combine(Root, "repo with spaces"), SourceKind.Local);
         public string Sha { get; private set; } = "";

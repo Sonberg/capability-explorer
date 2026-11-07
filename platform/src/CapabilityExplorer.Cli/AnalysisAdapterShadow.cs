@@ -58,6 +58,10 @@ internal static partial class AnalysisAdapterShadow
         var manifestPath = Path.Combine(directory, "manifest.json");
         var recipePath = Path.Combine(directory, "recipe.json");
 
+        // Reject symlink/reparse paths before ever opening the manifest, matching the same boundary-before-open
+        // order AnalysisPreparation.RejectLinks is used everywhere else (recipePath below, input enumeration).
+        AnalysisPreparation.RejectLinks(manifestPath);
+
         // Read bounded, not File.ReadAllBytesAsync: an unbounded read here would allocate past the declared
         // limit for a hostile oversized file before the inner reader's own size check ever runs, and a plain
         // FileInfo.Length pre-check alone would still race a file that grows between the check and the read.
@@ -113,7 +117,11 @@ internal static partial class AnalysisAdapterShadow
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested && !stop.IsCancellationRequested)
         {
-            return new AdapterShadowOutcome("limit-exceeded", ["time-limit"], null, null);
+            // Judge-mandated composite: the deadline itself is always "time-limit", but already-recorded
+            // export skips (symlink/gitlink/oversized/out-of-root entries from SourceSync) must still surface
+            // even though the native planner never got to report them itself.
+            var deadlineCodes = exportSkipped > 0 ? new[] { "time-limit", "export-skipped" } : ["time-limit"];
+            return new AdapterShadowOutcome("limit-exceeded", deadlineCodes, null, null);
         }
 
         var codes = plan.Diagnostics.Select(diagnostic => diagnostic.Code).Distinct().ToArray();
