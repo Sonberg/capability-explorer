@@ -113,7 +113,7 @@ internal sealed class ArchitectureConnections(string capabilitiesFile)
         try { snapshot = Read(); }
         catch (Exception error) when (error is IOException or InvalidDataException or JsonException or UnauthorizedAccessException)
         {
-            return graph with { Notes = [.. graph.Notes, "Manual connections are unavailable; existing mappings were preserved."] };
+            return ArchitectureBudgeting.FinalizeOverlays(graph with { Notes = [.. graph.Notes, "Manual connections are unavailable; existing mappings were preserved."] });
         }
         var nodes = graph.Nodes.ToList();
         var edges = graph.Edges.ToList();
@@ -139,7 +139,7 @@ internal sealed class ArchitectureConnections(string capabilitiesFile)
                     connection.Kind, connection.Kind + " (manual)", 1, "human", [], connection.Id, connection.Note));
             }
         }
-        return graph with { Nodes = nodes, Edges = edges };
+        return ArchitectureBudgeting.FinalizeOverlays(graph with { Nodes = nodes, Edges = edges });
     }
 
     private static bool ValidAnchor(CapabilityStatus capability, string? repository, string? key, ViewIndex view)

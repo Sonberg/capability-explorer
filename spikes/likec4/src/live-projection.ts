@@ -2,7 +2,7 @@ import {Fqn,ProjectId,RelationId,ViewId} from '@likec4/core/types';
 import type {Element,ElementStyle,ParsedElementView,ParsedLikeC4ModelData,Relationship,CustomColor} from '@likec4/core/types';
 import type {Group} from './types.ts';
 import type {LiveModelInput,LiveNode} from './live-contracts.ts';
-import {LIVE_MODEL_VERSION} from './live-contracts.ts';
+import {LIVE_MODEL_VERSION,UNREGISTERED_HTTP_TARGET_BADGE,UNREGISTERED_HTTP_TARGET_CATEGORY} from './live-contracts.ts';
 import {canonical,stableToken,validateLiveInput} from './live-model-validation.ts';
 import {ledgerPalette,ledgerToken} from './ledger-palette.ts';
 import {serializeLiveProjection} from './live-model-source.ts';
@@ -18,6 +18,19 @@ export interface LiveProjection {
 }
 const order=(a:{id:string},b:{id:string})=>a.id<b.id?-1:a.id>b.id?1:0;
 const paletteColor=(key:string)=>ledgerToken(key) as CustomColor;
+// Leaf opacity is not rendered by LikeC4, so the near-transparent fill is an alpha custom colour.
+const UNREGISTERED_TARGET_COLOR='unregisteredTarget' as CustomColor;
+const unregisteredTargetColor={elements:{fill:'#9ca3af1a',stroke:'#6b7280',hiContrast:'#1f2937',loContrast:'#4b5563'},
+  relationships:{line:'#6b7280',label:'#4b5563',labelBg:'#ffffff'}} as const;
+// LikeC4 emits one palette per custom colour for both schemes, so the dark canvas swaps in light text.
+const unregisteredTargetDarkColor={elements:{...unregisteredTargetColor.elements,hiContrast:'#e5e7eb',loContrast:'#d1d5db'},
+  relationships:{...unregisteredTargetColor.relationships,label:'#d1d5db',labelBg:'#1f2937'}} as const;
+type ThemedSpecification={readonly specification:{readonly customColors?:Readonly<Record<string,unknown>>|undefined}};
+export function withCanvasColorScheme<T extends ThemedSpecification>(data:T,dark:boolean):T {
+  const customColors=data.specification.customColors;
+  if(!dark||!customColors||!Object.hasOwn(customColors,UNREGISTERED_TARGET_COLOR)) return data;
+  return {...data,specification:{...data.specification,customColors:{...customColors,[UNREGISTERED_TARGET_COLOR]:unregisteredTargetDarkColor}}};
+}
 export const elementStyles:Record<string,ElementStyle>={
   repository:{color:'slate',opacity:12},artifact:{color:'gray'},
   service:{color:paletteColor('application')},application:{color:paletteColor('application')},
@@ -29,7 +42,7 @@ export const elementStyles:Record<string,ElementStyle>={
   capability:{color:paletteColor('businessCapability')},boundary:{color:paletteColor('businessContext')},
   component:{color:paletteColor('itComponent')},module:{color:paletteColor('itComponent')},member:{color:paletteColor('itComponent')},
   interface:{color:paletteColor('interface'),border:'dashed'},endpoint:{color:paletteColor('interface')},
-  external:{color:'gray',border:'dashed'},unmatched:{color:'red',border:'dashed'},term:{color:paletteColor('dataObject')},
+  external:{color:'gray',border:'dashed'},unregisteredTarget:{color:UNREGISTERED_TARGET_COLOR,shape:'rectangle',border:'dashed'},unmatched:{color:'red',border:'dashed'},term:{color:paletteColor('dataObject')},
 };
 export function projectLiveGraph(input:LiveModelInput):LiveProjection {
   validateLiveInput(input);
@@ -45,6 +58,7 @@ export function projectLiveGraph(input:LiveModelInput):LiveProjection {
     identities.set(id,source);return id;
   }
   for(const node of nodes) {
+    const unregistered=node.category===UNREGISTERED_HTTP_TARGET_CATEGORY;
     const sql=node.category==='datastore'&&node.symbolKey?.startsWith('sql|')?node.symbolKey.split('|'):[];
     let owner:ReturnType<typeof owners.get>;
     if(sql.length===3&&sql[1]&&sql[2]&&!sql[1].startsWith('@builtin:')) {
@@ -57,14 +71,14 @@ export function projectLiveGraph(input:LiveModelInput):LiveProjection {
       const key=`source-group:${canonical([node.repositoryId??null,node.group])}`;
       owner=owners.get(key)??{id:identity('repository',key),title:node.group!.slice(0,80),kind:'repository',description:`Explicit source group: ${node.group}`,owner:node.repositoryId?.trim()||node.group!,members:[]};
       owners.set(key,owner);
-    } else if(node.repositoryId?.trim()) {
+    } else if(node.repositoryId?.trim()&&!unregistered) {
       const key=`repo:${node.repositoryId}`;
       owner=owners.get(key)??{id:identity('repository',node.repositoryId),title:node.repositoryId.slice(0,80),kind:'repository',description:`Explicit repository membership: ${node.repositoryId}`,owner:node.repositoryId,members:[]};
       owners.set(key,owner);
     }
     const local=identity('n',node.id),id=owner?`${owner.id}.${local}`:local;
     owner?.members.push(node);sourceNodeIds[node.id]=id;nodeSourceIds[id]=[node.id];
-    const kind=node.category==='datastore'&&sql.length?'sqlObject':node.category&&Object.hasOwn(elementStyles,node.category)&&node.category!=='repository'?node.category:'artifact';
+    const kind=unregistered?'unregisteredTarget':node.category==='datastore'&&sql.length?'sqlObject':node.category&&Object.hasOwn(elementStyles,node.category)&&node.category!=='repository'?node.category:'artifact';
     let description=node.sublabel??node.category??'Architecture artifact';
     if(kind==='sqlObject') {
       const declaration=edges.flatMap(e=>e.facts??[]).find((fact):fact is {relation:string;to:{key:string;declared:boolean;kind:string}}=>{
@@ -73,7 +87,7 @@ export function projectLiveGraph(input:LiveModelInput):LiveProjection {
       });
       description=`${declaration?`Declared SQL ${declaration.to.kind.toLowerCase()}`:'SQL object reference · object type or declaration not established'} · ${description}`;
     }
-    elements[id]={id:Fqn(id),kind,title:node.label??node.id,description:{txt:description},style:elementStyles[kind]!,metadata:{source:canonical(node)}};
+    elements[id]={id:Fqn(id),kind,title:node.label??node.id,description:{txt:description},...(unregistered?{technology:UNREGISTERED_HTTP_TARGET_BADGE}:{}),style:elementStyles[kind]!,metadata:{source:canonical(node)}};
   }
   const groups:Group[]=[];
   if(owners.size>128)throw new Error('Graph exceeds 128 hierarchy scopes');
@@ -118,6 +132,6 @@ export function projectLiveGraph(input:LiveModelInput):LiveProjection {
     deployments:{elements:{},relations:{}},imports:{},globals:{predicates:{},dynamicPredicates:{},styles:{}},
     specification:{tags:{},deployments:{},elements:Object.fromEntries(Object.entries(elementStyles).map(([kind,style])=>[kind,{style}])),
       relationships:{observed:{line:'solid'},association:{line:'dashed',head:'none',tail:'none',multiple:true},uncertain:{line:'dashed'}},
-      customColors:Object.fromEntries(ledgerPalette.map(item=>[ledgerToken(item.key),{elements:{fill:item.color as `#${string}`,stroke:item.color as `#${string}`,hiContrast:item.foreground as `#${string}`,loContrast:item.foreground as `#${string}`},relationships:{line:item.color as `#${string}`,label:item.color as `#${string}`,labelBg:'#ffffff'}}]))}};
+      customColors:Object.fromEntries([[UNREGISTERED_TARGET_COLOR,unregisteredTargetColor],...ledgerPalette.map(item=>[ledgerToken(item.key),{elements:{fill:item.color as `#${string}`,stroke:item.color as `#${string}`,hiContrast:item.foreground as `#${string}`,loContrast:item.foreground as `#${string}`},relationships:{line:item.color as `#${string}`,label:item.color as `#${string}`,labelBg:'#ffffff'}}])])}};
   return {parsed,source:`// Projection ${LIVE_MODEL_VERSION}; snapshot ${JSON.stringify(input.snapshot)}\n${serializeLiveProjection(parsed)}`,sourceNodeIds,nodeSourceIds,relationSourceIds,associationSourceIds:[...associations].sort(),groups};
 }

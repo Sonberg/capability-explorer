@@ -2,6 +2,10 @@ import type {LayoutedLikeC4ModelData} from '@likec4/core/types';
 import type {Group} from './types.ts';
 
 export const LIVE_MODEL_VERSION='live-likec4-v1';
+/** Graph category of a selected-catalogue HTTP target group with no known provider (#102). */
+export const UNREGISTERED_HTTP_TARGET_CATEGORY='unregistered-http-target';
+/** Visible node badge; candidates are observed targets, not Capabilities or proven services. */
+export const UNREGISTERED_HTTP_TARGET_BADGE='Unregistered target';
 
 /** Structural subset of Architecture.Graph; extra evidence fields are retained verbatim. */
 export interface LiveNode {
