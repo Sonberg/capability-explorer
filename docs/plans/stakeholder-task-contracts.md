@@ -472,22 +472,21 @@ with a rewritten, source-bound, mutation-calibrated script
 (`next-phase/tasks/source-evidence-check.mjs` + `evidence-manifest.json`,
 neither tracked in Git): it hashes the **actual bytes** of `collection.json`
 and all 13 real extracted `.jsonl` files against a frozen, provenance-logged
-manifest (silent regeneration is refused; any regeneration is permanently
-logged to `manifest-history.jsonl`), verifies the 13 artifacts are unique
-(not merely count-13), cross-checks each record's
-`repositoryId`/`commitSha` against the independent
+manifest (regeneration requires an explicit flag and appends a local
+history record; this is not an immutable external attestation), verifies
+the exact expected inventory of 13 unique artifacts, cross-checks each
+evaluation record and source header's `repositoryId`/`commitSha` against
+the independent
 `fixtures/revisions.lock.json`, and directly re-reads golden-vs-real bytes
-for the three named edges above. Result: 7/7 real checks pass; 7/7
+for the three named edges above. Result: 7/7 real checks pass; 10/10
 deliberately injected mutations (wrong-but-valid 64-hex digest, a missing
 digest, an actual file-byte change, a wrong commit, an empty artifact list,
 golden-as-actual-output, and an in-memory-altered oracle/golden answer),
-each reusing the same predicate functions as the real checks, were
-correctly detected as failures. This satisfies the Pseudocode-phase
-requirement that the private checker fail on a missing digest, a
-revisions.lock.json mismatch, and any altered oracle answer. Full,
-non-averaged S/P/A/R/C scoring, scored against the narrow Package-C-specific
-rubric text (not a generic SPARC rubric), is recorded privately; this
-correction keeps the evidence table in private session state, adds only
-verification rows and findings to this doc section, and keeps the oracle
-"unreviewed — qualification blocked" — the local commit gate is met this
-pass (all applicable phases individually >=95, none averaged).
+plus a wrong repository identity, duplicated output and empty manifest
+inventory, each reusing the same predicate functions as the real checks,
+were correctly detected as failures. The altered-answer calibration
+covers one named golden evidence span, not every possible oracle edit.
+These checks validate recorded evidence, not the oracle's correctness,
+network authorization or absence of target execution. Exact-source
+canonical qualification remains a separate gate; the oracle remains
+"unreviewed — qualification blocked".
