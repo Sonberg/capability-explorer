@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net;
@@ -11,11 +12,13 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace CapabilityExplorer.Tests;
 
-public sealed class HealthApiFactory(Action<IServiceCollection>? configureServices = null, bool configureToken = true)
+public sealed class HealthApiFactory(Action<IServiceCollection>? configureServices = null, bool configureToken = true,
+    ILoggerProvider? loggerProvider = null)
     : WebApplicationFactory<Program>
 {
     public const string Token = "health-test-token";
@@ -25,12 +28,35 @@ public sealed class HealthApiFactory(Action<IServiceCollection>? configureServic
         builder.UseSetting("artifacts", Fixtures.ExpectedDirectory);
         builder.UseSetting("repos", Path.Combine(Fixtures.RepositoryRoot, "fixtures", ".repos"));
         if (configureToken) builder.UseSetting("internalHealth:token", Token);
+        if (loggerProvider is not null) builder.ConfigureLogging(logging => logging.AddProvider(loggerProvider));
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<SourceIpRateLimiter>();
             services.AddSingleton(new SourceIpRateLimiter(1000, 1000));
             configureServices?.Invoke(services);
         });
+    }
+}
+
+/// <summary>Captures only <see cref="HealthDiagnosticsService"/> log entries for assertion, never raw exceptions.</summary>
+public sealed class CapturingLoggerProvider : ILoggerProvider
+{
+    public ConcurrentQueue<(LogLevel Level, string Message)> Entries { get; } = new();
+
+    public ILogger CreateLogger(string categoryName) => new CapturingLogger(this, categoryName);
+    public void Dispose() { }
+
+    private sealed class CapturingLogger(CapturingLoggerProvider owner, string categoryName) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => categoryName == typeof(HealthDiagnosticsService).FullName;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (!IsEnabled(logLevel)) return;
+            owner.Entries.Enqueue((logLevel, formatter(state, exception)));
+        }
     }
 }
 
@@ -313,6 +339,72 @@ public sealed class HealthApiTests
         Assert.Contains("dependency_check_duration_seconds_bucket{", text, StringComparison.Ordinal);
         Assert.Contains("process_uptime_seconds ", text, StringComparison.Ordinal);
         Assert.Contains("process_resident_memory_bytes ", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Unhealthy_transition_logs_warning_and_recovery_logs_information_once_per_change()
+    {
+        var attempt = 0;
+        var capture = new CapturingLoggerProvider();
+        using var factory = new HealthApiFactory(services =>
+        {
+            services.RemoveAll<IHealthDependencyCheck>();
+            services.AddSingleton<IHealthDependencyCheck>(new FakeHealthCheck("database", critical: true, _ =>
+                Interlocked.Increment(ref attempt) == 1
+                    ? throw new InvalidOperationException("secret connection string and stack trace")
+                    : Task.CompletedTask));
+        }, loggerProvider: capture);
+        using var client = factory.CreateClient();
+
+        async Task<HttpStatusCode> PollInternalHealthAsync()
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/internal/health");
+            request.Headers.Authorization = new("Bearer", HealthApiFactory.Token);
+            using var response = await client.SendAsync(request);
+            return response.StatusCode;
+        }
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, await PollInternalHealthAsync()); // unknown -> unhealthy
+        await Task.Delay(HealthEndpointOptions.From(new ConfigurationBuilder().Build()).CacheTtl + TimeSpan.FromMilliseconds(200));
+        Assert.Equal(HttpStatusCode.OK, await PollInternalHealthAsync()); // unhealthy -> healthy (recovery)
+        await Task.Delay(HealthEndpointOptions.From(new ConfigurationBuilder().Build()).CacheTtl + TimeSpan.FromMilliseconds(200));
+        Assert.Equal(HttpStatusCode.OK, await PollInternalHealthAsync()); // healthy -> healthy: no new log entry
+
+        var entries = capture.Entries.ToArray();
+        var warnings = entries.Where(entry => entry.Level == LogLevel.Warning).ToArray();
+        var infos = entries.Where(entry => entry.Level == LogLevel.Information).ToArray();
+        Assert.Single(warnings);
+        Assert.Contains("check_name=database", warnings[0].Message, StringComparison.Ordinal);
+        Assert.Contains("previous_state=unknown", warnings[0].Message, StringComparison.Ordinal);
+        Assert.Contains("new_state=unhealthy", warnings[0].Message, StringComparison.Ordinal);
+        Assert.Contains("failure_cause=database", warnings[0].Message, StringComparison.Ordinal);
+        Assert.Matches(@"latency_ms=\d", warnings[0].Message);
+        Assert.Matches(@"timestamp=\d", warnings[0].Message);
+        Assert.DoesNotContain("InvalidOperationException", warnings[0].Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret connection string", warnings[0].Message, StringComparison.Ordinal);
+        Assert.Single(infos);
+        Assert.Contains("check_name=database", infos[0].Message, StringComparison.Ordinal);
+        Assert.Contains("previous_state=unhealthy", infos[0].Message, StringComparison.Ordinal);
+        Assert.Contains("new_state=healthy", infos[0].Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Ready_returns_503_and_live_returns_200_during_real_drain()
+    {
+        using var factory = new HealthApiFactory();
+        using var client = factory.CreateClient(); // starting the client boots the real TestServer host/lifetime
+        using (var liveBefore = await client.GetAsync("/health/live"))
+            Assert.Equal(HttpStatusCode.OK, liveBefore.StatusCode);
+        using (var readyBefore = await client.GetAsync("/health/ready"))
+            Assert.Equal(HttpStatusCode.OK, readyBefore.StatusCode);
+
+        var lifetime = factory.Services.GetRequiredService<IHostApplicationLifetime>();
+        lifetime.StopApplication(); // begin graceful shutdown (ApplicationStopping), as a SIGTERM would
+
+        using var ready = await client.GetAsync("/health/ready");
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, ready.StatusCode);
+        using var live = await client.GetAsync("/health/live");
+        Assert.Equal(HttpStatusCode.OK, live.StatusCode);
     }
 
     private sealed class FakeHealthCheck(string name, bool critical, Func<CancellationToken, Task> check) : IHealthDependencyCheck

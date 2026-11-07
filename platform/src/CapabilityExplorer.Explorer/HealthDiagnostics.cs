@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Npgsql;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
 
 namespace CapabilityExplorer.Explorer;
 
@@ -64,15 +65,19 @@ public sealed record HealthDependencyResult(
 public sealed record HealthCheckSnapshot(DateTimeOffset CheckedAt, string Status, bool Ready,
     IReadOnlyDictionary<string, HealthDependencyResult> Checks, string? FailureCause, bool OverallTimedOut = false);
 
-internal sealed class HealthDiagnosticsService(
+internal sealed partial class HealthDiagnosticsService(
     IEnumerable<IHealthDependencyCheck> checks,
-    HealthEndpointOptions options) : IDisposable
+    HealthEndpointOptions options,
+    ILogger<HealthDiagnosticsService>? logger = null) : IDisposable
 {
     private static readonly string[] DependencyNames = ["database", "explorer", "other"];
     private readonly IHealthDependencyCheck[] _checks = checks.Take(HealthEndpointOptions.MaximumChecks).ToArray();
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private readonly DateTimeOffset _processStarted = ReadProcessStart();
     private readonly object _cacheLock = new();
+    // §8 transition logging: one entry per actual state change, guarded by the same _refreshLock that
+    // serializes dependency-check execution, so concurrent/cached polls never duplicate a log entry.
+    private readonly ConcurrentDictionary<string, string> _previousStatus = new(StringComparer.Ordinal);
     private HealthCheckSnapshot? _cached;
     private long _cachedAtTimestamp;
 
@@ -135,6 +140,7 @@ internal sealed class HealthDiagnosticsService(
                 .Select(pair => pair.Key)
                 .Order(StringComparer.Ordinal)
                 .FirstOrDefault();
+            LogTransitions(checksByDependency, failureCause);
             var snapshot = new HealthCheckSnapshot(DateTimeOffset.UtcNow, status, ready, checksByDependency, failureCause, overallTimedOut);
             if (!overallTimedOut)
             {
@@ -186,6 +192,34 @@ internal sealed class HealthDiagnosticsService(
     }
 
     private static string SafeName(string name) => DependencyNames.Contains(name, StringComparer.Ordinal) ? name : "other";
+
+    // §8 Logging: WARN on transition to unhealthy, INFO on recovery to healthy; no log when a poll
+    // reports the same status as before. Keys are already SafeName-bucketed (allow-listed), and only the
+    // sanitized HealthDependencyResult fields are logged — never a raw exception, stack trace, or path.
+    private void LogTransitions(IReadOnlyDictionary<string, HealthDependencyResult> checksByDependency, string? failureCause)
+    {
+        if (logger is null) return;
+        foreach (var (name, result) in checksByDependency)
+        {
+            var previous = _previousStatus.GetOrAdd(name, "unknown");
+            if (previous == result.Status) continue;
+            if (result.Status == "unhealthy")
+                LogUnhealthyTransition(logger, DateTimeOffset.UtcNow, name, previous, result.Status, result.LatencyMs, failureCause);
+            else if (result.Status == "healthy" && previous == "unhealthy")
+                LogRecovery(logger, DateTimeOffset.UtcNow, name, previous, result.Status, result.LatencyMs);
+            _previousStatus[name] = result.Status;
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "health_check_transition timestamp={Timestamp} check_name={CheckName} previous_state={PreviousState} new_state={NewState} latency_ms={LatencyMs} failure_cause={FailureCause}")]
+    private static partial void LogUnhealthyTransition(ILogger logger, DateTimeOffset timestamp, string checkName,
+        string previousState, string newState, double latencyMs, string? failureCause);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "health_check_recovery timestamp={Timestamp} check_name={CheckName} previous_state={PreviousState} new_state={NewState} latency_ms={LatencyMs}")]
+    private static partial void LogRecovery(ILogger logger, DateTimeOffset timestamp, string checkName,
+        string previousState, string newState, double latencyMs);
 
     private bool CacheIsFresh() => Stopwatch.GetElapsedTime(_cachedAtTimestamp) < options.CacheTtl;
 
