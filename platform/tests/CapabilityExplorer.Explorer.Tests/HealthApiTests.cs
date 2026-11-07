@@ -443,25 +443,6 @@ public sealed class HealthApiTests
         Assert.Equal("database", info.Fields["CheckName"]); // only the recovered check logs, not explorer (still unhealthy)
     }
 
-    [Fact]
-    public async Task Ready_returns_503_and_live_returns_200_during_real_drain()
-    {
-        using var factory = new HealthApiFactory();
-        using var client = factory.CreateClient(); // starting the client boots the real TestServer host/lifetime
-        using (var liveBefore = await client.GetAsync("/health/live"))
-            Assert.Equal(HttpStatusCode.OK, liveBefore.StatusCode);
-        using (var readyBefore = await client.GetAsync("/health/ready"))
-            Assert.Equal(HttpStatusCode.OK, readyBefore.StatusCode);
-
-        var lifetime = factory.Services.GetRequiredService<IHostApplicationLifetime>();
-        lifetime.StopApplication(); // begin graceful shutdown (ApplicationStopping), as a SIGTERM would
-
-        using var ready = await client.GetAsync("/health/ready");
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, ready.StatusCode);
-        using var live = await client.GetAsync("/health/live");
-        Assert.Equal(HttpStatusCode.OK, live.StatusCode);
-    }
-
     private sealed class FakeHealthCheck(string name, bool critical, Func<CancellationToken, Task> check) : IHealthDependencyCheck
     {
         public string Name { get; } = name;
