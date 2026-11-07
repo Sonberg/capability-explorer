@@ -101,4 +101,89 @@ export interface Graph {
     nodeCount: number;
     listed: number;
   };
+  /** Issue #102 metadata; optional so legacy graphs and fixtures remain valid. */
+  unregisteredHttpTargets?: ArchitectureHttpTargets;
+}
+
+export interface BindingPreviewSource {
+  repositoryId: string;
+  commitSha: string;
+  unitPath: string;
+  artifactHash: string;
+}
+
+export interface EvidenceRecord {
+  id: string;
+  repositoryId: string;
+  commitSha: string;
+  path: string;
+  snippetSha256: string;
+  span: { startLine: number; startColumn: number; endLine: number; endColumn: number };
+  extractor: { name: string; version: string };
+}
+
+export interface HttpEndpointEvidence {
+  source: BindingPreviewSource;
+  key: string;
+  evidence: EvidenceRecord[];
+}
+
+export interface ArchitectureHttpOccurrence {
+  occurrence: {
+    id: string;
+    source: BindingPreviewSource;
+    edgeId: string;
+    caller: string;
+    client?: string | null;
+    target?: string | null;
+    operation?: string | null;
+    evidence: EvidenceRecord[];
+  };
+  /** Full count before the bounded evidence list. */
+  evidenceCount: number;
+}
+
+export interface ArchitectureHttpTargetDetail {
+  id: string;
+  label: string;
+  status: string;
+  repositoryId: string;
+  unitPath: string;
+  caller: string;
+  client?: string | null;
+  destination: string;
+  consumers: { capabilityId: string; capabilityName: string; repositoryId: string }[];
+  /** Selection-wide Capability membership rows. */
+  consumerCount: number;
+  operations: string[];
+  /** Selection-wide distinct operations; graph edge counts are occurrence support. */
+  operationCount: number;
+  reasons: string[];
+  alternatives: HttpEndpointEvidence[];
+  alternativeCount: number;
+  missingEvidence: string[];
+  occurrences: ArchitectureHttpOccurrence[];
+  occurrenceCount: number;
+  detailsTruncated: boolean;
+  recovery: { level: string; focus: string };
+}
+
+export interface ArchitectureHttpTargets {
+  /** Changes whenever the selected source scope or rules change. */
+  resultId: string;
+  ruleVersion: string;
+  providerCoverage: {
+    status: "full" | "partial";
+    sources: BindingPreviewSource[];
+    missingRepositories: string[];
+    qualifications: string[];
+  };
+  providerSourceCount: number;
+  missingRepositoryCount: number;
+  totalCandidates: number;
+  matchedCandidates: number;
+  shownCandidates: number;
+  details: ArchitectureHttpTargetDetail[];
+  detailsTruncated: boolean;
+  outcomes: { status: string; groups: number; occurrences: number }[];
 }
