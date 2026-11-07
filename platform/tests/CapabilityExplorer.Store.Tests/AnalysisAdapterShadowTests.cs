@@ -103,6 +103,138 @@ public sealed class AnalysisAdapterShadowTests
         Assert.NotEqual(outcomeBefore.PlanSha256, outcomeAfter.PlanSha256);
     }
 
+    // R5 (recipe sub-case): the recipe's own bytes are not re-enumerated against the source tree, but the plan
+    // embeds RecipeSha256 as part of its identity (NativeAdapterPlan.RecipeSha256), so a cross-verified recipe
+    // edit changes the plan digest and the global adapter-recipe receipt key while leaving the exported tree and
+    // the file census both untouched.
+    [Fact]
+    [Trait("Profile", "HostDocker")]
+    public async Task Given_an_edited_recipe_with_a_matching_manifest_digest_then_the_tree_is_unchanged_but_the_plan_and_recipe_identity_differ()
+    {
+        RequireHostDoor();
+        using var repo = new Repo();
+        repo.Write("Api/Api.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>");
+        repo.Write("Api/Order.cs", "class Order {}");
+        var sha = await repo.Commit("recipe-edit");
+        var (exportBefore, outcomeBefore, shadowBefore) = await repo.ExportAndPlan(sha);
+
+        repo.EditRecipeWithMatchingDigest("\n// cross-verified recipe edit\n");
+        var (exportAfter, outcomeAfter, shadowAfter) = await repo.ExportAndPlan(sha);
+
+        Assert.Equal(exportBefore.TreeSha, exportAfter.TreeSha);
+        Assert.Equal(outcomeBefore.Census, outcomeAfter.Census);
+        Assert.NotEqual(outcomeBefore.PlanSha256, outcomeAfter.PlanSha256);
+        Assert.NotEqual(shadowBefore.RecipeSha256, shadowAfter.RecipeSha256);
+    }
+
+    // R4: a repository mixing C# with other languages/config. The census oracle below is hand-derived from the
+    // planner's own classification rules (NativeAdapterPlanner.InputProfile/UnsupportedLanguageExtensions): .ts
+    // and .sql are recognized-but-unsupported inputs (counted, not eligible); package.json matches no input
+    // profile at all and is not counted anywhere; only Api.csproj + the two .cs files are C#-eligible.
+    [Fact]
+    [Trait("Profile", "HostDocker")]
+    public async Task Given_a_mixed_language_repository_then_the_census_counts_only_recognized_profiles_correctly()
+    {
+        RequireHostDoor();
+        using var repo = new Repo();
+        repo.Write("Api/Api.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>");
+        repo.Write("Api/Order.cs", "class Order {}");
+        repo.Write("Api/Customer.cs", "class Customer {}");
+        repo.Write("web/src/app.ts", "export const x = 1;");
+        repo.Write("db/schema.sql", "CREATE TABLE t(x int);");
+        repo.Write("web/package.json", "{}");
+        var sha = await repo.Commit("mixed-languages");
+
+        var (_, outcome, _) = await repo.ExportAndPlan(sha);
+
+        Assert.Equal("ok", outcome.Status);
+        Assert.Empty(outcome.Codes);
+        Assert.Equal("complete=1 unknown=0 skipped=0 units=1/1/0/0/0 inputs=5/3/0/2/0", outcome.Census);
+    }
+
+    // R9 (sentinel tripwire): shadow planning only enumerates file system metadata (names, sizes, hashes) over an
+    // already-exported, static directory tree. It must never spawn or otherwise execute anything the repository
+    // itself provides, including conventional build/generator/install hooks. Each sentinel script, if ever run,
+    // writes a marker file outside the exported tree; its absence after planning is the real, non-early-return
+    // proof that no execution occurred (as opposed to a container/sandbox stand-in silently skipping the check).
+    [Fact]
+    [Trait("Profile", "HostDocker")]
+    public async Task Given_executable_build_generator_and_install_hooks_then_shadow_planning_never_executes_them()
+    {
+        RequireHostDoor();
+        using var repo = new Repo();
+        var marker = System.IO.Path.Combine(repo.Root, "sentinel.marker");
+        repo.Write("Api/Api.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>");
+        repo.Write("Api/Order.cs", "class Order {}");
+        repo.WriteExecutable("build.sh", $"#!/bin/sh\ntouch \"{marker}\"\nexit 0\n");
+        repo.WriteExecutable("generate.sh", $"#!/bin/sh\ntouch \"{marker}\"\nexit 0\n");
+        repo.WriteExecutable("Api/postinstall.sh", $"#!/bin/sh\ntouch \"{marker}\"\nexit 0\n");
+        var sha = await repo.Commit("sentinel-tripwire");
+
+        var (_, outcome, _) = await repo.ExportAndPlan(sha);
+
+        Assert.False(File.Exists(marker),
+            "shadow planning must never execute any repository-provided script (build/generator/install hook)");
+        Assert.Equal("ok", outcome.Status);
+    }
+
+    // The export-skip heuristic flags any tar directory entry with no recorded child as skipped (conservative:
+    // it cannot distinguish "this was a gitlink" from "some other empty directory entry"), so it must never
+    // false-positive on an ordinary, deeply nested directory that genuinely contains content.
+    [Fact]
+    [Trait("Profile", "HostDocker")]
+    public async Task Given_deeply_nested_non_empty_directories_then_none_are_counted_as_skipped()
+    {
+        RequireHostDoor();
+        using var repo = new Repo();
+        repo.Write("Api/Api.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>");
+        repo.Write("Api/Nested/Deep/Deeper/Order.cs", "class Order {}");
+        var sha = await repo.Commit("deep-nesting");
+
+        var (export, outcome, _) = await repo.ExportAndPlan(sha);
+
+        Assert.Equal(0, export.Skipped);
+        Assert.Equal("ok", outcome.Status);
+        Assert.DoesNotContain("export-skipped", outcome.Codes);
+    }
+
+    // The fix under test: AnalysisAdapterShadow.LoadAsync must bound every manifest/recipe byte read by actual
+    // bytes streamed, not by a one-time FileInfo.Length (or a single ReadAllBytes call) taken before the read -
+    // a hostile or merely-grown config file must never cause an unbounded single-shot allocation.
+    [Fact]
+    [Trait("Profile", "HostDocker")]
+    public async Task Given_a_manifest_file_that_grows_past_the_one_mebibyte_bound_then_loading_fails_without_an_unbounded_read()
+    {
+        RequireHostDoor();
+        using var root = TempDirectory.Create();
+        Repo.CopyTrackedConfig(root.Path);
+        var manifestPath = System.IO.Path.Combine(root.Path, "config/adapters/csharp.roslyn/manifest.json");
+        // Start from the real, valid manifest, then grow it past the bound with trailing padding: this proves
+        // the bound is enforced on the bytes actually read during this attempt, not a size recorded earlier.
+        using (var stream = new FileStream(manifestPath, FileMode.Append))
+        {
+            await stream.WriteAsync(new byte[2 * 1024 * 1024]);
+        }
+
+        await Assert.ThrowsAsync<IOException>(() => AnalysisAdapterShadow.LoadAsync(root.Path, CancellationToken.None));
+    }
+
+    [Fact]
+    [Trait("Profile", "HostDocker")]
+    public async Task Given_a_recipe_file_larger_than_the_sixty_four_kibibyte_bound_then_loading_fails_without_an_unbounded_read()
+    {
+        RequireHostDoor();
+        using var root = TempDirectory.Create();
+        Repo.CopyTrackedConfig(root.Path);
+        var recipePath = System.IO.Path.Combine(root.Path, "config/adapters/csharp.roslyn/recipe.json");
+        using (var stream = new FileStream(recipePath, FileMode.Append))
+        {
+            await stream.WriteAsync(new byte[128 * 1024]);
+        }
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => AnalysisAdapterShadow.LoadAsync(root.Path, CancellationToken.None));
+    }
+
     [Fact]
     [Trait("Profile", "HostDocker")]
     public async Task Given_a_symlink_and_a_gitlink_then_the_status_is_incomplete_with_two_skips()
@@ -268,6 +400,35 @@ public sealed class AnalysisAdapterShadowTests
             File.WriteAllText(path, edited);
         }
 
+        /// <summary>
+        /// Edits the recipe file's content and rewrites the manifest's declared recipeSha256 to match, keeping
+        /// the pair cross-verified (as production requires) while proving recipe content is a real input to the
+        /// embedded plan identity, not just an identity label that changes independently of it.
+        /// </summary>
+        public void EditRecipeWithMatchingDigest(string appendedContent)
+        {
+            var recipePath = System.IO.Path.Combine(Root, "config/adapters/csharp.roslyn/recipe.json");
+            var manifestPath = System.IO.Path.Combine(Root, "config/adapters/csharp.roslyn/manifest.json");
+            var editedRecipe = File.ReadAllText(recipePath) + appendedContent;
+            File.WriteAllText(recipePath, editedRecipe);
+            var newRecipeSha256 = Sha256Bytes(System.Text.Encoding.UTF8.GetBytes(editedRecipe));
+            var originalManifest = File.ReadAllText(manifestPath);
+            var editedManifest = originalManifest.Replace(RecipeSha256, newRecipeSha256);
+            Assert.NotEqual(originalManifest, editedManifest);
+            File.WriteAllText(manifestPath, editedManifest);
+        }
+
+        public void WriteExecutable(string relativePath, string content)
+        {
+            Write(relativePath, content);
+            if (OperatingSystem.IsWindows()) return; // executable bits are a POSIX concept; host-door tests run on macOS/Linux.
+            var path = System.IO.Path.Combine(Source, relativePath);
+            File.SetUnixFileMode(path,
+                System.IO.UnixFileMode.UserRead | System.IO.UnixFileMode.UserWrite | System.IO.UnixFileMode.UserExecute |
+                System.IO.UnixFileMode.GroupRead | System.IO.UnixFileMode.GroupExecute |
+                System.IO.UnixFileMode.OtherRead | System.IO.UnixFileMode.OtherExecute);
+        }
+
         public void Write(string relativePath, string content)
         {
             var path = System.IO.Path.Combine(Source, relativePath);
@@ -339,6 +500,9 @@ public sealed class AnalysisAdapterShadowTests
 
         private static string Sha256File(string path) =>
             Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path)));
+
+        private static string Sha256Bytes(byte[] bytes) =>
+            Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes));
 
         public void Dispose() => Directory.Delete(Root, recursive: true);
     }

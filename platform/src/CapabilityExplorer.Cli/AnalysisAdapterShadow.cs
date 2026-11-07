@@ -22,6 +22,9 @@ internal static partial class AnalysisAdapterShadow
 {
     private const string AdapterDirectory = "config/adapters/csharp.roslyn";
     private const long MaxRecipeBytes = 64 * 1024;
+    // Must match NativeAdapterPlanner's own (private) manifest bound: the "before"/"after" tamper check below
+    // reads the manifest a second time outside that reader and must never allocate past the same limit.
+    private const long MaxManifestBytes = 1_048_576;
 
     private static readonly JsonSerializerOptions PlanJson = new(JsonSerializerDefaults.Web);
 
@@ -55,22 +58,24 @@ internal static partial class AnalysisAdapterShadow
         var manifestPath = Path.Combine(directory, "manifest.json");
         var recipePath = Path.Combine(directory, "recipe.json");
 
-        var before = await File.ReadAllBytesAsync(manifestPath, cancellationToken);
+        // Read bounded, not File.ReadAllBytesAsync: an unbounded read here would allocate past the declared
+        // limit for a hostile oversized file before the inner reader's own size check ever runs, and a plain
+        // FileInfo.Length pre-check alone would still race a file that grows between the check and the read.
+        var before = await ReadBoundedAsync(manifestPath, MaxManifestBytes, static message => new IOException(message), cancellationToken);
         var manifest = await NativeAdapterPlanner.ReadManifestAsync(manifestPath, cancellationToken);
-        var after = await File.ReadAllBytesAsync(manifestPath, cancellationToken);
+        var after = await ReadBoundedAsync(manifestPath, MaxManifestBytes, static message => new IOException(message), cancellationToken);
         if (!before.AsSpan().SequenceEqual(after))
         {
             throw new IOException("adapter manifest changed while loading");
         }
 
         AnalysisPreparation.RejectLinks(recipePath);
-        var recipeInfo = new FileInfo(recipePath);
-        if (!recipeInfo.Exists || recipeInfo.Length is < 1 or > MaxRecipeBytes)
+        var recipeBytes = await ReadBoundedAsync(
+            recipePath, MaxRecipeBytes, static message => new InvalidDataException(message), cancellationToken);
+        if (recipeBytes.Length < 1)
         {
             throw new InvalidDataException("adapter recipe is missing, empty, or exceeds the size limit");
         }
-
-        var recipeBytes = await File.ReadAllBytesAsync(recipePath, cancellationToken);
         var recipeSha256 = Digest(recipeBytes);
         if (recipeSha256 != manifest.RecipeSha256)
         {
@@ -166,4 +171,33 @@ internal static partial class AnalysisAdapterShadow
     }
 
     private static string Digest(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
+
+    /// <summary>
+    /// Streams a file in fixed chunks, never buffering past <paramref name="maximumBytes"/> + 1 regardless of the
+    /// file's reported length: this defends both a hostile oversized file (no unbounded single-shot allocation)
+    /// and a file that grows after being stat'd (no length-then-read race). Mirrors the bounded-stream shape of
+    /// NativeAdapterPlanner's own manifest reader and SourceSafety.ReadBoundedAsync; not a plain ReadAllBytes call.
+    /// </summary>
+    private static async Task<byte[]> ReadBoundedAsync(
+        string path, long maximumBytes, Func<string, Exception> onExceeded, CancellationToken cancellationToken)
+    {
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+            81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        while (true)
+        {
+            var remaining = maximumBytes + 1 - buffer.Length;
+            var read = await stream.ReadAsync(chunk.AsMemory(0, (int)Math.Min(chunk.Length, remaining)), cancellationToken)
+                .ConfigureAwait(false);
+            if (read == 0) break;
+            if (buffer.Length + read > maximumBytes)
+            {
+                throw onExceeded("adapter config file is missing, empty, or exceeds its declared size limit");
+            }
+            buffer.Write(chunk, 0, read);
+        }
+
+        return buffer.ToArray();
+    }
 }
