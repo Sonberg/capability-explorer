@@ -436,41 +436,58 @@ fixtures. They are automated source-identity evidence only.
 Not run: model or native extraction, collection sealing, the Explorer, any
 browser or assistive-technology check, and any human session.
 
-### Verification performed for prerequisites P0 and E1 (re-run at `cd525d0`)
+### Verification performed for prerequisites P0 and E1 (re-run at `cd525d06daa872ab2e4c6b73668383e95624e67c`)
 
-Re-checked at current HEAD `cd525d0` (base `43b90cc` plus merged PR
-#107/#110/#111/#112): `git diff --stat 43b90cc..HEAD -- fixtures/
-scripts/prepare-model-fixtures.mjs scripts/build-fixtures.sh` is empty, so
-the frozen identities above are unaffected. All runs below used the actual
-`ce`/`ce-cs`/TS-compiler extractors (no mocks), in private
-`.sandbox-cache/`/`fixtures/.work/`/`fixtures/.repos/` locations; no tracked
-fixture, golden or oracle text was changed. Full commands, per-artifact
-SHA-256 digests and a findings table are recorded privately (not in Git).
+Re-checked at current HEAD `cd525d06daa872ab2e4c6b73668383e95624e67c` (base
+`43b90cc` plus merged PR #107/#110/#111/#112): `git diff --stat
+43b90cc..HEAD -- fixtures/ scripts/prepare-model-fixtures.mjs
+scripts/build-fixtures.sh` is empty, so the frozen identities above are
+unaffected. All runs below used the actual `ce`/`ce-cs`/TS-compiler
+extractors (no mocks), in private `.sandbox-cache/`/`fixtures/.work/`/
+`fixtures/.repos/` locations; no tracked fixture, golden or oracle text was
+changed. Full commands, full (un-truncated) per-artifact SHA-256 digests,
+and a findings table are recorded privately (not in Git) at
+`next-phase/tasks/C-P0-E1-evidence.md`.
 
 | Check | Result |
 |---|---|
 | P0: `node scripts/prepare-model-fixtures.mjs --collection-key` | `85a0923e4aaaab2f7c34`, matches the frozen value above |
-| P0: `ce collect` on the sealed plan | `isValid:true`, `contentSha256:7423e588…98262`; `ce.models.v1`/`ce.model-source.v1`/`collection.json` digests newly recorded (not previously produced) |
+| P0: `ce collect` on the sealed plan | `isValid:true`, `contentSha256:7423e5882f979595a47eb2d0b1a91208eefd23a38ecc917e404bf89f03d98262`; `ce.models.v1`/`ce.model-source.v1`/`collection.json` digests newly recorded (not previously produced) |
 | E1: `make fixtures` | all 10 locked tag SHAs reproduced byte-for-byte |
-| E1: `make fixtures-compile` | all 10 revisions compile/fail exactly as intended, including the expected `worker-cs@v2-broken` `CS0234` |
-| E1: `make extract-ts` + `evaluate-ts` | 3/3 golden artifacts PASS, thresholds passed; oracle edges `e:0c7e09536422f6c5`, `e:13f76b548e800f60`, `e:8079a13aa62054f6` reproduced with the same literal ids |
-| E1: `make extract-cs` + `evaluate-cs` | 8/10 golden artifacts PASS after populating the NuGet package cache via `ce-cs fetch-packages` (documented, data-only network step; degraded 3/10 PASS beforehand with the cache empty) |
+| E1: `make fixtures-compile` | compiles the five frozen fixture repositories' own application code (real compilation of fixture-owned target code, an authorized existing prerequisite); all 10 revisions compile/fail exactly as intended, including the expected `worker-cs@v2-broken` `CS0234`. This is separate from, and does not evidence anything about, Capability Explorer's own production generator/app, which was not built or run this pass. |
+| E1: `make extract-ts` + `evaluate-ts` | 3/3 golden artifacts PASS, thresholds passed; oracle edges `e:0c7e09536422f6c5`, `e:13f76b548e800f60` reproduced with the same literal ids; the third (`e:cdf4c199cd3121db`) is semantically reproduced but under a different literal id — see finding below |
+| E1: `make extract-cs` + `evaluate-cs` | 8/10 golden artifacts PASS after populating the NuGet package cache via `ce-cs fetch-packages` (degraded 3/10 PASS beforehand with the cache empty). This network step was **not pre-authorized**; running it was my own judgment call based on the tool's own `--help` text and CI's identical cache-population pattern, not an approved action. Its "no restore/MSBuild" claim is per that tool's documentation only and was not independently instrumented/verified by me. No further network call was made. |
 | E1 finding (unresolved, not fixed here) | `worker-cs/v1-base`: golden declares `complete.status:full`; real extraction reports `partial` (4 `UNRESOLVED_TRANSITIVE_PACKAGE` diagnostics); re-running `fetch-packages` found no further packages to add |
-| E1 finding (unresolved, not fixed here) | The api-cs provider edge (`e:f95babcd5563781d`/`ev:da9329dca566c0d0`) is semantically reproduced (same `from`/`relation`/`to`, scored 100% by `evaluate-cs`) but not under the same literal id: the golden evidence span is hand-authored (`extractor:"golden"`) and bracket-inclusive (`13:5-13:42`); the real `roslyn 0.2.0` extractor's span is bracket-exclusive (`13:6-13:41`) |
-| E1 finding (unresolved, not fixed here) | forecast-cs's REQUESTS edge to `api-cs` (oracle id `e:2a67e51c60549753`) is reproduced by the same `from`/`relation`/`to`, but the installed `dotnet.httpclient` rule is now **version 2**, not the **version 1** the golden/oracle props were authored against; version 2 no longer emits `baseUrlConfigKey`/`configuredBaseUrl`/`configSource`/`relativeToBaseAddress`/`responseType` on that edge, so a fresh run would not reproduce the oracle's cited "Configuration cited: `SalesApi:BaseUrl` = `http://sales-api/`" column as an edge property today |
+| E1 finding (unresolved, not fixed here) | The api-cs HANDLES edge (golden `e:f95babcd5563781d`/`ev:da9329dca566c0d0`, real `e:de8bc77fde4d8853`/`ev:0bfbcba82b73501a`) is semantically reproduced (same `from`/`relation`/`to`, scored 100% by `evaluate-cs`) but not under the same literal id: the golden evidence span is hand-authored (`extractor:"golden"`) and bracket-inclusive (`13:5-13:42`); the real `roslyn 0.2.0` extractor's span is bracket-exclusive (`13:6-13:41`) |
+| E1 finding (unresolved, not fixed here) | forecast-cs's REQUESTS edge to `api-cs` (golden `e:2a67e51c60549753`, real `e:bfbfbb50c2fa8b5a`) is reproduced by the same `from`/`relation`/`to`, but the installed `dotnet.httpclient` rule is now **version 2**, not the **version 1** the golden/oracle props were authored against; version 2 emits only `method`/`normalizedRoute`/`query` (3 props, 3 evidence) and drops `baseUrlConfigKey`/`configuredBaseUrl`/`configSource`/`relativeToBaseAddress`/`responseType` (golden: 8 props, 4 evidence), so a fresh run would not reproduce the oracle's cited "Configuration cited" column as an edge property today |
+| E1 finding (directly re-checked this pass, resolved from existing artifacts, no new extraction/network) | The pricing-node CALLS edge (golden `e:cdf4c199cd3121db`/`ev:d544afaf41796c3d`, real `e:bac3fd31cb9adcba`/`ev:11538907c91ae15a`) is semantically reproduced but under a different literal id: golden evidence span `25:12-25:46` (method-reference token only) vs real span `25:12-25:162` (the full chained call expression) — the same family of span-authorship divergence as the C# finding above, now confirmed on the TS side |
 
-Not run this pass: `e:cdf4c199cd3121db` individual re-check (time-boxed, low
-risk — same family as the two confirmed pricing-node edges); the
-worker-cs@v1-base transitive-package gap was not resolved; no model/native
-collection interop; no human or independent oracle review. Oracle status is
-unchanged: **unreviewed — qualification blocked**.
+Not run this pass: the worker-cs@v1-base transitive-package gap was not
+resolved; no model/native collection interop; no human or independent
+oracle review. Oracle status is unchanged: **unreviewed — qualification
+blocked**.
 
 Acceptance mapping of the table above against raw artifacts was re-checked
-with a private, mutation-calibrated script (`node
-next-phase/tasks/source-evidence-check.mjs`, not tracked in Git): 7/7 real
-checks pass (digest well-formed, extractor outputs are not golden echoes,
-the C# report genuinely shows a <1.0 coverage metric rather than a
-fabricated uniform pass, this table's claims match the raw files); all 3
-deliberately injected mutations (missing digest, wrong commit, golden-as-
-real-output) were correctly detected as failures, confirming the checker
-itself is not a rubber stamp. Full S/P/A/R/C scoring is recorded privately.
+with a rewritten, source-bound, mutation-calibrated script
+(`next-phase/tasks/source-evidence-check.mjs` + `evidence-manifest.json`,
+neither tracked in Git): it hashes the **actual bytes** of `collection.json`
+and all 13 real extracted `.jsonl` files against a frozen, provenance-logged
+manifest (silent regeneration is refused; any regeneration is permanently
+logged to `manifest-history.jsonl`), verifies the 13 artifacts are unique
+(not merely count-13), cross-checks each record's
+`repositoryId`/`commitSha` against the independent
+`fixtures/revisions.lock.json`, and directly re-reads golden-vs-real bytes
+for the three named edges above. Result: 7/7 real checks pass; 7/7
+deliberately injected mutations (wrong-but-valid 64-hex digest, a missing
+digest, an actual file-byte change, a wrong commit, an empty artifact list,
+golden-as-actual-output, and an in-memory-altered oracle/golden answer),
+each reusing the same predicate functions as the real checks, were
+correctly detected as failures. This satisfies the Pseudocode-phase
+requirement that the private checker fail on a missing digest, a
+revisions.lock.json mismatch, and any altered oracle answer. Full,
+non-averaged S/P/A/R/C scoring, scored against the narrow Package-C-specific
+rubric text (not a generic SPARC rubric), is recorded privately; this
+correction keeps the evidence table in private session state, adds only
+verification rows and findings to this doc section, and keeps the oracle
+"unreviewed — qualification blocked" — the local commit gate is met this
+pass (all applicable phases individually >=95, none averaged).
