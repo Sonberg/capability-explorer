@@ -297,6 +297,9 @@ public sealed class AnalysisParallelTests
             "platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll",
             "platform/src/CapabilityExplorer.Extractors.CSharp/bin/Debug/net10.0/ce-cs.dll"
         }) Write(file,"");
+        // Shadow adapter planning reads the tracked manifest/recipe from the project root: copy them verbatim.
+        foreach (var file in new[] { "config/adapters/csharp.roslyn/manifest.json", "config/adapters/csharp.roslyn/recipe.json" })
+            Write(file,File.ReadAllText(Path.Combine(Fixtures.RepositoryRoot,file)));
         Write("extractors/ts/src/cli.ts","\"extract\" \"extract-sql\"");
         Write("scripts/github-token","#!/bin/sh\nexit 0\n",true);
         var snapshot = JsonSerializer.Serialize(new

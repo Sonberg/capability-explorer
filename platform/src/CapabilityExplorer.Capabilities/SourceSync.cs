@@ -2,7 +2,11 @@ using System.Diagnostics;
 
 namespace CapabilityExplorer.Capabilities;
 
-public sealed record ExportResult(int Files, int Skipped);
+public sealed record ExportResult(int Files, int Skipped)
+{
+    /// <summary>The 40-hex tree object id of the exported commit, resolved in the same git directory as the archive.</summary>
+    public string TreeSha { get; init; } = "";
+}
 
 /// <summary>
 /// Acquires capability sources read-only and resolves the revision to check. GitHub repositories become bare,
@@ -171,9 +175,16 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
             await PrefetchAsync(dir, source.Location, commitSha, cancellationToken);
         }
 
+        var bare = source.Kind == SourceKind.GitHub || IsBareRepository(dir);
+        var (treeOk, treeOutput) = await GitAsync(dir, ["rev-parse", "--verify", "--quiet", "--end-of-options", $"{commitSha}^{{tree}}"], cancellationToken, bare: bare);
+        var treeSha = treeOutput.Trim();
+        if (!treeOk || !CommitPattern().IsMatch(treeSha))
+        {
+            throw new InvalidOperationException("tree resolution failed");
+        }
+
         Directory.CreateDirectory(destination);
         var root = Path.GetFullPath(destination) + Path.DirectorySeparatorChar;
-        var bare = source.Kind == SourceKind.GitHub || IsBareRepository(dir);
         var start = Start(dir, ["archive", "--format=tar", commitSha], anonymous: false, bare: bare);
         start.Environment["GIT_NO_LAZY_FETCH"] = "1"; // everything needed was fetched above
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -182,6 +193,8 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
         var stderr = SourceSafety.ReadBoundedAsync(process.StandardError, process, 64 * 1024, timeout.Token);
         int files = 0, skipped = 0, entries = 0;
         long bytes = 0;
+        var directories = new HashSet<string>(StringComparer.Ordinal);
+        var hasChild = new HashSet<string>(StringComparer.Ordinal);
         try
         {
             var reader = new System.Formats.Tar.TarReader(process.StandardOutput.BaseStream);
@@ -200,6 +213,20 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
                 }
 
                 SourceSafety.RejectLinks(target);
+                if (entry.EntryType != System.Formats.Tar.TarEntryType.GlobalExtendedAttributes)
+                {
+                    var normalized = entry.Name.Replace('\\', '/').TrimEnd('/');
+                    var parentEnd = normalized.LastIndexOf('/');
+                    if (parentEnd >= 0)
+                    {
+                        hasChild.Add(normalized[..parentEnd]);
+                    }
+                    if (entry.EntryType == System.Formats.Tar.TarEntryType.Directory)
+                    {
+                        directories.Add(normalized);
+                    }
+                }
+
                 switch (entry.EntryType)
                 {
                     case System.Formats.Tar.TarEntryType.GlobalExtendedAttributes:
@@ -220,10 +247,14 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
                         files++;
                         break;
                     default:
-                        skipped++; // symlinks, submodules (gitlinks are not archived), oversized files
+                        skipped++; // symlinks, oversized files
                         break;
                 }
             }
+
+            // Submodules (gitlinks) archive as an empty directory entry with no content beneath it: a directory
+            // entry that never gained a child is content git could not include, so it counts as skipped too.
+            skipped += directories.Count(directory => !hasChild.Contains(directory));
 
             // TarReader stops at the end marker before Git's block padding ends.
             // Drain the pipe before waiting, or a small pipe can block Git's exit.
@@ -250,7 +281,7 @@ public sealed partial class SourceSync(string workspace, TimeSpan? timeout = nul
         }
 
         await stderr; // propagate bounded stderr failures even when Git exits successfully
-        return new ExportResult(files, skipped);
+        return new ExportResult(files, skipped) { TreeSha = treeSha };
     }
 
     private const long MaxExportedFileBytes = 8L * 1024 * 1024;

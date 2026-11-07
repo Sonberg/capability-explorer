@@ -81,6 +81,7 @@ internal static class AnalysisPreparation
         var priorCheck = store.ReadLatestCheck(definition.Id);
         CapabilitySnapshot snapshot;
         var manifest = new List<string>();
+        var exports = new Dictionary<string, ExportResult>(StringComparer.Ordinal);
         await SourceAcquisitionGate.WaitAsync(stop);
         try
         {
@@ -106,7 +107,7 @@ internal static class AnalysisPreparation
                 using var timing = process.Measure("sources.export",repository.Id);
                 var source = definition.Repositories.Single(source => source.Id == repository.Id && source.Ref == repository.Ref);
                 var destination = Path.Combine(work, "src", source.Id);
-                await process.AcquireSource(sync, token => sync.ExportAsync(source, repository.CommitSha!, destination, token));
+                exports[source.Id] = await process.AcquireSource(sync, token => sync.ExportAsync(source, repository.CommitSha!, destination, token));
                 manifest.Add($"{source.Id}\t{repository.CommitSha}\tsrc/{source.Id}");
                 timing.Complete();
             }
@@ -146,6 +147,19 @@ internal static class AnalysisPreparation
             sources = repositories.ToDictionary(repo => repo.Id, repo => AnalysisPackagePreparation.SourceIdentity(repo.Source), StringComparer.Ordinal);
             timing.Complete();
         }
+        var shadow = await AnalysisAdapterShadow.LoadAsync(root, stop);
+        var shadowOutcomes = new Dictionary<string, AdapterShadowOutcome>(StringComparer.Ordinal);
+        foreach (var repo in repositories)
+        {
+            process.CheckCancellation();
+            using var timing = process.Measure("adapter.shadow", repo.Id);
+            var outcome = await AnalysisAdapterShadow.PlanAsync(repo.Source, repo.Id, repo.Sha, exports[repo.Id].TreeSha,
+                exports[repo.Id].Skipped, shadow, TimeSpan.FromSeconds(120), stop);
+            shadowOutcomes[repo.Id] = outcome;
+            if (outcome.Status != "ok")
+                process.LogFailure($"Shadow adapter plan '{repo.Id}': {outcome.Status}" + (outcome.Codes.Count > 0 ? ":" + string.Join(',', outcome.Codes) : ""));
+            timing.Complete();
+        }
         await PackageAcquisitionGate.WaitAsync(stop);
         Dictionary<string, string> packageInputs;
         try { packageInputs = await AnalysisPackagePreparation.Run(root, run, process, repositories, work, locks, packageDir); }
@@ -169,6 +183,7 @@ internal static class AnalysisPreparation
             if (sources[repo.Id] != AnalysisPackagePreparation.SourceIdentity(repo.Source)) throw new InvalidOperationException("exported source changed during preparation");
             inputs["source:" + repo.Id] = sources[repo.Id];
             inputs["export-path:" + repo.Id] = Path.GetRelativePath(work, repo.Source).Replace('\\', '/');
+            AnalysisAdapterShadow.AddInputs(inputs, repo.Id, exports[repo.Id].TreeSha, shadowOutcomes[repo.Id]);
             if (dependencies[repo.Id] != AnalysisPackagePreparation.DependencyIdentity(repo.Source)) throw new InvalidOperationException("installed dependencies changed during extraction");
             inputs["npm-dependencies:" + repo.Id] = dependencies[repo.Id];
             foreach (var file in CheckedFiles(repo.Staging))
@@ -178,6 +193,7 @@ internal static class AnalysisPreparation
                 inputs["artifact:" + repo.Id + ":" + Path.GetRelativePath(repo.Staging,file)] = artifacts[file];
             }
         }
+        AnalysisAdapterShadow.AddGlobalInputs(inputs, shadow);
         foreach (var input in packageInputs) inputs.Add(input.Key, input.Value);
         foreach (var file in CheckedFiles(locks)) inputs["lock:" + Path.GetFileName(file)] = AnalysisWorkerCommand.HashFile(file);
         if (run.Settings.Packages) inputs["package-cache"] = AnalysisWorkerCommand.HashText(string.Join('\n',CheckedFiles(packageDir).Order(StringComparer.Ordinal)
