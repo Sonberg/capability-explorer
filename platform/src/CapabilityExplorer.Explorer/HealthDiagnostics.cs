@@ -68,7 +68,7 @@ public sealed record HealthCheckSnapshot(DateTimeOffset CheckedAt, string Status
 internal sealed partial class HealthDiagnosticsService(
     IEnumerable<IHealthDependencyCheck> checks,
     HealthEndpointOptions options,
-    ILogger<HealthDiagnosticsService>? logger = null) : IDisposable
+    ILogger<HealthDiagnosticsService> logger) : IDisposable
 {
     private static readonly string[] DependencyNames = ["database", "explorer", "other"];
     private readonly IHealthDependencyCheck[] _checks = checks.Take(HealthEndpointOptions.MaximumChecks).ToArray();
@@ -140,7 +140,7 @@ internal sealed partial class HealthDiagnosticsService(
                 .Select(pair => pair.Key)
                 .Order(StringComparer.Ordinal)
                 .FirstOrDefault();
-            LogTransitions(checksByDependency, failureCause);
+            LogTransitions(checksByDependency);
             var snapshot = new HealthCheckSnapshot(DateTimeOffset.UtcNow, status, ready, checksByDependency, failureCause, overallTimedOut);
             if (!overallTimedOut)
             {
@@ -196,15 +196,16 @@ internal sealed partial class HealthDiagnosticsService(
     // §8 Logging: WARN on transition to unhealthy, INFO on recovery to healthy; no log when a poll
     // reports the same status as before. Keys are already SafeName-bucketed (allow-listed), and only the
     // sanitized HealthDependencyResult fields are logged — never a raw exception, stack trace, or path.
-    private void LogTransitions(IReadOnlyDictionary<string, HealthDependencyResult> checksByDependency, string? failureCause)
+    // failure_cause is this check's own name: the overall snapshot's single (first-alphabetically)
+    // FailureCause must not be attributed to a different check's transition log entry.
+    private void LogTransitions(IReadOnlyDictionary<string, HealthDependencyResult> checksByDependency)
     {
-        if (logger is null) return;
         foreach (var (name, result) in checksByDependency)
         {
             var previous = _previousStatus.GetOrAdd(name, "unknown");
             if (previous == result.Status) continue;
             if (result.Status == "unhealthy")
-                LogUnhealthyTransition(logger, DateTimeOffset.UtcNow, name, previous, result.Status, result.LatencyMs, failureCause);
+                LogUnhealthyTransition(logger, DateTimeOffset.UtcNow, name, previous, result.Status, result.LatencyMs, name);
             else if (result.Status == "healthy" && previous == "unhealthy")
                 LogRecovery(logger, DateTimeOffset.UtcNow, name, previous, result.Status, result.LatencyMs);
             _previousStatus[name] = result.Status;

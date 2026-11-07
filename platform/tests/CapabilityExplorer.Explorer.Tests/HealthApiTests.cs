@@ -18,7 +18,7 @@ using Xunit;
 namespace CapabilityExplorer.Tests;
 
 public sealed class HealthApiFactory(Action<IServiceCollection>? configureServices = null, bool configureToken = true,
-    ILoggerProvider? loggerProvider = null)
+    ILoggerProvider? loggerProvider = null, IReadOnlyDictionary<string, string?>? settings = null)
     : WebApplicationFactory<Program>
 {
     public const string Token = "health-test-token";
@@ -29,6 +29,9 @@ public sealed class HealthApiFactory(Action<IServiceCollection>? configureServic
         builder.UseSetting("repos", Path.Combine(Fixtures.RepositoryRoot, "fixtures", ".repos"));
         if (configureToken) builder.UseSetting("internalHealth:token", Token);
         if (loggerProvider is not null) builder.ConfigureLogging(logging => logging.AddProvider(loggerProvider));
+        if (settings is not null)
+            foreach (var (key, value) in settings)
+                builder.UseSetting(key, value);
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<SourceIpRateLimiter>();
@@ -38,10 +41,15 @@ public sealed class HealthApiFactory(Action<IServiceCollection>? configureServic
     }
 }
 
+/// <summary>A single captured log entry: the formatted message plus its structured key/value fields
+/// (excluding the "{OriginalFormat}" template key), so tests can assert exact field values rather than
+/// parsing the rendered message string.</summary>
+public sealed record CapturedLogEntry(LogLevel Level, string Message, IReadOnlyDictionary<string, object?> Fields);
+
 /// <summary>Captures only <see cref="HealthDiagnosticsService"/> log entries for assertion, never raw exceptions.</summary>
 public sealed class CapturingLoggerProvider : ILoggerProvider
 {
-    public ConcurrentQueue<(LogLevel Level, string Message)> Entries { get; } = new();
+    public ConcurrentQueue<CapturedLogEntry> Entries { get; } = new();
 
     public ILogger CreateLogger(string categoryName) => new CapturingLogger(this, categoryName);
     public void Dispose() { }
@@ -55,7 +63,10 @@ public sealed class CapturingLoggerProvider : ILoggerProvider
             Func<TState, Exception?, string> formatter)
         {
             if (!IsEnabled(logLevel)) return;
-            owner.Entries.Enqueue((logLevel, formatter(state, exception)));
+            var fields = (state as IReadOnlyList<KeyValuePair<string, object?>> ?? [])
+                .Where(pair => pair.Key != "{OriginalFormat}")
+                .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+            owner.Entries.Enqueue(new CapturedLogEntry(logLevel, formatter(state, exception), fields));
         }
     }
 }
@@ -341,6 +352,9 @@ public sealed class HealthApiTests
         Assert.Contains("process_resident_memory_bytes ", text, StringComparison.Ordinal);
     }
 
+    private static readonly IReadOnlyDictionary<string, string?> MinimumCacheTtlSettings =
+        new Dictionary<string, string?> { ["internalHealth:cacheSeconds"] = "3" }; // 3s is the policy-defined minimum (HealthEndpointOptions.From), not a new TTL value
+
     [Fact]
     public async Task Unhealthy_transition_logs_warning_and_recovery_logs_information_once_per_change()
     {
@@ -353,7 +367,7 @@ public sealed class HealthApiTests
                 Interlocked.Increment(ref attempt) == 1
                     ? throw new InvalidOperationException("secret connection string and stack trace")
                     : Task.CompletedTask));
-        }, loggerProvider: capture);
+        }, loggerProvider: capture, settings: MinimumCacheTtlSettings);
         using var client = factory.CreateClient();
 
         async Task<HttpStatusCode> PollInternalHealthAsync()
@@ -365,27 +379,68 @@ public sealed class HealthApiTests
         }
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, await PollInternalHealthAsync()); // unknown -> unhealthy
-        await Task.Delay(HealthEndpointOptions.From(new ConfigurationBuilder().Build()).CacheTtl + TimeSpan.FromMilliseconds(200));
+        await Task.Delay(TimeSpan.FromSeconds(3.2)); // past the configured 3s cache TTL, forces a fresh probe
         Assert.Equal(HttpStatusCode.OK, await PollInternalHealthAsync()); // unhealthy -> healthy (recovery)
-        await Task.Delay(HealthEndpointOptions.From(new ConfigurationBuilder().Build()).CacheTtl + TimeSpan.FromMilliseconds(200));
+        await Task.Delay(TimeSpan.FromSeconds(3.2));
         Assert.Equal(HttpStatusCode.OK, await PollInternalHealthAsync()); // healthy -> healthy: no new log entry
 
         var entries = capture.Entries.ToArray();
         var warnings = entries.Where(entry => entry.Level == LogLevel.Warning).ToArray();
         var infos = entries.Where(entry => entry.Level == LogLevel.Information).ToArray();
-        Assert.Single(warnings);
-        Assert.Contains("check_name=database", warnings[0].Message, StringComparison.Ordinal);
-        Assert.Contains("previous_state=unknown", warnings[0].Message, StringComparison.Ordinal);
-        Assert.Contains("new_state=unhealthy", warnings[0].Message, StringComparison.Ordinal);
-        Assert.Contains("failure_cause=database", warnings[0].Message, StringComparison.Ordinal);
-        Assert.Matches(@"latency_ms=\d", warnings[0].Message);
-        Assert.Matches(@"timestamp=\d", warnings[0].Message);
-        Assert.DoesNotContain("InvalidOperationException", warnings[0].Message, StringComparison.Ordinal);
-        Assert.DoesNotContain("secret connection string", warnings[0].Message, StringComparison.Ordinal);
-        Assert.Single(infos);
-        Assert.Contains("check_name=database", infos[0].Message, StringComparison.Ordinal);
-        Assert.Contains("previous_state=unhealthy", infos[0].Message, StringComparison.Ordinal);
-        Assert.Contains("new_state=healthy", infos[0].Message, StringComparison.Ordinal);
+        var warning = Assert.Single(warnings);
+        Assert.Equal("database", warning.Fields["CheckName"]);
+        Assert.Equal("unknown", warning.Fields["PreviousState"]);
+        Assert.Equal("unhealthy", warning.Fields["NewState"]);
+        Assert.Equal("database", warning.Fields["FailureCause"]);
+        Assert.True(warning.Fields["LatencyMs"] is double);
+        Assert.True(warning.Fields["Timestamp"] is DateTimeOffset);
+        Assert.DoesNotContain("InvalidOperationException", warning.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret connection string", warning.Message, StringComparison.Ordinal);
+        var info = Assert.Single(infos);
+        Assert.Equal("database", info.Fields["CheckName"]);
+        Assert.Equal("unhealthy", info.Fields["PreviousState"]);
+        Assert.Equal("healthy", info.Fields["NewState"]);
+    }
+
+    [Fact]
+    public async Task Each_unhealthy_check_logs_its_own_name_as_failure_cause_not_a_different_checks()
+    {
+        var databaseAttempt = 0;
+        var capture = new CapturingLoggerProvider();
+        using var factory = new HealthApiFactory(services =>
+        {
+            services.RemoveAll<IHealthDependencyCheck>();
+            services.AddSingleton<IHealthDependencyCheck>(new FakeHealthCheck("database", critical: true, _ =>
+                Interlocked.Increment(ref databaseAttempt) == 1
+                    ? throw new InvalidOperationException("db unreachable")
+                    : Task.CompletedTask));
+            services.AddSingleton<IHealthDependencyCheck>(new FakeHealthCheck("explorer", critical: true,
+                _ => throw new InvalidOperationException("explorer unreachable")));
+        }, loggerProvider: capture, settings: MinimumCacheTtlSettings);
+        using var client = factory.CreateClient();
+
+        async Task<HttpStatusCode> PollInternalHealthAsync()
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/internal/health");
+            request.Headers.Authorization = new("Bearer", HealthApiFactory.Token);
+            using var response = await client.SendAsync(request);
+            return response.StatusCode;
+        }
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, await PollInternalHealthAsync()); // both database and explorer unhealthy
+        await Task.Delay(TimeSpan.FromSeconds(3.2));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, await PollInternalHealthAsync()); // database recovers, explorer stays unhealthy
+
+        var warnings = capture.Entries.Where(entry => entry.Level == LogLevel.Warning).ToArray();
+        Assert.Equal(2, warnings.Length);
+        var databaseWarning = Assert.Single(warnings, entry => Equals(entry.Fields["CheckName"], "database"));
+        Assert.Equal("database", databaseWarning.Fields["FailureCause"]);
+        var explorerWarning = Assert.Single(warnings, entry => Equals(entry.Fields["CheckName"], "explorer"));
+        Assert.Equal("explorer", explorerWarning.Fields["FailureCause"]); // must not be "database" (the snapshot's own alphabetical FailureCause)
+
+        var infos = capture.Entries.Where(entry => entry.Level == LogLevel.Information).ToArray();
+        var info = Assert.Single(infos);
+        Assert.Equal("database", info.Fields["CheckName"]); // only the recovered check logs, not explorer (still unhealthy)
     }
 
     [Fact]
