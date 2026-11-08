@@ -11,6 +11,12 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Six deny-default, bounded task-evidence queries over file and PostgreSQL
+  snapshots, shared by HTTP and an isolated MCP stdio entry point. Results
+  distinguish candidates, incomplete coverage and typed failures; source
+  excerpts require exact revisions and cited paths. File snapshot identifiers
+  remain process-local, and no deployment or human UX acceptance is implied.
+
 - HTTP capability recommendations in architecture inspection and binding review,
   with explainable observed route coverage, request/endpoint source evidence,
   explicit cross-capability destination revisions and stale-review protection.

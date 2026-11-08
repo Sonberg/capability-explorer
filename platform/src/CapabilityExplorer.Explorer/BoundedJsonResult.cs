@@ -13,6 +13,24 @@ internal sealed class BoundedJsonResult(
 {
     public const int MaximumBytes = 1024 * 1024;
 
+    internal static bool TrySerialize(object value, JsonSerializerOptions options, int maximumBytes, out byte[] bytes)
+    {
+        using var stream = new LimitedStream(maximumBytes);
+        try
+        {
+            using var writer = new Utf8JsonWriter(stream);
+            JsonSerializer.Serialize(writer, value, value.GetType(), options);
+            writer.Flush();
+            bytes = stream.ToArray();
+            return true;
+        }
+        catch (ResponseLimitException)
+        {
+            bytes = [];
+            return false;
+        }
+    }
+
     public async Task ExecuteAsync(HttpContext httpContext)
     {
         ArgumentNullException.ThrowIfNull(httpContext);

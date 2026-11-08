@@ -11,6 +11,9 @@
     <ProjectReference Include="../CapabilityExplorer.Store/CapabilityExplorer.Store.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" />
+  </ItemGroup>
+  <ItemGroup>
     <Content Update="wwwroot/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
