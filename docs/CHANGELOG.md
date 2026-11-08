@@ -11,6 +11,11 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Source-check lock failures now show bounded repository/ref/access recovery
+  guidance in the existing capability view, without inventing an analysis run.
+  Browser tests cover that UI boundary; a separate real journal-to-HTTP test
+  confirms the existing public error sanitization.
+
 - HTTP capability recommendations in architecture inspection and binding review,
   with explainable observed route coverage, request/endpoint source evidence,
   explicit cross-capability destination revisions and stale-review protection.
