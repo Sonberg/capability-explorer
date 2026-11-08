@@ -2,7 +2,7 @@
 
 * Status: applied to this operator's agent-assisted work; proposed for repository-wide adoption
 * Date: 2026-11-01
-* Updated: 2026-11-03
+* Updated: 2026-11-09
 * Decision owner: operator; repository owner and contributors for wider adoption
 * Related: [MADR-0005](0005-pr-lifecycle-and-conflict-prevention.md), [MADR-0003](0003-local-ci-before-push.md)
 
@@ -47,6 +47,9 @@ Before removal, the integration owner must:
 1. Verify the PR URL, explicit base `main`, published head
    SHA and remote feature ref. The exact local HEAD must be recoverable from that
    remote ref and match the PR head. A successful push alone is insufficient.
+   Integrated worker histories without a matching published head may instead use
+   the verified recovery-artifact path below; integration and exact-history
+   recovery remain separate requirements.
 2. Confirm the worktree is clean, including untracked files; inspect ignored files
    separately. Preserve non-reproducible notes, local validation receipts, necessary
    configuration and agent memory outside the worktree in a private verified
@@ -60,15 +63,17 @@ Before removal, the integration owner must:
 4. Record PR/head/base, original path and branch, backup path and integrity check,
    validation receipt identities, discarded caches and the recovery command in a
    durable handoff outside the checkout. Retain the primary checkout and branch refs.
-5. From outside the checkout, immediately recheck source, remote recoverability,
+5. From outside the checkout, immediately recheck source, remote or artifact recoverability,
    activity and archive integrity, then use `git worktree remove <path>` without
    force. Skip primary or locked worktrees and any failed prerequisite. Do not use
    blanket pruning or deletion to overcome a refusal.
 6. Record actual free space before and after; allocated sizes are estimates and
    must not be presented as measured reclaimed space.
 
-An active checkout is marked **cleanup pending**, with its reason and owner, until
-these checks pass. Publishing a PR must not terminate an in-progress user preview
+An ineligible checkout is marked **cleanup pending**, with its owner, exact blocker,
+next review date or event, and required evidence/action until these checks pass.
+Review pending entries at merge, handoff and renewed disk pressure; an expired
+checkpoint triggers review, never automatic deletion. Publishing a PR must not terminate an in-progress user preview
 or erase the session executing the handoff. Do not ask again for routine qualifying
 cleanup under this authorization; ask only if a necessary action exceeds it.
 
@@ -87,9 +92,10 @@ PR's head and merge provenance; requiring the topic HEAD itself to be an ancesto
 of main would incorrectly retain completed work. A branch name, PR number,
 closed-but-unmerged state or old publication receipt is not sufficient.
 
-Retain an advanced or dirty head, uncertain ownership, active claims/processes,
-locked checkout or unverified recovery evidence as cleanup pending with its owner
-and reason. Preserve private non-reproducible evidence outside the checkout;
+Retain an advanced or dirty head until the reconciliation checks below pass.
+Uncertain ownership, active claims/processes, a locked checkout or unverified
+recovery evidence requires cleanup pending with its owner, blocker and next review
+checkpoint. Preserve private non-reproducible evidence outside the checkout;
 discard only inspected reproducible dependencies/build/scanner caches. Keep the
 primary checkout, retained local branch refs and active implementation worktrees.
 Remote topic-branch deletion remains the separate authorization below.
@@ -100,6 +106,60 @@ before ordinary `git worktree remove`; never use force, wildcard deletion, globa
 cache purges or blanket worktree pruning to overcome an uncertain or refused
 candidate. A future automated implementation must default to a read-only plan
 and test these exclusion/race boundaries; no cleanup daemon is required.
+
+### Integrated worker histories and dirty-work reconciliation
+
+The operator authorizes a broader recovery method for inactive project worker
+checkouts, not weaker deletion checks. A missing remote worker ref need not mean
+permanent retention when integration and independent exact recovery are verified.
+The primary checkout, active runtimes, ownership/claim checks, retained branches,
+ordinary removal and separate publication permissions remain unchanged.
+
+* **Patch-equivalent histories:** compare against freshly fetched `origin/main`
+  and record its SHA, the original worker HEAD and the corresponding integrated
+  commits/PRs. Patch IDs or `git cherry` support integration evidence, but do not
+  establish exact-history recovery or account for merge resolutions. Inspect
+  merge commits and any unmatched changes explicitly; unresolved differences
+  remain cleanup pending. Preserve the original HEAD and required history in a
+  Git bundle or equivalent self-contained recovery artifact outside the checkout.
+  Record its checksum and included refs. Verify it and restore into a fresh
+  repository that does not borrow objects from the original repository; confirm
+  the exact HEAD and history before retirement. A local branch alone is not this
+  independent proof. Keep the artifact until an owner-approved recovery-retention
+  decision; this policy does not authorize its deletion or an extra push.
+* **Duplicate dirty work:** compare base identities, staged and unstaged binary
+  diffs separately, untracked files and relevant ignored content. Include file
+  bytes, paths, modes and symlink targets in the recovery manifest. Equal
+  `git diff HEAD` output alone cannot prove equality or preserve staging state.
+  Preserve and independently restore the complete source state, including the
+  original index/staging boundaries, private configuration and non-reproducible
+  evidence outside both checkouts. Verify the restored state against the manifest.
+  A surviving preview checkout is not by itself an independent recovery copy.
+  Record any differences and the owner's choice of authoritative copy.
+* **Unique dirty work:** obtain an explicit owner-authorized reconciliation or
+  preservation handoff. Archive-only retirement must name the destination,
+  recovery instructions and responsible owner without implying integration or
+  acceptance. Apply the same independent restoration checks as duplicate work.
+  Do not commit, publish, reset, overwrite or discard changes merely to make a
+  checkout removable.
+
+Classify ignored content explicitly: discard only inspected reproducible caches
+and build outputs; preserve unknown content until classified. Recovery artifacts
+must exclude reproducible dependencies, protect private data and remain outside
+the retiring checkout. A checksum alone does not replace restoration testing.
+
+A dirty checkout cannot be passed to ordinary removal unchanged. After the owner
+acknowledges the verified handoff, separately authorize the exact source paths to
+be restored/moved out of that checkout, with a final source-state race check.
+Then verify it is clean and use `git worktree remove` without force. Without that
+path-specific authorization, retain the dirty checkout even if its archive is
+valid. A failed restore, changed source/HEAD, uncertain ownership or new runtime
+dependency leaves the checkout intact and updates its pending review checkpoint.
+
+The durable receipt records integration evidence separately from recovery proof,
+authorization/handoff, archive location/checksum, independent restoration results,
+source manifest, discarded generated paths, before/after state and measured free
+space. This reconciliation path is manual; it does not implement a cleanup hook.
 
 ### Remote topic branches after owner merge
 
@@ -162,3 +222,11 @@ verification and a recreated review worktree. Every failed prerequisite must lea
 the original worktree intact. The previous authorized removal of twelve merged
 worktrees is historical evidence for careful cleanup, not proof of this new policy's
 post-publication execution.
+
+Also review a patch-equivalent worker without a remote ref, a merge-resolution
+difference, a bundle with missing prerequisites, restoration accidentally borrowing
+local objects, identical combined diffs with different staging, differing untracked
+or ignored files, symlink/mode differences, an archive-only unique-source handoff,
+missing path-specific cleanup authorization, and a source/runtime race after
+verification. Failed checks retain the checkout with an owner, blocker and next
+review checkpoint; passing recovery checks never authorize force removal.
