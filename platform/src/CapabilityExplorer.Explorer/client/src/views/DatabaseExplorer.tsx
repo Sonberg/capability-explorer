@@ -8,7 +8,8 @@ import { EmbeddingStatusPanel } from "../components/embedding-status";
 import { href, useRoute } from "../state";
 
 const ProcessesDecisions = lazy(() => import("./ProcessesDecisions").then((module) => ({ default: module.ProcessesDecisions })));
-type Tab = "explore" | "processes-decisions";
+const OwnershipAlignment = lazy(() => import("./OwnershipAlignment").then((module) => ({ default: module.OwnershipAlignment })));
+type Tab = "explore" | "processes-decisions" | "ownership-alignment";
 const button = "rounded border border-zinc-300 px-3 py-1.5 text-sm disabled:cursor-default disabled:opacity-40 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800";
 const input = "rounded border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900";
 
@@ -37,7 +38,7 @@ export function DatabaseExplorer({ meta, reload }: { meta: DatabaseMeta; reload:
 }
 
 function DatabaseWorkspace({ meta, route, loadLatest }: { meta: DatabaseMeta; route: { path: string; params: URLSearchParams }; loadLatest: () => void }) {
-  const validTabs: Tab[] = ["explore", "processes-decisions"];
+  const validTabs: Tab[] = ["explore", "processes-decisions", "ownership-alignment"];
   const tab: Tab = validTabs.includes(route.path as Tab) ? route.path as Tab : "explore";
   const [query, setQuery] = useState("");
   const settled = useDebouncedText(query);
@@ -64,9 +65,10 @@ function DatabaseWorkspace({ meta, route, loadLatest }: { meta: DatabaseMeta; ro
       <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">Architecture, integrations, glossary, changes and binding review are not silently reconstructed from JSONL.</p>
     </Card>
     <nav aria-label="Database views" className="flex flex-wrap gap-2">{validTabs.map((id) =>
-      <a key={id} href={href(id, Object.fromEntries(route.params))} aria-current={tab === id ? "page" : undefined} className={`${button} ${tab === id ? "bg-blue-50 font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300" : ""}`}>{id === "processes-decisions" ? "Processes & decisions" : id[0].toUpperCase() + id.slice(1)}</a>)}</nav>
+      <a key={id} href={href(id, Object.fromEntries(route.params))} aria-current={tab === id ? "page" : undefined} className={`${button} ${tab === id ? "bg-blue-50 font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300" : ""}`}>{id === "processes-decisions" ? "Processes & decisions" : id === "ownership-alignment" ? "Ownership alignment" : "Explore"}</a>)}</nav>
     {tab === "processes-decisions" && <Suspense fallback={<Loading what="model view" />}><ProcessesDecisions key={scope} scope={`${scope}&g=${meta.generation}`} params={route.params} mode="database" /></Suspense>}
-    {tab !== "processes-decisions" && <div className={`grid min-w-0 gap-4 ${key ? "xl:grid-cols-[minmax(0,1fr)_minmax(340px,40%)]" : "grid-cols-1"}`}>
+    {tab === "ownership-alignment" && <Suspense fallback={<Loading what="ownership report" />}><OwnershipAlignment /></Suspense>}
+    {tab === "explore" && <div className={`grid min-w-0 gap-4 ${key ? "xl:grid-cols-[minmax(0,1fr)_minmax(340px,40%)]" : "grid-cols-1"}`}>
       <section className="min-w-0 space-y-3">
         <H1>Explore symbols</H1>
         {tab === "explore" && <div className="flex flex-wrap gap-2">

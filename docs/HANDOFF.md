@@ -1,5 +1,65 @@
 # Handoff: remaining work
 
+## Issue #126: read-only ownership alignment
+
+The **Ownership alignment** view is available in both current Explorer modes.
+Engineering and Architecture share identical findings, counts and verdicts;
+only grouping changes. A missing LeanIX link or owner is actionable in both.
+This report is independent of the code-revision/capability selector. It never
+reassigns ownership, opens tickets or writes to source systems.
+The local-request guard is not authentication; remote exposure is unsupported.
+
+An authorized local operator must explicitly configure a separate section
+(private configuration, not committed credentials):
+
+```json
+{
+  "OwnershipAlignment": {
+    "Enabled": true,
+    "Root": "/absolute/authorized/ownership-inputs",
+    "Repositories": ["svc-a"],
+    "Snapshots": { "github": "github.json", "leanix": "leanix.json",
+      "servicenow": "servicenow.json", "backstage": "backstage.json" },
+    "Crosswalk": "crosswalk.json", "Rules": "rules.json"
+  }
+}
+```
+
+Default/empty grants return a typed 403 without opening files. These grants do
+not enable any TaskQueries operation. `GET /api/ownership-alignment` accepts
+only `audience=engineering|architecture` and an optional exact granted
+`repository`. The repository field narrows that grant; it never accepts paths.
+File paths are relative to Root, with no traversal or symlinks.
+
+The typed input format is defined by
+[`OwnershipContracts.cs`](../platform/src/CapabilityExplorer.Explorer/OwnershipAlignment/OwnershipContracts.cs):
+`ce.ownership-snapshot.v1` (one exact source, capture time, full/partial
+coverage and source-native role/party records),
+`ce.ownership-crosswalk.v1` (reviewed entity aliases/shared subjects and exact
+party mappings), and `ce.ownership-rules.v1` (requirements, relations,
+freshness, scoped delegations/non-applicability and expiring exceptions).
+Collections are required, including empty arrays. Timestamps require offsets;
+freshness specifies all four sources using P1D through P365D. Unknown fields,
+duplicate JSON members, invalid identities or unsafe source URLs reject the
+whole affected file. Limits are 4 MiB/file,
+10,000 snapshot records, 5,000 crosswalk rows, 128 rules, 100 granted
+repositories, 20,000 findings, 100,000 materialized evidence rows and a 4 MiB
+response. Limit failures require a narrower report, not silent truncation.
+
+`observed` inputs are not aligned ownership. Missing, denied, unavailable,
+invalid, stale, partial, ambiguous and unknown evidence remain explicit.
+Invalid rules supply no fallback freshness thresholds. Only requirement and
+relation discrepancies can receive matching unexpired exceptions; raw
+crosswalk/evidence changes or semantic rule changes invalidate them even
+without a version-label change. Exception-only editing changes the report
+identity without making an exception's own fingerprint self-referential.
+
+Review/approval fields are declared provenance, not authenticated approvals;
+synthetic qualification does not prove enterprise alignment. Authorized current
+snapshots and designated-owner review of real entity/party/role mappings remain
+external obligations. This does not complete #33/#95, adopt an ownership policy
+or authorize source-system writes.
+
 ## Authored models and static candidates: issues #12 and #75
 
 The owner selected both tracks. Merged #77 supplies bounded authored ingestion
