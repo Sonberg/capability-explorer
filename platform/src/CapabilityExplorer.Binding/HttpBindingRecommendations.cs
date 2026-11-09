@@ -30,9 +30,7 @@ public static class HttpBindingRecommendations
         _ = BindingPreview.Catalog(sourceList, existing);
         if (targetList.Count > 0) _ = BindingPreview.Catalog(targetList, existing);
         var all = sourceList.Concat(targetList).ToList();
-        if (all.GroupBy(item => item.From.RepositoryId).Any(group => group.Select(item => item.From.CommitSha).Distinct(StringComparer.Ordinal).Count() > 1)
-            || all.GroupBy(item => (item.From.RepositoryId, item.From.UnitPath)).Any(group => group.Select(item => item.Artifact.ContentSha256).Distinct(StringComparer.Ordinal).Count() > 1))
-            throw new ArgumentException("Select one exact revision and artifact per repository and unit.");
+        BindingPreview.ValidateSources(all);
         all = all.DistinctBy(item => (item.From.RepositoryId, item.From.UnitPath)).ToList();
         var endpoints = targetList.SelectMany(item => item.Artifact.Nodes
             .Where(node => node.NodeKind == "Endpoint" && Parts(node.SymbolKey) is { } parts && !parts.Service.StartsWith('@'))

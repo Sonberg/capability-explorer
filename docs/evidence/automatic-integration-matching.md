@@ -32,6 +32,9 @@ services, change credentials, adopt bindings or reconcile unknown runs.
 
 ## Real Data
 
+The following measurements are historical 2026-11-05 evidence, not a rerun of
+the 2026-11-10 source-selection qualification below.
+
 The current deterministic pass covers 8 capabilities, 114 artifacts and 6,138
 integration observations. It produces 0 proven cross-capability links, 14
 observations in 4 inferred service clusters, and 11 remaining uncertain
@@ -76,6 +79,32 @@ in the owner-only workspace report
 receipts. Private source snippets are not copied into this tracked document.
 
 ## Executable Scenarios
+
+### Source-selection qualification (2026-11-10)
+
+`integration-cluster-v2` applies the same source-selection validation as binding
+preview and recommendations. Repository, commit and unit metadata must match
+the validated artifact. One selection cannot mix revisions of a repository or
+conflicting artifact content for one repository/unit. Rejection preserves the
+last catalogue; it does not repair inputs or rerun extraction.
+
+An exact HTTP key is not enough when multiple provider units declare it. Such
+matches remain suggestions even within one capability, retaining both sides'
+revision and evidence. Input reordering does not change the result.
+This is source-level identity qualification, not business approval or runtime
+proof. Revision-bound human qualification and private-corpus acceptance in #6
+remain separate.
+
+Older algorithm catalogues are not reused under the new rules. The read-only
+API reports unavailable and the graph keeps its existing analyses/manual
+connections with a warning. The old file is not changed. The existing
+`ce match-integrations` command can rebuild it from authorized published inputs;
+this qualification does not invoke that command on private data.
+
+Synthetic regressions cover mismatched repository/revision/unit metadata,
+mixed revisions, conflicting same-revision content, provider-unit ambiguity,
+input reordering and old-catalogue refusal. They do not establish new real-data
+counts, performance compliance or deployed integration behavior.
 
 Existing xUnit and browser runners were reused; no BDD framework was added.
 
