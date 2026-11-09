@@ -1,0 +1,14 @@
+{
+  "schema": "ce.classification-artifact.v1",
+  "taxonomy": "synthetic-three-axis-v1",
+  "features": ["axis-a", "axis-b", "axis-c"],
+  "units": ["synthetic-unit", "synthetic-unit", "synthetic-unit"],
+  "preprocessing": "identity-f64-v1",
+  "minimums": [-8, -8, -8],
+  "maximums": [8, 8, 8],
+  "classes": ["Alpha", "Beta", "Gamma"],
+  "weights": [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
+  "biases": [0, 0, 0],
+  "minimumScore": 0.5,
+  "minimumMargin": 0.2
+}
