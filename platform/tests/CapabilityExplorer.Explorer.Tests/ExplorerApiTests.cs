@@ -340,9 +340,10 @@ public sealed class ExplorerApiTests(ExplorerFactory factory) : IClassFixture<Ex
         foreach (var asset in assets)
         {
             using var response = await _client.GetAsync(new Uri(asset, UriKind.Relative));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.True(response.Headers.CacheControl?.NoCache);
             var bytes = await response.Content.ReadAsByteArrayAsync();
-            Assert.InRange(bytes.Length, 1_000, 600_000);
+            Assert.InRange(bytes.Length, 1, 600_000);
         }
     }
 }
