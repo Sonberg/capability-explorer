@@ -309,6 +309,24 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             var header = Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(HeaderStart(decl.Modifiers, decl.ReturnType.GetFirstToken()), decl.ParameterList.OpenParenToken.Span.End);
             b.Node(key, "Method", method.Name, [file.Evidence(b, header)], generated: file.Generated);
             b.Edge(keys.Of(method.ContainingType), "DECLARES", key, [file.Evidence(b, header)]);
+            foreach (var parameter in decl.ParameterList.Parameters)
+            {
+                if (file.Model.GetDeclaredSymbol(parameter) is not IParameterSymbol symbol)
+                {
+                    continue;
+                }
+
+                foreach (var type in RepositoryTypes(keys, symbol.Type))
+                {
+                    b.Edge(key, "REFERENCES", keys.Of(type), [file.Evidence(b, parameter)]);
+                }
+            }
+
+            foreach (var type in RepositoryTypes(keys, method.ReturnType))
+            {
+                b.Edge(key, "REFERENCES", keys.Of(type), [file.Evidence(b, decl.ReturnType)]);
+            }
+
             foreach (var iface in method.ContainingType.AllInterfaces)
             {
                 foreach (var member in iface.GetMembers().OfType<IMethodSymbol>())
