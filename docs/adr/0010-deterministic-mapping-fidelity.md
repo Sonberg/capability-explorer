@@ -1,8 +1,22 @@
 # Preserve uncertainty while improving deterministic repository mappings
 
-* Status: applied in this workstream; proposed for owner review
+* Status: accepted
 * Date: 2026-11-01
 * Related: issue #6, MADR-0002/0005/0006/0007/0008
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: decision policy/design for Preserve uncertainty while improving deterministic repository mappings; within the stated outcome and qualifications.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:79da510d717342478bb58310d3b22a5d1243703adc5f0cef280da72d6f493211`.
+Previous decision status (historical): `applied in this workstream; proposed for owner review`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem
 

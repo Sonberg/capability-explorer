@@ -1,10 +1,24 @@
 # GitHub work claims and isolated queen–worker delivery
 
-* Status: proposed
+* Status: accepted
 * Date: 2026-10-31
 * Decision owner: repository contributors; Tigon32 proposes this protocol
 * Coordination: [issue #3](https://github.com/Sonberg/capability-explorer/issues/3)
 * Related: [PR #2](https://github.com/Sonberg/capability-explorer/pull/2)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: decision policy/design for GitHub work claims and isolated queen–worker delivery; within the stated outcome and qualifications.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:a65737801315bba0091e5a64adb0d898935f65d77da7f5a6301b2b512f2c4246`.
+Previous decision status (historical): `proposed`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem statement
 
@@ -32,8 +46,9 @@ comments as atomic locks. The existing handoff identifies shared integration fil
 
 Propose option 2. GitHub is the contributor-facing record. Ruflo/AgentDB mirrors
 local coordination and evidence; it does not replace GitHub or grant permissions.
-This ADR remains proposed until contributors explicitly accept it in issue #3 or
-the reviewing PR. Adoption by one session does not bind another contributor.
+Historical adoption condition: this ADR remained proposed until explicit review
+in issue #3 or the reviewing PR. The operator's 2026-11-09 approval above now
+accepts the decision policy; contributors still load and apply it cooperatively.
 
 ### Claim protocol
 
@@ -135,8 +150,8 @@ must not be represented as mechanically enforced fencing or consensus.
 
 A reviewing contributor should verify a sample claim, acknowledgement, scope
 change and release in issue #3; missing transitions remain missing evidence.
-Adopt this ADR through explicit review, then change its status and record the
-decision link. Do not call it accepted merely because the file was committed.
+The explicit 2026-11-09 approval above supplies decision acceptance, not proof
+of those validation transitions. A commit alone is still not acceptance.
 
 ## More information
 

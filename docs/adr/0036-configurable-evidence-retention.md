@@ -1,11 +1,25 @@
 # Configure evidence retention and age-based historical resolution
 
-* Status: proposed
+* Status: accepted
 * Scope: operator-requested design; no retention executor or interface implemented
 * Date: 2026-11-04
 * Decision owner: repository maintainers and designated data-policy owners
 * Coordination: issue #33 collector and downstream ownership boundary
 * Related: [collector evidence](0033-bounded-model-and-collector-evidence.md), [cache lifecycle](0030-dependency-cache-lifecycle.md), [measurable objectives](0035-measurable-service-level-objectives.md)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: configurable retention design; numeric durations, custody and enforcement require separate approval.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:cc072eccc01280b7ecae2c822e49fa7b23d4c3cc32f724cdace1cc80689f7c2b`.
+Previous decision status (historical): `proposed`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem statement
 

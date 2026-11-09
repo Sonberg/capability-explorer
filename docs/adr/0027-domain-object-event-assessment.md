@@ -1,9 +1,23 @@
 # Proposed source-bound assessment of business objects and events
 
-* Status: proposed for independent owner review; not accepted
+* Status: accepted
 * Date: 2026-11-03
 * Scope: research model and synthetic contract only; no extractor, grader, schema/v1 change, or production classification
 * Related: issues #4, #6, #12, #23, #24, #33, #43, #53, #54; MADRs 0002, 0008, 0013, 0026
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: research model and synthetic contract only; no extractor, grader, schema/v1 change, or production classification.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:0c9d7348d2bc16f4dec426d3fb7918c88b7cfa8307037eb94caa001801c1fe88`.
+Previous decision status (historical): `proposed for independent owner review; not accepted`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context
 
@@ -79,7 +93,7 @@ not evidence of current AsyncAPI/CloudEvents adapter implementation.
 2. Keep deterministic source facts, reviewed mappings, optional model
    suggestions, exposure decisions, and profile grades separate; require
    evidence and version identity at each adoption boundary. **Recommend for
-   owner consideration:** supports reproducible bounded research while
+   owner consideration (historical; research decision now accepted above):** supports reproducible bounded research while
    preserving uncertainty.
 3. Delay all research until live traffic or an implementation exists. **Reject
    as the only option:** source-bound inventory gaps and reviewer prerequisites

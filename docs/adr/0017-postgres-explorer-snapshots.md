@@ -1,8 +1,22 @@
 # PostgreSQL snapshots and bounded Explorer reads
 
-* Status: proposed; implementation authorized for review, owner retains final architecture decision
+* Status: accepted
 * Date: 2026-11-01
 * Related: issue #28, [main-only delivery](0016-main-only-pr-integration.md), [SemVer](0007-semantic-versioning.md)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: decision policy/design for PostgreSQL snapshots and bounded Explorer reads; within the stated outcome and qualifications.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:c507ac489e2a980aadbfbf68baad7d02494418a899947c1e842acb03a5c0196e`.
+Previous decision status (historical): `proposed; implementation authorized for review, owner retains final architecture decision`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem statement
 

@@ -1,8 +1,22 @@
 # Share a live LikeC4 canvas without changing evidence semantics
 
-* Status: proposed for owner review; implementation and validation in progress
+* Status: accepted
 * Date: 2026-11-01
 * Related: issues #3, #4, #13; MADR-0004, MADR-0005, MADR-0008
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: decision policy/design for Share a live LikeC4 canvas without changing evidence semantics; within the stated outcome and qualifications.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:647ae3a4f4a424b216fe1708b71465df2703f61799a32bb6dcdd50e33b58bb4f`.
+Previous decision status (historical): `proposed for owner review; implementation and validation in progress`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem
 
@@ -79,8 +93,9 @@ The intended release category is a compatible feature (minor under MADR-0007),
 subject to release review of the combined changes. Unreleased notes follow
 Keep a Changelog 1.1.0 through MADR-0006; no product version is published here.
 MADR-0005 governs contributor claims, stage alignment and the validated PR handoff.
-These policies apply to this work; their repository-wide owner/contributor adoption
-remains pending the explicit decision recorded in those MADRs.
+These policies apply to this work; their adoption was pending historically.
+Their explicit 2026-11-09 approval is now recorded in those MADRs, without
+certifying implementation or changing MADR-0016's main-only target.
 
 Required validation includes shuffled-input determinism, stable identity under input
 changes, association direction, contributor retention, invalid/bounded input cases,

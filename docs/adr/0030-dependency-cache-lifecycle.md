@@ -1,10 +1,24 @@
 # Govern dependency caches across framework and toolchain upgrades
 
-* Status: proposed
+* Status: accepted
 * Date: 2026-11-03
 * Decision owner: repository contributors
 * Coordination: [issue #3](https://github.com/Sonberg/capability-explorer/issues/3)
 * Related: [MADR-0003](0003-local-ci-before-push.md), [MADR-0028](0028-portable-decision-ledger.md), [MADR-0029](0029-frugal-ci-and-executable-parity.md)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: decision policy/design for Govern dependency caches across framework and toolchain upgrades; within the stated outcome and qualifications.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:ed2490752eb7969a4dea006cedc4efffcdaed54a6a7b4afca5ce33cdffbb55c1`.
+Previous decision status (historical): `proposed`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem statement
 
@@ -113,7 +127,7 @@ reachability checker is implemented.
 
 This section answers [issue #109](https://github.com/Sonberg/capability-explorer/issues/109).
 It extends the upgrade lifecycle above to unused package declarations. It is
-proposed together with this record. It authorizes no package removal, prune,
+accepted as policy with this record on 2026-11-09. It authorizes no package removal, prune,
 cache cleanup, new dependency, detector, daemon or automation. Resource
 objectives, measurement and the optimization stop rule come from
 [MADR-0038](0038-balanced-resource-use.md) and are not repeated here.
@@ -131,8 +145,8 @@ as [AGENTS.md](../../AGENTS.md) requires, owns its review.
 
 ### Cadence and triggers
 
-Run a lightweight review once per calendar quarter, as a proposed default for
-owner confirmation. Also review when a feature or module is removed, a
+Run a lightweight review once per calendar quarter, as the accepted policy
+default. Particular removal and cleanup approvals remain separate. Also review when a feature or module is removed, a
 dependency is added or upgraded, a framework or toolchain is upgraded, or a
 contributor reports install-time or disk pressure. A review with no candidates
 records "no change" briefly. This cadence is separate from the backlog-ranking

@@ -1,9 +1,23 @@
 # MADR-0025: Language-neutral frontend contract and deterministic unit discovery
 
-- Status: proposed for owner review; not adopted or implemented
+* Status: accepted
 - Date: 2026-11-03
 - Baseline: `3d0ff8813df60b07ac86c8220b811be3debe5401`
 - Related: issue #42; issues #6 and #23; MADR-0010, MADR-0012, MADR-0013, MADR-0020 and MADR-0023
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: language-neutral frontend decision direction; adjacent research drafts are not adopted runtime contracts.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:891954b5d2ab6b75eeecc9837576cab7ea643e09b011a76c1d5cf30b7fdd6ab1`.
+Previous decision status (historical): `proposed for owner review; not adopted or implemented`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem
 

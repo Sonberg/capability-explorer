@@ -1,10 +1,24 @@
 # Convert maintained JavaScript to TypeScript 7 when modified
 
-* Status: proposed
+* Status: accepted
 * Date: 2026-11-03
 * Decision owner: repository contributors
 * Coordination: [issue #3](https://github.com/Sonberg/capability-explorer/issues/3)
 * Related: [MADR-0019](0019-independent-tool-evaluation.md), [MADR-0029](0029-frugal-ci-and-executable-parity.md), [MADR-0030](0030-dependency-cache-lifecycle.md)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: repository-wide TypeScript-on-touch decision policy; no compiler upgrade or enforcement established.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:9fa838274c8d496c96a7f001ef8ae4d18b28b1bc10b7d927fc47c644fc521042`.
+Previous decision status (historical): `proposed`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem statement
 

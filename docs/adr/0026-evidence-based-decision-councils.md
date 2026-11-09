@@ -1,6 +1,6 @@
 # Evidence-based decision councils and a navigable MADR ledger
 
-* Status: proposed; no existing decision is accepted by this record
+* Status: accepted
 * Date: 2026-11-03
 * Decision owner: repository maintainers
 * Related: [coordination](0001-github-work-coordination.md),
@@ -8,9 +8,23 @@
   [independent tool evaluation](0019-independent-tool-evaluation.md),
   [issue dependencies](0024-issue-labels-and-dependencies.md)
 
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: decision policy/design for Evidence-based decision councils and a navigable MADR ledger; within the stated outcome and qualifications.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:e6095b9b2087f419d7837c8232bc9aab66813e70e4660d1a0dc86921907c4f32`.
+Previous decision status (historical): `proposed; no existing decision is accepted by this record`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
+
 ## Context and decision drivers
 
-Many records remain proposed, sometimes alongside implemented or
+Historically, many records remained proposed, sometimes alongside implemented or
 operator-authorized work. Merge, implementation and local adoption do not prove
 repository-wide decision acceptance. The operator requests a frugal council of
 subject-matter experts (SMEs), adversaries, advisers and a judge, with uncertainty
@@ -110,7 +124,7 @@ supersession metadata does not erase the earlier acceptance evidence.
 
 ### Status and navigation maintenance
 
-The proposed [portable ledger](0028-portable-decision-ledger.md) adds explicit
+The accepted [portable ledger decision](0028-portable-decision-ledger.md) specifies explicit
 project-qualified identities, source-bound sidecars and deterministic views.
 Maintain sidecar receipts and regenerate/check views with every canonical
 record mutation. Canonical format is configured per collection, not universally
@@ -172,7 +186,9 @@ requires rework. Ordinary publication gates still apply.
 
 This policy cannot accept itself, delegate new powers to its own council or
 retroactively accept existing proposals. Existing decision/merge authority
-governs its adoption. The current two advisory reports are input to drafting,
+governs its adoption. The 2026-11-09 operator approval above supplies that
+explicit authority decision, not an evidence-clean council verdict. The two
+historical advisory reports are input to drafting,
 not an independent judge verdict or an acceptance receipt.
 
 ## Sources and evidence limits
@@ -185,7 +201,7 @@ not an independent judge verdict or an acceptance receipt.
 - [MADR](https://adr.github.io/madr/): concise decision-record structure, not
   evidence for this project's council roles or delegated authority.
 
-Council roles, fail-closed evidence rules and delegation are proposed project
+Council roles, fail-closed evidence rules and delegation are project
 choices, not claims that these sources prescribe agent governance.
 Retained EA knowledge was unavailable (OAuth 401); no retained enterprise-policy
 or pre-existing delegation is asserted. RuvNet Brain retrieval was weak for this

@@ -1,9 +1,23 @@
 # Issue labels and explicit delivery dependencies
 
-* Status: proposed; operator-authorized label pilot, pending owner review
+* Status: accepted
 * Date: 2026-11-03
 * Decision owner: repository maintainers
 * Related: [work coordination](0001-github-work-coordination.md), [PR lifecycle](0005-pr-lifecycle-and-conflict-prevention.md)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: decision policy/design for Issue labels and explicit delivery dependencies; within the stated outcome and qualifications.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:f58acbf3ae7c36ba31c900bf091724ed47b70a7ebf204addbe9f259faf98383f`.
+Previous decision status (historical): `proposed; operator-authorized label pilot, pending owner review`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem statement
 

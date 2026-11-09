@@ -1,8 +1,22 @@
 # Versioned integration contracts as evidence, separate from inference
 
-* Status: proposed for owner review; extractor implementation not authorized by this decision alone
+* Status: accepted
 * Date: 2026-11-01
 * Related: MADR-0002/0005/0007/0008/0010; issues #6 and #12
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: versioned integration evidence decision; extractor implementation requires separate authorization.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:aedc1244d70ec0d492129425c2d9d9643d087769baeb21910a46593200215b21`.
+Previous decision status (historical): `proposed for owner review; extractor implementation not authorized by this decision alone`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem
 

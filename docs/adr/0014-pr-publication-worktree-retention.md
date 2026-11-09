@@ -1,10 +1,24 @@
 # Remove recoverable worktrees after PR publication
 
-* Status: applied to this operator's agent-assisted work; proposed for repository-wide adoption
+* Status: accepted
 * Date: 2026-11-01
 * Updated: 2026-11-09
 * Decision owner: operator; repository owner and contributors for wider adoption
 * Related: [MADR-0005](0005-pr-lifecycle-and-conflict-prevention.md), [MADR-0003](0003-local-ci-before-push.md)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: decision policy/design for Remove recoverable worktrees after PR publication; within the stated outcome and qualifications.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:dd268dce8b410e63ba1b71ac39cd0cd57f6ac6b21aa6e0944cbc468779092b67`.
+Previous decision status (historical): `applied to this operator's agent-assisted work; proposed for repository-wide adoption`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem statement
 
@@ -32,8 +46,9 @@ Choose option 2. For this operator, the request establishes standing authorizati
 to remove qualifying linked worktrees belonging to this project's work after their
 PR is published, including draft PRs. It does not authorize cleanup in other
 projects, deletion of branches, changes to main, force removal, or PR merges.
-Repository-wide adoption requires owner/contributor review; publication of this
-MADR does not itself demonstrate acceptance by other contributors.
+The decision policy is accepted by the explicit 2026-11-09 approval above;
+publication alone does not demonstrate acceptance by other contributors.
+This status reconciliation authorizes no cleanup action.
 
 PR publication becomes the default cleanup checkpoint. Merge is not required:
 for an unmerged PR, recoverability is demonstrated by the published feature head,

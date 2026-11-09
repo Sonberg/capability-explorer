@@ -1,10 +1,24 @@
 # Frugal CI with executable local and hosted parity
 
-* Status: proposed
+* Status: accepted
 * Date: 2026-11-03
 * Decision owner: repository contributors
 * Coordination: [issue #3](https://github.com/Sonberg/capability-explorer/issues/3)
 * Related: [MADR-0003](0003-local-ci-before-push.md), [MADR-0011](0011-source-bound-security-validation.md), [MADR-0028](0028-portable-decision-ledger.md)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: decision policy/design for Frugal CI with executable local and hosted parity; within the stated outcome and qualifications.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:2eda61918759711d9c0d74fd1e9fca928792a75e58275002577d75cb447db495`.
+Previous decision status (historical): `proposed`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem statement
 

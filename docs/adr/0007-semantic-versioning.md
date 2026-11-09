@@ -1,9 +1,23 @@
 # Version the product against an explicit compatibility contract
 
-* Status: applied to this operator's work; proposed for repository-wide adoption
+* Status: accepted
 * Date: 2026-11-01
 * Decision owner: repository owner and contributors
 * Related: [MADR-0006](0006-keep-a-changelog.md), [ce.v1 contract](../../schema/README.md)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: decision policy/design for Version the product against an explicit compatibility contract; within the stated outcome and qualifications.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:0f0a831db035416ddf3169cca5af874c1a0ab6e02d1ed647c6d0bb5f5c25e8ab`.
+Previous decision status (historical): `applied to this operator's work; proposed for repository-wide adoption`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem
 

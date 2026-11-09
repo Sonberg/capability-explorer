@@ -1,10 +1,24 @@
 # Coordinate PR updates and preserve review context
 
-* Status: applied to this operator's agent-assisted work; proposed for repository-wide adoption
+* Status: accepted
 * Date: 2026-10-31
 * Decision owner: repository owner and contributors
 * Coordination: [issue #3](https://github.com/Sonberg/capability-explorer/issues/3)
 * Related: [MADR-0001](0001-github-work-coordination.md), [MADR-0003](0003-local-ci-before-push.md)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: decision policy/design for Coordinate PR updates and preserve review context; within the stated outcome and qualifications.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:5540c3375fdf59321de2ef52c261c23ff5342dd032dee44b2eb16d3c97665cb9`.
+Previous decision status (historical): `applied to this operator's agent-assisted work; proposed for repository-wide adoption`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem statement
 
@@ -45,8 +59,8 @@ is not independently confirmed. A human merge does not grant agents merge author
 
 Choose option 2. This ADR extends MADR-0001's work claims and MADR-0003's validation
 policy. It does not change branch protection, GitHub permissions or hooks.
-Repository-wide adoption requires explicit owner/contributor review recorded
-here; committing or merging the document alone must not be called acceptance.
+The decision policy is accepted by the explicit 2026-11-09 approval above;
+committing or merging the document alone must not be called acceptance.
 
 ### Authority and responsibilities
 
@@ -255,9 +269,9 @@ merge, a main update during CI, and a human-performed merge exception. Existing
 local CI harness tests cover stale main, failed refreshes, changed source and
 receipt identity; no automated test can prove a human review occurred.
 
-Owner/contributor adoption: pending. Record the explicit review decision and date
-here before changing the repository-wide status. Historical merges #7/#8/#9 do
-not serve as approval of a document written afterward.
+Owner/contributor adoption was pending historically; the explicit 2026-11-09
+operator approval above now accepts this decision policy. Historical merges
+#7/#8/#9 do not serve as approval of a document written afterward.
 
 ## References
 

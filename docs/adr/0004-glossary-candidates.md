@@ -1,9 +1,23 @@
 # Treat glossary groups as deterministic term candidates
 
-* Status: applied in this workstream; proposed for contributor-wide adoption
+* Status: accepted
 * Date: 2026-10-31
 * Coordination: issue #4, layer 1; depends on PR #5
 * Related: [ubiquitous language](../ubiquitous-language.md), [MADR-0002](0002-ubiquitous-language.md)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: decision policy/design for Treat glossary groups as deterministic term candidates; within the stated outcome and qualifications.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:9ba4c3f283075463130fa1f788a71ff8983f084b9ece116e60e7e294a591ef5e`.
+Previous decision status (historical): `applied in this workstream; proposed for contributor-wide adoption`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem
 

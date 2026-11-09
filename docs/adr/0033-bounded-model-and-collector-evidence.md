@@ -1,10 +1,24 @@
 # Keep authored models, code candidates and collector authority separate
 
-* Status: proposed
+* Status: accepted
 * Date: 2026-11-04
 * Decision owner: repository contributors; central contract ownership remains unresolved
 * Coordination: issues #12, #33 and #75
 * Related: MADR-0013, MADR-0020, MADR-0029 and MADR-0032
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: bounded evidence profiles and offline collection; no central deployment, real-source access or business approval.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:b85104859a48d3341163c61c058deb06f43170c41d912f76e81577007ef094c9`.
+Previous decision status (historical): `proposed`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem statement
 

@@ -1,11 +1,26 @@
 # Require measurable objectives for performance and operational-quality issues
 
-* Status: proposed
-* Scope: operator-directed workstream rule; repository-wide adoption pending review
+* Status: accepted
+* Scope: repository-wide SLO decision policy; workload targets and compliance require separate evidence
+* Previous scope (historical): operator-directed workstream rule; repository-wide adoption pending review
 * Date: 2026-11-04
 * Decision owner: repository maintainers
 * Coordination: issues #13, #43, #63, #60 and #81-#84
 * Related: [issue governance](0024-issue-labels-and-dependencies.md), [measured optimization](0029-frugal-ci-and-executable-parity.md), [behavioral validation](0032-tdd-bdd-delivery.md)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: repository-wide SLO decision policy; workload targets and compliance require separate evidence.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:876fe9a67c7bc1766847a4262199978c9b840c28be69755f242d350183b098d1`.
+Previous decision status (historical): `proposed`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem statement
 
@@ -102,8 +117,8 @@ Review a matching-policy reuse, an issue-specific quantitative contract and
 an explicit non-applicable disposition. Check each required field, run the
 declared measurement commands at the named source state and inspect failures
 as well as percentiles. Keep the decision index and generated ledger consistent.
-Repository-wide acceptance requires owner review; this record does not change
-the status of any other MADR.
+The explicit 2026-11-09 operator approval above accepts this decision policy;
+it does not establish measured compliance or change another MADR's status.
 
 ## References
 

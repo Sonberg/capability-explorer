@@ -1,9 +1,23 @@
 # MADR-0023: Host-owned source checks and acquisition credentials
 
-- Status: Proposed; implementation contract authorized by the operator
+* Status: accepted
 - Date: 2026-11-02
 - Related: issue #37 A9, MADR-0007, MADR-0022
 - Baseline: `46104456754474fd792a38ebbd14cc964fe1e6e2` (owner-merged PR #39)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: decision policy/design for MADR-0023: Host-owned source checks and acquisition credentials; within the stated outcome and qualifications.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:d0330b82b6cde19005756c1467c0c697f8bd204a5aa58f3014c78c75c4783835`.
+Previous decision status (historical): `Proposed; implementation contract authorized by the operator`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Decision
 

@@ -318,8 +318,15 @@ export function validateArchitecture(contract, report, adr, adapterSchema, disco
   for (const fact of ['MIT', 'Apache-2.0', 'offline', 'source-span', 'not-measured', 'no analyzed builds/package scripts']) {
     need(reportText.toLowerCase().includes(fact.toLowerCase()), `architecture evidence/limitation missing: ${fact}`);
   }
-  need(/^-[ ]Status: proposed for owner review; not adopted or implemented$/m.test(adr),
-    'MADR-0025 must remain explicitly proposed and unimplemented');
+  const proposed = /^-[ ]Status: proposed for owner review; not adopted or implemented$/m.test(adr);
+  const acceptedDecision = /^\* Status: accepted$/m.test(adr)
+    && adr.includes('issuecomment-6742261485')
+    && adr.includes('Acceptance approves the decision method/design only.')
+    && adr.includes('It does not establish\nimplementation')
+    && adr.includes('deletion authority or experimental-tool activation')
+    && adr.includes('Existing operational exceptions and separately required action approvals remain in force.');
+  need(proposed || acceptedDecision,
+    'MADR-0025 needs explicit proposal or recorded decision approval without an implementation claim');
   need(adr.includes('ce.v1') && adr.includes('ce.platform.v1') && adr.includes('MADR-0013')
     && adr.includes('MADR-0023') && adr.includes('#23'),
   'MADR-0025 must preserve the separate contract and host/corpus boundaries');
