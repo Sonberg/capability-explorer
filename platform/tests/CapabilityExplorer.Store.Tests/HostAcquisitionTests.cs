@@ -107,6 +107,44 @@ public sealed class HostAcquisitionTests : IDisposable
     }
 
     [Fact]
+    public async Task Named_account_token_resolution_uses_the_requested_gh_login_before_environment_tokens()
+    {
+        if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+        var priorPath = Environment.GetEnvironmentVariable("PATH");
+        var priorGithubToken = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+        var priorGhToken = Environment.GetEnvironmentVariable("GH_TOKEN");
+        try
+        {
+            Write("bin/gh", "#!/bin/sh\n[ \"$*\" = 'auth token --hostname github.com --user fixture-account' ] || exit 10\nprintf fixture-token\n", true);
+            Environment.SetEnvironmentVariable("PATH", Path.Combine(_root, "bin") + Path.PathSeparator + priorPath);
+            Environment.SetEnvironmentVariable("GITHUB_TOKEN", "environment-token");
+            Environment.SetEnvironmentVariable("GH_TOKEN", "environment-token");
+            var start = new ProcessStartInfo(Path.Combine(Fixtures.RepositoryRoot, "scripts/github-token"))
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            start.ArgumentList.Add("account:fixture-account");
+            using var process = Process.Start(start)!;
+            var output = await process.StandardOutput.ReadToEndAsync();
+            var error = await process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+
+            Assert.Equal(0, process.ExitCode);
+            Assert.Equal("fixture-token", output);
+            Assert.Contains("GitHub CLI account fixture-account", error, StringComparison.Ordinal);
+            Assert.DoesNotContain("environment-token", output, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", priorPath);
+            Environment.SetEnvironmentVariable("GITHUB_TOKEN", priorGithubToken);
+            Environment.SetEnvironmentVariable("GH_TOKEN", priorGhToken);
+        }
+    }
+
+    [Fact]
     public async Task Host_worker_resolves_credentials_only_for_controlled_git_and_sanitizes_remote_output()
     {
         if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();

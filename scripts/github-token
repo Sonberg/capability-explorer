@@ -6,12 +6,21 @@
 #     auto  GITHUB_TOKEN or GH_TOKEN from the environment, else `gh auth token` (GitHub CLI login)   [default]
 #     git   as auto, then also the git credential helper (macOS keychain, Git Credential Manager, ...)
 #     none  no token: public repositories only
+#     account:<login>  use the named GitHub CLI account
 set -uo pipefail
 mode="${1:-auto}"
 
 found() { printf '%s' "$1"; echo "github auth: $2" >&2; exit 0; }
 
 [[ "$mode" == none ]] && { echo "github auth: none" >&2; exit 0; }
+if [[ "$mode" == account:* ]]; then
+  login="${mode#account:}"
+  [[ "$login" =~ ^[A-Za-z0-9]([A-Za-z0-9_-]{0,37}[A-Za-z0-9])?$ ]] || { echo "github auth: invalid account selection" >&2; exit 2; }
+  command -v gh >/dev/null 2>&1 || { echo "github auth: GitHub CLI is not available" >&2; exit 1; }
+  token="$(gh auth token --hostname github.com --user "$login" 2>/dev/null)" || { echo "github auth: selected account is not configured" >&2; exit 1; }
+  [[ -n "$token" ]] || { echo "github auth: selected account has no token" >&2; exit 1; }
+  found "$token" "GitHub CLI account $login"
+fi
 [[ -n "${GITHUB_TOKEN:-}" ]] && found "$GITHUB_TOKEN" "GITHUB_TOKEN"
 [[ -n "${GH_TOKEN:-}" ]] && found "$GH_TOKEN" "GH_TOKEN"
 if command -v gh >/dev/null 2>&1; then

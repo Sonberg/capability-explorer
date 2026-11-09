@@ -264,6 +264,11 @@ public sealed partial class FileRunStore
             if (run.Settings.CapabilityWorkers != 2) throw new InvalidDataException("legacy analysis settings require the default worker ceiling");
             runSettings.Remove("capabilityWorkers");
         }
+        if (!acceptedSettings.TryGetProperty("eligibleCSharp", out _))
+        {
+            if (run.Settings.EligibleCSharp) throw new InvalidDataException("legacy analysis settings cannot enable eligible C# dispatch");
+            runSettings.Remove("eligibleCSharp");
+        }
         if ((run.BindingsPath is null) != (accepted.GetProperty("bindings").ValueKind == JsonValueKind.Null) ||
             AnalysisPaths.Hash(CaptureConfiguration(run.ConfigurationPath)) != accepted.GetProperty("configuration").GetString() ||
             (run.BindingsPath is not null && AnalysisPaths.Hash(AnalysisPaths.ReadBounded(run.BindingsPath)) != accepted.GetProperty("bindings").GetString()) ||
@@ -289,6 +294,7 @@ public sealed partial class FileRunStore
             throw new InvalidOperationException("invalid resolved-input binding");
         var ordered = new ResolvedManifest(manifest.AcceptedInputsHash, new SortedDictionary<string, string>(manifest.Inputs.ToDictionary(pair => pair.Key, pair => pair.Value), StringComparer.Ordinal));
         var bytes = JsonSerializer.SerializeToUtf8Bytes(ordered, AnalysisPaths.Json);
+        if (bytes.Length > 1024 * 1024) throw new InvalidDataException("resolved manifest exceeds reader budget");
         var hash = AnalysisPaths.Hash(bytes);
         AnalysisPaths.Atomic(SafePath(run.RunId, "resolved.json"), bytes);
         Save(run with { ManifestHash = hash });

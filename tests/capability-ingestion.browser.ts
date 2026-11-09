@@ -36,6 +36,8 @@ async function withIngestionPage(run: (page: Page, origin: string) => Promise<vo
         await route.fulfill({ json: [capability] });
       } else if (path === "/api/generation") {
         await route.fulfill({ json: { generation: 0 } });
+      } else if (path === "/api/github-accounts") {
+        await route.fulfill({ json: { available: true, accounts: [] } });
       } else {
         await route.fulfill({ json: {} });
       }
@@ -459,5 +461,92 @@ test("Given pending capability removal, when actions are shown, then competing m
     assert.equal(await page.getByRole("button", { name: "Check sources", exact: true }).isDisabled(), true, "source checking must not race pending deletion");
     assert.equal(await page.getByRole("button", { name: /Remov/ }).isDisabled(), true, "removal cannot be submitted twice");
     release();
+  });
+});
+test("Given a named host GitHub account, when analysis and source check are queued, then only the account name is sent", async () => {
+  await withIngestionPage(async (page, origin) => {
+    await page.route("**/api/github-accounts", (route) => route.fulfill({ json: {
+      available: true, accounts: [{ login: "synthetic-octo", active: false }, { login: "synthetic-active", active: true }],
+    } }));
+    await page.goto(`${origin}#/capabilities`);
+    await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => button.textContent === "Analyze code" && !button.disabled));
+    const selector = page.getByRole("combobox", { name: /^GitHub account/ });
+    await selector.locator("option", { hasText: "synthetic-active (active)" }).waitFor({ state: "attached" });
+    await selector.selectOption("synthetic-octo");
+    const analyze = page.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/capabilities/orders/analyze");
+    await page.getByRole("button", { name: "Analyze code", exact: true }).click();
+    const analyzeRequest = await analyze;
+    assert.equal(new URL(analyzeRequest.url()).search, "?githubAccount=synthetic-octo");
+    assert.equal(analyzeRequest.postData(), null, "analysis admission must not carry credential material");
+    const check = page.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/capabilities/orders/check");
+    await page.getByRole("button", { name: "Check sources", exact: true }).click();
+    const checkRequest = await check;
+    assert.equal(new URL(checkRequest.url()).search, "?githubAccount=synthetic-octo");
+    assert.equal(checkRequest.postData(), null, "source check admission must not carry credential material");
+  });
+});
+
+test("Given unavailable host account names, when analysis is queued, then automatic host credentials remain usable", async () => {
+  await withIngestionPage(async (page, origin) => {
+    await page.route("**/api/github-accounts", (route) => route.fulfill({ status: 503, json: { error: "GitHub CLI account list failed" } }));
+    await page.goto(`${origin}#/capabilities`);
+    await page.getByText("Host account names are unavailable: GitHub CLI account list failed. Automatic host credentials remain available.", { exact: true }).waitFor();
+    const selector = page.getByRole("combobox", { name: /^GitHub account/ });
+    assert.deepEqual(await selector.locator("option").allTextContents(), ["Automatic host credentials"]);
+    assert.equal(await selector.inputValue(), "");
+    await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => button.textContent === "Analyze code" && !button.disabled));
+    const analyze = page.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/capabilities/orders/analyze");
+    await page.getByRole("button", { name: "Analyze code", exact: true }).click();
+    assert.equal(new URL((await analyze).url()).search, "", "automatic host credentials must not send an account name");
+  });
+});
+
+test("Given a completed source check with a failed repository lock, when Explorer renders it, then the sanitized reason and recovery guidance are tied to the check, not an analysis run", async () => {
+  await withIngestionPage(async (page, origin) => {
+    const failedCapability = {
+      ...capability,
+      repositories: [{ ...capability.repositories[0], error: "source acquisition failed" }],
+      check: {
+        requestId: "check-f106-gap", capabilityId: "orders", configurationHash: "cfg", state: "done",
+        acceptedAt: "2026-11-07T00:00:00Z", cancellationRequested: false, stale: false,
+        statusUrl: "/api/source-checks/check-f106-gap", duplicate: false,
+      },
+      checkStale: false,
+    };
+    await page.route("**/api/capabilities?*", (route) => route.fulfill({ json: [failedCapability] }));
+    await page.goto(`${origin}#/capabilities`);
+    await page.getByText("source acquisition failed", { exact: false }).waitFor();
+    await page.getByText("Check check-f106-gap could not lock this repository. Verify its location, ref and access, then view the host worker logs before retrying.", { exact: false }).waitFor();
+    const pageText = await page.textContent("body");
+    assert.ok(pageText, "page body must render");
+    assert.ok(!/ghp_|github_pat_|Bearer\s/.test(pageText), "no token value or credential material may ever reach the rendered page");
+    assert.equal(await page.getByText(/^Run\s+\S+\s+·/).count(), 0, "a repository check failure must not invent or render an analysis run/stage identity");
+  });
+});
+
+// Backend provenance check (Capabilities.cs `Status`): `repositories[].error` is only ever populated from
+// `check.Snapshot` when the capability's `check` is `{ State: "done", Stale: false, CancellationRequested: false }`
+// — the same object serialized as `check` on this response. The real API therefore cannot send a stale/in-progress/
+// cancelled `check` alongside a populated `error`. This test defends the client independently of that backend
+// guarantee: if the two ever desynchronize, Explorer must never attribute a failure reason to a request ID that is
+// stale, still running or cancelled.
+test("Given a stale or in-progress check paired with a repository error, when Explorer renders it, then no check identity is claimed for that reason", async () => {
+  await withIngestionPage(async (page, origin) => {
+    const staleCapability = {
+      ...capability,
+      repositories: [{ ...capability.repositories[0], error: "source acquisition failed" }],
+      check: {
+        requestId: "check-superseded", capabilityId: "orders", configurationHash: "cfg", state: "queued",
+        acceptedAt: "2026-11-07T00:00:00Z", cancellationRequested: false, stale: false,
+        statusUrl: "/api/source-checks/check-superseded", duplicate: false,
+      },
+      checkStale: true,
+    };
+    await page.route("**/api/capabilities?*", (route) => route.fulfill({ json: [staleCapability] }));
+    await page.goto(`${origin}#/capabilities`);
+    await page.getByText("source acquisition failed", { exact: false }).waitFor();
+    await page.getByText("Verify this repository's location, ref and access, then view the latest check's host worker logs before retrying.", { exact: false }).waitFor();
+    assert.equal(await page.getByText("could not lock this repository", { exact: false }).count(), 0,
+      "a reason must never be attributed to a specific check's request ID while that check is stale, in progress or cancelled");
   });
 });

@@ -1,0 +1,23 @@
+{
+  "schema": "ce.adapter.manifest.v1",
+  "adapterId": "csharp.roslyn",
+  "adapterVersion": "0.2.0",
+  "recipeId": "csharp-project-discovery-v1",
+  "recipeSha256": "1cce0b1606ec536f6f0761b2e82ddef6017d2187ef299b30a6cda0ef225c4591",
+  "toolchain": "dotnet10.0",
+  "supportedInputProfiles": ["csharp.project.v1"],
+  "limits": {
+    "maxEntries": 100000,
+    "maxUnits": 100,
+    "maxFileBytes": 8388608,
+    "maxTotalBytes": 134217728,
+    "maxDepth": 128
+  },
+  "configuration": {
+    "excludedPathPrefixes": []
+  },
+  "execution": {
+    "selectionContract": "ce.csharp.selection.v1",
+    "verbs": ["validate-selected-v1", "fetch-packages-selected-v1", "extract-selected-v1"]
+  }
+}

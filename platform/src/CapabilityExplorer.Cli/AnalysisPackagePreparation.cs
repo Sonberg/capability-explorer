@@ -14,8 +14,14 @@ internal static class AnalysisPackagePreparation
     private static readonly string[] ReservedNpmEnvironmentPrefixes = ["CE_", "SANDBOX_", "DOCKER_", "CONTAINER_", "NODE_", "npm_config_"];
 
     internal static async Task<Dictionary<string, string>> Run(string root, AnalysisRun run, AnalysisProcess process,
-        IReadOnlyList<AnalysisRepository> repositories, string work, string locks, string packageDir)
+        IReadOnlyList<AnalysisRepository> repositories, string work, string locks, string packageDir,
+        IReadOnlyDictionary<string, EligibleCSharpSelection>? selections = null,
+        AdapterShadowContext? shadow = null,
+        IReadOnlyDictionary<string, string>? sourceIdentities = null,
+        CancellationToken stop = default)
     {
+        if (run.Settings.EligibleCSharp && (selections is null || shadow is null || sourceIdentities is null))
+            throw new InvalidOperationException("eligible C# package acquisition requires its validated immutable selection");
         var inputs = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var repo in repositories)
             foreach (var file in SourceFiles(repo.Source).Where(file => Path.GetFileName(file) is "package-lock.json" or "npm-shrinkwrap.json"))
@@ -49,16 +55,38 @@ internal static class AnalysisPackagePreparation
             if (Environment.GetEnvironmentVariable(name) is { } credential) packageEnvironment[name] = credential;
         foreach (var repo in repositories)
         {
+            var selection = run.Settings.EligibleCSharp ? selections![repo.Id] : null;
+            if (selection is { SelectedCount: 0 }) continue;
+            if (selection is not null)
+            {
+                process.CheckCancellation();
+                await AnalysisAdapterShadow.VerifyCurrentAsync(root, shadow!, stop);
+                if (sourceIdentities![repo.Id] != SourceIdentity(repo.Source))
+                    throw new InvalidOperationException("exported source changed before selected NuGet acquisition");
+            }
             using var timing = process.Measure("packages.nuget",repo.Id);
-            var arguments = new List<string> { "dotnet", "dotnet", CSharp, "fetch-packages", "--source", InContainer(repo.Source),
+            var arguments = new List<string> { "dotnet", "dotnet", CSharp,
+                selection is null ? "fetch-packages" : "fetch-packages-selected-v1", "--source", InContainer(repo.Source),
                 "--packages", InContainer(packageDir), "--lock", InContainer(Path.Combine(locks, repo.Id + ".json")) };
             if (run.Settings.IncludeTests) arguments.Add("--include-tests");
+            if (selection is not null)
+            {
+                AnalysisParallelExtraction.AddSelector(arguments, selection);
+                if (arguments.Sum(argument => Encoding.UTF8.GetByteCount(argument) + 1) > 65_536)
+                    throw new InvalidDataException("selected C# package argv exceeds 64 KiB");
+            }
             // Fetch programs can include server-controlled errors. Suppress both streams from durable analysis logs.
             var output = await process.Run("scripts/sandbox", arguments, packageEnvironment, capture: true, captureLimit: 1048576);
             var coverage = Regex.Match(output, @"(?m)^packages: (\d+) downloaded, (\d+) already present, (\d+) unavailable;");
             if (!coverage.Success) throw new InvalidDataException("NuGet fetch did not report dependency coverage");
             inputs["nuget-coverage:" + repo.Id] = string.Join(':', coverage.Groups.Cast<Group>().Skip(1).Select(group => group.Value));
             timing.Packages(downloaded:Count(coverage,1),alreadyPresent:Count(coverage,2),unavailable:Count(coverage,3));
+            if (selection is not null)
+            {
+                await AnalysisAdapterShadow.VerifyCurrentAsync(root, shadow!, stop);
+                if (sourceIdentities![repo.Id] != SourceIdentity(repo.Source))
+                    throw new InvalidOperationException("exported source changed during selected NuGet acquisition");
+            }
         }
 
         var npm = SerializeFeeds(feeds.Where(feed => feed.GetProperty("kind").GetString() == "npm"));
@@ -67,6 +95,13 @@ internal static class AnalysisPackagePreparation
         if (Encoding.UTF8.GetByteCount(resolvedNpm) > MaximumSettingsBytes) throw new InvalidDataException("resolved npm feed settings exceed the bounded environment transport");
         using (var resolved = JsonDocument.Parse(resolvedNpm)) ValidateFeeds(resolved.RootElement);
         var npmEnvironment = new Dictionary<string, string> { ["CE_PACKAGE_FEEDS"] = resolvedNpm, ["SANDBOX_PASS_ENV"] = "CE_PACKAGE_FEEDS" };
+        if (run.Settings.EligibleCSharp)
+        {
+            await AnalysisAdapterShadow.VerifyCurrentAsync(root, shadow!, stop);
+            foreach (var repo in repositories)
+                if (sourceIdentities![repo.Id] != SourceIdentity(repo.Source))
+                    throw new InvalidOperationException("exported source changed before npm acquisition");
+        }
         using var npmTiming = process.Measure("packages.npm");
         var npmErrors = "";
         var npmOutput = await process.Run("scripts/sandbox", ["node", "node", NpmHelper, InContainer(Path.Combine(work, "manifest.tsv"))],

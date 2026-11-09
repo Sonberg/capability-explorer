@@ -1,0 +1,15 @@
+{
+  "recipeId": "csharp-project-discovery-v1",
+  "recipeVersion": 1,
+  "algorithm": "per-csproj-directory-ownership",
+  "description": "Discovers eligible C# project units by nearest-ancestor .csproj ownership of .cs source files under the exported commit tree. No build, restore, package resolution or code execution is performed; files are only enumerated, classified and hashed.",
+  "rules": [
+    "A .csproj file defines a project unit rooted at its containing directory.",
+    "A .cs file is owned by the nearest ancestor directory that contains exactly one .csproj file.",
+    "A directory that contains more than one .csproj file is ambiguous: every file directly under it is reported unsupported with code ambiguous-project-directory.",
+    "Embedded-source extensions (.csx, .razor, .cshtml) are outside the declared csharp.project.v1 input profile and are reported unsupported-embedded-source.",
+    "Non-C# source files are reported unsupported-input-profile rather than silently dropped.",
+    "Manifest excludedPathPrefixes remove matching paths from consideration before ownership is resolved.",
+    "Symbolic links and files outside the project root are reported linked-input or source-outside-project and never followed."
+  ]
+}

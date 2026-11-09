@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 using CapabilityExplorer.Capabilities;
 using CapabilityExplorer.Capabilities.Analysis;
 
@@ -20,6 +21,27 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
     private string Label => "ce-analyze=" + AnalysisWorkerCommand.HashText(root)[..16] + "-" + run.RunId + "-" + run.AttemptId;
     internal AnalysisTelemetryStage Measure(string stage, string? repositoryId = null, string? language = null) =>
         new(WriteTelemetry,run.RunId,run.AttemptId!,stage,repositoryId,language);
+
+    internal void LogFailure(Exception error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        LogFailure(error.GetType().Name + ": " + error.Message);
+    }
+
+    internal void LogFailure(string message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        var detail = message;
+        foreach (var name in new[] { "GITHUB_TOKEN", "GH_TOKEN" })
+            if (Environment.GetEnvironmentVariable(name) is { Length: > 0 } secret)
+                detail = detail.Replace(secret, "[redacted]", StringComparison.Ordinal);
+        detail = Regex.Replace(detail, @"(?i)(https?://)[^/\s@]+@", "$1[redacted]@");
+        detail = Regex.Replace(detail, @"(?i)(authorization:\s*(?:basic|bearer)\s+)\S+", "$1[redacted]");
+        detail = Regex.Replace(detail, @"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b", "[redacted]");
+        detail = string.Concat(detail.Where(character => !char.IsControl(character) || character == ' '));
+        if (detail.Length > 2048) detail = detail[..2048] + "...";
+        WriteTelemetry("-- failure: " + detail + "\n");
+    }
 
     private void WriteTelemetry(string line)
     {
@@ -100,21 +122,24 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
             if (Environment.GetEnvironmentVariable(name) is { } value) start.Environment[name] = value;
         start.Environment["CE_CONTAINER_ENGINE"] = Environment.GetEnvironmentVariable("CE_CONTAINER_ENGINE") ?? "auto";
         start.Environment["SANDBOX_PASS_ENV"] = "";
-        start.Environment["SANDBOX_SOURCES"] = "";
+        string? sourceMount = null;
+        var selectedNuget = sandbox && argumentList.Contains("fetch-packages-selected-v1", StringComparer.Ordinal);
         var sourceIndex = Array.IndexOf(argumentList,"--source");
-        if (sandbox && argumentList.Contains("--offline",StringComparer.Ordinal) && sourceIndex >= 0 && sourceIndex + 1 < argumentList.Length &&
+        if (sandbox && (argumentList.Contains("--offline",StringComparer.Ordinal) || selectedNuget) &&
+            sourceIndex >= 0 && sourceIndex + 1 < argumentList.Length &&
             argumentList[sourceIndex + 1].StartsWith("/work/",StringComparison.Ordinal))
         {
             var source = Path.GetFullPath(Path.Combine(root,argumentList[sourceIndex + 1][6..]));
             var relative = Path.GetRelativePath(root,source);
             if (Path.IsPathRooted(relative) || relative == ".." || relative.StartsWith("../",StringComparison.Ordinal))
-                throw new IOException("offline source escapes workspace");
+                throw new IOException("selected source escapes workspace");
             AnalysisPreparation.RejectLinks(source);
-            start.Environment["SANDBOX_SOURCES"] = source;
+            sourceMount = source;
         }
         start.Environment["SANDBOX_LABEL"] = Label;
         if (environment is not null) foreach (var pair in environment) start.Environment[pair.Key] = pair.Value;
         if (sandbox) _runtime.ApplyEnvironment(start);
+        start.Environment["SANDBOX_SOURCES"] = sourceMount ?? "";
         var logPath = store.LogPath(run.RunId);
         if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("analysis host requires Linux or macOS");
         lock (_logGate)

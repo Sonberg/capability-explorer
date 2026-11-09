@@ -129,6 +129,35 @@ public sealed class AnalysisRunTests : IDisposable
         using var owner = _store.AcquireWorker();
         Assert.Equal(2, _store.ClaimNext(owner, admitted.RunId)!.Settings.CapabilityWorkers);
     }
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public void Missing_legacy_eligible_csharp_setting_means_false_and_cannot_be_upgraded(bool requested, bool rejected)
+    {
+        var admitted = _store.Admit("sales", _configuration, null, new(EligibleCSharp: requested)).Run;
+        var acceptedPath = Path.Combine(_store.RunDirectory(admitted.RunId), "accepted.json");
+        var accepted = JsonNode.Parse(File.ReadAllText(acceptedPath))!.AsObject();
+        accepted["settings"]!.AsObject().Remove("eligibleCSharp");
+        var json = new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true };
+        var acceptedBytes = JsonSerializer.SerializeToUtf8Bytes(accepted, json);
+        File.WriteAllBytes(acceptedPath, acceptedBytes);
+
+        var runPath = Path.Combine(_store.RunDirectory(admitted.RunId), "run.json");
+        var run = JsonNode.Parse(File.ReadAllText(runPath))!.AsObject();
+        if (!requested) run["settings"]!.AsObject().Remove("eligibleCSharp");
+        run["acceptedInputsHash"] = Convert.ToHexStringLower(SHA256.HashData(acceptedBytes));
+        File.WriteAllBytes(runPath, JsonSerializer.SerializeToUtf8Bytes(run, json));
+
+        using var owner = _store.AcquireWorker();
+        if (rejected)
+        {
+            Assert.Throws<InvalidDataException>(() => _store.ClaimNext(owner, admitted.RunId));
+        }
+        else
+        {
+            Assert.False(_store.ClaimNext(owner, admitted.RunId)!.Settings.EligibleCSharp);
+        }
+    }
     [Fact]
     public void Queued_cancellation_cannot_be_claimed()
     {

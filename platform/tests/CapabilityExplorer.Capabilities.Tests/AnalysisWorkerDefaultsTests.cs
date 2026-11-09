@@ -26,7 +26,7 @@ public sealed class AnalysisWorkerDefaultsTests : IDisposable
         var store = new FileRunStore(Root);
         using var owner = store.AcquireWorker();
         var settings = new AnalysisSettings(Packages: false, Locked: true, GitHubAuth: "none", NugetPassEnv: "PRIVATE_FEED_TOKEN",
-            NugetAllowedOrigins: "https://packages.example.test", ExtractionJobs: 3, CapabilityWorkers: 2);
+            NugetAllowedOrigins: "https://packages.example.test", ExtractionJobs: 3, CapabilityWorkers: 2, EligibleCSharp: true);
         store.PublishWorkerDefaults(owner, settings);
         Assert.Equal(new WorkerDefaults(settings, null), store.ReadWorkerDefaults());
         store.PublishWorkerDefaults(owner, settings with { IncludeTests = true }, false);
@@ -35,6 +35,15 @@ public sealed class AnalysisWorkerDefaultsTests : IDisposable
         Assert.Equal(2, store.ReadWorkerDefaults()!.Settings.CapabilityWorkers);
         if (OperatingSystem.IsWindows()) return;
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(Path.Combine(Root, "worker-defaults.json")));
+    }
+    [Fact]
+    public void Eligible_CSharp_is_opt_in_and_worker_profiles_preserve_the_setting()
+    {
+        Assert.False(new AnalysisSettings().EligibleCSharp);
+        var store = new FileRunStore(Root);
+        using var owner = store.AcquireWorker();
+        store.PublishWorkerDefaults(owner, new(EligibleCSharp: true));
+        Assert.True(store.ReadWorkerDefaults()!.Settings.EligibleCSharp);
     }
     [Fact]
     public void Older_profile_without_capability_worker_limit_uses_conservative_default()

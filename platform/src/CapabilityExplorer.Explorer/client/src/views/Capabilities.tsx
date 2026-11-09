@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { ApiError, request, shortSha, type AnalysisJob, type CapabilityCreated, type CapabilityStatus, type RebuildResult } from "../api";
+import { ApiError, request, shortSha, type AnalysisJob, type CapabilityCreated, type CapabilityStatus, type GitHubAccounts, type RebuildResult } from "../api";
 import { Button, Card, ErrorBox, H1, H2, inputClass, Loading, Mono, Muted, Note, Pill, Table } from "../components/ui";
 import { useApi, useSelection } from "../state";
 
@@ -31,10 +31,21 @@ export function Capabilities() {
   // "Analyze code" runs on the host (scripts/analyze-worker, started by make dev): queue it, then follow it.
   const [analysisError, setAnalysisError] = useState<string>();
   const [jobs, setJobs] = useState<Record<string, AnalysisJob>>({});
+  const [githubAccounts, setGitHubAccounts] = useState<GitHubAccounts>();
+  const [githubAccount, setGitHubAccount] = useState("");
+  const [githubAccountsError, setGitHubAccountsError] = useState<string>();
   const analysisRequests = useRef(new Set<string>());
   const analysisVersions = useRef<Record<string, number>>({});
   const observedJobs = useRef<Record<string, AnalysisJob>>({});
   const [pendingAnalysis, setPendingAnalysis] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    const controller = new AbortController();
+    void request<GitHubAccounts>("/api/github-accounts", { signal: controller.signal })
+      .then(setGitHubAccounts)
+      .catch((error: Error) => { if (!controller.signal.aborted) setGitHubAccountsError(error.message); });
+    return () => controller.abort();
+  }, []);
+
   const ids = list.data?.map((c) => c.id).join("\n") ?? "";
   useEffect(() => {
     if (!ids) return;
@@ -86,9 +97,12 @@ export function Capabilities() {
     setPendingAnalysis((current) => ({ ...current, [id]: true }));
     try {
       const target = `/api/capabilities/${encodeURIComponent(id)}/${action === "retry" ? "retry" : "analyze"}`;
-      const job = await request<AnalysisJob>(action === "stop" ? `${target}?runId=${encodeURIComponent(runId!)}` : target,
+      const endpoint = action === "stop" ? `${target}?runId=${encodeURIComponent(runId!)}`
+        : action === "analyze" && githubAccount ? `${target}?githubAccount=${encodeURIComponent(githubAccount)}` : target;
+      const job = await request<AnalysisJob>(endpoint,
         { method: action === "stop" ? "DELETE" : "POST",
-          ...(action === "retry" ? { body: JSON.stringify({ runId, attemptId, acknowledgeUnverifiedExecution: true }) } : {}) });
+          ...(action === "retry" ? { body: JSON.stringify({ runId, attemptId, acknowledgeUnverifiedExecution: true,
+            ...(githubAccount ? { githubAccount } : {}) }) } : {}) });
       observedJobs.current[id] = job;
       setJobs((s) => ({ ...s, [id]: job }));
     } catch (e) {
@@ -120,7 +134,7 @@ export function Capabilities() {
     try {
       const url = cancel && c.check
         ? `/api/source-checks/${encodeURIComponent(c.check.requestId)}/cancel`
-        : `/api/capabilities/${encodeURIComponent(c.id)}/check`;
+        : `/api/capabilities/${encodeURIComponent(c.id)}/check${githubAccount ? `?githubAccount=${encodeURIComponent(githubAccount)}` : ""}`;
       await request(url, { method: "POST" });
       refresh();
     } catch (e) {
@@ -160,9 +174,20 @@ export function Capabilities() {
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <Pill tone="neutral">Host-managed acquisition</Pill>
         <span className="text-zinc-500">
-          Configure GitHub credentials on the host worker, not in Explorer. Queued work does not imply a worker is running.
+          Tokens stay on the host. This selection is saved only with the queued run; it does not put credentials in the capability file.
         </span>
+        <label className="flex items-center gap-2">
+          <span>GitHub account</span>
+          <select className={inputClass} value={githubAccount} onChange={(event) => setGitHubAccount(event.target.value)}>
+            <option value="">Automatic host credentials</option>
+            {githubAccounts?.accounts.map((account) => (
+              <option key={account.login} value={account.login}>{account.login}{account.active ? " (active)" : ""}</option>
+            ))}
+          </select>
+        </label>
       </div>
+      {githubAccountsError && <Note>Host account names are unavailable: {githubAccountsError}. Automatic host credentials remain available.</Note>}
+      {githubAccounts && !githubAccounts.available && <Note>GitHub CLI is not installed on the host. Automatic credentials remain available.</Note>}
       {actionError && <ErrorBox message={actionError} />}
       {analysisError && <ErrorBox message={`Analysis status unavailable: ${analysisError}. Retrying automatically.`} />}
       {list.error && <ErrorBox message={list.error} />}
@@ -244,7 +269,22 @@ export function Capabilities() {
               </span>,
               <Mono className="text-xs">{r.ref}</Mono>,
               r.error ? (
-                <span className="text-xs text-red-700 dark:text-red-300">{r.error}</span>
+                <span className="text-xs text-red-700 dark:text-red-300">
+                  {r.error}
+                  {c.check && c.check.state === "done" && !c.checkStale && !c.check.cancellationRequested ? (
+                    <span className="block text-zinc-500">
+                      Check <Mono>{c.check.requestId}</Mono> could not lock this repository. Verify its location, ref
+                      and access, then view the host worker logs before retrying.
+                    </span>
+                  ) : (
+                    // The check that produced this reason is not (or no longer) the fresh, completed one: never
+                    // attribute it to a specific request ID that may be stale, in progress or cancelled.
+                    <span className="block text-zinc-500">
+                      Verify this repository's location, ref and access, then view the latest check's host worker
+                      logs before retrying.
+                    </span>
+                  )}
+                </span>
               ) : r.lockedSha ? (
                 <span className="text-xs">
                   <Mono>{shortSha(r.lockedSha)}</Mono> <span className="text-zinc-500">{r.lockedSubject}</span>
@@ -274,6 +314,7 @@ const canRetry = (job?: AnalysisJob) => !!job?.runId && !!job.attemptId && (job.
 
 function AnalysisProgress({ job }: { job?: AnalysisJob }) {
   if (!job || job.state === "idle") return null;
+  const failure = job.log?.split(/\r?\n/).find((line) => line.startsWith("-- failure: "))?.slice("-- failure: ".length);
   return (
     <div className="my-2">
       {job.runId && <p className="text-xs text-zinc-500">Run <Mono>{job.runId}</Mono> · {job.stage ?? job.state} · {job.outcome ?? job.state}</p>}
@@ -285,7 +326,7 @@ function AnalysisProgress({ job }: { job?: AnalysisJob }) {
         </Note>
       )}
       {job.state === "stopped" && <Note>Analysis termination confirmed. Review publication outcomes before relying on artifacts.</Note>}
-      {job.state === "failed" && <ErrorBox message="Analysis failed. The last lines of its log are below." />}
+      {job.state === "failed" && <ErrorBox message={failure ?? "Analysis failed. The last lines of its log are below."} />}
       {job.log && <pre className="mt-2 max-h-64 overflow-auto rounded-md bg-zinc-100 p-2 text-xs dark:bg-zinc-900">{job.log}</pre>}
     </div>
   );

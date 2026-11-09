@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text;
 using CapabilityExplorer.Contracts;
 using CapabilityExplorer.Extractors.CSharp;
 
@@ -12,6 +13,53 @@ string? Arg(string name)
 }
 
 bool Has(string name) => args.Contains($"--{name}", StringComparer.Ordinal);
+
+bool SelectedCommand(string verb) => args.FirstOrDefault() == verb;
+
+ProjectSelectionContract SelectedContract(string verb)
+{
+    var allowed = verb switch
+    {
+        "validate-selected-v1" => new HashSet<string>(["source", "selection-sha256", "source-sha256", "project", "include-tests"], StringComparer.Ordinal),
+        "fetch-packages-selected-v1" => new HashSet<string>(["source", "packages", "lock", "selection-sha256", "source-sha256", "project", "include-tests"], StringComparer.Ordinal),
+        "extract-selected-v1" => new HashSet<string>(["source", "repository", "commit", "out", "packages", "lock", "packs", "selection-sha256", "source-sha256", "project", "include-tests"], StringComparer.Ordinal),
+        _ => throw new ArgumentException("unsupported selected C# command"),
+    };
+    var values = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+    var argumentBytes = 0;
+    for (var index = 0; index < args.Length; index++)
+    {
+        argumentBytes += Encoding.UTF8.GetByteCount(args[index]) + 1;
+        if (index == 0) continue;
+        if (!args[index].StartsWith("--", StringComparison.Ordinal))
+            throw new ArgumentException("selected C# commands reject positional arguments");
+        var key = args[index][2..];
+        if (!allowed.Contains(key)) throw new ArgumentException("selected C# command has an unsupported option");
+        if (!values.TryGetValue(key, out var entries)) values[key] = entries = [];
+        if (key == "include-tests")
+        {
+            if (entries.Count > 0) throw new ArgumentException("selected C# command has a duplicate option");
+            entries.Add("1");
+            continue;
+        }
+        if (index + 1 >= args.Length || args[index + 1].StartsWith("--", StringComparison.Ordinal))
+            throw new ArgumentException("selected C# command has a missing option value");
+        var value = args[++index];
+        argumentBytes += Encoding.UTF8.GetByteCount(value) + 1;
+        if (key != "project" && entries.Count > 0)
+            throw new ArgumentException("selected C# command has a duplicate option");
+        entries.Add(value);
+    }
+
+    if (argumentBytes > 65_536) throw new ArgumentException("selected C# argv exceeds 64 KiB");
+    string Required(string key) => values.TryGetValue(key, out var entries) && entries.Count == 1 && entries[0].Length > 0
+        ? entries[0] : throw new ArgumentException("selected C# command is missing a required option");
+    if (!values.TryGetValue("project", out var projects) || projects.Count is < 1 or > 100)
+        throw new ArgumentException("selected C# command requires 1 to 100 project paths");
+    return new ProjectSelectionContract(projects.ToArray(), Required("selection-sha256"), Required("source-sha256"));
+}
+
+bool IncludeSelectedTests() => args.Any(argument => argument == "--include-tests");
 
 if (args.FirstOrDefault() == "extract-candidates")
 {
@@ -34,8 +82,27 @@ if (args.FirstOrDefault() == "extract-candidates")
     }
 }
 
-if (args.FirstOrDefault() == "fetch-packages")
+if (SelectedCommand("validate-selected-v1"))
 {
+    var contract = SelectedContract("validate-selected-v1");
+    var selectedSource = Arg("source") ?? throw new ArgumentException("selected validation source is required");
+    var report = ProjectModel.ValidateSelection(Path.GetFullPath(selectedSource), contract, IncludeSelectedTests());
+    Console.WriteLine(JsonSerializer.Serialize(new
+    {
+        schema = "ce.csharp.selection-validation.v1",
+        candidateCount = report.CandidateCount,
+        testExcludedCount = report.TestExcludedCount,
+        selectedCount = report.SelectedCount,
+        selectionSha256 = report.SelectionSha256,
+        sourceSha256 = report.SourceSha256,
+    }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+    return 0;
+}
+
+if (args.FirstOrDefault() is "fetch-packages" or "fetch-packages-selected-v1")
+{
+    var selected = SelectedCommand("fetch-packages-selected-v1");
+    var selection = selected ? SelectedContract("fetch-packages-selected-v1") : null;
     // Network step, run before the offline extract: pure downloads from the configured feeds, no restore, no MSBuild.
     // Writes the lock file that the extract step uses. Feed credentials (%ENV_VAR% references in nuget.config) are
     // read from this process's environment only and are never printed.
@@ -45,7 +112,12 @@ if (args.FirstOrDefault() == "fetch-packages")
         return 2;
     }
 
-    var models = ProjectModel.Discover(Path.GetFullPath(fetchSource), Has("include-tests"));
+    var models = ProjectModel.Discover(Path.GetFullPath(fetchSource), Has("include-tests") || selected && IncludeSelectedTests(), selection);
+    if (selected && models.Count == 0)
+    {
+        Console.WriteLine("no C# projects selected by test policy");
+        return 0;
+    }
     var operatorFeeds = OperatorPackageFeedSettings.Load(Environment.GetEnvironmentVariable("CE_PACKAGE_FEEDS"));
     var operatorNuGetFeeds = operatorFeeds.NuGetFeeds();
     var allowedOrigins = string.Join(',', new[] { Environment.GetEnvironmentVariable("CE_NUGET_ALLOWED_ORIGINS") }
@@ -72,7 +144,10 @@ if (args.FirstOrDefault() == "fetch-packages")
     return 0;
 }
 
-if (args.FirstOrDefault() != "extract" || Arg("source") is not { } source || Arg("repository") is not { } repo || Arg("commit") is not { } commit || Arg("out") is not { } outDir)
+var selectedExtraction = SelectedCommand("extract-selected-v1");
+var extractCommand = args.FirstOrDefault() is "extract" or "extract-selected-v1";
+var selectedContract = selectedExtraction ? SelectedContract("extract-selected-v1") : null;
+if (!extractCommand || Arg("source") is not { } source || Arg("repository") is not { } repo || Arg("commit") is not { } commit || Arg("out") is not { } outDir)
 {
     Console.Error.WriteLine("usage: ce-cs extract --source <dir> --repository <id> --commit <sha> --out <dir> [--packages <nuget folder>] [--lock <file>] [--packs <dotnet packs dir>] [--include-tests]");
     return 2;
@@ -80,8 +155,10 @@ if (args.FirstOrDefault() != "extract" || Arg("source") is not { } source || Arg
 
 var packs = Arg("packs") ?? Path.GetFullPath(Path.Combine(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", "..", "packs"));
 var packages = Arg("packages") is { } p && Directory.Exists(p) ? Path.GetFullPath(p) : null;
-var options = new ExtractorOptions(Path.GetFullPath(source), repo, commit, packages, packs, Arg("lock") is { } lockPath ? PackageLock.Load(lockPath) : null, Has("include-tests"))
+var options = new ExtractorOptions(Path.GetFullPath(source), repo, commit, packages, packs,
+    Arg("lock") is { } lockPath ? PackageLock.Load(lockPath) : null, Has("include-tests") || selectedExtraction && IncludeSelectedTests())
 {
+    Selection = selectedContract,
     Timing = timing => Console.WriteLine("-- cs-timing: " + JsonSerializer.Serialize(new
     {
         schema = "ce.csharp.timing.v1", stage = timing.Stage, unit = timing.Unit,
@@ -90,6 +167,23 @@ var options = new ExtractorOptions(Path.GetFullPath(source), repo, commit, packa
 };
 var extractor = new CSharpExtractor(options);
 var results = extractor.Extract();
+if (selectedExtraction)
+{
+    var report = ProjectModel.ValidateSelection(Path.GetFullPath(source), selectedContract!, options.IncludeTests);
+    if (results.Count != report.SelectedCount)
+        throw new InvalidDataException("selected C# result count differs from the validated selection");
+    var filenames = results.Select(result => OutputName(result.UnitName)).ToArray();
+    if (filenames.Distinct(StringComparer.OrdinalIgnoreCase).Count() != filenames.Length)
+        throw new InvalidDataException("selected C# outputs have colliding names");
+    var outputRoot = Path.GetFullPath(outDir);
+    _ = CandidatePaths.Validate(outputRoot);
+    foreach (var filename in filenames)
+    {
+        var destination = CandidatePaths.Validate(Path.Combine(outputRoot, filename + ".jsonl"));
+        if (File.Exists(destination) || Directory.Exists(destination))
+            throw new InvalidDataException("selected C# output would overwrite an existing artifact");
+    }
+}
 Directory.CreateDirectory(outDir);
 var failed = 0;
 for (var index = 0; index < results.Count; index++)
@@ -99,7 +193,7 @@ for (var index = 0; index < results.Count; index++)
     var report = ArtifactValidator.Validate(r.Jsonl);
     if (report.IsValid) validation.Complete();
     validation.Dispose();
-    var file = Path.Combine(outDir, $"{string.Concat(r.UnitName.Select(c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_' ? c : '_'))}.jsonl");
+    var file = Path.Combine(outDir, OutputName(r.UnitName) + ".jsonl");
     if (!report.IsValid)
     {
         failed++;
@@ -123,3 +217,6 @@ if (results.Count == 0)
 }
 
 return failed == 0 ? 0 : 1;
+
+string OutputName(string unitName) =>
+    string.Concat(unitName.Select(character => char.IsLetterOrDigit(character) || character is '.' or '-' or '_' ? character : '_'));

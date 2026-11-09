@@ -30,8 +30,13 @@ class DocsCiTests(unittest.TestCase):
         self.base = self.commit()
 
     def git(self, *args):
+        environment = os.environ.copy()
+        local_variables = subprocess.check_output(
+            ["git", "rev-parse", "--local-env-vars"], text=True).splitlines()
+        for name in local_variables:
+            environment.pop(name, None)
         return subprocess.check_output(["git", "-C", str(self.root), *args],
-                                       stderr=subprocess.PIPE)
+                                       stderr=subprocess.PIPE, env=environment)
 
     def write(self, path, text):
         destination = self.root / path
@@ -85,6 +90,29 @@ class DocsCiTests(unittest.TestCase):
     def test_invalid_revision_cannot_select_lightweight_success(self):
         with self.assertRaises(subprocess.CalledProcessError):
             docs.mode("missing-revision", self.base)
+
+    def test_inherited_hook_environment_cannot_modify_parent_repository(self):
+        parent_head = self.git("rev-parse", "HEAD")
+        parent_index = (self.root / ".git/index").read_bytes()
+        hook_environment = {
+            "GIT_DIR": str(self.root / ".git"),
+            "GIT_COMMON_DIR": str(self.root / ".git"),
+            "GIT_WORK_TREE": str(self.root),
+            "GIT_INDEX_FILE": str(self.root / ".git/index"),
+        }
+        fixture = DocsCiTests()
+        try:
+            with patch.dict(os.environ, hook_environment):
+                fixture.setUp()
+                fixture.write("docs/isolated.md", "# Isolated\n")
+                fixture.commit()
+                self.assertEqual(fixture.root.resolve(), Path(
+                    fixture.git("rev-parse", "--show-toplevel").decode().strip()).resolve())
+        finally:
+            fixture.doCleanups()
+        self.assertEqual(parent_head, self.git("rev-parse", "HEAD"))
+        self.assertEqual(parent_index, (self.root / ".git/index").read_bytes())
+        self.assertEqual(b"", self.git("status", "--porcelain"))
 
 
 if __name__ == "__main__":

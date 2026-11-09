@@ -2,15 +2,15 @@
   "version": 1,
   "inputs": {
     "Makefile": "9b93474750da63ecd9700d05f33bfa23adcb84b0b42b31335a019e77161bff42",
-    "config/build/sandbox.mk": "a159ce9c6a0f0760eb884eaafdd7cb90734f73557f57f780c1973d6714e05d39",
-    "config/build/native.mk": "1c740db4e0c27e074979ad11be8278029e7b2c7a228529929c25ec1dcd27d477",
+    "config/build/sandbox.mk": "4b9de025667eca7e395b1630040d90e90bc651ef7513bc548243ce4b78b208c0",
+    "config/build/native.mk": "a776fb81b30f84555470f96ed26fc975c947ac683485e7815ef9e081c7698a31",
     "config/build/issue28.mk": "ccfb43921135dd3028a724bfebd3475c2e621872eee8898a3ede915098c2d91e",
     "config/build/platform.mk": "624eaac4c6f9093035dc59c82510b9ae3f450ecd4a9bc86a70bd15df7d50baad",
     "config/build/container-engine.mk": "25f1dabdfef394ba7fcb0993fb7b0bbada1bebcf64f161c7226804d5874f4a30",
     "config/runtime/images.env": "1128bce98fa3305188df4d75809c643c75ae72a85b518dc8bbcdd4b3cb4af4cd",
     ".github/workflows/ci.yml": "85350ce422ced6875fce1da89345752362b192948960fefaa4a229965ec50e48",
     "scripts/local-check": "cc288933eeecf9974977a3653f694ca69f442acde2f601fc3f249f23866f5527",
-    "scripts/sandbox": "3efb3018dcfe7eb09b5e6ec9ff5acdb131825e6768fdc5a0bdd3464d26043e5c",
+    "scripts/sandbox": "629c57b8a93933eec0536696999c86515adcfa0952e4d1b7f38312ddf6eb536f",
     "scripts/security-check": "27bdf9f91f4dbda3cbfe99fc71a4e4b9b67182231c46b7998ed9ed2ef8bfd836",
     "scripts/compile-fixtures.sh": "491d99f773ee0f247d113a59f7d262052cd8c00dc6a4102009b242637c718569",
     "scripts/ci/check-frugal-ci": "e2f0e04fbf475a831ddb40f14ca36144ef7526eb6286a8ecc145aeae8140aacf",
@@ -67,6 +67,8 @@
     "scripts/sandbox --offline node node spikes/likec4/node_modules/typescript/bin/tsc --noEmit -p platform/src/CapabilityExplorer.Explorer/client/tsconfig.json --types vite/client",
     "scripts/sandbox --offline node node spikes/likec4/node_modules/typescript/bin/tsc --noEmit --ignoreConfig --strict --target ES2022 --module ESNext --moduleResolution Bundler --esModuleInterop --allowImportingTsExtensions --skipLibCheck --types node --typeRoots spikes/likec4/node_modules/@types tests/capability-ingestion.browser.ts",
     "SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea scripts/sandbox --offline node node --experimental-strip-types --test tests/capability-ingestion.browser.ts",
+    "scripts/sandbox --offline node node spikes/likec4/node_modules/typescript/bin/tsc --noEmit --ignoreConfig --strict --target ES2022 --module ESNext --moduleResolution Bundler --esModuleInterop --allowImportingTsExtensions --skipLibCheck --types node --typeRoots spikes/likec4/node_modules/@types tests/unregistered-http-targets.browser.ts",
+    "SANDBOX_NODE_IMAGE=mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea scripts/sandbox --offline node node --experimental-strip-types --test tests/unregistered-http-targets.browser.ts",
     "scripts/sandbox --offline node node --test tests/issue28-contract.test.mjs scripts/benchmarks/issue28-tools.test.mjs",
     "scripts/sandbox --offline node sh -c 'cd spikes/likec4 && npm run build'",
     "scripts/sandbox --offline node sh -c 'cd spikes/likec4 && npm test && node --experimental-strip-types scripts/check-model.mjs'",
@@ -76,7 +78,7 @@
     "scripts/sandbox --offline node node scripts/check-platform-contract-plan.mjs foundation",
     "scripts/sandbox --offline node node scripts/research/check-frontend-contracts.mjs all",
     "scripts/sandbox --offline node node scripts/research/check-domain-object-contracts.mjs all",
-    "scripts/collection-dogfood \"b39a5b5b5cbbbed53cee7fa19edc1f22d9c0e9562adfc4057c58e5b43b0aa9d2:42be731158fb9b348b7a12d16225d00b7cd8d2cff27afdaac3948fe57dc24de0:\"",
+    "scripts/collection-dogfood \"b39a5b5b5cbbbed53cee7fa19edc1f22d9c0e9562adfc4057c58e5b43b0aa9d2:f73693ed049a5f12cbf3c815f1c911274a253e34dfc75c2d217ab13b4da09bae:\"",
     "scripts/sandbox --offline node node scripts/decisions/check.mjs all"
   ]
 }

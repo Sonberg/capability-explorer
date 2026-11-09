@@ -116,7 +116,8 @@ public sealed class ArchitectureConnectionsTests : IDisposable
             },
         }));
         _factory = new ExplorerFactory().WithWebHostBuilder(builder => builder
-            .UseSetting("capabilities", capabilities).UseSetting("workspace", Path.Combine(_root, "sources")));
+            .UseSetting("capabilities", capabilities).UseSetting("workspace", Path.Combine(_root, "sources"))
+            .UseSetting("requests", Path.Combine(_root, "requests")));
         _client = _factory.CreateClient();
         _client.DefaultRequestHeaders.Add("X-CE-Architecture-Connections", "1");
     }
@@ -207,7 +208,8 @@ public sealed class ArchitectureConnectionsTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
         using var restarted = new ExplorerFactory().WithWebHostBuilder(builder => builder
             .UseSetting("capabilities", Path.Combine(_root, "capabilities.json"))
-            .UseSetting("workspace", Path.Combine(_root, "sources")));
+            .UseSetting("workspace", Path.Combine(_root, "sources"))
+            .UseSetting("requests", Path.Combine(_root, "requests")));
         using var client = restarted.CreateClient();
         var loaded = await client.GetFromJsonAsync<JsonElement>("/api/architecture/connections");
         Assert.Equal(2, loaded.GetProperty("version").GetInt64());

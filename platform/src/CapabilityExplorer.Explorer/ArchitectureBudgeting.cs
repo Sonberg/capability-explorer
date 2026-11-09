@@ -19,6 +19,19 @@ internal static class ArchitectureBudgeting
     internal const int MaxNodes = 100;
     internal const int MaxEdges = 100;
 
+    internal static ArchitectureGraph FinalizeOverlays(ArchitectureGraph graph)
+    {
+        if (graph.FullGraph is not { } original || graph.Budget is not { } budget) return graph;
+        var full = original with
+        {
+            Nodes = original.Nodes.Concat(graph.Nodes).DistinctBy(node => node.Id).ToList(),
+            Edges = original.Edges.Concat(graph.Edges).DistinctBy(edge => edge.Id).ToList(),
+            Notes = graph.Notes.Where(note => !note.StartsWith("Showing ", StringComparison.Ordinal)).ToList(),
+            FullGraph = null,
+        };
+        return Apply(full, budget.NodeBudget, budget.EdgeBudget, graph.Filters?.HideKinds, graph.Filters?.Query, graph.Filters?.Include);
+    }
+
     internal static bool TryParse(IQueryCollection parameters, out ArchitectureRequest request, out string? error)
     {
         request = new(MaxNodes, MaxEdges, [], null, []);
@@ -73,9 +86,10 @@ internal static class ArchitectureBudgeting
         if (graph.Focus is { } focus)
             pins.UnionWith(graph.Nodes.Where(n => n.Id == focus || n.SymbolKey == focus || n.Id == $"repo:{focus}").Select(n => n.Id));
         if (pins.Count > nodes) throw new ArchitectureBudgetRejectedException("Focus and requested pins exceed nodeBudget.");
-        var matched = graph.Nodes.Where(n => pins.Contains(n.Id) || Matches(n, filters.Query)).ToList();
-        var matchedIds = matched.Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
         var hidden = filters.HideKinds.ToHashSet(StringComparer.Ordinal);
+        var matched = graph.Nodes.Where(n => (n.Category != "unregistered-http-target" || !hidden.Contains(n.Category))
+            && (pins.Contains(n.Id) || Matches(n, filters.Query))).ToList();
+        var matchedIds = matched.Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
         var matchedEdges = graph.Edges.Where(e => !hidden.Contains(e.Kind) && matchedIds.Contains(e.From) && matchedIds.Contains(e.To)).ToList();
         var degree = matchedEdges.SelectMany(e => new[] { e.From, e.To }).GroupBy(id => id, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
@@ -93,8 +107,9 @@ internal static class ArchitectureBudgeting
         var edgesTruncated = inducedEdges.Count > edges;
         var omitted = ranked.Skip(nodes).Select(n => new ArchitectureOmittedNode(n.Id, n.Label, n.Category, degree.GetValueOrDefault(n.Id))).Take(200).ToList();
         var matchedEdgeIds = matchedEdges.Select(e => e.Id).ToHashSet(StringComparer.Ordinal);
-        return graph with
+        var bounded = graph with
         {
+            FullGraph = graph.FullGraph ?? graph,
             Nodes = shown,
             Edges = shownEdges,
             Budget = new(nodes, graph.Nodes.Count, shown.Count, graph.Edges.Count, shownEdges.Count, nodesTruncated || edgesTruncated,
@@ -107,9 +122,12 @@ internal static class ArchitectureBudgeting
                 ? graph.Notes.Concat([$"Showing {shown.Count} of {matched.Count} matched nodes ({graph.Nodes.Count} total) and {shownEdges.Count} of {matchedEdges.Count} matched edges ({graph.Edges.Count} total); budgets {nodes} nodes / {edges} edges. Filter or drill down to inspect omitted items."]).ToList()
                 : graph.Notes,
         };
+        return graph.TargetResult is { } targets
+            ? bounded with { UnregisteredHttpTargets = Architecture.TargetDetails(targets, graph, bounded) }
+            : bounded;
     }
 
-    private static bool Matches(ArchNode node, string? query) => query is null
+    internal static bool Matches(ArchNode node, string? query) => query is null
         || new[] { node.Id, node.Label, node.Category, node.Sublabel, node.Group, node.SymbolKey, node.RepositoryId }
             .Any(value => value?.Contains(query, StringComparison.OrdinalIgnoreCase) == true);
 }

@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Security.Cryptography;
+using CapabilityExplorer.Binding;
 using CapabilityExplorer.Contracts;
 
 namespace CapabilityExplorer.Explorer;
@@ -37,7 +39,24 @@ public sealed record ArchEdge(string Id, string From, string To, string Kind, st
 
 public sealed record Crumb(string Label, string Level, string? Focus);
 
-public sealed record ArchitectureGraph(string Level, string? Focus, string Title, IReadOnlyList<Crumb> Breadcrumbs, IReadOnlyList<ArchNode> Nodes, IReadOnlyList<ArchEdge> Edges, IReadOnlyList<string> Notes, ArchitectureBudget? Budget = null, ArchitectureFilters? Filters = null, ArchitectureFacets? Facets = null, ArchitectureOmitted? Omitted = null);
+public sealed record ArchitectureHttpOccurrence(HttpTargetOccurrence Occurrence, int EvidenceCount);
+public sealed record ArchitectureHttpTargetDetail(string Id, string Label, string Status, string RepositoryId,
+    string UnitPath, string Caller, string? Client, string Destination,
+    IReadOnlyList<HttpTargetMembership> Consumers, int ConsumerCount, IReadOnlyList<string> Operations, int OperationCount,
+    IReadOnlyList<string> Reasons, IReadOnlyList<HttpEndpointEvidence> Alternatives, int AlternativeCount,
+    IReadOnlyList<string> MissingEvidence, IReadOnlyList<ArchitectureHttpOccurrence> Occurrences, int OccurrenceCount,
+    bool DetailsTruncated, Drill Recovery);
+public sealed record ArchitectureHttpOutcome(string Status, int Groups, int Occurrences);
+public sealed record ArchitectureHttpTargets(string ResultId, string RuleVersion, HttpTargetCoverage ProviderCoverage,
+    int ProviderSourceCount, int MissingRepositoryCount, int TotalCandidates, int MatchedCandidates, int ShownCandidates,
+    IReadOnlyList<ArchitectureHttpTargetDetail> Details, bool DetailsTruncated, IReadOnlyList<ArchitectureHttpOutcome> Outcomes);
+
+public sealed record ArchitectureGraph(string Level, string? Focus, string Title, IReadOnlyList<Crumb> Breadcrumbs, IReadOnlyList<ArchNode> Nodes, IReadOnlyList<ArchEdge> Edges, IReadOnlyList<string> Notes, ArchitectureBudget? Budget = null, ArchitectureFilters? Filters = null, ArchitectureFacets? Facets = null, ArchitectureOmitted? Omitted = null,
+    ArchitectureHttpTargets? UnregisteredHttpTargets = null)
+{
+    internal ArchitectureGraph? FullGraph { get; init; }
+    internal UnregisteredHttpTargetResult? TargetResult { get; init; }
+}
 
 /// <summary>
 /// Builds the canvas at four levels of abstraction from the facts in a view:
@@ -56,19 +75,107 @@ public static class Architecture
     /// <param name="capability">The capability the view is scoped to, if any: it names the level above the repositories.</param>
     public static ArchitectureGraph Build(ViewIndex view, string level, string? focus, ViewIndex all, IReadOnlyList<CapabilityStatus> capabilities, CapabilityStatus? capability, int? nodeBudget = null, int? edgeBudget = null, IReadOnlyList<string>? hideKinds = null, string? query = null, IReadOnlyList<string>? include = null)
     {
+        var selected = level == "landscape" ? all : view;
+        // Provider lookup uses the entire selected evidence, even when the canvas is capability-scoped.
+        var lookupSelection = all.Selection.ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal);
+        foreach (var item in selected.Selection) lookupSelection[item.Key] = item.Value;
+        var lookup = all.Index.View(string.Join(",", lookupSelection.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item => $"{item.Key}:{item.Value}")));
+        var targets = UnregisteredHttpTargetCandidates.Build(lookup.Artifacts.Select(artifact =>
+                (new LoadedFrom(artifact.RepositoryId, artifact.CommitSha, artifact.Artifact.Header.Unit.Path), artifact.Artifact)),
+            capabilities.SelectMany(item => item.Repositories.Select(repo => new HttpTargetMembership(item.Id, item.Name, repo.Id))),
+            lookup.Index.Bindings);
+        var selectedSources = selected.Artifacts.Select(artifact => (artifact.RepositoryId, artifact.Artifact.Header.Unit.Path)).ToHashSet();
+        targets = targets with
+        {
+            ResultId = Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                targets.ResultId,
+                sources = selected.Artifacts.OrderBy(artifact => artifact.RepositoryId, StringComparer.Ordinal)
+                    .ThenBy(artifact => artifact.Artifact.Header.Unit.Path, StringComparer.Ordinal)
+                    .Select(artifact => new { artifact.RepositoryId, artifact.CommitSha, UnitPath = artifact.Artifact.Header.Unit.Path, artifact.Artifact.ContentSha256 }),
+            }))),
+            Candidates = targets.Candidates.Where(candidate => selectedSources.Contains((candidate.RepositoryId, candidate.UnitPath))).ToList(),
+            Outcomes = targets.Outcomes.Select(outcome => outcome with
+            {
+                Occurrences = outcome.Occurrences.Where(occurrence => selectedSources.Contains((occurrence.Source.RepositoryId, occurrence.Source.UnitPath))).ToList(),
+            }).Where(outcome => outcome.Occurrences.Count > 0).ToList(),
+        };
         IReadOnlyList<Crumb> top = capability is null
             ? [new Crumb("Landscape", "landscape", null), new Crumb("System", "system", null)]
             : [new Crumb("Landscape", "landscape", null), new Crumb(capability.Name, "system", capability.Id)];
         var graph = level switch
         {
-            "landscape" => Landscape(all, capabilities),
-            "repository" when focus is not null => Repository(view, focus, top),
-            "component" when focus is not null => Component(view, focus, top),
+            "landscape" => Landscape(all, capabilities, targets),
+            "repository" when focus is not null => Repository(view, focus, top, targets),
+            "component" when focus is not null => Component(view, focus, top, targets),
+            "requests" when targets.Candidates.FirstOrDefault(candidate => candidate.Id == focus) is { } target => CandidateRequests(selected, target, top),
             "requests" when focus is not null => Requests(view, focus, top),
-            _ => System(view, top, capability?.Name ?? "System"),
+            _ => System(view, top, capability?.Name ?? "System", targets),
         };
         // Filtering bounds browser layout input; construction above still builds the full graph.
-        return ArchitectureBudgeting.Apply(graph, nodeBudget, edgeBudget, hideKinds, query, include);
+        return ArchitectureBudgeting.Apply(graph with { TargetResult = targets }, nodeBudget, edgeBudget, hideKinds, query, include);
+    }
+
+    internal static ArchitectureHttpTargets TargetDetails(UnregisteredHttpTargetResult result, ArchitectureGraph full, ArchitectureGraph shown)
+    {
+        const int limit = 40;
+        var shownIds = shown.Nodes.Select(node => node.Id).ToHashSet(StringComparer.Ordinal);
+        var details = result.Candidates.Where(candidate => shownIds.Contains(candidate.Id) || candidate.Id == shown.Focus)
+            .Take(ArchitectureBudgeting.MaxNodes).Select(candidate =>
+            {
+                var occurrences = (shown.Level == "requests" && shown.Focus == candidate.Id
+                        ? candidate.Occurrences.Where(occurrence => shownIds.Contains(occurrence.Id))
+                        : candidate.Occurrences.Take(limit))
+                    .Select(occurrence => new ArchitectureHttpOccurrence(occurrence with { Evidence = occurrence.Evidence.Take(limit).ToList() }, occurrence.Evidence.Count)).ToList();
+                var truncated = occurrences.Count < candidate.Occurrences.Count || occurrences.Any(item => item.EvidenceCount > limit)
+                    || candidate.Consumers.Count > limit || candidate.Operations.Count > limit || candidate.Alternatives.Count > limit;
+                return new ArchitectureHttpTargetDetail(candidate.Id, candidate.Label, candidate.Status, candidate.RepositoryId,
+                    candidate.UnitPath, candidate.Caller, candidate.Client, candidate.Destination,
+                    candidate.Consumers.Take(limit).ToList(), candidate.Consumers.Count, candidate.Operations.Take(limit).ToList(), candidate.Operations.Count,
+                    candidate.Reasons, candidate.Alternatives.Take(limit).ToList(), candidate.Alternatives.Count, candidate.MissingEvidence,
+                    occurrences, candidate.Occurrences.Count, truncated, new("requests", candidate.Id));
+            }).ToList();
+        var hidden = shown.Filters!.HideKinds.Contains("unregistered-http-target", StringComparer.Ordinal);
+        var matched = full.Nodes.Count(node => node.Category == "unregistered-http-target" && !hidden
+            && (shown.Budget!.Pinned.Contains(node.Id, StringComparer.Ordinal) || ArchitectureBudgeting.Matches(node, shown.Filters.Query)));
+        var coverage = result.ProviderCoverage;
+        return new(result.ResultId, result.RuleVersion, coverage with
+            {
+                Sources = coverage.Sources.Take(100).ToList(), MissingRepositories = coverage.MissingRepositories.Take(100).ToList(),
+                Qualifications = coverage.Qualifications.Take(100).ToList(),
+            }, coverage.Sources.Count, coverage.MissingRepositories.Count,
+            result.Candidates.Count, matched, shown.Nodes.Count(node => node.Category == "unregistered-http-target"), details,
+            details.Count < result.Candidates.Count || details.Any(detail => detail.DetailsTruncated)
+                || coverage.Sources.Count > 100 || coverage.MissingRepositories.Count > 100 || coverage.Qualifications.Count > 100,
+            result.Outcomes.GroupBy(outcome => outcome.Status, StringComparer.Ordinal).OrderBy(group => group.Key, StringComparer.Ordinal)
+                .Select(group => new ArchitectureHttpOutcome(group.Key, group.Count(), group.Sum(outcome => outcome.Occurrences.Count))).ToList());
+    }
+
+    private static ArchNode CandidateNode(UnregisteredHttpTargetCandidate candidate) =>
+        new(candidate.Id, "unregistered-http-target", candidate.Label, "Selected catalogue: no known provider",
+            null, null, null, new("requests", candidate.Id), ["Unregistered target"]);
+
+    private static ArchitectureGraph CandidateRequests(ViewIndex view, UnregisteredHttpTargetCandidate candidate, IReadOnlyList<Crumb> top)
+    {
+        var b = new Builder(view);
+        b.Node(CandidateNode(candidate));
+        foreach (var operation in candidate.Operations)
+        {
+            // Retain existing requests-level route IDs; these are operations, not additional target identities.
+            var operationId = $"unmatched:{operation}";
+            b.Node(new(operationId, "http-operation", operation, "Observed operation", null, null, null, null, []));
+            b.Link(operationId, candidate.Id, "http", "observed operation", "candidate");
+        }
+        var edges = view.Edges.ToDictionary(edge => (edge.Artifact.RepositoryId, edge.Artifact.Artifact.Header.Unit.Path, edge.Record.Id));
+        foreach (var occurrence in candidate.Occurrences)
+        {
+            if (!edges.TryGetValue((occurrence.Source.RepositoryId, occurrence.Source.UnitPath, occurrence.EdgeId), out var fact)) continue;
+            b.Node(new(occurrence.Id, "http-request", occurrence.Operation!, $"{occurrence.Source.RepositoryId}/{occurrence.Source.UnitPath} · {occurrence.Caller} · {occurrence.EdgeId}",
+                null, occurrence.Caller, occurrence.Source.RepositoryId, null, []));
+            b.Edge(occurrence.Id, candidate.Id, "http", occurrence.Operation!, "candidate", fact);
+        }
+        return b.Graph("requests", candidate.Id, candidate.Label, [.. top, new(candidate.Label, "requests", candidate.Id)],
+            ["Read-only candidate occurrences in the complete selection. Use q, include and graph budgets to recover omitted occurrences; source links retain exact revision and evidence."]);
     }
 
     // ------------------------------------------------------------------ landscape
@@ -77,9 +184,9 @@ public static class Architecture
     /// Capabilities as nodes. Lines are the system-level facts lifted to the capabilities that own each repository,
     /// plus "shares" links between capabilities that list the same repository. Resources stay only where they join capabilities.
     /// </summary>
-    private static ArchitectureGraph Landscape(ViewIndex view, IReadOnlyList<CapabilityStatus> capabilities)
+    private static ArchitectureGraph Landscape(ViewIndex view, IReadOnlyList<CapabilityStatus> capabilities, UnregisteredHttpTargetResult targets)
     {
-        var b = new Builder(view);
+        var b = new Builder(view, targets);
         foreach (var c in capabilities)
         {
             b.Node(new ArchNode($"cap:{c.Id}", "capability", c.Name, c.Description, null, null, null, new Drill("system", c.Id),
@@ -107,22 +214,23 @@ public static class Architecture
 
         // A resource joins capabilities when at least two repositories, owned by at least two capabilities, touch it
         // (one repository listed by two capabilities does not count). ponytail: linear scans; fine for tens of capabilities.
-        var byRepo = new Builder(view);
+        var byRepo = new Builder(view, targets);
         SystemEdges(view, byRepo, repo => [$"repo:{repo}"]);
         var repoEdges = byRepo.Graph("system", null, "", [], []).Edges;
         HashSet<string> Touching(IEnumerable<ArchEdge> edges, string id, string prefix) =>
             edges.Where(e => e.From == id || e.To == id).Select(e => e.From == id ? e.To : e.From).Where(x => x.StartsWith(prefix, StringComparison.Ordinal)).ToHashSet(StringComparer.Ordinal);
         var joins = graph.Nodes.Where(n => n.Category != "capability" && Touching(graph.Edges, n.Id, "cap:").Count >= 2 && Touching(repoEdges, n.Id, "repo:").Count >= 2)
             .Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
-        bool Keep(string id) => id.StartsWith("cap:", StringComparison.Ordinal) || joins.Contains(id);
+        bool Keep(string id) => id.StartsWith("cap:", StringComparison.Ordinal) || joins.Contains(id)
+            || graph.Nodes.Any(node => node.Id == id && node.Category == "unregistered-http-target");
         return graph with { Nodes = graph.Nodes.Where(n => Keep(n.Id)).ToList(), Edges = graph.Edges.Where(e => Keep(e.From) && Keep(e.To)).ToList() };
     }
 
     // ------------------------------------------------------------------ system
 
-    private static ArchitectureGraph System(ViewIndex view, IReadOnlyList<Crumb> crumbs, string title)
+    private static ArchitectureGraph System(ViewIndex view, IReadOnlyList<Crumb> crumbs, string title, UnregisteredHttpTargetResult targets)
     {
-        var b = new Builder(view);
+        var b = new Builder(view, targets);
         foreach (var repo in view.Artifacts.Select(a => a.RepositoryId).Distinct().Order(StringComparer.Ordinal))
         {
             b.Node(RepoNode(view, repo));
@@ -187,6 +295,7 @@ public static class Architecture
             {
                 if (r.Relation == "REQUESTS")
                 {
+                    if (b.TryCandidate(from, e)) continue;
                     foreach (var (target, certainty, missing) in HttpTargets(view, e))
                     {
                         if (missing is not null)
@@ -256,9 +365,9 @@ public static class Architecture
 
     // ------------------------------------------------------------------ repository
 
-    private static ArchitectureGraph Repository(ViewIndex view, string repo, IReadOnlyList<Crumb> top)
+    private static ArchitectureGraph Repository(ViewIndex view, string repo, IReadOnlyList<Crumb> top, UnregisteredHttpTargetResult targets)
     {
-        var b = new Builder(view);
+        var b = new Builder(view, targets);
         foreach (var a in view.Artifacts.Where(a => a.RepositoryId == repo))
         {
             foreach (var n in a.Artifact.Nodes)
@@ -305,6 +414,7 @@ public static class Architecture
             }
             else if (r.Relation == "REQUESTS")
             {
+                if (b.TryCandidate(from.Id, e)) continue;
                 foreach (var (target, certainty, missing) in HttpTargets(view, e))
                 {
                     if (missing is not null)
@@ -428,9 +538,9 @@ public static class Architecture
 
     // ------------------------------------------------------------------ component
 
-    private static ArchitectureGraph Component(ViewIndex view, string focus, IReadOnlyList<Crumb> top)
+    private static ArchitectureGraph Component(ViewIndex view, string focus, IReadOnlyList<Crumb> top, UnregisteredHttpTargetResult targets)
     {
-        var b = new Builder(view);
+        var b = new Builder(view, targets);
         var focusNode = view.Node(focus);
         var focusInfo = focusNode is null ? null : Component(view, focusNode);
         var title = focusInfo?.Node.Label ?? Map.DisplayName(focus);
@@ -452,6 +562,7 @@ public static class Architecture
             }
 
             var fromId = Endpoint(b, view, r.From, focus);
+            if (r.Relation == "REQUESTS" && b.TryCandidate(fromId, e)) continue;
             if (r.To is null)
             {
                 var id = $"dynamic:{r.From}:{r.UnresolvedReason}";
@@ -787,10 +898,23 @@ public static class Architecture
         }
     }
 
-    private sealed class Builder(ViewIndex view)
+    private sealed class Builder(ViewIndex view, UnregisteredHttpTargetResult? targets = null)
     {
         private readonly Dictionary<string, ArchNode> _nodes = new(StringComparer.Ordinal);
         private readonly Dictionary<string, (string From, string To, string Kind, string Label, string? Certainty, List<Occurrence<EdgeRecord>> Facts, HashSet<string> Labels)> _edges = new(StringComparer.Ordinal);
+        private readonly Dictionary<(string RepositoryId, string UnitPath, string EdgeId), UnregisteredHttpTargetCandidate> _candidates =
+            targets?.Candidates.SelectMany(candidate => candidate.Occurrences.Select(occurrence =>
+                    (Key: (occurrence.Source.RepositoryId, occurrence.Source.UnitPath, occurrence.EdgeId), Candidate: candidate)))
+                .ToDictionary(item => item.Key, item => item.Candidate) ?? [];
+
+        public bool TryCandidate(string from, Occurrence<EdgeRecord> occurrence)
+        {
+            if (!_candidates.TryGetValue((occurrence.Artifact.RepositoryId, occurrence.Artifact.Artifact.Header.Unit.Path, occurrence.Record.Id), out var candidate))
+                return false;
+            Node(CandidateNode(candidate));
+            Edge(from, candidate.Id, "unregistered-http-target", Route(occurrence.Record.To!), "candidate", occurrence);
+            return true;
+        }
 
         public void Node(ArchNode node) => _nodes.TryAdd(node.Id, node);
 
@@ -845,7 +969,8 @@ public static class Architecture
                 var label = labels.Count == 1 ? labels.First() : $"{facts.Count} {kind}";
                 return new ArchEdge(kv.Key, from, to, kind, facts.Count > 1 && labels.Count == 1 ? $"{label} ×{facts.Count}" : label, Math.Max(1, facts.Count), derived,
                     facts.Take(MaxFactsPerEdge).Select(f => new ArchFact(f.Record.Relation, Map.Ref(view, f.Record.From), f.Record.To is null ? null : Map.Ref(view, f.Record.To),
-                        f.Record.Resolution, f.Record.UnresolvedReason, f.Record.Derivation, f.Record.Rule is null ? null : $"{f.Record.Rule.Name} {f.Record.Rule.Version}", Map.Evidence(f.Artifact, f.Record.Evidence), ViaOf(f.Record))).ToList());
+                        f.Record.Resolution, f.Record.UnresolvedReason, f.Record.Derivation, f.Record.Rule is null ? null : $"{f.Record.Rule.Name} {f.Record.Rule.Version}",
+                        to.StartsWith("unregistered-http-target:", StringComparison.Ordinal) ? Map.Evidence(f.Artifact, f.Record.Evidence).Take(MaxFactsPerEdge).ToList() : Map.Evidence(f.Artifact, f.Record.Evidence), ViaOf(f.Record))).ToList());
             }).OrderBy(e => e.Id, StringComparer.Ordinal).ToList();
             return new ArchitectureGraph(level, focus, title, crumbs, _nodes.Values.OrderBy(n => n.Id, StringComparer.Ordinal).ToList(), edges, notes);
         }

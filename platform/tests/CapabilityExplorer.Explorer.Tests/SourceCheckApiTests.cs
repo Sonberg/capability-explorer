@@ -11,6 +11,19 @@ namespace CapabilityExplorer.Tests;
 public sealed class SourceCheckApiTests
 {
     [Fact]
+    public async Task Given_a_selected_host_github_account_when_sources_are_checked_then_the_check_uses_that_account()
+    {
+        using var factory = new CapabilityExplorerFactory();
+        using var client = factory.CreateClient();
+        var response = await client.PostAsync(new Uri("/api/capabilities/demand-pricing/check?githubAccount=fixture-account", UriKind.Relative), null);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var check = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var store = new FileRunStore(factory.RequestsDirectory);
+        Assert.Equal("account:fixture-account", store.ReadCheck(check.GetProperty("requestId").GetString()!).GitHubAuth);
+    }
+
+    [Fact]
     public async Task Check_is_accepted_with_status_location_duplicate_identity_and_explicit_cancellation()
     {
         using var factory = new CapabilityExplorerFactory();

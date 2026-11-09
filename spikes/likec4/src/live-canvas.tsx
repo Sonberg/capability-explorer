@@ -8,6 +8,7 @@ import type {LiveEdge, LiveGraph, LiveModelResult, LiveNode} from './live-contra
 import {useLiveModel} from './live-use-model.ts';
 import {useLiveInitialZoom} from './live-use-initial-zoom.ts';
 import {applyLiveGroups} from './live-canvas-groups.ts';
+import {withCanvasColorScheme} from './live-projection.ts';
 import {LiveSourceBridge} from './live-canvas-bridge.tsx';
 import {attachImmediateLayout, geometryKey} from './immediate-layout.ts';
 import {useRouting} from './use-routing.tsx';
@@ -142,7 +143,7 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
   const visibleGraph = useMemo(() => ({...graph, edges:graph.edges.filter(edge => !hiddenEdgeIds?.has(edge.id))}), [graph, hiddenEdgeIds]);
   const routing = useRouting(layoutView, orthogonal, resetKey, tracing);
   const currentView = routing.view;
-  const model = useMemo(() => LikeC4Model.create({...sourceModel.$data, views:{...sourceModel.$data.views, [view]:currentView}, manualLayouts:{}}), [sourceModel, currentView, view]);
+  const model = useMemo(() => LikeC4Model.create(withCanvasColorScheme({...sourceModel.$data, views:{...sourceModel.$data.views, [view]:currentView}, manualLayouts:{}}, dark)), [sourceModel, currentView, view, dark]);
   acceptLayout.current = layout => {
     if (layout.id !== view) return;
     const key = geometryKey(layout);

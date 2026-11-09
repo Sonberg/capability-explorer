@@ -9,7 +9,7 @@ internal static class HostSourceAcquisition
 {
     internal static async Task<GitHubAuth> ResolveAuth(string root, string mode, CancellationToken cancellationToken)
     {
-        if (mode is not ("auto" or "git" or "none")) throw new ArgumentException("invalid GitHub authentication policy");
+        if (!GitHubAuth.IsValidMode(mode)) throw new ArgumentException("invalid GitHub authentication policy");
         var start = new ProcessStartInfo(Path.Combine(root, "scripts/github-token"))
         { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
         start.ArgumentList.Add(mode);

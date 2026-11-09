@@ -3,7 +3,8 @@ using System.Collections.Concurrent;
 namespace CapabilityExplorer.Capabilities.Analysis;
 
 public sealed record AnalysisSettings(bool IncludeTests = false, bool Packages = true, bool Locked = false, string? RuntimeIdentity = null,
-    string GitHubAuth = "auto", string NugetPassEnv = "", string? NugetAllowedOrigins = null, int ExtractionJobs = 2, int CapabilityWorkers = 2);
+    string GitHubAuth = "auto", string NugetPassEnv = "", string? NugetAllowedOrigins = null, int ExtractionJobs = 2, int CapabilityWorkers = 2,
+    bool EligibleCSharp = false);
 /// <summary>Last configured nonsecret worker policy, without any liveness or execution authority.</summary>
 public sealed record WorkerDefaults(AnalysisSettings Settings, bool? IncludeTestsOverride);
 public sealed record AttemptIdentity(string RunId, string AttemptId);

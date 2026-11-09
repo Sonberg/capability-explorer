@@ -167,9 +167,13 @@ public sealed class BindingPreviewTests
     [Fact]
     public async Task Api_requires_local_json_intent_rejects_stale_and_exports_without_database()
     {
+        var requests = Path.Combine(Path.GetTempPath(), "ce-binding-preview-" + Guid.NewGuid().ToString("N"));
+        try
+        {
         var builder = WebApplication.CreateBuilder(); builder.WebHost.UseTestServer();
         builder.Services.AddSingleton(new ExplorerState(new ExplorerOptions([Fixtures.ExpectedDirectory], null, null,
-            Path.Combine(Fixtures.RepositoryRoot, "capabilities.json"), Path.Combine(Path.GetTempPath(), "ce-preview-no-workspace"))));
+            Path.Combine(Fixtures.RepositoryRoot, "capabilities.json"), Path.Combine(Path.GetTempPath(), "ce-preview-no-workspace"),
+            RequestsDirectory: requests)));
         await using var app = builder.Build(); app.MapBindingPreviewApi(); await app.StartAsync();
         using var client = app.GetTestClient();
         var inputs = Inputs();
@@ -188,5 +192,10 @@ public sealed class BindingPreviewTests
         Assert.Single(BindingFile.Parse(await exported.Content.ReadAsStringAsync()).Entries);
         client.DefaultRequestHeaders.Add("Origin", "https://attacker.invalid");
         Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync("/api/binding-preview/export" + scope, request)).StatusCode);
+        }
+        finally
+        {
+            if (Directory.Exists(requests)) Directory.Delete(requests, recursive: true);
+        }
     }
 }

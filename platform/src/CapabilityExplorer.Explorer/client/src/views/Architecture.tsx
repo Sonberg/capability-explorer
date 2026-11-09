@@ -12,6 +12,7 @@ import { usePublishFocus } from "../focus";
 import { href, symbolHref, useApi, useSelection } from "../state";
 import { ArchitectureFilterControls, type ArchitectureKindFacet } from "../components/architecture-filter-controls";
 import { ArchitectureRecoveryLists } from "../components/architecture-recovery-lists";
+import { UNREGISTERED_HTTP_TARGET_CATEGORY, UnregisteredHttpTargetInspector, UnregisteredHttpTargetStatus } from "../components/UnregisteredHttpTargetInspector";
 
 // ---------------------------------------------------------------- styling
 
@@ -30,6 +31,7 @@ const categoryStyle: Record<string, { box: string; strip: string; name: string }
   channel: { box: "border-violet-300 dark:border-violet-800", strip: "bg-violet-500", name: "channel" },
   host: { box: "border-teal-300 border-dashed dark:border-teal-800", strip: "bg-teal-400", name: "external host" },
   unmatched: { box: "border-red-300 border-dashed dark:border-red-800", strip: "bg-red-500", name: "unresolved" },
+  [UNREGISTERED_HTTP_TARGET_CATEGORY]: { box: "border-zinc-400 border-dashed dark:border-zinc-500", strip: "border border-dashed border-zinc-500 bg-transparent", name: "unregistered target" },
 };
 
 const kindColor: Record<string, string> = {
@@ -132,7 +134,9 @@ export function ArchitectureView({ params }: { params: URLSearchParams }) {
   return <Canvas key={`${selection}|${level}|${focus ?? ""}`} level={level} focus={focus} />;
 }
 
-type Selected = { type: "node"; node: ArchNode } | { type: "edge"; edge: ArchEdge } | null;
+// Candidate selections are bound to the candidate result that produced them.
+type Selected = { type: "node"; node: ArchNode; resultId?: string } | { type: "edge"; edge: ArchEdge } | null;
+const CANDIDATE_RESULT_CHANGED = "Candidate results changed for the selected revisions or catalogue. The previous selection was cleared; select the candidate again.";
 
 let rememberedHidden = new Set<string>(DEFAULT_HIDDEN_KINDS);
 
@@ -158,6 +162,7 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
   const [awaitingRefresh, setAwaitingRefresh] = useState(false);
   const [refreshStarted, setRefreshStarted] = useState(false);
   const [selected, setSelected] = useState<Selected>(null);
+  const [candidateNotice, setCandidateNotice] = useState("");
   const params = useMemo(() => {
     const search = new URLSearchParams({ level, nodeBudget: String(filters.nodeBudget), edgeBudget: String(filters.edgeBudget) });
     if (focus) search.set("focus", focus);
@@ -177,6 +182,20 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
   usePublishFocus(selected?.type === "node" && graph
     ? { kind: selected.node.category, label: selected.node.label, key: selected.node.symbolKey } : null);
   const lastClick = useRef({ id: "", at: 0 });
+  const targets = graph?.unregisteredHttpTargets;
+  const selectNode = (node: ArchNode) => {
+    setCandidateNotice("");
+    setSelected({ type: "node", node, resultId: node.category === UNREGISTERED_HTTP_TARGET_CATEGORY ? graph?.unregisteredHttpTargets?.resultId : undefined });
+  };
+  useEffect(() => {
+    if (!graph || selected?.type !== "node" || selected.node.category !== UNREGISTERED_HTTP_TARGET_CATEGORY) return;
+    if (selected.resultId !== graph.unregisteredHttpTargets?.resultId) {
+      setSelected(null);
+      setCandidateNotice(CANDIDATE_RESULT_CHANGED);
+    }
+  }, [graph, selected]);
+  const candidateDetail = selected?.type === "node" && selected.node.category === UNREGISTERED_HTTP_TARGET_CATEGORY
+    && targets && selected.resultId === targets.resultId ? targets.details.find(detail => detail.id === selected.node.id) : undefined;
   useEffect(() => {
     if (awaitingRefresh && loading) setRefreshStarted(true);
     else if (awaitingRefresh && refreshStarted && !loading) {
@@ -216,6 +235,16 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
     setQueryInput(query);
     setPins(include);
     setFilters({ nodeBudget, edgeBudget, query, hideKinds, include });
+    rememberedHidden = new Set(hideKinds);
+    setAwaitingRefresh(true);
+    setRefreshStarted(false);
+    reload();
+  };
+  // Recovery re-applies the current filters and only stops hiding candidate edges.
+  const showCandidates = () => {
+    const hideKinds = filters.hideKinds.filter(kind => kind !== UNREGISTERED_HTTP_TARGET_CATEGORY);
+    setHiddenKinds(new Set(hideKinds));
+    setFilters({ ...filters, hideKinds });
     rememberedHidden = new Set(hideKinds);
     setAwaitingRefresh(true);
     setRefreshStarted(false);
@@ -307,6 +336,8 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
         onUnpin={id => setPins(current => current.filter(pin => pin !== id))}
       />
       {requestError && <ErrorBox message={requestError} />}
+      {candidateNotice && <div role="status" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-200">{candidateNotice}</div>}
+      {targets && <UnregisteredHttpTargetStatus targets={targets} hiddenByKind={filters.hideKinds.includes(UNREGISTERED_HTTP_TARGET_CATEGORY)} onShow={showCandidates} />}
       <div className="architecture-panels grid min-h-0 flex-1 gap-3">
         <div role="region" aria-label="Architecture graph" data-input-identity={snapshotKey}
           data-node-budget={filters.nodeBudget} data-edge-budget={filters.edgeBudget}
@@ -338,13 +369,14 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
                 lastClick.current = { id: "", at: 0 }; drill(node); return;
               }
               lastClick.current = { id: node.id, at: now };
-              setSelected({ type: "node", node });
+              selectNode(node);
               if (node.category === "host" || node.category === "unmatched") setRecommendationsOpen(true);
             }}
             onNodeDrill={item => { const node = graph?.nodes.find(node => node.id === item.id); if (node) drill(node); }}
             onEdgeSelect={item => {
               const edge = graph?.edges.find(edge => edge.id === item.id);
               if (!edge) return;
+              setCandidateNotice("");
               setSelected({ type: "edge", edge });
               setSuggestionsOpen(false);
               setRecommendationsOpen(!edge.id.startsWith("automatic:") && edge.kind === "http"
@@ -355,14 +387,16 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
         </div>
         <aside className="min-h-0 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-3 text-[13px] dark:border-zinc-800 dark:bg-zinc-900">
           {suggestionsOpen ? <IntegrationSuggestionInspector scope={scope} onClose={() => setSuggestionsOpen(false)} /> : recommendationsOpen ? <HttpRecommendationInspector scope={scope} focus={recommendationFocus} onClose={() => setRecommendationsOpen(false)} /> : editor ? <ArchitectureConnectionEditor key={editor.id ?? `${editor.fromCapabilityId}|${editor.sourceKey ?? "new"}`} draft={editor} capabilities={meta.capabilities}
-            snapshot={connections.data} onClose={() => setEditor(null)} onSaved={saved} onReload={connections.reload} /> : selected?.type === "node" ? (
+            snapshot={connections.data} onClose={() => setEditor(null)} onSaved={saved} onReload={connections.reload} /> : candidateDetail && targets && graph ? (
+            <UnregisteredHttpTargetInspector detail={candidateDetail} targets={targets} graph={graph} onOpen={open} />
+          ) : selected?.type === "node" ? (
             <NodePanel node={selected.node} onDrill={() => drill(selected.node)} graph={graph} />
           ) : selected?.type === "edge" ? (
             <EdgePanel edge={selected.edge} graph={graph} />
           ) : (
             <Legend graph={graph} />
           )}
-          {!editor && selected && meta.capabilities.length > 1 && <div className="mt-3 border-t border-zinc-200 pt-3 dark:border-zinc-700">
+          {!editor && selected && !(selected.type === "node" && selected.node.category === UNREGISTERED_HTTP_TARGET_CATEGORY) && meta.capabilities.length > 1 && <div className="mt-3 border-t border-zinc-200 pt-3 dark:border-zinc-700">
             <Button variant="secondary" onClick={() => {
               const id = selected.type === "edge" ? selected.edge.manualConnectionId : undefined;
               connect(connections.data?.connections.find(connection => connection.id === id));
@@ -381,7 +415,7 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
       {graph && <ArchitectureRecoveryLists
         graph={graph} selectedNodeId={selectedNodeId} pins={pins}
         maxPins={MAX_PINS} maxOmittedNodes={MAX_OMITTED_NODES}
-        onSelect={node => setSelected({ type: "node", node })}
+        onSelect={selectNode}
         onDrill={drill}
         onPin={id => applyFilters([id])}
       />}
@@ -543,6 +577,10 @@ function Legend({ graph }: { graph?: Graph }) {
           ))}
         </ul>
       </div>
+      {graph?.unregisteredHttpTargets && <div>
+        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">Unregistered targets</div>
+        <p className="text-xs text-zinc-500">A grey dashed outline with the “Unregistered target” badge marks an observed HTTP target with no known provider in the selected catalogue. It is not a Capability and not proof of a runtime service.</p>
+      </div>}
       {graph?.notes.map((n) => (
         <p key={n} className="text-xs text-zinc-500">
           {n}

@@ -55,6 +55,55 @@ public sealed class AnalysisParallelTests
     }
 
     [Fact]
+    public async Task Eligible_csharp_dispatch_runs_only_selected_cs_batch_and_keeps_fixed_ts_sql_schedule()
+    {
+        if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Unix qualification required"); using var f = new ParallelFixture(1, eligibleCSharp: true);
+        foreach (var repo in f.Repositories) Directory.CreateDirectory(repo.Source); foreach (var file in new[] { "manifest.json", "recipe.json" })
+        {
+            var destination = Path.Combine(f.Root,"config/adapters/csharp.roslyn",file);
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!); File.Copy(Path.Combine(Fixtures.RepositoryRoot,"config/adapters/csharp.roslyn",file),destination);
+        }
+        File.WriteAllText(Path.Combine(f.Root,"artifact.jsonl"),Fixtures.Golden("web-ts/v1-base/_fixture_web.jsonl"));
+        File.WriteAllText(Path.Combine(f.Root,"scripts/sandbox"),"""
+            #!/bin/sh
+            printf '%s\n' "$*" >> commands
+            kind=ts; repo=; output=
+            case "$*" in *ce-cs.dll*extract-selected-v1*) kind=cs;; *extract-sql*) kind=sql;; esac
+            while [ "$#" -gt 0 ]; do
+              case "$1" in --repository) shift; repo="$1";; --out) shift; output="$1";; esac
+              shift
+            done
+            case "$output" in /work/*) output="$PWD/${output#/work/}";; esac
+            mkdir -p "$output"
+            if [ "$kind" = cs ]; then cp artifact.jsonl "$output/cs.jsonl"; else printf '%s:%s' "$kind" "$repo" > "$output/$kind.jsonl"; fi
+            """);
+        File.SetUnixFileMode(Path.Combine(f.Root,"scripts/sandbox"),UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var shadow = await AnalysisAdapterShadow.LoadAsync(f.Root,CancellationToken.None); var identities = f.Repositories.ToDictionary(repo => repo.Id,repo => AnalysisPackagePreparation.SourceIdentity(repo.Source),StringComparer.Ordinal);
+        var selections = f.Repositories.ToDictionary(repo => repo.Id,repo => repo.Id == "repo-0"
+            ? new EligibleCSharpSelection(["Api/Api.csproj"],new string('a',64),identities[repo.Id],shadow.ManifestSha256,1,0,1,"selected")
+            : new EligibleCSharpSelection([],new string('b',64),identities[repo.Id],shadow.ManifestSha256,1,1,0,"test-policy-excluded"),StringComparer.Ordinal);
+        using var process = new AnalysisProcess(f.Root,f.Store,f.Run,CancellationToken.None,new Runtime());
+        var emitted = await AnalysisParallelExtraction.Run(f.Root,f.Store,f.Run,process,f.Repositories,f.Work,f.Locks,f.Packages,selections,shadow,identities);
+        Assert.Equal(1,emitted["repo-0"]); Assert.Equal(0,emitted["repo-1"]); var commands = File.ReadAllLines(Path.Combine(f.Root,"commands"));
+        Assert.Single(commands,command => command.Contains("extract-selected-v1",StringComparison.Ordinal) &&
+            command.Contains("--project Api/Api.csproj",StringComparison.Ordinal));
+        Assert.DoesNotContain(commands,command => command.Contains("ce-cs.dll",StringComparison.Ordinal) && command.Contains("--repository repo-1",StringComparison.Ordinal));
+        Assert.Equal(2,commands.Count(command => command.Contains("extract-sql",StringComparison.Ordinal))); Assert.Equal(2,commands.Count(command => command.Contains("extract ",StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void Selected_csharp_argument_builder_rejects_unsafe_and_over_limit_selectors()
+    {
+        var digest = new string('a',64);
+        var unsafeSelection = new EligibleCSharpSelection(["../Api.csproj"],digest,digest,digest,1,0,1,"selected");
+        var oversizedSelection = new EligibleCSharpSelection(
+            Enumerable.Range(0,101).Select(index => $"src/{index}/Api.csproj").ToArray(),digest,digest,digest,101,0,101,"selected");
+
+        Assert.Throws<InvalidDataException>(() => AnalysisParallelExtraction.AddSelector([],unsafeSelection));
+        Assert.Throws<InvalidDataException>(() => AnalysisParallelExtraction.AddSelector([],oversizedSelection));
+    }
+
+    [Fact]
     public async Task Failing_first_serial_job_leaves_later_jobs_unstarted_without_merging_or_erasing_uncertainty()
     {
         using var f = new ParallelFixture(2);
@@ -186,7 +235,7 @@ public sealed class AnalysisParallelTests
     }
 
     [Fact]
-    public async Task Given_offline_extraction_when_a_source_is_selected_then_the_host_exports_it_as_a_readonly_mount()
+    public async Task Given_offline_or_selected_nuget_work_when_a_source_is_selected_then_only_guarded_modes_export_a_readonly_mount()
     {
         using var fixture = new ParallelFixture(1);
         var source = Path.Combine(fixture.Work,"src","repo-0");
@@ -195,10 +244,10 @@ public sealed class AnalysisParallelTests
         using var process = new AnalysisProcess(fixture.Root,fixture.Store,fixture.Run,CancellationToken.None,new Runtime());
         var containerPath = "/work/" + Path.GetRelativePath(fixture.Root,source).Replace('\\','/');
 
-        var output = await process.Run("scripts/sandbox",["--offline","node","extract","--source",containerPath],capture:true);
+        var output = await process.Run("scripts/sandbox",["--offline","node","extract","--source",containerPath],capture:true); var selected = await process.Run("scripts/sandbox",["dotnet","dotnet","ce-cs.dll","fetch-packages-selected-v1","--source",containerPath],capture:true);
+        var legacy = await process.Run("scripts/sandbox",["dotnet","dotnet","ce-cs.dll","fetch-packages","--source",containerPath],capture:true);
 
-        Assert.Equal(source,output);
-        Assert.True(process.TerminationConfirmed);
+        Assert.Equal(source,output); Assert.Equal(source,selected); Assert.Empty(legacy); Assert.True(process.TerminationConfirmed);
     }
 
     [Theory]
@@ -297,6 +346,9 @@ public sealed class AnalysisParallelTests
             "platform/src/CapabilityExplorer.Cli/bin/Debug/net10.0/ce.dll",
             "platform/src/CapabilityExplorer.Extractors.CSharp/bin/Debug/net10.0/ce-cs.dll"
         }) Write(file,"");
+        // Shadow adapter planning reads the tracked manifest/recipe from the project root: copy them verbatim.
+        foreach (var file in new[] { "config/adapters/csharp.roslyn/manifest.json", "config/adapters/csharp.roslyn/recipe.json" })
+            Write(file,File.ReadAllText(Path.Combine(Fixtures.RepositoryRoot,file)));
         Write("extractors/ts/src/cli.ts","\"extract\" \"extract-sql\"");
         Write("scripts/github-token","#!/bin/sh\nexit 0\n",true);
         var snapshot = JsonSerializer.Serialize(new
@@ -379,7 +431,7 @@ public sealed class AnalysisParallelTests
 
     private sealed class ParallelFixture : IDisposable
     {
-        public string Root { get; } = Path.Combine(Path.GetTempPath().Replace("/var/","/private/var/",StringComparison.Ordinal),"ce-parallel-" + Guid.NewGuid().ToString("N"));
+        public string Root { get; } = Path.Combine(AppContext.BaseDirectory,"ce-parallel-" + Guid.NewGuid().ToString("N"));
         public FileRunStore Store { get; }
         public WorkerOwnership Owner { get; }
         public AnalysisRun Run { get; }
@@ -387,7 +439,7 @@ public sealed class AnalysisParallelTests
         public string Locks => Path.Combine(Work,"locks");
         public string Packages => Path.Combine(Root,"packages");
         public AnalysisRepository[] Repositories { get; }
-        public ParallelFixture(int jobs)
+        public ParallelFixture(int jobs, bool eligibleCSharp = false)
         {
             if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Unix qualification required");
             Directory.CreateDirectory(Root);
@@ -398,7 +450,7 @@ public sealed class AnalysisParallelTests
             var config = Path.Combine(Root,"capabilities.json");
             File.WriteAllText(config,"""{"capabilities":[{"id":"sales"}]}""");
             Store = new(Path.Combine(Root,".sandbox-cache/requests"));
-            Store.Admit("sales",config,null,new(Packages:false,ExtractionJobs:jobs));
+            Store.Admit("sales",config,null,new(Packages:false,ExtractionJobs:jobs,EligibleCSharp:eligibleCSharp));
             Owner = Store.AcquireWorker(); Run = Store.ClaimNext(Owner)!;
             Work = Store.AttemptDirectory(new(Run.RunId,Run.AttemptId!));
             Directory.CreateDirectory(Locks);

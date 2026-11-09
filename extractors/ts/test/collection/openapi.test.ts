@@ -63,7 +63,7 @@ async function compileOasValidator(): Promise<{ ajv: Ajv2020; validate: Validate
 
 test("validates design documents with the guarded pinned OpenAPI 3.2 structural schema", async () => {
   const { validate } = await compileOasValidator();
-  for (const file of ["central-intake.openapi.json", "process-decisions.openapi.json"]) {
+  for (const file of ["central-intake.openapi.json", "process-decisions.openapi.json", "task-queries.openapi.json"]) {
     const document = await json(resolve(openApiRoot, file));
     assert.equal(document.openapi, "3.2.1");
     assert.equal(validate(document), true, JSON.stringify(validate.errors?.slice(0, 5)));
@@ -111,7 +111,7 @@ test("all API references and examples resolve to local files without a remote lo
   const { ajv } = await compileOasValidator();
   const docs = new Map<string, JsonObject>();
   const refs = new Set<string>();
-  for (const file of ["central-intake.openapi.json", "process-decisions.openapi.json"]) {
+  for (const file of ["central-intake.openapi.json", "process-decisions.openapi.json", "task-queries.openapi.json"]) {
     const path = resolve(openApiRoot, file);
     const document = await json(path);
     docs.set(path, document);
@@ -176,6 +176,31 @@ test("all API references and examples resolve to local files without a remote lo
     };
     invalidWindow.items[0]!.freshness.validUntil = null;
     assert.equal(validator(invalidWindow), false, "fresh cannot omit its policy deadline");
+  }
+
+  const taskQueries = docs.get(resolve(openApiRoot, "task-queries.openapi.json"))!;
+  const taskQuerySchemas = (taskQueries.components as JsonObject).schemas as JsonObject;
+  const taskQueryExamples = (taskQueries.components as JsonObject).examples as JsonObject;
+  for (const name of [
+    "SnapshotResolveResult",
+    "ModelsListResult",
+    "DecisionReferencesResult",
+    "ContractConsumersResult",
+    "EvidenceListResult",
+    "SourceExcerptResult",
+  ] as const) {
+    const componentSchemas = rewriteSelfReferences(structuredClone(taskQuerySchemas));
+    const wrapper = {
+      $id: `https://capability-explorer/schema/openapi/validation-task-query-${name}.json`,
+      $defs: { components: { schemas: componentSchemas } },
+      $ref: "#/$defs/components/schemas/TaskQueryEnvelope",
+    };
+    const validator = ajv.compile(wrapper);
+    const example = (taskQueryExamples[name] as JsonObject).value;
+    assert.equal(validator(example), true, JSON.stringify(validator.errors?.slice(0, 5)));
+    const invalidEnvelope = structuredClone(example) as JsonObject;
+    invalidEnvelope.schema = "wrong-schema-id";
+    assert.equal(validator(invalidEnvelope), false, "the ce.task-query.v1 schema tag cannot be wrong");
   }
 });
 

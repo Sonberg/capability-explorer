@@ -18,7 +18,7 @@ internal static class AnalysisWorkerCommand
         {
             if (command is not ("analysis-worker" or "analysis-run" or "analysis-all")) throw new ArgumentException("unsupported analysis command");
             foreach (var key in options.Keys)
-                if (key is not ("capability" or "capabilities" or "bindings" or "include-tests" or "packages" or "locked" or "github-auth" or "extraction-jobs")
+                if (key is not ("capability" or "capabilities" or "bindings" or "include-tests" or "eligible-csharp" or "packages" or "locked" or "github-auth" or "extraction-jobs")
                     && !EmbeddingHostConfiguration.IsOption(key))
                     throw new ArgumentException("unsupported analysis option");
             _ = ResolveEngine();
@@ -49,6 +49,7 @@ internal static class AnalysisWorkerCommand
                         NugetPassEnv:Environment.GetEnvironmentVariable("NUGET_PASS_ENV") ?? "",
                         NugetAllowedOrigins:Environment.GetEnvironmentVariable("CE_NUGET_ALLOWED_ORIGINS"),
                         ExtractionJobs: Math.Min(1,ParseJobs(Environment.GetEnvironmentVariable("ANALYZE_JOBS"))),
+                        EligibleCSharp: EnvironmentFlag("ELIGIBLE_CSHARP",false),
                         CapabilityWorkers: Math.Min(1,ParseWorkers(Environment.GetEnvironmentVariable("ANALYZE_WORKERS"))));
                     AnalysisPreparation.ValidateSettings(hostDefaults);
                     store.PublishWorkerDefaults(owner,hostDefaults,includeTestsOverride);
@@ -87,6 +88,7 @@ internal static class AnalysisWorkerCommand
                         NugetPassEnv: Environment.GetEnvironmentVariable("NUGET_PASS_ENV") ?? "",
                         NugetAllowedOrigins: Environment.GetEnvironmentVariable("CE_NUGET_ALLOWED_ORIGINS"),
                         ExtractionJobs: Math.Min(1,ParseJobs(options.GetValueOrDefault("extraction-jobs") ?? Environment.GetEnvironmentVariable("ANALYZE_JOBS"))),
+                        EligibleCSharp: Flag("eligible-csharp", "ELIGIBLE_CSHARP", false),
                         CapabilityWorkers: Math.Min(1,ParseWorkers(Environment.GetEnvironmentVariable("ANALYZE_WORKERS"))));
                     AnalysisPreparation.ValidateSettings(settings);
                     var admitted = store.Admit(id, configuration, bindings, settings);
@@ -174,6 +176,7 @@ internal static class AnalysisWorkerCommand
         catch (Exception e)
         {
             // A publication permit records uncertain/partial effects itself. Never rewrite that result.
+            process.LogFailure(e);
             var current = store.ReadRun(run.RunId);
             if (current.State is "running" or "cancelling") store.FinishExecution(owner, attempt, 1, process.TerminationConfirmed);
             Console.Error.WriteLine($"analysis {run.RunId}/{run.AttemptId}: {e.GetType().Name}; inspect run record and log");

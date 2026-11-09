@@ -166,5 +166,18 @@ public sealed class AnalysisCoordinationTests : IDisposable
         Assert.Throws<InvalidDataException>(() => store.BeginPublication(owner, attempt, manifest));
         Assert.Equal("running", store.ReadRun(run.RunId).State);
     }
+    [Fact]
+    public void Resolved_inputs_exceeding_the_reader_budget_fail_the_binding_without_writing_a_receipt()
+    {
+        var store = new FileRunStore(Root);
+        store.Admit("sales", _configuration, null, new());
+        using var owner = store.AcquireWorker();
+        var run = store.ClaimNext(owner)!;
+        var attempt = new AttemptIdentity(run.RunId, run.AttemptId!);
+        var oversized = new Dictionary<string, string> { ["sha"] = new('a', 40), ["oversized"] = new('x', 2 * 1024 * 1024) };
+        Assert.Throws<InvalidDataException>(() => store.BindResolved(owner, attempt, new(run.AcceptedInputsHash, oversized)));
+        Assert.Null(store.ReadRun(run.RunId).ManifestHash);
+        Assert.False(File.Exists(Path.Combine(store.RunDirectory(run.RunId), "resolved.json")));
+    }
     public void Dispose() => Directory.Delete(_directory, true);
 }
