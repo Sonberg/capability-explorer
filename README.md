@@ -336,16 +336,16 @@ capability files and reloads when they change, and the UI refetches what it show
 
 **C# (`ce-cs`)**
 
-- It builds Roslyn compilations from `.csproj` read as XML. Project references come from the project
-  files, framework references from the SDK reference packs, and packages from step 2.
+- It builds Roslyn compilations from `.csproj` XML. Literal `ReferenceOutputAssembly=false` keeps declared
+  dependencies but hides compiler symbols; unsupported metadata is diagnosed. SDK packs and step 2 supply assemblies.
 - Source generators do not run. Their absence is an info diagnostic.
 - Constructors are `Method` nodes named after their type (`props.constructor`, parameter list as `signature`).
   `new T(...)` and `: base(...)`/`: this(...)` are `CALLS` to the declared constructor; a type with no declared one
-  (default, or a record's primary constructor) gets a `REFERENCES` instead. A constructor `REFERENCES` the repository
-  types of its parameters, so "this input is built from a Cart and a Quote" is a fact in the graph. Code inside a
-  constructor body (lambdas included) belongs to it. Only repository types are recorded: `new List<int>()` and an
-  `ILogger` parameter say nothing about the system. Field and property initializers are not attributed to a
-  constructor, and a constructor's own parameter types are not yet recorded for ordinary methods.
+  (default, or a record's primary constructor) gets a `REFERENCES` instead. Constructors and ordinary methods
+  `REFERENCES` repository parameter types; methods also reference return types, including nested generic/array types.
+  Code inside a constructor body (lambdas included) belongs to it. Only repository types are recorded:
+  `new List<int>()` and an `ILogger` parameter say nothing about the system. Field and property initializers
+  are not attributed to a constructor.
 - Compiler errors make the affected files `partial`.
 - Rules: ASP.NET Core controllers and minimal APIs, DI (including keyed services and reflection),
   EF Core, Dapper, Azure Service Bus, typed `HttpClient`.
