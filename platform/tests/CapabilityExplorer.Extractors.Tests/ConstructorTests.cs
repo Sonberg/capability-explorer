@@ -25,6 +25,7 @@ public sealed class ConstructorTests : IDisposable
         namespace Synthetic;
 
         public class Line { }
+        public class Box<T> { }
         public class Cart { public List<Line> Lines { get; } = new(); }
         public class Quote
         {
@@ -53,8 +54,10 @@ public sealed class ConstructorTests : IDisposable
         public class Handler
         {
             public OrderInput Build(Cart cart, Quote quote) => new OrderInput(cart, quote);
+            public Box<OrderLine[]> Wrap(IReadOnlyList<OrderLine> lines, Cart cart) => new();
             public Money Zero() => new Money(0m);
             public object Framework() => new List<int>();
+            public void FrameworkOnly(CancellationToken cancellationToken) { }
         }
         """);
 
@@ -84,6 +87,34 @@ public sealed class ConstructorTests : IDisposable
         Assert.Contains(Ns + "T:Synthetic.Cart", referenced);
         Assert.Contains(Ns + "T:Synthetic.Quote", referenced);
         Assert.DoesNotContain(referenced, t => t!.Contains("CancellationToken", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Ordinary_method_parameters_and_return_types_reference_repository_types_with_evidence()
+    {
+        var method = Ns + "M:Synthetic.Handler.Build(Synthetic.Cart,Synthetic.Quote)";
+        var references = Edges("REFERENCES").Where(edge => edge.GetProperty("from").GetString() == method).ToList();
+
+        Assert.Contains(references, edge => To(edge) == Ns + "T:Synthetic.Cart");
+        Assert.Contains(references, edge => To(edge) == Ns + "T:Synthetic.Quote");
+        Assert.Contains(references, edge => To(edge) == Ns + "T:Synthetic.OrderInput");
+        Assert.All(references, edge => Assert.NotEmpty(edge.GetProperty("evidence").EnumerateArray()));
+    }
+
+    [Fact]
+    public void Ordinary_method_signatures_include_nested_repository_types_but_not_framework_types()
+    {
+        var method = Ns + "M:Synthetic.Handler.Wrap(System.Collections.Generic.IReadOnlyList{Synthetic.OrderLine},Synthetic.Cart)";
+        var referenced = Edges("REFERENCES").Where(edge => edge.GetProperty("from").GetString() == method).Select(To).ToList();
+
+        Assert.Contains(Ns + "T:Synthetic.Box`1", referenced);
+        Assert.Contains(Ns + "T:Synthetic.OrderLine", referenced);
+        Assert.Contains(Ns + "T:Synthetic.Cart", referenced);
+        Assert.DoesNotContain(referenced, target => target!.Contains("IReadOnlyList", StringComparison.Ordinal));
+
+        var frameworkOnly = Ns + "M:Synthetic.Handler.FrameworkOnly(System.Threading.CancellationToken)";
+        Assert.DoesNotContain(Edges("REFERENCES"), edge => edge.GetProperty("from").GetString() == frameworkOnly);
+        Assert.DoesNotContain(Edges("REFERENCES"), edge => edge.GetProperty("from").GetString() == Ns + "M:Synthetic.Handler.Framework");
     }
 
     [Fact]
