@@ -133,7 +133,8 @@ internal static partial class AnalysisAdapterShadow
         }
 
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stop);
-        deadline.CancelAfter(budget);
+        if (budget == TimeSpan.Zero) deadline.Cancel();
+        else deadline.CancelAfter(budget);
         NativeAdapterPlan plan;
         try
         {
