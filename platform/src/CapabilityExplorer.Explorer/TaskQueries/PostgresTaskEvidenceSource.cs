@@ -152,7 +152,7 @@ public sealed class PostgresTaskEvidenceSource(IExplorerQueries queries, NpgsqlD
 
     public Task<string?> ReadCitedFileAsync(TaskSnapshotScope scope, string repositoryId, string commitSha, string path, CancellationToken ct)
     {
-        return _git is { } git ? git.ReadFileAsync(repositoryId, commitSha, path, ct) : Task.FromResult<string?>(null);
+        return _git is { } git ? git.ReadTaskQueryFileAsync(repositoryId, commitSha, path, ct) : Task.FromResult<string?>(null);
     }
 
     private GitSource? _git;

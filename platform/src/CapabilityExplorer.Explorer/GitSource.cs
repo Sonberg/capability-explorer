@@ -28,6 +28,17 @@ public sealed class GitSource(Func<string, string?> locate, CapabilityExplorer.C
 
     public async Task<string?> ReadFileAsync(string repositoryId, string commitSha, string path, CancellationToken cancellationToken = default)
     {
+        try { return await ReadCitedFileCoreAsync(repositoryId, commitSha, path, cancellationToken); }
+        catch (GitSourceContentLimitException) { return null; }
+    }
+
+    /// <summary>Reads cited content for the bounded task-query API, preserving the typed size-limit signal that
+    /// legacy callers intentionally continue to observe as a missing/unavailable source.</summary>
+    internal Task<string?> ReadTaskQueryFileAsync(string repositoryId, string commitSha, string path, CancellationToken cancellationToken = default) =>
+        ReadCitedFileCoreAsync(repositoryId, commitSha, path, cancellationToken);
+
+    private async Task<string?> ReadCitedFileCoreAsync(string repositoryId, string commitSha, string path, CancellationToken cancellationToken)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         if (!Commit(commitSha) || !SafePath(path)) return null;
         var key = (repositoryId, commitSha, path);

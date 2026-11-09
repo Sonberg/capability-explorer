@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO.Pipelines;
+using System.Text;
 using System.Text.Json;
 using CapabilityExplorer.Explorer;
 using Json.Schema;
@@ -201,14 +202,43 @@ public sealed class TaskQueryMcpGateTests
 
 /// <summary>A genuine stdio-shaped MCP session: the real SDK <see cref="McpServer"/>/<see cref="McpClient"/> wired
 /// over the same <see cref="BoundedLineInputStream"/>/<see cref="TaskQueryMcpGate"/>/tool-dispatch composition
-/// <see cref="TaskQueryMcpHost.RunAsync"/> uses, but over in-process duplex pipes instead of the real console
-/// stdin/stdout (a real-process spawn with stdin EOF is out of scope here; see spec Revision 4 "Not tested").
-/// This is independent lifecycle/parity proof, not the SDK's own self-test and not a fake/golden-only check.</summary>
+/// <see cref="TaskQueryMcpHost.RunAsync"/> uses, but over in-process duplex pipes. Separate real-process tests
+/// verify the actual stdio handshake, cancellation, and bounded response framing. This is independent
+/// lifecycle/parity proof, not the SDK's own self-test and not a fake/golden-only check.</summary>
 public sealed class TaskQueryMcpStdioTests
 {
+    [Fact]
+    public void Worst_case_escaped_request_id_is_included_in_the_complete_mcp_response_bound()
+    {
+        var envelope = new TaskQueryEnvelope("models_list", "ok", "files", null,
+            new TaskQueryCoverage([], "within-selection-complete"), null, new string('x', 350_000), []);
+        var envelopeBytes = TaskQueryJson.SerializeBounded(envelope);
+        using var document = JsonDocument.Parse(envelopeBytes);
+        var unboundedResult = new CallToolResult
+        {
+            IsError = false,
+            Content = [new TextContentBlock { Text = Encoding.UTF8.GetString(envelopeBytes) }],
+            StructuredContent = document.RootElement.Clone(),
+        };
+        var requestId = new string('<', 60_000);
+        var rawRequest = $"{{\"jsonrpc\":\"2.0\",\"id\":\"{requestId}\",\"method\":\"tools/call\",\"params\":{{\"name\":\"snapshot_resolve\",\"arguments\":{{}}}}}}";
+        Assert.InRange(Encoding.UTF8.GetByteCount(rawRequest), 1, BoundedLineInputStream.DefaultMaxLineBytes);
+
+        var unboundedResponse = JsonSerializer.SerializeToUtf8Bytes(
+            new { jsonrpc = "2.0", id = requestId, result = unboundedResult }, TaskQueryJson.Options);
+        Assert.True(unboundedResponse.Length > TaskQueryJson.MaxEnvelopeBytes);
+
+        var boundedResult = TaskQueryMcpHost.ToCallToolResult(envelope);
+        var boundedResponse = JsonSerializer.SerializeToUtf8Bytes(
+            new { jsonrpc = "2.0", id = requestId, result = boundedResult }, TaskQueryJson.Options);
+
+        Assert.Equal("limit", boundedResult.StructuredContent!.Value.GetProperty("status").GetString());
+        Assert.True(boundedResponse.Length <= TaskQueryJson.MaxEnvelopeBytes);
+    }
+
     [Theory]
-    [InlineData(350_000, "ok")]
-    [InlineData(700_000, "limit")]
+    [InlineData(300_000, "ok")]
+    [InlineData(350_000, "limit")]
     public void Mcp_wire_bound_counts_text_and_structured_copies_without_reducing_http_envelope_limit(int dataLength, string expectedMcpStatus)
     {
         var envelope = new TaskQueryEnvelope("models_list", "ok", "files", null,

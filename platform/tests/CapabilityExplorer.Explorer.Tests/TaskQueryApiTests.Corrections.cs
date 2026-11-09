@@ -302,6 +302,6 @@ public sealed partial class TaskQueryApiTests
         public Task<bool> IsCitedAsync(TaskSnapshotScope scope, string repositoryId, string commitSha, string path, CancellationToken ct) =>
             Task.FromResult(repositoryId == "svc-a" && commitSha == commit);
         public Task<string?> ReadCitedFileAsync(TaskSnapshotScope scope, string repositoryId, string commitSha, string path, CancellationToken ct) =>
-            git.ReadFileAsync(repositoryId, commitSha, path, ct);
+            git.ReadTaskQueryFileAsync(repositoryId, commitSha, path, ct);
     }
 }

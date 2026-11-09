@@ -1,4 +1,5 @@
 using System.Net;
+using System.Diagnostics;
 using System.Text.Json;
 using CapabilityExplorer.Explorer;
 using Microsoft.AspNetCore.Hosting;
@@ -194,6 +195,51 @@ public sealed class ExplorerApiTests(ExplorerFactory factory) : IClassFixture<Ex
         Assert.Equal(HttpStatusCode.BadRequest, uncited.StatusCode);
         var traversal = await _client.GetAsync(new Uri($"/api/source?repo={Q("../api-cs")}&commit={sha}&path={Q("README.md")}", UriKind.Relative));
         Assert.Equal(HttpStatusCode.BadRequest, traversal.StatusCode);
+    }
+
+    [Fact]
+    public async Task Oversized_legacy_source_read_remains_unavailable_instead_of_throwing()
+    {
+        var repository = Path.Combine(AppContext.BaseDirectory, $"oversized-source-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(repository);
+        try
+        {
+            await RunGit(repository, "init", "-q");
+            await RunGit(repository, "config", "user.name", "Explorer test");
+            await RunGit(repository, "config", "user.email", "explorer-test@example.invalid");
+            await File.WriteAllTextAsync(Path.Combine(repository, "large.txt"), new string('x', 2 * 1024 * 1024 + 1));
+            await RunGit(repository, "add", "large.txt");
+            await RunGit(repository, "commit", "-qm", "oversized source fixture");
+            var commit = (await RunGit(repository, "rev-parse", "HEAD")).Trim();
+            var source = new GitSource(id => id == "legacy" ? repository : null);
+
+            Assert.Null(await source.ReadFileAsync("legacy", commit, "large.txt"));
+            await Assert.ThrowsAsync<GitSourceContentLimitException>(
+                () => source.ReadTaskQueryFileAsync("legacy", commit, "large.txt"));
+        }
+        finally
+        {
+            Directory.Delete(repository, recursive: true);
+        }
+
+        static async Task<string> RunGit(string directory, params string[] arguments)
+        {
+            var start = new ProcessStartInfo("git")
+            {
+                WorkingDirectory = directory,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            foreach (var argument in arguments) start.ArgumentList.Add(argument);
+            using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start git");
+            var output = process.StandardOutput.ReadToEndAsync();
+            var error = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            var stderr = await error;
+            Assert.True(process.ExitCode == 0, stderr);
+            return await output;
+        }
     }
 
     [Fact]

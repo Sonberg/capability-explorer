@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using CapabilityExplorer.Explorer;
@@ -143,6 +144,47 @@ public sealed class TaskQueryProcessTests
             await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal(0, process.ExitCode);
             Assert.Equal("", await process.StandardOutput.ReadToEndAsync());
+            Assert.DoesNotContain("Now listening", await stderr, StringComparison.Ordinal);
+        }
+        finally
+        {
+            await StopIfRunning(process);
+        }
+    }
+
+    [Fact]
+    public async Task Raw_stdio_accepts_an_escape_prone_large_request_id_and_bounds_the_complete_response_line()
+    {
+        using var process = Start();
+        var stderr = process.StandardError.ReadToEndAsync();
+        try
+        {
+            await Exchange(process, 1, "initialize", new
+            {
+                protocolVersion = "2025-11-25",
+                capabilities = new { },
+                clientInfo = new { name = "large-request-id-test", version = "1" }
+            });
+            await Send(process, new { jsonrpc = "2.0", method = "notifications/initialized" });
+
+            var requestId = new string('<', 60_000);
+            var rawRequest = $"{{\"jsonrpc\":\"2.0\",\"id\":\"{requestId}\",\"method\":\"tools/call\",\"params\":{{\"name\":\"snapshot_resolve\",\"arguments\":{{}}}}}}";
+            Assert.InRange(Encoding.UTF8.GetByteCount(rawRequest), 1, BoundedLineInputStream.DefaultMaxLineBytes);
+            await process.StandardInput.WriteLineAsync(rawRequest);
+            await process.StandardInput.FlushAsync();
+
+            var responseLine = await process.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.NotNull(responseLine);
+            Assert.True(Encoding.UTF8.GetByteCount(responseLine) <= TaskQueryJson.MaxEnvelopeBytes);
+            using (var response = JsonDocument.Parse(responseLine))
+            {
+                Assert.Equal(requestId, response.RootElement.GetProperty("id").GetString());
+                Assert.Equal("denied", response.RootElement.GetProperty("result").GetProperty("structuredContent").GetProperty("status").GetString());
+            }
+
+            process.StandardInput.Close();
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(0, process.ExitCode);
             Assert.DoesNotContain("Now listening", await stderr, StringComparison.Ordinal);
         }
         finally

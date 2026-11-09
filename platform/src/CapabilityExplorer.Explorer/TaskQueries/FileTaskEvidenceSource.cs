@@ -81,7 +81,7 @@ public sealed class FileTaskEvidenceSource(ExplorerState state) : ITaskEvidenceS
         Task.FromResult(((FileHandle)scope.Handle).View.Index.IsCitedFile(repositoryId, commitSha, path));
 
     public Task<string?> ReadCitedFileAsync(TaskSnapshotScope scope, string repositoryId, string commitSha, string path, CancellationToken ct) =>
-        ((FileHandle)scope.Handle).View.Index.Git is { } git ? git.ReadFileAsync(repositoryId, commitSha, path, ct) : Task.FromResult<string?>(null);
+        ((FileHandle)scope.Handle).View.Index.Git is { } git ? git.ReadTaskQueryFileAsync(repositoryId, commitSha, path, ct) : Task.FromResult<string?>(null);
 
     private static List<ModelProduct> Models(TaskSnapshotScope scope) =>
         ((FileHandle)scope.Handle).Snapshot.Models.Products.Where(p => scope.Selection.TryGetValue(p.RepositoryId, out var sha) && sha == p.CommitSha).ToList();

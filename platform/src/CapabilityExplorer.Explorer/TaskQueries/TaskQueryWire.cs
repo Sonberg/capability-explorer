@@ -14,7 +14,7 @@ public static class TaskQueryJson
     public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
 
     public const int MaxEnvelopeBytes = 1024 * 1024;
-    public const int McpResponseFramingBytes = 3 * BoundedLineInputStream.DefaultMaxLineBytes + 128;
+    public const int McpResponseFramingBytes = 6 * BoundedLineInputStream.DefaultMaxLineBytes + 1024;
 
     /// <summary>Serializes <paramref name="envelope"/> and, if the result would exceed <see cref="MaxEnvelopeBytes"/>,
     /// replaces it with a small fixed <c>limit</c> envelope instead (never a giant, truncated, or partially-written
@@ -35,7 +35,7 @@ public static class TaskQueryJson
     /// <summary>
     /// MCP exposes the same envelope as both a text block and structured JSON, so the complete tool result can
     /// be almost twice the envelope size. Measure that full result (including JSON escaping of the text copy)
-    /// and reserve three times the maximum accepted input-line size for worst-case JSON escaping of a string
+    /// and reserve six times the maximum accepted input-line size for worst-case JSON escaping of a string
     /// response id, plus fixed framing. This keeps the actual stdio response under the same one-mebibyte wire
     /// bound without reducing HTTP's envelope limit.
     /// </summary>
