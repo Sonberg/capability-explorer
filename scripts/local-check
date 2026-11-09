@@ -4,7 +4,9 @@ set -euo pipefail
 
 fail() { echo "local-check: $*" >&2; exit 1; }
 [[ $# -eq 0 ]] || fail 'usage: scripts/local-check (no extra act flags are accepted)'
-root="$(git rev-parse --show-toplevel)" || fail 'run inside a Git checkout'
+entry_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+source "$entry_root/scripts/lib/source-context.sh"
+root="$(ce_source_context_root "$entry_root")" || exit 1
 cd "$root"
 [[ "$(git symbolic-ref --quiet --short HEAD || true)" != main ]] ||
   fail 'work on a feature branch targeting main; do not work directly on main'

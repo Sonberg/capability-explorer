@@ -62,7 +62,7 @@ new_repo() {
   mkdir -p "$repo/scripts/ci" "$repo/tests"
   cp "$source_root/scripts/ci/docs-check.py" "$repo/scripts/ci/"
   cp "$source_root/tests/docs-ci.test.py" "$repo/tests/"
-  cp "$source_root/scripts/lib/container-engine.sh" "$repo/scripts/lib/"
+  cp "$source_root/scripts/lib/container-engine.sh" "$source_root/scripts/lib/source-context.sh" "$repo/scripts/lib/"
   printf '#!/bin/sh\nexit "${ACT_TEST_AUDIT_FAIL:-0}"\n' > "$repo/scripts/actions-audit"
   chmod +x "$repo/scripts/actions-audit"
   cp "$source_root/config/git-hooks/pre-push" "$repo/config/git-hooks/"

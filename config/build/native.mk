@@ -64,6 +64,7 @@ actions-audit:
 
 test-local-ci:
 	bash tests/local-ci.test.sh
+	bash tests/source-context.test.sh
 
 security-check:
 	scripts/security-check
