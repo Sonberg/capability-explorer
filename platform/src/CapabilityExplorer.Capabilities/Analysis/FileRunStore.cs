@@ -264,6 +264,11 @@ public sealed partial class FileRunStore
             if (run.Settings.CapabilityWorkers != 2) throw new InvalidDataException("legacy analysis settings require the default worker ceiling");
             runSettings.Remove("capabilityWorkers");
         }
+        if (!acceptedSettings.TryGetProperty("eligibleCSharp", out _))
+        {
+            if (run.Settings.EligibleCSharp) throw new InvalidDataException("legacy analysis settings cannot enable eligible C# dispatch");
+            runSettings.Remove("eligibleCSharp");
+        }
         if ((run.BindingsPath is null) != (accepted.GetProperty("bindings").ValueKind == JsonValueKind.Null) ||
             AnalysisPaths.Hash(CaptureConfiguration(run.ConfigurationPath)) != accepted.GetProperty("configuration").GetString() ||
             (run.BindingsPath is not null && AnalysisPaths.Hash(AnalysisPaths.ReadBounded(run.BindingsPath)) != accepted.GetProperty("bindings").GetString()) ||

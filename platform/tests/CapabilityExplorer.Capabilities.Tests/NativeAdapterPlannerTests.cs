@@ -102,6 +102,33 @@ public sealed class NativeAdapterPlannerTests
     }
 
     [Fact]
+    public async Task Given_optional_selected_execution_descriptor_when_planning_then_only_configuration_identity_changes()
+    {
+        var root = NewRoot();
+        try
+        {
+            Write(root, "Api/Api.csproj", "<Project />");
+            Write(root, "Api/Api.cs", "public sealed class Api { }");
+            var shadow = await NativeAdapterPlanner.PlanAsync(root,"app",Commit,Tree,Manifest());
+            var activeManifest = Manifest() with
+            {
+                Execution = new NativeAdapterExecution("ce.csharp.selection.v1",
+                    ["validate-selected-v1","fetch-packages-selected-v1","extract-selected-v1"])
+            };
+            var active = await NativeAdapterPlanner.PlanAsync(root,"app",Commit,Tree,activeManifest);
+
+            Assert.NotEqual(shadow.ConfigurationSha256,active.ConfigurationSha256);
+            Assert.Equal(shadow.RecipeSha256,active.RecipeSha256);
+            await Assert.ThrowsAsync<JsonException>(() => NativeAdapterPlanner.PlanAsync(root,"app",Commit,Tree,
+                activeManifest with { Execution = activeManifest.Execution! with { Verbs = ["extract"] } }));
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    [Fact]
     public async Task Given_over_limit_input_when_planning_then_unknown_is_not_reported_as_empty_success()
     {
         var root = NewRoot();

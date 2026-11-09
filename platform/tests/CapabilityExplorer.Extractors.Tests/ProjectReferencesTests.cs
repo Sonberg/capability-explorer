@@ -8,9 +8,20 @@ namespace CapabilityExplorer.Extractors.Tests;
 public sealed class ProjectReferencesTests : IDisposable
 {
     private const string Sha = "0123456789abcdef0123456789abcdef01234567";
-    private readonly string _root = Directory.CreateTempSubdirectory("ce-projects-").FullName;
+    private readonly string _root = Path.Combine(AppContext.BaseDirectory, "ce-projects-" + Guid.NewGuid().ToString("N"));
+    private readonly string _outputRoot = Path.Combine(AppContext.BaseDirectory, "ce-project-outputs-" + Guid.NewGuid().ToString("N"));
 
-    public void Dispose() => Directory.Delete(_root, recursive: true);
+    public ProjectReferencesTests()
+    {
+        Directory.CreateDirectory(_root);
+        Directory.CreateDirectory(_outputRoot);
+    }
+
+    public void Dispose()
+    {
+        Directory.Delete(_root, recursive: true);
+        Directory.Delete(_outputRoot, recursive: true);
+    }
 
     [Fact]
     public void Chain_resolves_a_type_returned_by_B_and_a_direct_call_to_C_without_a_direct_reference()
@@ -159,6 +170,68 @@ public sealed class ProjectReferencesTests : IDisposable
             Assert.True(entry.GetProperty("elapsedMilliseconds").GetDouble() >= 0);
             Assert.DoesNotContain(_root,entry.GetRawText(),StringComparison.Ordinal);
         });
+    }
+
+    [Fact]
+    public async Task Legacy_and_selected_modes_from_the_same_binary_emit_identical_artifact_bytes()
+    {
+        Project("B", "namespace B; public static class Api { public static int Read() => 7; }");
+        Project("A", "namespace A; public static class Caller { public static int Read() => B.Api.Read(); }", "B");
+        var projects = new[] { "A/A.csproj", "B/B.csproj" };
+        var selection = ProjectModel.ComputeSelectionContract(_root, projects);
+        var output = Path.Combine(_outputRoot, "legacy-out");
+        var selectedOutput = Path.Combine(_outputRoot, "selected-out");
+        Directory.CreateDirectory(output);
+        Directory.CreateDirectory(selectedOutput);
+        var repository = new DirectoryInfo(AppContext.BaseDirectory);
+        while (!File.Exists(Path.Combine(repository.FullName, "platform/global.json")))
+            repository = repository.Parent ?? throw new InvalidOperationException("repository root not found");
+        var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
+        var cli = Path.Combine(repository.FullName,
+            "platform/src/CapabilityExplorer.Extractors.CSharp/bin", configuration, "net10.0/ce-cs.dll");
+
+        async Task<string> Run(string command, string destination, bool selected)
+        {
+            var start = new ProcessStartInfo("dotnet")
+            {
+                WorkingDirectory = repository.FullName,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            start.ArgumentList.Add(cli);
+            foreach (var argument in new[] { command, "--source", _root, "--repository", "projects", "--commit", Sha, "--out", destination })
+                start.ArgumentList.Add(argument);
+            if (selected)
+            {
+                start.ArgumentList.Add("--selection-sha256");
+                start.ArgumentList.Add(selection.SelectionSha256);
+                start.ArgumentList.Add("--source-sha256");
+                start.ArgumentList.Add(selection.SourceSha256);
+                foreach (var path in selection.ProjectPaths)
+                {
+                    start.ArgumentList.Add("--project");
+                    start.ArgumentList.Add(path);
+                }
+            }
+            using var child = Process.Start(start)!;
+            var stdout = child.StandardOutput.ReadToEndAsync();
+            var stderr = child.StandardError.ReadToEndAsync();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            await child.WaitForExitAsync(timeout.Token);
+            var outputText = await stdout;
+            Assert.True(child.ExitCode == 0, await stderr);
+            return outputText;
+        }
+
+        await Run("extract", output, selected: false);
+        var selectedStdout = await Run("extract-selected-v1", selectedOutput, selected: true);
+
+        var legacyFiles = Directory.GetFiles(output).Order(StringComparer.Ordinal).ToArray();
+        var selectedFiles = Directory.GetFiles(selectedOutput).Order(StringComparer.Ordinal).ToArray();
+        Assert.Equal(legacyFiles.Select(Path.GetFileName), selectedFiles.Select(Path.GetFileName));
+        Assert.Equal(legacyFiles.Select(File.ReadAllBytes), selectedFiles.Select(File.ReadAllBytes));
+        Assert.Contains("A/A.csproj", selectedStdout, StringComparison.Ordinal);
     }
 
     private void Project(string name, string source, params string[] references)

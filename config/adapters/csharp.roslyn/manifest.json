@@ -15,5 +15,9 @@
   },
   "configuration": {
     "excludedPathPrefixes": []
+  },
+  "execution": {
+    "selectionContract": "ce.csharp.selection.v1",
+    "verbs": ["validate-selected-v1", "fetch-packages-selected-v1", "extract-selected-v1"]
   }
 }

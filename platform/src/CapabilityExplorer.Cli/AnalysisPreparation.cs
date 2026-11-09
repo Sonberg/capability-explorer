@@ -160,9 +160,76 @@ internal static class AnalysisPreparation
                 process.LogFailure($"Shadow adapter plan '{repo.Id}': {outcome.Status}" + (outcome.Codes.Count > 0 ? ":" + string.Join(',', outcome.Codes) : ""));
             timing.Complete();
         }
+        var eligibleCSharp = new Dictionary<string, EligibleCSharpSelection>(StringComparer.Ordinal);
+        if (run.Settings.EligibleCSharp)
+        {
+            if (shadow.Manifest.Execution is null)
+                throw new InvalidOperationException("eligible C# dispatch is unavailable because the adapter manifest has no selected execution descriptor");
+
+            foreach (var repo in repositories)
+            {
+                var outcome = shadowOutcomes[repo.Id];
+                if (outcome.Status != "ok" || outcome.Plan is null)
+                    throw new InvalidDataException($"eligible C# dispatch blocked by native plan state for repository '{repo.Id}'");
+                eligibleCSharp.Add(repo.Id,
+                    AnalysisAdapterShadow.SelectEligibleProjects(outcome.Plan, sources[repo.Id], run.Settings.IncludeTests));
+            }
+
+            foreach (var repo in repositories)
+            {
+                var selection = eligibleCSharp[repo.Id];
+                if (selection.CandidateCount == 0) continue;
+                process.CheckCancellation();
+                if (sources[repo.Id] != AnalysisPackagePreparation.SourceIdentity(repo.Source))
+                    throw new InvalidOperationException("exported source changed before selected C# validation");
+                await AnalysisAdapterShadow.VerifyCurrentAsync(root, shadow, stop);
+                using var timing = process.Measure("eligible-csharp.preflight", repo.Id);
+                var validation = await AnalysisParallelExtraction.ValidateSelected(
+                    root, repo, selection, run.Settings.IncludeTests, process);
+                process.CheckCancellation();
+                await AnalysisAdapterShadow.VerifyCurrentAsync(root, shadow, stop);
+                if (sources[repo.Id] != AnalysisPackagePreparation.SourceIdentity(repo.Source))
+                    throw new InvalidOperationException("exported source changed during selected C# validation");
+                if (validation.CandidateCount != selection.CandidateCount ||
+                    validation.SelectionSha256 != selection.SelectionSha256 ||
+                    validation.SourceSha256 != sources[repo.Id] ||
+                    validation.SelectedCount + validation.TestExcludedCount != validation.CandidateCount)
+                    throw new InvalidDataException("selected C# validation result does not match the native plan");
+                eligibleCSharp[repo.Id] = selection with
+                {
+                    CandidateCount = validation.CandidateCount,
+                    TestExcludedCount = validation.TestExcludedCount,
+                    SelectedCount = validation.SelectedCount,
+                    Status = validation.SelectedCount == 0 ? "test-policy-excluded" : "selected",
+                };
+                timing.Complete();
+            }
+
+            var selectionReceipt = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            foreach (var (repositoryId, selection) in eligibleCSharp)
+            {
+                selectionReceipt["eligible-csharp-status:" + repositoryId] = selection.Status;
+                selectionReceipt["eligible-csharp-candidates:" + repositoryId] = selection.CandidateCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                selectionReceipt["eligible-csharp-test-excluded:" + repositoryId] = selection.TestExcludedCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                selectionReceipt["eligible-csharp-selected:" + repositoryId] = selection.SelectedCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                selectionReceipt["eligible-csharp-selection:" + repositoryId] = selection.SelectionSha256;
+                selectionReceipt["eligible-csharp-config:" + repositoryId] = selection.ConfigurationSha256;
+            }
+            if (JsonSerializer.SerializeToUtf8Bytes(selectionReceipt).Length > 1024 * 1024)
+                throw new InvalidDataException("eligible C# selector receipt additions exceed the resolved-input budget");
+            await AnalysisAdapterShadow.VerifyCurrentAsync(root, shadow, stop);
+            foreach (var repo in repositories)
+                if (sources[repo.Id] != AnalysisPackagePreparation.SourceIdentity(repo.Source))
+                    throw new InvalidOperationException("exported source changed before package acquisition");
+        }
         await PackageAcquisitionGate.WaitAsync(stop);
         Dictionary<string, string> packageInputs;
-        try { packageInputs = await AnalysisPackagePreparation.Run(root, run, process, repositories, work, locks, packageDir); }
+        try
+        {
+            packageInputs = await AnalysisPackagePreparation.Run(root, run, process, repositories, work, locks, packageDir,
+                run.Settings.EligibleCSharp ? eligibleCSharp : null, run.Settings.EligibleCSharp ? shadow : null,
+                run.Settings.EligibleCSharp ? sources : null, stop);
+        }
         finally { PackageAcquisitionGate.Release(); }
         // Prove npm/workspace links stay confined before any offline parser can follow them.
         Dictionary<string,string> dependencies;
@@ -171,10 +238,13 @@ internal static class AnalysisPreparation
             dependencies = repositories.ToDictionary(repo => repo.Id, repo => AnalysisPackagePreparation.DependencyIdentity(repo.Source), StringComparer.Ordinal);
             timing.Complete();
         }
-        await AnalysisParallelExtraction.Run(root, store, run, process, repositories, work, locks, packageDir);
+        var emittedCSharp = await AnalysisParallelExtraction.Run(root, store, run, process, repositories, work, locks, packageDir,
+            run.Settings.EligibleCSharp ? eligibleCSharp : null, run.Settings.EligibleCSharp ? shadow : null,
+            run.Settings.EligibleCSharp ? sources : null, stop);
         process.CheckCancellation();
         using var integrityTiming = process.Measure("integrity.final");
         if (runtime != RuntimeIdentity(root)) throw new InvalidOperationException("runtime changed during preparation");
+        await AnalysisAdapterShadow.VerifyCurrentAsync(root, shadow, stop);
         var inputs = new Dictionary<string,string> { ["runtime"] = runtime, ["manifest.tsv"] = AnalysisWorkerCommand.HashFile(manifestPath) };
         var artifacts = new Dictionary<string,string>();
         foreach (var repo in repositories)
@@ -184,6 +254,18 @@ internal static class AnalysisPreparation
             inputs["source:" + repo.Id] = sources[repo.Id];
             inputs["export-path:" + repo.Id] = Path.GetRelativePath(work, repo.Source).Replace('\\', '/');
             AnalysisAdapterShadow.AddInputs(inputs, repo.Id, exports[repo.Id].TreeSha, shadowOutcomes[repo.Id]);
+            if (run.Settings.EligibleCSharp)
+            {
+                var selection = eligibleCSharp[repo.Id];
+                inputs["eligible-csharp-status:" + repo.Id] = selection.Status;
+                inputs["eligible-csharp-candidates:" + repo.Id] = selection.CandidateCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                inputs["eligible-csharp-test-excluded:" + repo.Id] = selection.TestExcludedCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                inputs["eligible-csharp-selected:" + repo.Id] = selection.SelectedCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                inputs["eligible-csharp-selection:" + repo.Id] = selection.SelectionSha256;
+                inputs["eligible-csharp-config:" + repo.Id] = selection.ConfigurationSha256;
+                if (emittedCSharp.TryGetValue(repo.Id, out var emitted))
+                    inputs["eligible-csharp-emitted:" + repo.Id] = emitted.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
             if (dependencies[repo.Id] != AnalysisPackagePreparation.DependencyIdentity(repo.Source)) throw new InvalidOperationException("installed dependencies changed during extraction");
             inputs["npm-dependencies:" + repo.Id] = dependencies[repo.Id];
             foreach (var file in CheckedFiles(repo.Staging))

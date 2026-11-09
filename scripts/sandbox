@@ -55,6 +55,10 @@ while [[ $# -gt 0 ]]; do
 done
 [[ $# -ge 2 ]] || { echo "usage: scripts/sandbox [--offline] [--docker] [--port N] <dotnet|node> <command...>" >&2; exit 2; }
 profile="$1"; shift
+selected_nuget=0
+for argument in "$@"; do
+  [[ "$argument" == "fetch-packages-selected-v1" ]] && selected_nuget=1
+done
 
 if [[ "$CE_ENGINE" == podman && $docker_sock -eq 1 ]]; then
   ce_runtime_fail 'Podman socket/Testcontainers mode is not qualified in the core profile'; exit 2
@@ -137,7 +141,7 @@ if [[ -n "${SANDBOX_SOURCES:-}" ]]; then
     [[ "$src" == /* && -d "$src" ]] || { echo "SANDBOX_SOURCES: '$src' must be an existing absolute directory" >&2; exit 2; }
     mounted+="$src,"
     args+=(-v "$src:$src:ro")
-    if [[ -n "${CE_ANALYSIS_RUNTIME:-}" && $offline -eq 1 && "$src" == "$root/"* ]]; then
+    if [[ -n "${CE_ANALYSIS_RUNTIME:-}" && ( $offline -eq 1 || $selected_nuget -eq 1 ) && "$src" == "$root/"* ]]; then
       [[ "$src" != *'/../'* && "$src" != *'/./'* && "$src" != *':'* && "$src" != *$'\n'* ]] || {
         ce_runtime_fail 'offline source mount must be a canonical workspace path'; exit 2;
       }
