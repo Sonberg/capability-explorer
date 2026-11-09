@@ -115,8 +115,8 @@ test-capability-ingestion-browser: build
 
 .PHONY: test-unregistered-http-targets-browser
 test-unregistered-http-targets-browser: build
-	$(OFFLINE) node node spikes/likec4/node_modules/typescript/bin/tsc --noEmit --ignoreConfig --strict --target ES2022 --module ESNext --moduleResolution Bundler --esModuleInterop --allowImportingTsExtensions --skipLibCheck --types node --typeRoots spikes/likec4/node_modules/@types tests/unregistered-http-targets.browser.ts tests/current-ui-routes.browser.ts tests/current-ui-layout.browser.ts
-	SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) --offline node node --experimental-strip-types --test tests/unregistered-http-targets.browser.ts tests/current-ui-routes.browser.ts tests/current-ui-layout.browser.ts
+	$(OFFLINE) node node spikes/likec4/node_modules/typescript/bin/tsc --noEmit --ignoreConfig --strict --target ES2022 --module ESNext --moduleResolution Bundler --esModuleInterop --allowImportingTsExtensions --skipLibCheck --types node --typeRoots spikes/likec4/node_modules/@types tests/unregistered-http-targets.browser.ts tests/current-ui-routes.browser.ts tests/current-ui-layout.browser.ts tests/ownership-alignment.browser.ts
+	SANDBOX_NODE_IMAGE=$(BROWSER_IMAGE) $(SANDBOX) --offline node node --experimental-strip-types --test tests/unregistered-http-targets.browser.ts tests/current-ui-routes.browser.ts tests/current-ui-layout.browser.ts tests/ownership-alignment.browser.ts
 
 .PHONY: test-model-viewer-browser
 test-model-viewer-browser: build test-model-fixture-autoload

@@ -3,7 +3,7 @@ import { isDatabaseMeta, type DatabaseMeta } from "./database-api";
 import { DatabaseExplorer } from "./views/DatabaseExplorer";
 import { ErrorBox, Loading } from "./components/ui";
 import { href, SelectionProvider, useApi, useRoute, useSelection } from "./state";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { ChatPanel } from "./components/ChatPanel";
 import { CommandPalette } from "./components/CommandPalette";
 import { FocusProvider } from "./focus";
@@ -17,6 +17,7 @@ import { HealthStatus } from "./components/HealthStatus";
 // Load the shared LikeC4 canvas only when Architecture is opened.
 const ArchitectureView = lazy(() => import("./views/Architecture").then((m) => ({ default: m.ArchitectureView })));
 const ProcessesDecisions = lazy(() => import("./views/ProcessesDecisions").then((m) => ({ default: m.ProcessesDecisions })));
+const OwnershipAlignment = lazy(() => import("./views/OwnershipAlignment").then((m) => ({ default: m.OwnershipAlignment })));
 
 const VIEWS = [
   ["explore", "Explore"],
@@ -26,6 +27,7 @@ const VIEWS = [
   ["glossary", "Glossary"],
   ["capabilities", "Capabilities"],
   ["processes-decisions", "Processes & decisions"],
+  ["ownership-alignment", "Ownership alignment"],
 ] as const;
 
 export function App() {
@@ -59,6 +61,28 @@ function useLiveReload(meta: Meta | undefined, reload: () => void) {
   }, [generation, snapshotId, reload]);
 }
 
+const NAV_SCROLL = "shrink-0 rounded-md border border-zinc-300 px-2 py-1 text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800";
+
+/** Shows explicit controls when the view navigation is wider than the header and keeps the current view visible. */
+function useNavOverflow(view: string) {
+  const ref = useRef<HTMLElement>(null);
+  const [edges, setEdges] = useState({ before: false, after: false });
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const update = () => setEdges({ before: element.scrollLeft > 1, after: element.scrollLeft + element.clientWidth < element.scrollWidth - 1 });
+    const active = element.querySelector<HTMLElement>("[aria-current=page]");
+    if (active) element.scrollLeft = Math.max(0, active.offsetLeft - element.offsetLeft - Math.max(0, element.clientWidth - active.offsetWidth) / 2);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    element.addEventListener("scroll", update, { passive: true });
+    return () => { observer.disconnect(); element.removeEventListener("scroll", update); };
+  }, [view]);
+  const scroll = (direction: 1 | -1) => ref.current?.scrollBy({ left: direction * ref.current.clientWidth * 0.8 });
+  return { ref, scroll, ...edges };
+}
+
 function Shell() {
   const route = useRoute();
   const { scope } = useSelection();
@@ -76,6 +100,7 @@ function Shell() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+  const nav = useNavOverflow(view);
   return (
     <>
       <CommandPalette open={palette} setOpen={setPalette} views={VIEWS} />
@@ -89,7 +114,9 @@ function Shell() {
           </svg>
           <span className="hidden sm:inline">Capability Explorer</span>
         </a>
-        <nav aria-label="Views" className="flex min-w-0 gap-0.5 overflow-x-auto">
+        <div className="flex min-w-0 items-center">
+        {nav.before && <button type="button" aria-label="Show earlier views" onClick={() => nav.scroll(-1)} className={NAV_SCROLL}>‹</button>}
+        <nav ref={nav.ref} aria-label="Views" className="flex min-w-0 gap-0.5 overflow-x-auto [scrollbar-width:none]">
           {VIEWS.map(([id, label]) => id === "integrations/consumed" ? null : id === "integrations/exposed" ? (
             <select
               key="integrations"
@@ -117,6 +144,8 @@ function Shell() {
             </a>
           ))}
         </nav>
+        {nav.after && <button type="button" aria-label="Show more views" onClick={() => nav.scroll(1)} className={NAV_SCROLL}>›</button>}
+        </div>
         <div className="ml-auto flex shrink-0 items-center gap-1">
           <button
             type="button"
@@ -182,6 +211,8 @@ function Routed({ path, params, scope, mode }: { path: string; params: URLSearch
       return <Capabilities />;
     case "processes-decisions":
       return <ProcessesDecisions key={scope} scope={scope} params={params} mode={mode} />;
+    case "ownership-alignment":
+      return <OwnershipAlignment />;
     case "settings":
       return <Settings />;
     default:

@@ -63,6 +63,7 @@ if (dataSource is not null)
     builder.Services.AddSingleton<PostgresDeprecationRemovals>();
 }
 builder.Services.AddTaskQueries(source);
+builder.Services.AddOwnershipAlignment();
 var intelligence = new Intelligence(interpretation, builder.Configuration["modelSettings"] ?? ModelSettings.DefaultPath,
     dataSource is null ? null : new EmbeddingStore(dataSource), metadataOnly: source == "postgres",
     embeddingConfiguration: source == "postgres"
@@ -109,6 +110,7 @@ app.MapHealthApi();
 app.MapDeprecationsApi();
 app.MapModelApi(source);
 app.MapTaskQueryApi();
+app.MapOwnershipAlignmentApi();
 if (source == "postgres") app.MapPostgresExplorerApi();
 else
 {
