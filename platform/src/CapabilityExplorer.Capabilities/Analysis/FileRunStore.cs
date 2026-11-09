@@ -289,6 +289,7 @@ public sealed partial class FileRunStore
             throw new InvalidOperationException("invalid resolved-input binding");
         var ordered = new ResolvedManifest(manifest.AcceptedInputsHash, new SortedDictionary<string, string>(manifest.Inputs.ToDictionary(pair => pair.Key, pair => pair.Value), StringComparer.Ordinal));
         var bytes = JsonSerializer.SerializeToUtf8Bytes(ordered, AnalysisPaths.Json);
+        if (bytes.Length > 1024 * 1024) throw new InvalidDataException("resolved manifest exceeds reader budget");
         var hash = AnalysisPaths.Hash(bytes);
         AnalysisPaths.Atomic(SafePath(run.RunId, "resolved.json"), bytes);
         Save(run with { ManifestHash = hash });

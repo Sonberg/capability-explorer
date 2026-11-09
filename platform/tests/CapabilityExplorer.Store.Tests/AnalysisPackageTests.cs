@@ -120,6 +120,7 @@ public sealed class AnalysisPackageTests
     [InlineData("tampered", false)]
     [InlineData("symlink", false)]
     [InlineData("unknown", false)]
+    [InlineData("new-shape-keys", true)]
     public async Task Given_retained_packages_when_another_attempt_starts_then_only_bound_matching_completed_content_is_reused(string variation, bool reuse)
     {
         if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Unix qualification required");
@@ -188,6 +189,17 @@ public sealed class AnalysisPackageTests
             inputs["source:repo"] = AnalysisPackagePreparation.SourceIdentity(first.Repository.Source);
             inputs["package-cache"] = AnalysisWorkerCommand.HashText(string.Join('\n',AnalysisPreparation.CheckedFiles(first.Packages).Order(StringComparer.Ordinal)
                 .Select(file => Path.GetRelativePath(first.Packages,file) + ":" + AnalysisWorkerCommand.HashFile(file))));
+            if (variation == "new-shape-keys")
+            {
+                // New shadow-adapter receipt keys must not change whether a prior, otherwise-matching attempt is reused.
+                inputs["tree:repo"] = new string('d',40);
+                inputs["adapter-shadow-status:repo"] = "ok";
+                inputs["adapter-plan:repo"] = new string('e',64);
+                inputs["adapter-census:repo"] = "complete=1 unknown=0 skipped=0 units=1/1/0/0/0 inputs=1/1/0/0/0";
+                inputs["adapter-manifest"] = new string('f',64);
+                inputs["adapter-recipe"] = new string('f',64);
+                inputs["adapter-host-runtime"] = ".NET 10.0.12";
+            }
             var identity = new AttemptIdentity(first.Run.RunId,first.Run.AttemptId!);
             var manifest = store.BindResolved(owner,identity,new(first.Run.AcceptedInputsHash,inputs));
             store.FinishExecution(owner,identity,0);

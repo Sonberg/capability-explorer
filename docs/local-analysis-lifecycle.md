@@ -217,6 +217,22 @@ staging are private to the attempt; feed configuration is read only by the
 trusted host. Completion and publication evidence must match the run, attempt
 and immutable manifest. Output artifact hashes are bound after extraction and
 validation, before publication.
+
+Preparation also runs a shadow (non-filtering) plan for the tracked C# adapter
+over each repository's already-exported commit tree, strictly before the
+package-acquisition gate. It never blocks dispatch or changes extraction: a
+non-`ok` outcome is logged and recorded, never thrown, except for a genuine
+configuration or invariant violation (missing/invalid/mismatched adapter
+manifest or recipe, a malformed tree identity, or an unrecognized diagnostic
+code), which fails the attempt before any package or extraction work starts.
+The resolved inputs gain per-repository `tree:<repositoryId>` (the commit's
+tree SHA), `adapter-shadow-status:<repositoryId>` (`ok`, `incomplete`,
+`unknown` or `limit-exceeded`, optionally suffixed with its sorted diagnostic
+codes), `adapter-plan:<repositoryId>` and `adapter-census:<repositoryId>`
+(present only when the native planner returns a plan), plus the once-per-attempt
+`adapter-manifest`, `adapter-recipe` and `adapter-host-runtime` identities. A
+tracked exported entry with no archived content (a gitlink or a genuinely
+empty tree) counts as skipped, surfacing as the `export-skipped` diagnostic.
 Changing the original configuration after admission does not change the frozen
 request; changing its frozen copy prevents publication. Frozen-input paths are relative
 on disk and resolved beneath the current journal root.
@@ -412,7 +428,13 @@ ceiling, but the current host commands use the default. Capacity management is
 an offline operator responsibility with the evidence-preservation rules above.
 
 Journal and frozen-input files are limited to 1 MiB each and created private
-(mode 0600; directories 0700). Metadata lock acquisition has a bounded retry;
+(mode 0600; directories 0700); `resolved.json` binding fails the attempt rather
+than writing an over-budget file. Shadow adapter planning reuses the existing
+manifest reader's byte-for-byte size and identity checks, bounds the tracked
+recipe to 64 KiB, and runs each repository's plan under a 120-second per-repo
+deadline (a genuine caller cancellation still propagates; only that one
+deadline is caught). It does not change the native planner's own existing
+entry/unit/file/total-byte/depth bounds. Metadata lock acquisition has a bounded retry;
 worker lock acquisition refuses immediately on contention. Host log capture
 stops near 16 MiB per run, allowing a final encoded output chunk at the bound;
 status reads at most 64 KiB and 30 lines. Attempt sources, package caches,

@@ -37,6 +37,31 @@ public sealed class SourceSecurityTests
     }
 
     [Fact]
+    public async Task Given_a_commit_with_a_gitlink_when_exporting_then_it_is_counted_as_skipped()
+    {
+        using var fixture = await Repository.Create();
+        await fixture.Git("update-index", "--add", "--cacheinfo", "160000,1111111111111111111111111111111111111111,sub/mod");
+        await fixture.Git("-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "-q", "-m", "gitlink");
+        var sha = (await fixture.Git("rev-parse", "HEAD")).Trim();
+        var output = Path.Combine(fixture.Root, "gitlink-output");
+        var result = await fixture.Sync.ExportAsync(fixture.Source, sha, output);
+        Assert.Equal(1, result.Files); // file.txt from the base fixture commit is unaffected
+        Assert.Equal(1, result.Skipped); // the gitlink archives as an empty directory with no content: must not count as ok
+        Assert.False(Directory.Exists(Path.Combine(output, "sub", "mod")) && Directory.EnumerateFileSystemEntries(Path.Combine(output, "sub", "mod")).Any());
+    }
+
+    [Fact]
+    public async Task Given_a_commit_when_exporting_then_the_result_carries_the_commit_tree_sha()
+    {
+        using var fixture = await Repository.Create();
+        var expectedTree = (await fixture.Git("rev-parse", $"{fixture.Sha}^{{tree}}")).Trim();
+        var output = Path.Combine(fixture.Root, "tree-output");
+        var result = await fixture.Sync.ExportAsync(fixture.Source, fixture.Sha, output);
+        Assert.Matches("^[0-9a-f]{40}$", result.TreeSha);
+        Assert.Equal(expectedTree, result.TreeSha);
+    }
+
+    [Fact]
     public async Task Local_paths_with_spaces_lock_and_export_into_empty_destinations()
     {
         using var fixture = await Repository.Create();
@@ -128,7 +153,7 @@ public sealed class SourceSecurityTests
 
     private sealed class Repository : IDisposable
     {
-        public string Root { get; } = Directory.CreateTempSubdirectory("source-security-").FullName;
+        public string Root { get; } = Directory.CreateTempSubdirectory("source-security-").FullName.Replace("/var/", "/private/var/", StringComparison.Ordinal);
         public SourceSync Sync => new(Path.Combine(Root, "workspace"));
         public RepositorySource Source => new("repo", Path.Combine(Root, "repo with spaces"), SourceKind.Local);
         public string Sha { get; private set; } = "";
