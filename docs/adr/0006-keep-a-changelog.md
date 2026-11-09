@@ -1,9 +1,23 @@
 # Maintain a curated project changelog
 
-* Status: applied to this operator's work; proposed for repository-wide adoption
+* Status: accepted
 * Date: 2026-11-01
 * Decision owner: repository owner and contributors
 * Related: [MADR-0005](0005-pr-lifecycle-and-conflict-prevention.md), [MADR-0007](0007-semantic-versioning.md)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: decision policy/design for Maintain a curated project changelog; within the stated outcome and qualifications.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:4fc0a57997ee2072da68b69aa103bf5cb29e42e8971333112e60c027259ab7d3`.
+Previous decision status (historical): `applied to this operator's work; proposed for repository-wide adoption`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem
 

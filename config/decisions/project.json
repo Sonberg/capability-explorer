@@ -9,6 +9,7 @@
       "adapter": "markdown-header-v1",
       "canonical": "markdown",
       "statusMap": [
+        {"raw": "accepted", "state": "accepted"},
         {"raw": "proposed", "state": "proposed"},
         {"raw": "proposed for repository-wide adoption; applied in this workstream", "state": "proposed"},
         {"raw": "applied in this workstream at the operator's request; proposed for contributor-wide adoption", "state": "proposed"},

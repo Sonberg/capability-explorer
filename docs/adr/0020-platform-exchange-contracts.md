@@ -1,8 +1,22 @@
 # Draft evidence-platform exchange contracts, separate from extractor facts
 
-* Status: proposed for owner review; first shape-contract package authorized for review only
+* Status: accepted
 * Date: 2026-11-02
 * Related: [issue #33](https://github.com/Sonberg/capability-explorer/issues/33), [ubiquitous language](0002-ubiquitous-language.md), [integration declarations](0013-integration-contract-standards.md), [snapshots](0017-postgres-explorer-snapshots.md), [main-only PRs](0016-main-only-pr-integration.md)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: evidence-platform exchange design and first shape-contract package only.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:781751e0f9055f1c2a8d7fcf6241c1563c5beb3d5f7824f5e52d456fc6a5ecb7`.
+Previous decision status (historical): `proposed for owner review; first shape-contract package authorized for review only`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem statement
 

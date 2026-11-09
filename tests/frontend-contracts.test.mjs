@@ -80,7 +80,16 @@ test('architecture binds source observations, producer evidence, strict drafts a
 
 for (const [name, mutate, expected] of [
   ['source citation removal', value => { value.report = value.report.replace('schema/v1/record.schema.json#L61-L79', ''); }, /exact-source citation missing/],
-  ['claiming the MADR was implemented', value => { value.adr = value.adr.replace('not adopted or implemented', 'implemented'); }, /remain explicitly proposed/],
+  ['claiming the MADR was implemented', value => {
+    value.adr = value.adr.replace('not adopted or implemented', 'implemented')
+      .replace('It does not establish\nimplementation', 'It establishes implementation');
+  }, /without an implementation claim/],
+  ['dropping recorded approval', value => {
+    value.adr = value.adr.replaceAll('issuecomment-6742261485', 'missing-approval');
+  }, /recorded decision approval/],
+  ['dropping separate action approvals', value => {
+    value.adr = value.adr.replace('Existing operational exceptions and separately required action approvals remain in force.', '');
+  }, /recorded decision approval/],
   ['permitting an unknown adapter field', value => { value.adapterSchema.properties.request.additionalProperties = true; }, /adapter .* must reject unknown properties/],
   ['dropping adapter toolchain provenance', value => { delete value.adapterSchema.properties.result.properties.producer; }, /adapter field properties.result.properties.producer/],
   ['dropping per-unit budget from discovery schema', value => { delete value.discoverySchema.properties.policy.properties.maxFilesPerUnit; }, /properties.policy.properties.maxFilesPerUnit/],

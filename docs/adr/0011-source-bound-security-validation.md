@@ -1,8 +1,22 @@
 # Source-bound security validation with explicit unresolved findings
 
-* Status: applied in this workstream; proposed for owner review
+* Status: accepted
 * Date: 2026-11-01
 * Related: MADR-0003/0005/0008/0010; issue #3
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: decision policy/design for Source-bound security validation with explicit unresolved findings; within the stated outcome and qualifications.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:17a639a0d79ad3bdaa86bf713c13acf99553c18984d5f63ba33170a0afde98af`.
+Previous decision status (historical): `applied in this workstream; proposed for owner review`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and drivers
 

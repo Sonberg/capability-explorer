@@ -1,11 +1,25 @@
 # Establish and govern a shared ubiquitous language
 
-* Status: proposed for repository-wide adoption; applied in this workstream
+* Status: accepted
 * Date: 2026-10-31
 * Decision owner: repository contributors
 * Requested by: project operator in the current work session
 * Coordination: [issue #3](https://github.com/Sonberg/capability-explorer/issues/3)
 * Related: [MADR-0001](0001-github-work-coordination.md)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: decision policy/design for Establish and govern a shared ubiquitous language; within the stated outcome and qualifications.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:9ff6514439f120051566826c055d593414c1e4898f04ab62f7a1d6c04d4dcbce`.
+Previous decision status (historical): `proposed for repository-wide adoption; applied in this workstream`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem statement
 

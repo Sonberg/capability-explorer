@@ -1,9 +1,23 @@
 # Rank glossary candidates into domain concepts with an explainable score
 
-* Status: proposed; applied in this workstream
+* Status: accepted
 * Date: 2026-11-01
 * Coordination: issue #4, layer 1 follow-up; extends [MADR-0004](0004-glossary-candidates.md)
 * Related: [ubiquitous language](../ubiquitous-language.md), [MADR-0002](0002-ubiquitous-language.md)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: decision policy/design for Rank glossary candidates into domain concepts with an explainable score; within the stated outcome and qualifications.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:fafb62ac75f2fa70b012ba48f39ac022a3064ee84746be64036de97dd233bb99`.
+Previous decision status (historical): `proposed; applied in this workstream`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem
 

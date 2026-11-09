@@ -5,7 +5,9 @@ Before changing this repository, read
 and [MADR-0005: PR lifecycle](docs/adr/0005-pr-lifecycle-and-conflict-prevention.md).
 These are the shared workflow and rationale, not a particular agent framework.
 The checklist below makes their coordination requirements discoverable.
-Their recorded repository-wide adoption status remains proposed.
+Their decision policies are accepted within their stated scope by the
+[2026-11-09 operator approval](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Acceptance does not certify implementation or grant additional action authority.
 
 ## Writing issues and responses
 
@@ -61,11 +63,12 @@ own tools; this file does not configure other sessions automatically.
 ## Resource use and dependency hygiene
 
 Before RAM-, disk- or process-heavy work, check headroom and budget the work as
-proposed in [MADR-0038](docs/adr/0038-balanced-resource-use.md). Add its short
+defined in [MADR-0038](docs/adr/0038-balanced-resource-use.md). Add its short
 resource-impact review to relevant plans and PRs. When a change adds, removes or
-upgrades dependencies, follow the proposed recurring hygiene and cache rules in
+upgrades dependencies, follow the accepted recurring hygiene and cache rules in
 [MADR-0030](docs/adr/0030-dependency-cache-lifecycle.md#recurring-dependency-hygiene).
-Both records are proposed. They grant no permission to remove packages, purge
+Both decision methods are accepted; operational exceptions remain separate.
+They grant no permission to remove packages, purge
 caches or start daemons.
 
 ## Publication and policy changes

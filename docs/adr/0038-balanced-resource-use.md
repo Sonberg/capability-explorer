@@ -1,11 +1,26 @@
 # Balance RAM and disk use with performance and developer productivity
 
-* Status: proposed
-* Scope: proposed policy; owner review pending; no budget enforcement, monitoring or cleanup implemented
+* Status: accepted
+* Scope: resource-use decision method; no budget enforcement, monitoring or cleanup implemented
+* Previous scope (historical): proposed policy; owner review pending; no budget enforcement, monitoring or cleanup implemented
 * Date: 2026-11-06
 * Decision owner: repository maintainers
 * Coordination: [issue #108](https://github.com/Sonberg/capability-explorer/issues/108), [issue #109](https://github.com/Sonberg/capability-explorer/issues/109), [issue #3](https://github.com/Sonberg/capability-explorer/issues/3)
 * Related: [measurable objectives](0035-measurable-service-level-objectives.md), [frugal CI](0029-frugal-ci-and-executable-parity.md), [cache lifecycle](0030-dependency-cache-lifecycle.md), [evidence retention](0036-configurable-evidence-retention.md)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: resource-use decision method; no budget enforcement, monitoring or cleanup implemented.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:03f64fccf09855a2cdc6a86e1bbd588953f02a737d17390c2bf30ebe8505cb21`.
+Previous decision status (historical): `proposed`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem statement
 
@@ -186,5 +201,7 @@ defer work on a busy host. Targets can become stale; record workload changes.
 Review the method against one representative issue that has resource risk and
 one change without material resource effect. Check that measurements separate
 peak, temporary, retained and shared use. Keep the decision index and generated
-ledger consistent. Repository-wide adoption requires owner review. This record
+ledger consistent. The decision method is accepted by the explicit 2026-11-09
+operator approval above; workload budgets and operational exceptions still
+require their separate reviews. This record
 authorizes no cleanup, pruning, tuning, dependency installation or daemon.

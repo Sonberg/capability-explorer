@@ -1,8 +1,22 @@
 # Evaluate tools independently before introducing dependencies
 
-* Status: proposed for repository-wide adoption; applied to issue #31 by operator instruction
+* Status: accepted
 * Date: 2026-11-02
 * Related: [issue #31](https://github.com/Sonberg/capability-explorer/issues/31), [main-only PRs](0016-main-only-pr-integration.md), [source-bound validation](0011-source-bound-security-validation.md)
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: decision policy/design for Evaluate tools independently before introducing dependencies; within the stated outcome and qualifications.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:ffd479e57126691e7394ea5b8d34691d6ac5bb930fa68f118eac57eb62b90863`.
+Previous decision status (historical): `proposed for repository-wide adoption; applied to issue #31 by operator instruction`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context and problem statement
 

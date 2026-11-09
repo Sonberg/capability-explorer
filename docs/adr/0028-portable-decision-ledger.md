@@ -1,9 +1,23 @@
 # Portable, source-bound decision navigation
 
-* Status: proposed for owner review; no existing decision is accepted by this record
+* Status: accepted
 * Date: 2026-11-03
 * Scope: bounded decision-ledger contract, synthetic portability and repository inventory
 * Related: MADR-0026; the separate scoped branch lifecycle update is in MADR-0014
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: bounded decision-ledger contract, synthetic portability and repository inventory.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:40eaebe6825cf4576935c0a5b1bed292d7a903162b44eafd6c027dbe0b7702c2`.
+Previous decision status (historical): `proposed for owner review; no existing decision is accepted by this record`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context
 
@@ -65,8 +79,9 @@ Validate with `node scripts/decisions/check.mjs all` and explicit dry-run
 generation. Focused fixtures cover heterogeneous Markdown/frontmatter and JSON
 collections, Unicode/spaces, renames, repeated aliases, source changes, unknown
 status, directional/inverse relations, invalid cycles and read-only stale checks.
-Real-workspace adoption, semantic equivalence, authenticated approvals, complete
-CI and hosted publication are not established by this proposed record.
+The decision contract is accepted by the explicit 2026-11-09 approval above.
+Real-workspace implementation, semantic equivalence, authenticated approval
+verification by the ledger, complete CI and hosted publication are not established.
 
 Integration enrolls every local record with a reviewed-proposed topic facet and
 the selected source-backed navigation edges, preserving their scoped meanings.

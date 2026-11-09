@@ -1,10 +1,24 @@
 # View revision-bound original models without granting execution authority
 
-* Status: proposed
+* Status: accepted
 * Date: 2026-11-04
 * Decision owner: repository maintainers
 * Coordination: issues #12 and #78
 * Related: MADR-0017, MADR-0029 and MADR-0033
+
+## Approval and scope (2026-11-09)
+
+Accepted by explicit user/operator approval: "I approve all MADRs that are in draft",
+clarified as "All 37 proposed/pending MADRs on current main".
+Accepted scope: revision-bound read-only model-view decision; no execution authority or business approval.
+Approval: [issue #3, comment 6742261485](https://github.com/Sonberg/capability-explorer/issues/3#issuecomment-6742261485).
+Reviewed main: `9767bbcb7249375574b2306596389f7ccaa3a2a2`; original record: `sha256:533eb4be123476ed362a042f023218615503ea67512501619e8708b9dd285774`.
+Previous decision status (historical): `proposed`.
+Historical proposal wording below records the original rationale, not current status.
+Acceptance approves the decision method/design only. It does not establish
+implementation, measured SLO compliance, particular retention durations, real-source
+access, business assertions, deletion authority or experimental-tool activation.
+Existing operational exceptions and separately required action approvals remain in force.
 
 ## Context
 
