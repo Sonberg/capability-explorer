@@ -82,7 +82,7 @@ export function UnregisteredHttpTargetInspector({ detail, targets, graph, onOpen
       <Pill>{UNREGISTERED_HTTP_TARGET_BADGE}</Pill>
       <span className="text-xs text-zinc-500">{`${outcomeLabels[detail.status] ?? detail.status} (${detail.status})`}</span>
     </div>
-    <div className="text-base font-semibold">{detail.label}</div>
+    <h2 className="text-base font-semibold">{detail.label}</h2>
     <p className="text-xs">No known provider in the selected catalogue. This is not proof that no runtime service exists.</p>
     <div className="flex flex-wrap gap-2">
       <Button onClick={() => onOpen(detail.recovery)}>Open candidate occurrences</Button>

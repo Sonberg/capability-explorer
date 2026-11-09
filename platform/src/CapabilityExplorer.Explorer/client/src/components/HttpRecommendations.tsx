@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, FileCheck, RefreshCw } from "lucide-react";
+import { FileCheck, RefreshCw } from "lucide-react";
 import type { Evidence } from "../api";
-import { href, useApi } from "../state";
+import { useApi } from "../state";
 import type { PreviewSource } from "../views/BindingPreviewState";
 import { EvidenceLinks } from "./source";
 import { ErrorBox, Loading } from "./ui";
@@ -37,7 +37,7 @@ function evidenceLinks(records: HttpEvidence[]): Evidence[] {
     path: record.path, ...record.span }));
 }
 
-export function HttpCandidates({ group, snapshot, scope, onChoose }: {
+export function HttpCandidates({ group, snapshot, onChoose }: {
   group: HttpRecommendationGroup; snapshot: HttpRecommendationSnapshot; scope: string;
   onChoose?: (candidate: HttpBindingCandidate) => void;
 }) {
@@ -49,8 +49,6 @@ export function HttpCandidates({ group, snapshot, scope, onChoose }: {
         const repositories = new Set(candidate.matches.map(match => match.endpoint.source.repositoryId));
         const owners = snapshot.owners.filter(owner => repositories.has(owner.repositoryId));
         const names = [...new Set(owners.map(owner => owner.name))];
-        const link = href("binding-preview", { sourceView: snapshot.sourceView, targetView: snapshot.targetView,
-          hint: group.hint ?? undefined, target: candidate.target, fingerprint: snapshot.fingerprint, selectionScope: selectionIdentity(scope) });
         return <li key={candidate.target} className="min-w-0 space-y-2 py-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <strong className="break-words text-sm">{names.length ? names.join(", ") : repositories.size ? [...repositories].join(", ") : candidate.target}</strong>
@@ -72,7 +70,7 @@ export function HttpCandidates({ group, snapshot, scope, onChoose }: {
           </details>
           {group.hint && candidate.previewEligible ? onChoose
             ? <button type="button" className="inline-flex items-center gap-1.5 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-600" onClick={() => onChoose(candidate)}><FileCheck size={14} />Use {candidate.target}</button>
-            : <a className="inline-flex items-center gap-1.5 text-sm text-blue-700 dark:text-blue-300" href={link}><ArrowRight size={14} />Review {candidate.target}</a>
+            : <p className="text-xs text-zinc-500">Candidate evidence only. Binding review is not available in this UI.</p>
             : <p className="text-xs text-amber-700 dark:text-amber-300">{group.hint ? "Some calls cannot be validated by an exact binding." : "No bindable configuration hint."}</p>}
         </li>;
       })}

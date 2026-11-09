@@ -182,6 +182,16 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
   usePublishFocus(selected?.type === "node" && graph
     ? { kind: selected.node.category, label: selected.node.label, key: selected.node.symbolKey } : null);
   const lastClick = useRef({ id: "", at: 0 });
+  const inspector = useRef<HTMLElement>(null);
+  const focusInspector = useRef(false);
+  const [canvasDark, setCanvasDark] = useState(true);
+  useEffect(() => {
+    if (focusInspector.current && selected) {
+      focusInspector.current = false;
+      inspector.current?.scrollIntoView({ block: "start" });
+      inspector.current?.focus({ preventScroll: true });
+    }
+  }, [selected]);
   const targets = graph?.unregisteredHttpTargets;
   const selectNode = (node: ArchNode) => {
     setCandidateNotice("");
@@ -338,28 +348,33 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
       {requestError && <ErrorBox message={requestError} />}
       {candidateNotice && <div role="status" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-200">{candidateNotice}</div>}
       {targets && <UnregisteredHttpTargetStatus targets={targets} hiddenByKind={filters.hideKinds.includes(UNREGISTERED_HTTP_TARGET_CATEGORY)} onShow={showCandidates} />}
-      <div className="architecture-panels grid min-h-0 flex-1 gap-3">
-        <div role="region" aria-label="Architecture graph" data-input-identity={snapshotKey}
-          data-node-budget={filters.nodeBudget} data-edge-budget={filters.edgeBudget}
-          data-query={filters.query} data-hide-kinds={JSON.stringify(filters.hideKinds)}
-          data-included-node-ids={JSON.stringify(filters.include)}
-          className="architecture-canvas relative min-h-[420px] min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-          {waitingForResponse && <div className="absolute inset-0 z-10 grid place-items-center bg-white/80 text-zinc-500 dark:bg-zinc-950/80">Preparing filtered graph…</div>}
-          {graph && graph.nodes.length === 0 && <div className="absolute inset-0 grid place-items-center text-zinc-500">Nothing to draw at this level for the selected scope.</div>}
-          {budget && <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-x-3 rounded-md border border-zinc-300 bg-white/90 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-950/90" data-architecture-counts
+      {selected && <button type="button" className="self-start rounded-md border border-zinc-300 px-3 py-1.5 font-semibold dark:border-zinc-700 min-[1024px]:hidden"
+        onClick={() => { inspector.current?.scrollIntoView({ block: "start" }); inspector.current?.focus({ preventScroll: true }); }}>View details</button>}
+      <div className="flex min-w-0 flex-col gap-2" aria-label="Graph status">
+          {budget && <div className="flex flex-wrap gap-x-3 rounded-md border border-zinc-300 bg-white/90 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-950/90" data-architecture-counts
             data-total-nodes={budget.totalNodes} data-matched-nodes={budget.matchedNodes} data-shown-nodes={budget.shownNodes}
             data-total-edges={budget.totalEdges} data-matched-edges={budget.matchedEdges} data-shown-edges={budget.shownEdges}>
             <span>Nodes: {budget.totalNodes} total · {budget.matchedNodes} matched · {budget.shownNodes} shown</span>
             <span>Edges: {budget.totalEdges} total · {budget.matchedEdges} matched · {budget.shownEdges} shown</span>
           </div>}
-          {budget && (budget.nodesTruncated || budget.edgesTruncated) && <div className="absolute left-3 top-12 z-10 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-200">
+          {budget && (budget.nodesTruncated || budget.edgesTruncated) && <div className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-200">
             {budget.nodesTruncated && "Some matching nodes are omitted; search, pin an omitted node, or drill down."}
             {budget.nodesTruncated && budget.edgesTruncated && " "}
             {budget.edgesTruncated && "Some matching relationships are omitted by the edge budget."}
           </div>}
-          {graph?.budget?.missingPins.length ? <div className="absolute bottom-3 left-3 z-10 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-200">Pins not found in this graph: {graph.budget.missingPins.join(", ")}</div> : null}
+          {graph?.budget?.missingPins.length ? <div tabIndex={0} className="max-h-24 max-w-full overflow-y-auto break-all rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-200">Pins not found in this graph: {graph.budget.missingPins.join(", ")}</div> : null}
+      </div>
+      <div className="architecture-panels grid min-h-0 flex-1 gap-3">
+        <div role="region" aria-label="Architecture graph" data-input-identity={snapshotKey}
+          data-node-budget={filters.nodeBudget} data-edge-budget={filters.edgeBudget}
+          data-query={filters.query} data-hide-kinds={JSON.stringify(filters.hideKinds)}
+          data-included-node-ids={JSON.stringify(filters.include)}
+          className="architecture-canvas relative isolate min-h-[420px] min-w-0 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+          {waitingForResponse && <div className="absolute inset-0 z-10 grid place-items-center bg-white/80 text-zinc-500 dark:bg-zinc-950/80">Preparing filtered graph…</div>}
+          {graph && graph.nodes.length === 0 && <div className="absolute inset-0 grid place-items-center text-zinc-500">Nothing to draw at this level for the selected scope.</div>}
           {graph && graph.nodes.length > 0 && <LiveArchitectureCanvas
             graph={graph} snapshotKey={snapshotKey}
+            dark={canvasDark} onDarkChange={setCanvasDark}
             selectedId={selected?.type === "node" ? selected.node.id : selected?.edge.id}
             onNodeSelect={item => {
               const node = graph?.nodes.find(node => node.id === item.id);
@@ -385,7 +400,7 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
             onClearSelection={() => setSelected(null)}
           />}
         </div>
-        <aside className="min-h-0 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-3 text-[13px] dark:border-zinc-800 dark:bg-zinc-900">
+        <aside ref={inspector} tabIndex={-1} aria-label="Architecture details" className="min-h-0 scroll-mt-16 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-3 text-[13px] dark:border-zinc-800 dark:bg-zinc-900">
           {suggestionsOpen ? <IntegrationSuggestionInspector scope={scope} onClose={() => setSuggestionsOpen(false)} /> : recommendationsOpen ? <HttpRecommendationInspector scope={scope} focus={recommendationFocus} onClose={() => setRecommendationsOpen(false)} /> : editor ? <ArchitectureConnectionEditor key={editor.id ?? `${editor.fromCapabilityId}|${editor.sourceKey ?? "new"}`} draft={editor} capabilities={meta.capabilities}
             snapshot={connections.data} onClose={() => setEditor(null)} onSaved={saved} onReload={connections.reload} /> : candidateDetail && targets && graph ? (
             <UnregisteredHttpTargetInspector detail={candidateDetail} targets={targets} graph={graph} onOpen={open} />
@@ -415,7 +430,7 @@ function Canvas({ level, focus }: { level: string; focus?: string }) {
       {graph && <ArchitectureRecoveryLists
         graph={graph} selectedNodeId={selectedNodeId} pins={pins}
         maxPins={MAX_PINS} maxOmittedNodes={MAX_OMITTED_NODES}
-        onSelect={selectNode}
+        onSelect={node => { focusInspector.current = true; selectNode(node); }}
         onDrill={drill}
         onPin={id => applyFilters([id])}
       />}

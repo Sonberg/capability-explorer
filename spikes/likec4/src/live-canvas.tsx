@@ -28,6 +28,8 @@ export interface LiveArchitectureCanvasProps<N extends LiveNode=LiveNode, E exte
   associationIds?:ReadonlySet<string>;
   hiddenEdgeIds?:ReadonlySet<string>;
   selectedId?:string;
+  dark?:boolean;
+  onDarkChange?:(dark:boolean)=>void;
   onNodeSelect:(node:N)=>void;
   onEdgeSelect:(edge:E)=>void;
   onNodeDrill?:(node:N)=>void;
@@ -40,6 +42,7 @@ const MAX_MEASURE_FRAMES = 600;
 const isLeaf = (node:DiagramNode) => node.kind !== '@group' && !node.children.length;
 
 export function LiveArchitectureCanvas<N extends LiveNode, E extends LiveEdge>(props:LiveArchitectureCanvasProps<N,E>) {
+  const [dark, setDark] = useState(true);
   const compiled = useLiveModel(props.graph, props.snapshotKey, props.associationIds);
   const [readiness, setReadiness] = useState<CanvasReadiness|null>(null);
   const label = 'level' in props.graph && props.graph.level === 'glossary-flow' ? 'Glossary connection canvas' : 'Architecture canvas';
@@ -50,7 +53,7 @@ export function LiveArchitectureCanvas<N extends LiveNode, E extends LiveEdge>(p
     data-generation={compiled.generation} data-status={compiled.error ? 'error' : compiled.result ? 'ready' : 'loading'}
     data-canvas-identity={props.snapshotKey} data-canvas-ready={canvasReady ? 'true' : 'false'} data-canvas-leaf-count={canvasReady ? readiness?.leaves : undefined}>
     {compiled.error ? <div className="live-model-status" role="alert"><p>{compiled.error}</p><button onClick={compiled.retry}>Retry diagram</button></div>
-      : compiled.result ? <ReadyCanvas key={compiled.identity} {...props} result={compiled.result} readiness={{identity:compiled.identity, generation:compiled.generation, report:setReadiness}}/>
+      : compiled.result ? <ReadyCanvas key={compiled.identity} {...props} dark={props.dark ?? dark} onDarkChange={props.onDarkChange ?? setDark} result={compiled.result} readiness={{identity:compiled.identity, generation:compiled.generation, report:setReadiness}}/>
       : <div className="live-model-status" role="status">Compiling selected architecture snapshot…</div>}
   </div>;
 }
@@ -103,7 +106,7 @@ function CanvasReadinessProbe({armed, view, flow, viewportReady, onMeasured, onS
   return <span ref={marker} hidden aria-hidden="true"/>;
 }
 
-function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey, selectedId, hiddenEdgeIds, onNodeSelect, onEdgeSelect, onNodeDrill, onClearSelection, result, readiness}:LiveArchitectureCanvasProps<N,E> & ReadinessProps) {
+function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey, selectedId, hiddenEdgeIds, onNodeSelect, onEdgeSelect, onNodeDrill, onClearSelection, result, readiness, dark = true, onDarkChange}:LiveArchitectureCanvasProps<N,E> & ReadinessProps) {
   const sourceModel = useMemo(() => LikeC4Model.create(result.modelData), [result]);
   const [initial] = useState(() => savedGroups(result));
   const [groups, setGroups] = useState<Group[]>(initial.groups);
@@ -118,7 +121,7 @@ function ReadyCanvas<N extends LiveNode, E extends LiveEdge>({graph, snapshotKey
   const [edgeChoices, setEdgeChoices] = useState<readonly E[]>([]);
   const [nodeChoices, setNodeChoices] = useState<readonly N[]>([]);
   const [orthogonal, setOrthogonal] = useState(true);
-  const [dark, setDark] = useState(true);
+  const setDark = (value:SetStateAction<boolean>) => onDarkChange?.(typeof value === 'function' ? value(dark) : value);
   const [animations, setAnimations] = useState(false);
   const [reduced, setReduced] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
   const [showSource, setShowSource] = useState(false);

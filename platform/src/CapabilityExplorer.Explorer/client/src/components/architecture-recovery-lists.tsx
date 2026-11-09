@@ -26,10 +26,10 @@ export function ArchitectureRecoveryLists(props: ArchitectureRecoveryListsProps)
           {shownOpen && <ul className="mt-2 space-y-1">
             {props.graph.nodes.map(node => (
               <li key={node.id} className="flex flex-wrap items-center gap-2">
-                <button type="button" data-architecture-node-id={node.id} aria-pressed={props.selectedNodeId === node.id} onClick={() => props.onSelect(node)} className="truncate text-left text-blue-700 hover:underline dark:text-blue-300">
+                <button type="button" title={node.label} data-architecture-node-id={node.id} aria-pressed={props.selectedNodeId === node.id} onClick={() => props.onSelect(node)} className="min-w-0 max-w-full truncate text-left text-blue-700 hover:underline dark:text-blue-300">
                   {node.label}
                 </button>
-                <span className="text-xs text-zinc-500">{node.category}{node.symbolKey ? ` · ${node.symbolKey}` : ""}</span>
+                <span className="min-w-0 break-all text-xs text-zinc-500">{node.category}{node.symbolKey ? ` · ${node.symbolKey}` : ""}</span>
                 {node.drill && <Button variant="secondary" onClick={() => props.onDrill(node)}>Open {node.drill.level}</Button>}
               </li>
             ))}
@@ -43,8 +43,8 @@ export function ArchitectureRecoveryLists(props: ArchitectureRecoveryListsProps)
             {omittedNodes.length > 0 ? <ul className="mt-2 space-y-1">
               {omittedNodes.map(node => (
                 <li key={node.id} className="flex flex-wrap items-center gap-2">
-                  <span>{node.label}</span>
-                  <span className="text-xs text-zinc-500">{node.category} · degree {node.degree} · {node.id}</span>
+                  <span className="min-w-0 break-all">{node.label}</span>
+                  <span className="min-w-0 break-all text-xs text-zinc-500">{node.category} · degree {node.degree} · {node.id}</span>
                   <Button type="button" variant="secondary" disabled={props.pins.includes(node.id) || props.pins.length >= props.maxPins} onClick={() => props.onPin(node.id)} aria-label={`Pin ${node.label}`}>
                     {props.pins.includes(node.id) ? "Pinned" : "Pin element"}
                   </Button>

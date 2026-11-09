@@ -4,7 +4,7 @@ import type {RefObject} from 'react';
 /** Prefer readable labels initially; the explicit Fit action remains unrestricted. */
 export function readableInitialZoom(width:number, height:number, bounds:{width:number; height:number}):number {
   const fit = Math.min(Math.max(1, width - 48) / Math.max(1, bounds.width), Math.max(1, height - 48) / Math.max(1, bounds.height));
-  return Math.max(0.5, Math.min(1, fit));
+  return Math.max(width < 720 ? 0.2 : 0.5, Math.min(1, fit));
 }
 
 export function useLiveInitialZoom(container:RefObject<HTMLElement|null>, bounds:{width:number; height:number}) {
