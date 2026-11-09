@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using CapabilityExplorer.Contracts;
 using CapabilityExplorer.Explorer;
@@ -258,7 +259,7 @@ public sealed class ChatToolRetrievalTests
         var intelligence = new Intelligence(new(), Path.Combine(Fixtures.RepositoryRoot, "unused-chat-settings.json"), null, metadataOnly: true);
         var function = ChatTools.Create(context, intelligence, CancellationToken.None).OfType<AIFunction>().Single(f => f.Name == tool);
         var result = await function.InvokeAsync(new AIFunctionArguments(arguments.ToDictionary(a => a.Name, a => a.Value, StringComparer.Ordinal)));
-        return Assert.IsType<string>(result);
+        return Assert.IsType<string>(Assert.IsType<JsonElement>(result).GetString());
     }
 
     private static string Key(int i) => $"cs|client|Chat|M:Chat.Step{i}";
@@ -285,7 +286,7 @@ public sealed class ChatToolRetrievalTests
         ["relation"] = relation, ["derivation"] = "compiler", ["resolution"] = "resolved", ["evidence"] = new JsonArray("ev:source"),
     };
 
-    private static List<JsonObject> Rows(string repository, string revision, IReadOnlyList<JsonObject> nodes, IReadOnlyList<JsonObject> edges)
+    private static List<JsonObject> Rows(string repository, string revision, JsonObject[] nodes, IReadOnlyList<JsonObject> edges)
     {
         var records = new List<JsonObject>
         {
@@ -310,7 +311,7 @@ public sealed class ChatToolRetrievalTests
         records.Add(new JsonObject
         {
             ["schema"] = "ce.v1", ["kind"] = "complete", ["status"] = "full",
-            ["counts"] = new JsonObject { ["node"] = nodes.Count, ["edge"] = edges.Count, ["evidence"] = 1, ["calculation"] = 0, ["diagnostic"] = 0 },
+            ["counts"] = new JsonObject { ["node"] = nodes.Length, ["edge"] = edges.Count, ["evidence"] = 1, ["calculation"] = 0, ["diagnostic"] = 0 },
             ["coverage"] = new JsonObject { ["filesTotal"] = 1, ["filesAnalyzed"] = 1, ["unresolvedEdges"] = 0 },
         });
         return records;

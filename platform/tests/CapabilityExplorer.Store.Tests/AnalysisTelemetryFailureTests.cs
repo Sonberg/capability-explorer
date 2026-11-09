@@ -112,6 +112,7 @@ public sealed class AnalysisTelemetryFailureTests
     [Fact]
     public async Task Partial_package_producers_preserve_coverage_counters_and_sanitized_failure_categories()
     {
+        if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Unix qualification required");
         using var fixture = new TelemetryFixture();
         using var environment = fixture.PackageEnvironment();
         using var process = fixture.Process();
@@ -184,8 +185,9 @@ public sealed class AnalysisTelemetryFailureTests
         internal Task<Dictionary<string, string>> PreparePackages(AnalysisProcess process) =>
             AnalysisPackagePreparation.Run(Root, Run, process, [Repository], Work, Locks, Packages);
 
-        internal IDisposable PackageEnvironment()
+        internal EnvironmentScope PackageEnvironment()
         {
+            if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Unix qualification required");
             var feeds = Path.Combine(_directory, "feeds.json");
             File.WriteAllText(feeds, """{"feeds":[]}""");
             File.SetUnixFileMode(feeds, UnixFileMode.UserRead | UnixFileMode.UserWrite);
@@ -215,6 +217,7 @@ public sealed class AnalysisTelemetryFailureTests
 
         internal void Write(string relative, string text, bool executable = false)
         {
+            if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Unix qualification required");
             var path = Path.Combine(Root, relative);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, text);
