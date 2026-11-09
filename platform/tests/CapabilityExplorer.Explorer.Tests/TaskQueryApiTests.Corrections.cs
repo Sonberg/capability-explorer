@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Diagnostics;
 using System.Text.Json;
 using CapabilityExplorer.Explorer;
 using CapabilityExplorer.Contracts.Collection;
+using CapabilityExplorer.Store;
 using Json.Schema;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -162,6 +164,58 @@ public sealed partial class TaskQueryApiTests
     }
 
     [Fact]
+    public async Task Oversized_cited_git_content_returns_a_typed_limit_instead_of_missing()
+    {
+        var root = Directory.CreateDirectory(Path.Combine(Fixtures.RepositoryRoot, ".sandbox-cache", "task-query-oversized-git",
+            Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            var repo = Path.Combine(root, "svc-a");
+            Directory.CreateDirectory(repo);
+            RunGit(repo, "init");
+            RunGit(repo, "config", "user.name", "Synthetic test");
+            RunGit(repo, "config", "user.email", "test@example.invalid");
+            const string path = "source.txt";
+            await File.WriteAllTextAsync(Path.Combine(repo, path), new string('x', 16 * 1024 * 1024 + 1));
+            RunGit(repo, "add", path);
+            RunGit(repo, "commit", "-m", "oversized source");
+            var commit = RunGit(repo, "rev-parse", "HEAD");
+            var source = new OversizedGitTaskEvidenceSource(new GitSource(id => id == "svc-a" ? repo : null), commit);
+            var service = new TaskQueryService(source, new TaskQueryAccessPolicy(new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["TaskQueries:Operations:0"] = TaskQueryOperations.SourceExcerpt,
+                    ["TaskQueries:Repositories:0"] = "svc-a",
+                }).Build()), new TaskQueryCursorCodec(), NullLogger<TaskQueryService>.Instance);
+
+            var envelope = await service.SourceExcerptAsync(new TaskQueryRequest(
+                SnapshotId: "synthetic", Generation: 1, Repo: "svc-a", Commit: commit, Path: path, Start: 1, End: 1), CancellationToken.None);
+
+            Assert.Equal("limit", envelope.Status);
+            Assert.Equal("source-content-too-large", envelope.Reason);
+            Assert.Equal(413, TaskQueryStatusCodes.HttpStatus(envelope.Status));
+            Assert.Equal("not-established", envelope.Coverage.Completeness);
+            Assert.True(TaskQueryTestHost.LoadEnvelopeSchema().Evaluate(JsonSerializer.SerializeToElement(envelope, TaskQueryJson.Options)).IsValid);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+
+        static string RunGit(string repository, params string[] args)
+        {
+            var start = new ProcessStartInfo("git") { WorkingDirectory = repository, RedirectStandardOutput = true, RedirectStandardError = true };
+            foreach (var arg in args) start.ArgumentList.Add(arg);
+            using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start git for the synthetic repository.");
+            var output = process.StandardOutput.ReadToEnd();
+            var error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            Assert.True(process.ExitCode == 0, error);
+            return output.Trim();
+        }
+    }
+
+    [Fact]
     public async Task A_capped_evidence_scan_has_unknown_total_and_a_model_beyond_the_head_cap_is_not_falsely_missing()
     {
         var source = new SyntheticIntegrationSource(truncated: true);
@@ -224,5 +278,30 @@ public sealed partial class TaskQueryApiTests
         var after = await source.ModelsAsync(source.Narrow(scope, scope.Selection), null, CancellationToken.None);
         Assert.Equal(before.Heads, after.Heads);
         Assert.NotNull(await source.ModelAsync(scope, host.BpmnModelId, CancellationToken.None));
+    }
+
+    private sealed class OversizedGitTaskEvidenceSource(GitSource git, string commit) : ITaskEvidenceSource
+    {
+        private readonly IReadOnlyDictionary<string, string> _selection = new Dictionary<string, string> { ["svc-a"] = commit };
+
+        public string Mode => "files";
+        public Task<TaskSnapshotScope?> ResolveAsync(string cap, IReadOnlyDictionary<string, string> specifiedView,
+            string? snapshotId, long? generation, CancellationToken ct) =>
+            Task.FromResult<TaskSnapshotScope?>(new TaskSnapshotScope(snapshotId ?? "synthetic", generation ?? 1,
+                _selection, true, snapshotId ?? "synthetic", new object()));
+        public TaskSnapshotScope Narrow(TaskSnapshotScope scope, IReadOnlyDictionary<string, string> allowed) =>
+            scope with { Selection = allowed };
+        public Task<TaskModelPage> ModelsAsync(TaskSnapshotScope scope, string? kind, CancellationToken ct) =>
+            Task.FromResult(new TaskModelPage([], false));
+        public Task<ModelProduct?> ModelAsync(TaskSnapshotScope scope, string modelId, CancellationToken ct) =>
+            Task.FromResult<ModelProduct?>(null);
+        public Task<Integrations> IntegrationsAsync(TaskSnapshotScope scope, CancellationToken ct) =>
+            throw new NotSupportedException();
+        public Task<TaskEvidencePage> EvidenceAsync(TaskSnapshotScope scope, string key, CancellationToken ct) =>
+            Task.FromResult(new TaskEvidencePage([], false));
+        public Task<bool> IsCitedAsync(TaskSnapshotScope scope, string repositoryId, string commitSha, string path, CancellationToken ct) =>
+            Task.FromResult(repositoryId == "svc-a" && commitSha == commit);
+        public Task<string?> ReadCitedFileAsync(TaskSnapshotScope scope, string repositoryId, string commitSha, string path, CancellationToken ct) =>
+            git.ReadFileAsync(repositoryId, commitSha, path, ct);
     }
 }

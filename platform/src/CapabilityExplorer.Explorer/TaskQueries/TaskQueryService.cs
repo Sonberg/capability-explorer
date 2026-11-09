@@ -176,7 +176,12 @@ public sealed partial class TaskQueryService(ITaskEvidenceSource source, TaskQue
                 return (TaskQueryStatus.Denied, "commit-outside-selection", null, null);
             if (!await source.IsCitedAsync(begin.Scope, repo, commit, path, token))
                 return (TaskQueryStatus.Denied, "path-not-cited", null, null);
-            var text = await source.ReadCitedFileAsync(begin.Scope, repo, commit, path, token);
+            string? text;
+            try { text = await source.ReadCitedFileAsync(begin.Scope, repo, commit, path, token); }
+            catch (GitSourceContentLimitException)
+            {
+                return (TaskQueryStatus.Limit, "source-content-too-large", null, null);
+            }
             if (text is null) return (TaskQueryStatus.Missing, "source-missing", null, null);
             TaskQuerySourceExcerpt excerpt;
             try { excerpt = SourceExcerpt.Build(repo, commit, path, text, request.Start!.Value, request.End!.Value); }

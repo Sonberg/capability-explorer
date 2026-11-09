@@ -204,7 +204,108 @@ public sealed class TaskQueryProcessTests
         }
     }
 
-    private static Process Start(string? grantedFixture = null)
+    [Fact]
+    public async Task Raw_stdio_cancellation_aborts_a_running_git_read_without_a_response_and_keeps_the_process_usable()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        await using var fixture = await TaskQueryTestHost.CreateAsync();
+        var shimDirectory = Directory.CreateDirectory(Path.Combine(fixture.Root, "git-shim")).FullName;
+        var started = Path.Combine(fixture.Root, "git-started");
+        var gitPidFile = Path.Combine(fixture.Root, "git-pid");
+        var finished = Path.Combine(fixture.Root, "git-finished");
+        const string path = "src/Forecast.Api/Forecast.Api.csproj";
+        var target = TaskQueryTestHost.ForecastCommit + ":" + path;
+        var wrapper = Path.Combine(shimDirectory, "git");
+        await File.WriteAllTextAsync(wrapper, """
+            #!/bin/sh
+            case "$*" in
+              *"$CE_GIT_TARGET"*)
+                printf '%s\n' "$$" > "$CE_GIT_PID"
+                : > "$CE_GIT_STARTED"
+                sleep 30
+                : > "$CE_GIT_FINISHED"
+                ;;
+            esac
+            exec "$CE_REAL_GIT" "$@"
+            """);
+        File.SetUnixFileMode(wrapper, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+        using var process = Start(fixture.Root, shimDirectory, new Dictionary<string, string>
+        {
+            ["CE_REAL_GIT"] = FindExecutable("git"),
+            ["CE_GIT_TARGET"] = target,
+            ["CE_GIT_STARTED"] = started,
+            ["CE_GIT_PID"] = gitPidFile,
+            ["CE_GIT_FINISHED"] = finished,
+        });
+        var stderr = process.StandardError.ReadToEndAsync();
+        try
+        {
+            await Exchange(process, 1, "initialize", new
+            {
+                protocolVersion = "2025-11-25",
+                capabilities = new { },
+                clientInfo = new { name = "raw-cancellation-test", version = "1" }
+            });
+            await Send(process, new { jsonrpc = "2.0", method = "notifications/initialized" });
+            var snapshotCall = await Exchange(process, 2, "tools/call", new { name = "snapshot_resolve", arguments = new { } });
+            var snapshot = snapshotCall.GetProperty("result").GetProperty("structuredContent").GetProperty("snapshot");
+
+            await Send(process, new
+            {
+                jsonrpc = "2.0",
+                id = 3,
+                method = "tools/call",
+                @params = new
+                {
+                    name = "source_excerpt",
+                    arguments = new
+                    {
+                        snapshotId = snapshot.GetProperty("id").GetString(),
+                        generation = snapshot.GetProperty("generation").GetInt64(),
+                        repo = "forecast-cs",
+                        commit = TaskQueryTestHost.ForecastCommit,
+                        path,
+                        start = 1,
+                        end = 3,
+                    }
+                }
+            });
+            await WaitForFile(started, TimeSpan.FromSeconds(10));
+            await Send(process, new
+            {
+                jsonrpc = "2.0",
+                method = "notifications/cancelled",
+                @params = new { requestId = 3, reason = "cancel the in-flight source read" }
+            });
+
+            var pendingResponse = process.StandardOutput.ReadLineAsync();
+            var cancellationWindow = await Task.WhenAny(pendingResponse, Task.Delay(300));
+            Assert.NotSame(pendingResponse, cancellationWindow);
+            var gitPid = int.Parse(await File.ReadAllTextAsync(gitPidFile), System.Globalization.CultureInfo.InvariantCulture);
+            await WaitForProcessExit(gitPid, TimeSpan.FromSeconds(5));
+            Assert.False(File.Exists(finished), "The cancelled Git command continued past the cancellation notification.");
+
+            await Send(process, new { jsonrpc = "2.0", id = 4, method = "tools/call", @params = new { name = "snapshot_resolve", arguments = new { } } });
+            var resumedLine = await pendingResponse.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.NotNull(resumedLine);
+            using (var resumed = JsonDocument.Parse(resumedLine))
+                Assert.Equal(4, resumed.RootElement.GetProperty("id").GetInt32());
+
+            process.StandardInput.Close();
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(0, process.ExitCode);
+            Assert.DoesNotContain("Now listening", await stderr, StringComparison.Ordinal);
+        }
+        finally
+        {
+            await StopIfRunning(process);
+        }
+    }
+
+    private static Process Start(string? grantedFixture = null, string? gitShimDirectory = null,
+        IReadOnlyDictionary<string, string>? additionalEnvironment = null)
     {
         var start = new ProcessStartInfo("dotnet")
         {
@@ -218,6 +319,10 @@ public sealed class TaskQueryProcessTests
                      key.StartsWith("TaskQueries", StringComparison.OrdinalIgnoreCase) ||
                      key is "EXPLORER_SOURCE" or "CE_DATABASE" or "ASPNETCORE_URLS").ToArray())
             start.Environment.Remove(key);
+        if (gitShimDirectory is not null)
+            start.Environment["PATH"] = gitShimDirectory + Path.PathSeparator + start.Environment["PATH"];
+        if (additionalEnvironment is not null)
+            foreach (var (key, value) in additionalEnvironment) start.Environment[key] = value;
         start.ArgumentList.Add(typeof(Program).Assembly.Location);
         start.ArgumentList.Add("--mcp-stdio");
         start.ArgumentList.Add("--source");
@@ -257,6 +362,34 @@ public sealed class TaskQueryProcessTests
     {
         if (!process.HasExited) process.Kill(entireProcessTree: true);
         await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    private static string FindExecutable(string name) =>
+        (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)
+        .Select(directory => Path.Combine(directory, name)).First(File.Exists);
+
+    private static async Task WaitForFile(string path, TimeSpan timeout)
+    {
+        var deadline = Stopwatch.StartNew();
+        while (!File.Exists(path) && deadline.Elapsed < timeout) await Task.Delay(20);
+        Assert.True(File.Exists(path), $"Timed out waiting for {Path.GetFileName(path)}.");
+    }
+
+    private static async Task WaitForProcessExit(int pid, TimeSpan timeout)
+    {
+        var deadline = Stopwatch.StartNew();
+        while (deadline.Elapsed < timeout)
+        {
+            try
+            {
+                using var process = Process.GetProcessById(pid);
+                if (process.HasExited) return;
+            }
+            catch (ArgumentException) { return; }
+            await Task.Delay(20);
+        }
+
+        Assert.Fail($"Git process {pid} remained alive after cancellation.");
     }
 
     private sealed class DeniedTaskFactory : WebApplicationFactory<Program>

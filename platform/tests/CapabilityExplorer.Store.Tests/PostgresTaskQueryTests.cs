@@ -143,6 +143,72 @@ public sealed class PostgresTaskQueryTests(PostgresFixture db)
         Assert.Equal(HttpStatusCode.Forbidden, uncited.StatusCode);
         Assert.Equal("path-not-cited", (await uncited.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("reason").GetString());
     }
+
+    [Fact]
+    public async Task Evidence_scan_reports_exactly_4096_as_complete_and_4097_as_truncated_from_postgres()
+    {
+        var cap = Cap();
+        await using var host = await PostgresTaskQueryHost.CreateAsync(db, cap, ["forecast-cs"]);
+        var importer = new ArtifactImporter(db.DataSource);
+        var snapshots = new SnapshotStore(db.DataSource);
+        long generation = 0;
+
+        foreach (var (count, commitChar) in new[] { (4096, 'a'), (4097, 'b') })
+        {
+            var commit = new string(commitChar, 40);
+            var imported = await importer.ImportAsync(BoundaryArtifact(commit, count));
+            var draft = await snapshots.CreateAsync(cap, $"evidence-boundary-{count}", [imported.ArtifactId]);
+            var published = await snapshots.PublishAsync(draft.Id, generation++);
+            var body = await host.Client.GetFromJsonAsync<JsonElement>(
+                $"/api/tasks/v1/evidence?snapshot={published.Id}&generation={published.Generation}&limit=1&key={Uri.EscapeDataString(BoundaryKey)}");
+
+            Assert.Equal(count == 4096 ? "ok" : "partial", body.GetProperty("status").GetString());
+            Assert.Single(body.GetProperty("data").EnumerateArray());
+            var total = body.GetProperty("page").GetProperty("total");
+            if (count == 4096) Assert.Equal(4096, total.GetInt32());
+            else Assert.Equal("unknown", total.GetString());
+        }
+    }
+
+    private const string BoundaryKey = "http|forecast-cs/Forecast.Api|GET /api/v2/forecasts/{}";
+
+    private static string BoundaryArtifact(string commit, int evidenceCount)
+    {
+        var lines = new List<string>
+        {
+            JsonSerializer.Serialize(new
+            {
+                schema = "ce.v1", kind = "header", repositoryId = "forecast-cs", commitSha = commit,
+                unit = new { path = "src/TaskQueryBoundary.cs", name = "TaskQueryBoundary" }, language = "csharp",
+                extractor = new { name = "boundary-test", version = "1" }, rules = Array.Empty<object>(),
+                configHash = new string('c', 64), inputHash = new string('d', 64),
+            }, JsonSerializerOptions.Web),
+        };
+        var evidenceIds = Enumerable.Range(0, evidenceCount).Select(i => $"ev:{i:x16}").ToArray();
+        foreach (var (id, index) in evidenceIds.Select((id, index) => (id, index)))
+        {
+            lines.Add(JsonSerializer.Serialize(new
+            {
+                schema = "ce.v1", kind = "evidence", id, repositoryId = "forecast-cs", commitSha = commit,
+                path = "src/TaskQueryBoundary.cs",
+                span = new { startLine = index + 1, startColumn = 1, endLine = index + 1, endColumn = 1 },
+                snippetSha256 = new string('e', 64), extractor = new { name = "boundary-test", version = "1" },
+            }, JsonSerializerOptions.Web));
+        }
+
+        lines.Add(JsonSerializer.Serialize(new
+        {
+            schema = "ce.v1", kind = "node", id = "n:boundary", symbolKey = BoundaryKey, nodeKind = "Endpoint",
+            name = "boundary", evidence = evidenceIds,
+        }, JsonSerializerOptions.Web));
+        lines.Add(JsonSerializer.Serialize(new
+        {
+            schema = "ce.v1", kind = "complete", status = "full",
+            counts = new { node = 1, edge = 0, evidence = evidenceCount, calculation = 0, diagnostic = 0 },
+            coverage = new { filesTotal = 1, filesAnalyzed = 1, unresolvedEdges = 0 },
+        }, JsonSerializerOptions.Web));
+        return string.Join('\n', lines) + "\n";
+    }
 }
 
 /// <summary>Builds the two synthetic Postgres-stored model products used by the decision-reference test, mirroring

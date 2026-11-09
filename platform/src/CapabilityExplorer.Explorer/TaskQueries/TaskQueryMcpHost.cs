@@ -121,9 +121,17 @@ public static class TaskQueryMcpHost
         return ToCallToolResult(envelope);
     }
 
-    private static CallToolResult ToCallToolResult(TaskQueryEnvelope envelope)
+    internal static CallToolResult ToCallToolResult(TaskQueryEnvelope envelope)
     {
         var bytes = TaskQueryJson.SerializeBounded(envelope);
+        var result = CallToolResultFor(bytes);
+        if (TaskQueryJson.McpResultFitsWireBound(result)) return result;
+
+        return CallToolResultFor(JsonSerializer.SerializeToUtf8Bytes(TaskQueryJson.LimitEnvelope(envelope), TaskQueryJson.Options));
+    }
+
+    private static CallToolResult CallToolResultFor(byte[] bytes)
+    {
         using var document = JsonDocument.Parse(bytes);
         return new CallToolResult
         {

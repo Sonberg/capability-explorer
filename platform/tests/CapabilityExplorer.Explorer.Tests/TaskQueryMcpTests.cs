@@ -206,6 +206,24 @@ public sealed class TaskQueryMcpGateTests
 /// This is independent lifecycle/parity proof, not the SDK's own self-test and not a fake/golden-only check.</summary>
 public sealed class TaskQueryMcpStdioTests
 {
+    [Theory]
+    [InlineData(350_000, "ok")]
+    [InlineData(700_000, "limit")]
+    public void Mcp_wire_bound_counts_text_and_structured_copies_without_reducing_http_envelope_limit(int dataLength, string expectedMcpStatus)
+    {
+        var envelope = new TaskQueryEnvelope("models_list", "ok", "files", null,
+            new TaskQueryCoverage([], "within-selection-complete"), null, new string('x', dataLength), []);
+        var httpBytes = TaskQueryJson.SerializeBounded(envelope);
+        Assert.Equal("ok", JsonDocument.Parse(httpBytes).RootElement.GetProperty("status").GetString());
+        Assert.True(httpBytes.Length < TaskQueryJson.MaxEnvelopeBytes);
+
+        var result = TaskQueryMcpHost.ToCallToolResult(envelope);
+        Assert.Equal(expectedMcpStatus, result.StructuredContent!.Value.GetProperty("status").GetString());
+        Assert.True(TaskQueryJson.McpResultFitsWireBound(result));
+        var serializedResult = JsonSerializer.SerializeToUtf8Bytes(result, TaskQueryJson.Options);
+        Assert.True(serializedResult.Length + TaskQueryJson.McpResponseFramingBytes <= TaskQueryJson.MaxEnvelopeBytes);
+    }
+
     [Fact]
     public async Task Tools_list_advertises_exactly_the_six_task_query_tools_with_object_input_schemas()
     {

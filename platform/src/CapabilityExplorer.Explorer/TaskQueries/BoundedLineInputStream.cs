@@ -4,9 +4,20 @@ namespace CapabilityExplorer.Explorer;
 /// buffering an unbounded line the way the SDK's own <c>StreamServerTransport.ReadLineAsync</c> does. Cancellation
 /// and end-of-stream pass straight through to the underlying stream; this only ever adds a bound, never changes
 /// what a read returns when it is within bounds.</summary>
-public sealed class BoundedLineInputStream(Stream inner, int maxLineBytes = 65536) : Stream
+public sealed class BoundedLineInputStream : Stream
 {
+    public const int DefaultMaxLineBytes = 65536;
+    private readonly Stream inner;
+    private readonly int maxLineBytes;
     private int _currentLineBytes;
+
+    public BoundedLineInputStream(Stream inner) : this(inner, DefaultMaxLineBytes) { }
+
+    public BoundedLineInputStream(Stream inner, int maxLineBytes)
+    {
+        this.inner = inner;
+        this.maxLineBytes = maxLineBytes;
+    }
 
     public override bool CanRead => true;
     public override bool CanSeek => false;
