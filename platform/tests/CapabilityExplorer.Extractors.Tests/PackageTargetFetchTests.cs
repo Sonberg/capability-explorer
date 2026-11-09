@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Diagnostics;
 using System.Net;
 using System.Text;
 using CapabilityExplorer.Extractors.CSharp;
@@ -95,6 +96,54 @@ public sealed class PackageTargetFetchTests : IDisposable
         var result = new PackageResolver(cache).Resolve(old.PackageRoots(), fetched.Lock.For("App.csproj"), old.TargetFramework);
         Assert.Equal("Root", Assert.Single(result.Resolved).Id);
         Assert.Contains(result.Issues, i => i.Code == "UNRESOLVED_TRANSITIVE_PACKAGE" && i.Message.Contains("Old", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("typescript-only")]
+    [InlineData("test-project-only")]
+    public async Task Legacy_package_fetch_writes_empty_coverage_lock_when_no_production_csharp_projects(string scenario)
+    {
+        var source = Path.Combine(_root,scenario);
+        var packages = Path.Combine(_root,"packages");
+        var lockFile = Path.Combine(_root,scenario + ".lock.json");
+        Directory.CreateDirectory(source);
+        Directory.CreateDirectory(packages);
+        if (scenario == "typescript-only")
+        {
+            File.WriteAllText(Path.Combine(source,"app.ts"),"export const value = 1;");
+        }
+        else
+        {
+            File.WriteAllText(Path.Combine(source,"App.Tests.csproj"),
+                "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework><IsTestProject>true</IsTestProject></PropertyGroup></Project>");
+            File.WriteAllText(Path.Combine(source,"App.Tests.cs"),"public sealed class AppTests {}");
+        }
+
+        var start = new ProcessStartInfo("dotnet")
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            WorkingDirectory = _root
+        };
+        start.ArgumentList.Add(typeof(CSharpExtractor).Assembly.Location);
+        start.ArgumentList.Add("fetch-packages");
+        start.ArgumentList.Add("--source");
+        start.ArgumentList.Add(source);
+        start.ArgumentList.Add("--packages");
+        start.ArgumentList.Add(packages);
+        start.ArgumentList.Add("--lock");
+        start.ArgumentList.Add(lockFile);
+        using var process = Process.Start(start)!;
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await process.WaitForExitAsync(timeout.Token);
+
+        Assert.True(process.ExitCode == 0,"legacy package fetch failed: " + await stderr);
+        Assert.Contains("packages: 0 downloaded, 0 already present, 0 unavailable;",await stdout,StringComparison.Ordinal);
+        Assert.True(File.Exists(lockFile),"legacy fetch must write an empty package lock");
+        Assert.Empty(PackageLock.Load(lockFile).Projects);
     }
 
     private ProjectModel Project(string target)

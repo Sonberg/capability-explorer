@@ -9,26 +9,19 @@ namespace CapabilityExplorer.Extractors.CSharp;
 public sealed record ExtractorOptions(string SourceRoot, string RepositoryId, string CommitSha, string? PackagesRoot, string ReferencePacks, PackageLock? Lock = null, bool IncludeTests = false)
 {
     public Action<ExtractionTiming>? Timing { get; init; }
+    public ProjectSelectionContract? Selection { get; init; }
     internal ExtractionTimer Measure(string stage, int? unit = null) => new(Timing,stage,unit);
 }
 
 public sealed record UnitResult(string UnitPath, string UnitName, string Jsonl);
 
-/// <summary>
-/// Extracts ce.v1 artifacts from C# projects. Semantics come from Roslyn compilations built from the project's
-/// sources, the SDK reference packs and package assemblies found in a packages folder. No restore, build or
-/// analysed code runs. Missing references become diagnostics and a partial status, never guesses.
-/// </summary>
+/// <summary>Extracts ce.v1 artifacts with Roslyn and SDK/package references; never restores, builds, or executes analysed code.</summary>
 public sealed class CSharpExtractor(ExtractorOptions options)
 {
     public static readonly Tool Tool = new("roslyn", "0.2.0");
 
-    /// <summary>
-    /// This build (deterministic, so it changes only with the code) and the Roslyn it runs on. Part of every config hash:
-    /// a changed extractor gets a new analysis key instead of colliding with what an earlier build stored.
-    /// </summary>
-    internal static readonly string Build = ArtifactBuilder.Sha256(
-        $"{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(typeof(CSharpExtractor).Assembly.Location)))}|roslyn={typeof(CSharpCompilation).Assembly.GetName().Version}")[..16];
+    /// <summary>The deterministic extractor build and Roslyn version enter config hashes to prevent stale cache collisions.</summary>
+    internal static readonly string Build = ArtifactBuilder.Sha256($"{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(typeof(CSharpExtractor).Assembly.Location)))}|roslyn={typeof(CSharpCompilation).Assembly.GetName().Version}")[..16];
 
     /// <summary>Errors that only mean "a source generator would have produced this".</summary>
     private static readonly HashSet<string> GeneratorDependent = ["CS8795", "CS8796", "CS8797"];
@@ -42,7 +35,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
     {
         using var total = options.Measure("cs.total");
         using var discovery = options.Measure("cs.projects");
-        var projects = ProjectModel.Discover(options.SourceRoot, options.IncludeTests);
+        var projects = ProjectModel.Discover(options.SourceRoot, options.IncludeTests, options.Selection);
         discovery.Complete();
         discovery.Dispose();
         var compilations = new Dictionary<string, Unit>(StringComparer.Ordinal);
@@ -175,13 +168,10 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             b.Edge(projectKey, "DEPENDS_ON", $"proj|{options.RepositoryId}|{target}", [b.LineEvidence(p.RelativePath, r.Line, projectText)]);
         }
 
-        // Source generators are not run (that would execute package code), so code that relies on them
-        // (e.g. [LoggerMessage] partial methods) reports missing implementations. That is not a gap in the
-        // analysed code: note it once, and do not count it against coverage.
+        // Source generators are not run because they execute package code; report dependent missing implementations without reducing coverage.
         using var diagnosticTiming = options.Measure("cs.diagnostics",unitIndex);
         var errors = unit.Compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error && d.Location.IsInSource && d.Location.SourceTree!.FilePath is { Length: > 0 } and not "<implicit-usings>").ToList();
-        // Roslyn's synthesized tree (the implicit entry point of top-level statements) has no path, so its errors, typically
-        // CS0518 for a missing core library, belong to the project, not to a file.
+        // Errors on Roslyn's pathless synthesized top-level entry point belong to the project, not a file.
         foreach (var d in unit.Compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error && d.Location.IsInSource && d.Location.SourceTree!.FilePath.Length == 0).DistinctBy(d => d.Id))
         {
             b.Diagnostic("warning", $"COMPILER_{d.Id}", d.GetMessage(System.Globalization.CultureInfo.InvariantCulture), null, false);
@@ -331,8 +321,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             }
         }
 
-        // Constructors are methods named after their type. Parameter types of repository types are REFERENCES: "KlarnaOrderInput takes a Cart and a
-        // Quote" is a fact about how data moves, and the only place it is written down. Framework and package types (ILogger, CancellationToken) are not.
+        // Constructor parameter types are repository REFERENCES because they describe data flow; framework/package types are omitted.
         foreach (var decl in file.Tree.GetRoot().DescendantNodes().OfType<ConstructorDeclarationSyntax>())
         {
             if (file.Model.GetDeclaredSymbol(decl) is not IMethodSymbol ctor || ctor.ContainingType.Name.Length == 0)
@@ -434,11 +423,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
         }
     }
 
-    /// <summary>
-    /// <c>new T(...)</c> and <c>: base(...)</c>/<c>: this(...)</c>. A constructor declared in source is CALLED, like any method. A type with no
-    /// declared constructor (default, or a record's primary one) is REFERENCED, since there is no constructor node to point at. Only types of the
-    /// repository are recorded: <c>new List&lt;int&gt;()</c> says nothing about the system.
-    /// </summary>
+    /// <summary>Records constructor calls or type references for repository types; framework/package types are omitted.</summary>
     private static void Creations(ArtifactBuilder b, SymbolKeys keys, SourceFile file)
     {
         foreach (var node in file.Tree.GetRoot().DescendantNodes().Where(n => n is BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax))

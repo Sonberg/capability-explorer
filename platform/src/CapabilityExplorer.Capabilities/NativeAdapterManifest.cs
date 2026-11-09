@@ -6,6 +6,7 @@ namespace CapabilityExplorer.Capabilities;
 public sealed record NativeAdapterLimits(int MaxEntries, int MaxUnits, long MaxFileBytes, long MaxTotalBytes, int MaxDepth);
 
 public sealed record NativeAdapterConfiguration(IReadOnlyList<string> ExcludedPathPrefixes);
+public sealed record NativeAdapterExecution(string SelectionContract, IReadOnlyList<string> Verbs);
 
 public sealed record NativeAdapterManifest(
     string Schema,
@@ -16,7 +17,8 @@ public sealed record NativeAdapterManifest(
     string Toolchain,
     IReadOnlyList<string> SupportedInputProfiles,
     NativeAdapterLimits Limits,
-    NativeAdapterConfiguration Configuration);
+    NativeAdapterConfiguration Configuration,
+    NativeAdapterExecution? Execution = null);
 
 public sealed record AdapterPlanCounts(int Total, int Eligible, int Excluded, int Unsupported, int Unknown);
 
@@ -70,12 +72,16 @@ public static partial class NativeAdapterPlanner
     private const string AdapterId = "csharp.roslyn";
     private const string AdapterVersion = "0.2.0";
     private const string ProjectProfile = "csharp.project.v1";
+    private const string SelectionContract = "ce.csharp.selection.v1";
+    private static readonly string[] SelectedVerbs =
+        ["validate-selected-v1", "fetch-packages-selected-v1", "extract-selected-v1"];
 
     private static readonly JsonSerializerOptions ManifestJson = new(JsonSerializerDefaults.Web)
     {
         MaxDepth = 16,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         RespectRequiredConstructorParameters = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
     public static async Task<NativeAdapterManifest> ReadManifestAsync(
@@ -126,6 +132,13 @@ public static partial class NativeAdapterPlanner
             manifest.Configuration?.ExcludedPathPrefixes is null)
         {
             throw new JsonException("adapter limits or configuration are outside the hard bounds");
+        }
+
+        if (manifest.Execution is { } execution &&
+            (execution.SelectionContract != SelectionContract || execution.Verbs is null ||
+             !execution.Verbs.SequenceEqual(SelectedVerbs, StringComparer.Ordinal)))
+        {
+            throw new JsonException("unsupported or malformed C# selected execution descriptor");
         }
 
         _ = NormalizeExclusions(manifest.Configuration.ExcludedPathPrefixes);

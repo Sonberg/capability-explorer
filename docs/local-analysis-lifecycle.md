@@ -237,10 +237,24 @@ Changing the original configuration after admission does not change the frozen
 request; changing its frozen copy prevents publication. Frozen-input paths are relative
 on disk and resolved beneath the current journal root.
 
+Eligible C# execution is opt-in: one-shot `analysis-run --eligible-csharp 1`
+or the worker's `ELIGIBLE_CSHARP=1` default freezes `EligibleCSharp=true` into
+the accepted run. The default remains `false`, retaining the legacy all-project
+C# shadow behavior. Active execution requires the manifest's closed
+`ce.csharp.selection.v1` descriptor and its three fixed selected verbs. Before
+any package fetch, every repository must have a complete, known, supported C#
+census; a bounded selected-project/source contract is then checked by the
+existing extractor. Selected NuGet fetch and extraction use that same contract,
+while the fixed TypeScript/SQL jobs and full npm lockfile preparation remain
+unchanged. Test projects follow the frozen `includeTests` policy. A failed
+preflight blocks the attempt before package acquisition; it does not imply
+closure of the broader Solution Factory rollout.
+
 Before claiming work, `analysis-worker` publishes its validated non-secret
 defaults: package/locked flags, GitHub auth mode, private-feed credential variable
 names, authorized feed origins, capability-worker and extraction-job ceilings,
-and an optional `INCLUDE_TESTS` override. Explorer copies this profile into each
+an optional `INCLUDE_TESTS` override, and the opt-in `ELIGIBLE_CSHARP` flag.
+Explorer copies this profile into each
 new admission; it receives no credential values or engine socket. Without a profile, standard defaults and the capability's
 `includeTests` apply. A retained profile means last configured defaults, not a
 live worker or permission to execute. Changing it cannot alter queued runs.

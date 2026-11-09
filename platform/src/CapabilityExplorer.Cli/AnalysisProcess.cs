@@ -122,21 +122,24 @@ internal sealed class AnalysisProcess(string root, FileRunStore store, AnalysisR
             if (Environment.GetEnvironmentVariable(name) is { } value) start.Environment[name] = value;
         start.Environment["CE_CONTAINER_ENGINE"] = Environment.GetEnvironmentVariable("CE_CONTAINER_ENGINE") ?? "auto";
         start.Environment["SANDBOX_PASS_ENV"] = "";
-        start.Environment["SANDBOX_SOURCES"] = "";
+        string? sourceMount = null;
+        var selectedNuget = sandbox && argumentList.Contains("fetch-packages-selected-v1", StringComparer.Ordinal);
         var sourceIndex = Array.IndexOf(argumentList,"--source");
-        if (sandbox && argumentList.Contains("--offline",StringComparer.Ordinal) && sourceIndex >= 0 && sourceIndex + 1 < argumentList.Length &&
+        if (sandbox && (argumentList.Contains("--offline",StringComparer.Ordinal) || selectedNuget) &&
+            sourceIndex >= 0 && sourceIndex + 1 < argumentList.Length &&
             argumentList[sourceIndex + 1].StartsWith("/work/",StringComparison.Ordinal))
         {
             var source = Path.GetFullPath(Path.Combine(root,argumentList[sourceIndex + 1][6..]));
             var relative = Path.GetRelativePath(root,source);
             if (Path.IsPathRooted(relative) || relative == ".." || relative.StartsWith("../",StringComparison.Ordinal))
-                throw new IOException("offline source escapes workspace");
+                throw new IOException("selected source escapes workspace");
             AnalysisPreparation.RejectLinks(source);
-            start.Environment["SANDBOX_SOURCES"] = source;
+            sourceMount = source;
         }
         start.Environment["SANDBOX_LABEL"] = Label;
         if (environment is not null) foreach (var pair in environment) start.Environment[pair.Key] = pair.Value;
         if (sandbox) _runtime.ApplyEnvironment(start);
+        start.Environment["SANDBOX_SOURCES"] = sourceMount ?? "";
         var logPath = store.LogPath(run.RunId);
         if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("analysis host requires Linux or macOS");
         lock (_logGate)
