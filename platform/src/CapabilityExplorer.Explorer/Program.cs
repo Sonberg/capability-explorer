@@ -5,6 +5,12 @@ using CapabilityExplorer.Interpretation;
 using CapabilityExplorer.Store;
 using Npgsql;
 
+if (args.Contains("--mcp-stdio", StringComparer.Ordinal))
+{
+    await TaskQueryMcpHost.RunAsync(args.Where(arg => arg != "--mcp-stdio").ToArray());
+    return;
+}
+
 // ce-explorer --artifacts <dir>[,<dir>] (later directories win for the same repository, commit and unit) [--repos <dir>] [--evaluation <report.json>] [--urls http://127.0.0.1:5080]
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
@@ -56,6 +62,7 @@ if (dataSource is not null)
     builder.Services.AddSingleton<DeprecationService>();
     builder.Services.AddSingleton<PostgresDeprecationRemovals>();
 }
+builder.Services.AddTaskQueries(source);
 var intelligence = new Intelligence(interpretation, builder.Configuration["modelSettings"] ?? ModelSettings.DefaultPath,
     dataSource is null ? null : new EmbeddingStore(dataSource), metadataOnly: source == "postgres",
     embeddingConfiguration: source == "postgres"
@@ -101,6 +108,7 @@ app.UseStaticFiles(staticFiles);
 app.MapHealthApi();
 app.MapDeprecationsApi();
 app.MapModelApi(source);
+app.MapTaskQueryApi();
 if (source == "postgres") app.MapPostgresExplorerApi();
 else
 {

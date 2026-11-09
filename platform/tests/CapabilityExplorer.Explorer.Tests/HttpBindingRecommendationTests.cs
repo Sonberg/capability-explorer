@@ -284,7 +284,8 @@ public sealed class HttpBindingRecommendationTests
             var before = await File.ReadAllTextAsync(capabilities);
             var builder = WebApplication.CreateBuilder();
             builder.WebHost.UseTestServer();
-            builder.Services.AddSingleton(new ExplorerState(new ExplorerOptions([Fixtures.ExpectedDirectory], null, null, capabilities, directory.FullName)));
+            builder.Services.AddSingleton(new ExplorerState(new ExplorerOptions([Fixtures.ExpectedDirectory], null, null, capabilities, directory.FullName,
+                RequestsDirectory: Path.Combine(directory.FullName, "requests"))));
             await using var app = builder.Build();
             app.MapBindingPreviewApi();
             await app.StartAsync();

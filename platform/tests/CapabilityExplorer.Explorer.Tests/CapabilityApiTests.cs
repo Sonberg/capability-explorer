@@ -41,6 +41,27 @@ public sealed class CapabilityExplorerFactory : WebApplicationFactory<Program>
         journal.CompleteCheck(owner, new AttemptIdentity(check.RequestId, check.AttemptId!), snapshot);
     }
 
+    /// <summary>Completes a new check attempt where one repository lock failed with a raw, untrusted error
+    /// (as a real git/host failure could echo). Used to prove CompleteCheck's sanitization boundary end to end
+    /// through the public HTTP contract, not just unit-level.</summary>
+    public void CompleteFixtureCheckWithFailedLock(string failingRepoId, string rawError)
+    {
+        var journal = new FileRunStore(RequestsDirectory);
+        journal.AdmitCheck("demand-pricing", ConfigurationPath);
+        using var owner = journal.AcquireWorker();
+        var check = journal.ClaimCheck(owner)!;
+        var snapshot = new CapabilitySnapshot("demand-pricing", DateTimeOffset.UtcNow,
+        [
+            failingRepoId == "forecast-cs"
+                ? new LockedRepository("forecast-cs", "v1-base", null, null, null, rawError)
+                : new LockedRepository("forecast-cs", "v1-base", Fixtures.Lock["forecast-cs"]["v1-base"], null, null, null),
+            failingRepoId == "pricing-node"
+                ? new LockedRepository("pricing-node", "HEAD", null, null, null, rawError)
+                : new LockedRepository("pricing-node", "HEAD", Fixtures.Lock["pricing-node"]["v2-move"], null, null, null),
+        ]);
+        journal.CompleteCheck(owner, new AttemptIdentity(check.RequestId, check.AttemptId!), snapshot);
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("artifacts", Fixtures.ExpectedDirectory);
@@ -74,6 +95,23 @@ public sealed class CapabilityApiTests : IDisposable
         Assert.Equal(Fixtures.Lock["forecast-cs"]["v1-base"], repos["forecast-cs"].GetProperty("lockedSha").GetString());
         Assert.Equal(Fixtures.Lock["pricing-node"]["v2-move"], repos["pricing-node"].GetProperty("lockedSha").GetString());
         Assert.All(repos.Values, r => Assert.True(r.GetProperty("analysed").GetBoolean()));
+    }
+
+    [Fact]
+    public async Task A_failed_repository_lock_never_exposes_the_raw_error_through_the_public_api()
+    {
+        const string rawError = "fatal: could not read Username for 'https://ghp_FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFA12@github.com/acme/forecast-cs.git/': terminal prompts disabled";
+        factory.CompleteFixtureCheckWithFailedLock("forecast-cs", rawError);
+
+        using var response = await _client.GetAsync(new Uri("/api/capabilities/demand-pricing", UriKind.Relative));
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("ghp_", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("Username", body, StringComparison.Ordinal);
+
+        var status = JsonSerializer.Deserialize<JsonElement>(body);
+        var repos = status.GetProperty("repositories").EnumerateArray().ToDictionary(r => r.GetProperty("id").GetString()!);
+        Assert.Equal("source acquisition failed", repos["forecast-cs"].GetProperty("error").GetString());
+        Assert.Equal(Fixtures.Lock["pricing-node"]["v2-move"], repos["pricing-node"].GetProperty("lockedSha").GetString());
     }
 
     [Fact]

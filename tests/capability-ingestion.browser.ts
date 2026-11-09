@@ -500,3 +500,53 @@ test("Given unavailable host account names, when analysis is queued, then automa
     assert.equal(new URL((await analyze).url()).search, "", "automatic host credentials must not send an account name");
   });
 });
+
+test("Given a completed source check with a failed repository lock, when Explorer renders it, then the sanitized reason and recovery guidance are tied to the check, not an analysis run", async () => {
+  await withIngestionPage(async (page, origin) => {
+    const failedCapability = {
+      ...capability,
+      repositories: [{ ...capability.repositories[0], error: "source acquisition failed" }],
+      check: {
+        requestId: "check-f106-gap", capabilityId: "orders", configurationHash: "cfg", state: "done",
+        acceptedAt: "2026-11-07T00:00:00Z", cancellationRequested: false, stale: false,
+        statusUrl: "/api/source-checks/check-f106-gap", duplicate: false,
+      },
+      checkStale: false,
+    };
+    await page.route("**/api/capabilities?*", (route) => route.fulfill({ json: [failedCapability] }));
+    await page.goto(`${origin}#/capabilities`);
+    await page.getByText("source acquisition failed", { exact: false }).waitFor();
+    await page.getByText("Check check-f106-gap could not lock this repository. Verify its location, ref and access, then view the host worker logs before retrying.", { exact: false }).waitFor();
+    const pageText = await page.textContent("body");
+    assert.ok(pageText, "page body must render");
+    assert.ok(!/ghp_|github_pat_|Bearer\s/.test(pageText), "no token value or credential material may ever reach the rendered page");
+    assert.equal(await page.getByText(/^Run\s+\S+\s+·/).count(), 0, "a repository check failure must not invent or render an analysis run/stage identity");
+  });
+});
+
+// Backend provenance check (Capabilities.cs `Status`): `repositories[].error` is only ever populated from
+// `check.Snapshot` when the capability's `check` is `{ State: "done", Stale: false, CancellationRequested: false }`
+// — the same object serialized as `check` on this response. The real API therefore cannot send a stale/in-progress/
+// cancelled `check` alongside a populated `error`. This test defends the client independently of that backend
+// guarantee: if the two ever desynchronize, Explorer must never attribute a failure reason to a request ID that is
+// stale, still running or cancelled.
+test("Given a stale or in-progress check paired with a repository error, when Explorer renders it, then no check identity is claimed for that reason", async () => {
+  await withIngestionPage(async (page, origin) => {
+    const staleCapability = {
+      ...capability,
+      repositories: [{ ...capability.repositories[0], error: "source acquisition failed" }],
+      check: {
+        requestId: "check-superseded", capabilityId: "orders", configurationHash: "cfg", state: "queued",
+        acceptedAt: "2026-11-07T00:00:00Z", cancellationRequested: false, stale: false,
+        statusUrl: "/api/source-checks/check-superseded", duplicate: false,
+      },
+      checkStale: true,
+    };
+    await page.route("**/api/capabilities?*", (route) => route.fulfill({ json: [staleCapability] }));
+    await page.goto(`${origin}#/capabilities`);
+    await page.getByText("source acquisition failed", { exact: false }).waitFor();
+    await page.getByText("Verify this repository's location, ref and access, then view the latest check's host worker logs before retrying.", { exact: false }).waitFor();
+    assert.equal(await page.getByText("could not lock this repository", { exact: false }).count(), 0,
+      "a reason must never be attributed to a specific check's request ID while that check is stale, in progress or cancelled");
+  });
+});

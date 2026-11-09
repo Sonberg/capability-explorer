@@ -269,7 +269,22 @@ export function Capabilities() {
               </span>,
               <Mono className="text-xs">{r.ref}</Mono>,
               r.error ? (
-                <span className="text-xs text-red-700 dark:text-red-300">{r.error}</span>
+                <span className="text-xs text-red-700 dark:text-red-300">
+                  {r.error}
+                  {c.check && c.check.state === "done" && !c.checkStale && !c.check.cancellationRequested ? (
+                    <span className="block text-zinc-500">
+                      Check <Mono>{c.check.requestId}</Mono> could not lock this repository. Verify its location, ref
+                      and access, then view the host worker logs before retrying.
+                    </span>
+                  ) : (
+                    // The check that produced this reason is not (or no longer) the fresh, completed one: never
+                    // attribute it to a specific request ID that may be stale, in progress or cancelled.
+                    <span className="block text-zinc-500">
+                      Verify this repository's location, ref and access, then view the latest check's host worker
+                      logs before retrying.
+                    </span>
+                  )}
+                </span>
               ) : r.lockedSha ? (
                 <span className="text-xs">
                   <Mono>{shortSha(r.lockedSha)}</Mono> <span className="text-zinc-500">{r.lockedSubject}</span>
