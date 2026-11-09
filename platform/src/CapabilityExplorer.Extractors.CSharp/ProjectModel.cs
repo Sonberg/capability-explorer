@@ -17,7 +17,11 @@ public sealed record PackageRef(string Id, string? Version, int Line)
     public bool UnsupportedAssets { get; init; }
 }
 
-public sealed record ProjectRef(string Include, string? ResolvedPath, int Line);
+public sealed record ProjectRef(string Include, string? ResolvedPath, int Line)
+{
+    /// <summary>False keeps the declared dependency but omits its compile symbols, including unsupported metadata.</summary>
+    public bool ReferenceOutputAssembly { get; init; } = true;
+}
 
 /// <summary>
 /// A C# project read from its .csproj as plain XML. MSBuild is never evaluated: the analysed repository could
@@ -345,7 +349,6 @@ public sealed record ProjectModel(
         var project = doc.Root!;
         string? Prop(string name) => project.Descendants().FirstOrDefault(e => e.Name.LocalName == name)?.Value.Trim();
         int Line(XElement e) => ((System.Xml.IXmlLineInfo)e).LineNumber;
-
         static bool Conditional(XElement e) => e.AncestorsAndSelf().Any(x => x.Attribute("Condition") is not null);
         var issues = new List<ResolutionIssue>();
         var targets = project.Descendants().Where(e => e.Name.LocalName is "TargetFramework" or "TargetFrameworks").ToList();
@@ -355,20 +358,17 @@ public sealed record ProjectModel(
         {
             issues.Add(new("UNSUPPORTED_TARGET_FRAMEWORK", "A single literal, unconditional TargetFramework is required; MSBuild properties, imports and multi-targeting are not evaluated"));
         }
-
         var conditionalReferences = project.Descendants().Where(e => e.Name.LocalName is "PackageReference" or "ProjectReference" or "FrameworkReference").Where(Conditional).ToList();
         if (conditionalReferences.Count > 0)
         {
             issues.Add(new("UNSUPPORTED_CONDITIONAL_REFERENCES", "Conditional package/project/framework references are omitted because MSBuild conditions are not evaluated"));
         }
-
         var frameworks = project.Descendants().Where(e => e.Name.LocalName == "FrameworkReference" && !Conditional(e))
             .Select(e => (string?)e.Attribute("Include")).OfType<string>().Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
         foreach (var framework in frameworks.Where(f => f is not "Microsoft.NETCore.App" and not "Microsoft.AspNetCore.App"))
         {
             issues.Add(new("UNSUPPORTED_FRAMEWORK_REFERENCE", $"FrameworkReference {framework} is not supported by this static extractor"));
         }
-
         var dir = Path.GetDirectoryName(path)!;
         var central = CentralVersions(root, dir, issues);
         static bool AssetControls(XElement e) => e.Attributes().Any(a => a.Name.LocalName is "IncludeAssets" or "ExcludeAssets" or "PrivateAssets")
@@ -391,10 +391,19 @@ public sealed record ProjectModel(
             {
                 var include = ((string?)e.Attribute("Include") ?? "").Replace('\\', '/');
                 var full = Path.GetFullPath(Path.Combine(dir, include));
-                return new ProjectRef(include, File.Exists(full) ? full : null, Line(e));
+                var metadata = e.Elements().Where(c => c.Name.LocalName == "ReferenceOutputAssembly").ToArray();
+                var values = e.Attributes().Where(a => a.Name.LocalName == "ReferenceOutputAssembly")
+                    .Select(a => a.Value).Concat(metadata.Select(c => c.Value)).ToArray();
+                var output = true;
+                if (values.Length > 1 || metadata.Any(c => Conditional(c) || c.HasElements)
+                    || values.Length == 1 && !bool.TryParse(values[0].Trim(), out output))
+                {
+                    output = false;
+                    issues.Add(new("UNSUPPORTED_PROJECT_REFERENCE_METADATA", $"Project reference {include} requires a single literal, unconditional ReferenceOutputAssembly value; its compile symbols are omitted"));
+                }
+                return new ProjectRef(include, File.Exists(full) ? full : null, Line(e)) { ReferenceOutputAssembly = output };
             })
             .ToList();
-
         // Default compile items: every .cs under the project directory, minus bin/obj and nested projects.
         var nested = allProjectDirs.Where(d => d != dir && d.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.Ordinal)).ToList();
         var sources = boundedSources
@@ -403,7 +412,6 @@ public sealed record ProjectModel(
                 .Where(f => !Ignored(Path.GetRelativePath(dir, f)) && !nested.Any(n => f.StartsWith(n + Path.DirectorySeparatorChar, StringComparison.Ordinal)))
                 .Order(StringComparer.Ordinal)
                 .ToList();
-
         var sdkAttr = project.Attribute("Sdk");
         var outputType = Prop("OutputType");
         var sdk = sdkAttr?.Value ?? "Microsoft.NET.Sdk";
@@ -437,7 +445,6 @@ public sealed record ProjectModel(
                 || sdk.Contains("Web", StringComparison.OrdinalIgnoreCase) || sdk.Contains("Worker", StringComparison.OrdinalIgnoreCase),
         };
     }
-
     private sealed record ProjectSelectionContractInput(string Path, string Sha256);
 
     /// <summary>Central package management: Directory.Packages.props in the project directory or above (within root).</summary>
@@ -451,7 +458,6 @@ public sealed record ProjectModel(
             {
                 continue;
             }
-
             var versions = XDocument.Load(props).Descendants().Where(e => e.Name.LocalName == "PackageVersion").ToList();
             var conditionalIds = versions.Where(e => e.AncestorsAndSelf().Any(x => x.Attribute("Condition") is not null))
                 .Select(e => (string?)e.Attribute("Include")).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -459,7 +465,6 @@ public sealed record ProjectModel(
             {
                 issues.Add(new("UNSUPPORTED_CENTRAL_PACKAGE_CONDITIONS", "Packages with conditional central PackageVersion declarations are omitted because MSBuild conditions are not evaluated"));
             }
-
             foreach (var e in versions)
             {
                 if ((string?)e.Attribute("Include") is { } id && (string?)e.Attribute("Version") is { } v)
@@ -467,13 +472,10 @@ public sealed record ProjectModel(
                     if (!conditionalIds.Contains(id)) result.TryAdd(id.ToLowerInvariant(), v);
                 }
             }
-
             break;
         }
-
         return result;
     }
-
     /// <summary>The global usings the SDK generates for ImplicitUsings=enable.</summary>
     public IReadOnlyList<string> ImplicitNamespaces()
     {
@@ -481,7 +483,6 @@ public sealed record ProjectModel(
         {
             return [];
         }
-
         List<string> ns = ["System", "System.Collections.Generic", "System.IO", "System.Linq", "System.Net.Http", "System.Threading", "System.Threading.Tasks"];
         if (IsWeb)
         {
@@ -492,7 +493,6 @@ public sealed record ProjectModel(
         {
             ns.AddRange(["Microsoft.Extensions.Configuration", "Microsoft.Extensions.DependencyInjection", "Microsoft.Extensions.Hosting", "Microsoft.Extensions.Logging"]);
         }
-
         return ns;
     }
 }

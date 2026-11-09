@@ -66,6 +66,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             var projectReferenceInputs = new List<string>();
             foreach (var r in p.ProjectReferences)
             {
+                if (!r.ReferenceOutputAssembly) continue;
                 var target = r.ResolvedPath is null ? null : projects.FirstOrDefault(x => x.FullPath == r.ResolvedPath);
                 projectReferenceInputs.Add(target is null ? $"{r.Include}:missing" : $"{target.RelativePath}:{ArtifactBuilder.Sha256(File.ReadAllText(target.FullPath))}");
                 if (target is null || visiting.Contains(target.FullPath))
