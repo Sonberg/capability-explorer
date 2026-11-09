@@ -11,6 +11,11 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Source-check lock failures now show bounded repository/ref/access recovery
+  guidance in the existing capability view, without inventing an analysis run.
+  Browser tests cover that UI boundary; a separate real journal-to-HTTP test
+  confirms the existing public error sanitization.
+
 - Six deny-default, bounded task-evidence queries over file and PostgreSQL
   snapshots, shared by HTTP and an isolated MCP stdio entry point. Results
   distinguish candidates, incomplete coverage and typed failures; source
