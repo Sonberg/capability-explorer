@@ -1,0 +1,1417 @@
+{
+  "openapi": "3.2.1",
+  "jsonSchemaDialect": "https://spec.openapis.org/oas/3.2/dialect/2026-02-26",
+  "info": {
+    "title": "Capability Explorer bounded task queries",
+    "version": "0.1.0-design",
+    "description": "Design-only read surface for six bounded, read-only task-query operations over an immutable, capability-scoped snapshot: snapshot.resolve, models.list, decision.refs, contract.consumers, evidence.list, source.excerpt. Every result, including every error, is the one ce.task-query.v1 envelope; access is deny-by-default and never widened by a caller-supplied selection."
+  },
+  "x-design-only": true,
+  "x-deployment-blockers": [
+    "Authentication, network exposure, and per-caller rate limiting beyond the fixed four-concurrent-call stdio gate are unresolved.",
+    "Operator opt-in configuration (TaskQueries:Operations[] / TaskQueries:Repositories[]) must be reviewed before any non-empty grant is deployed.",
+    "A missing OpenAPI security requirement is not approval for anonymous exposure; deployment remains blocked."
+  ],
+  "x-product-semantics": "Every operation after snapshot.resolve requires the snapshot id and generation snapshot.resolve returned; a mismatch is reported as stale, never silently re-resolved. contract.consumers candidates are structural, HttpLink-candidate matches only (label 'candidate'): they do not assert compatibility, binding, or observed communication, and are never counted as parity with existing HttpLink data. decision.refs targets are similarly unreviewed until a human marks them so.",
+  "paths": {
+    "/api/tasks/v1/snapshot": {
+      "get": {
+        "operationId": "snapshotResolve",
+        "summary": "Resolve the current (or a pinned) capability-scoped snapshot",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cap"
+          },
+          {
+            "$ref": "#/components/parameters/View"
+          },
+          {
+            "$ref": "#/components/parameters/PinnedSnapshotId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/SnapshotResolveResult"
+          }
+        }
+      }
+    },
+    "/api/tasks/v1/models": {
+      "get": {
+        "operationId": "modelsList",
+        "summary": "List model products visible in a resolved snapshot",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SnapshotId"
+          },
+          {
+            "$ref": "#/components/parameters/Generation"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "bpmn",
+                "dmn"
+              ]
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ModelsListResult"
+          }
+        }
+      }
+    },
+    "/api/tasks/v1/models/decision-references": {
+      "get": {
+        "operationId": "decisionReferences",
+        "summary": "Resolve BPMN decision references for one model",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SnapshotId"
+          },
+          {
+            "$ref": "#/components/parameters/Generation"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ModelId"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/DecisionReferencesResult"
+          }
+        }
+      }
+    },
+    "/api/tasks/v1/contracts/consumers": {
+      "get": {
+        "operationId": "contractConsumers",
+        "summary": "List HTTP-link candidate consumers for one endpoint key",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SnapshotId"
+          },
+          {
+            "$ref": "#/components/parameters/Generation"
+          },
+          {
+            "name": "endpoint",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ContractConsumersResult"
+          }
+        }
+      }
+    },
+    "/api/tasks/v1/evidence": {
+      "get": {
+        "operationId": "evidenceList",
+        "summary": "List evidence entries recorded for one symbol key",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SnapshotId"
+          },
+          {
+            "$ref": "#/components/parameters/Generation"
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EvidenceListResult"
+          }
+        }
+      }
+    },
+    "/api/tasks/v1/source": {
+      "get": {
+        "operationId": "sourceExcerpt",
+        "summary": "Read a bounded, cited-file source excerpt",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SnapshotId"
+          },
+          {
+            "$ref": "#/components/parameters/Generation"
+          },
+          {
+            "name": "repo",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/RepositoryId"
+            }
+          },
+          {
+            "name": "commit",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CommitSha"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/SourceExcerptResult"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "Cap": {
+        "name": "cap",
+        "in": "query",
+        "required": false,
+        "description": "Capability id scoping the resolved selection; defaults to '*' (every repository the operator has granted).",
+        "schema": {
+          "type": "string",
+          "maxLength": 100
+        }
+      },
+      "View": {
+        "name": "view",
+        "in": "query",
+        "required": false,
+        "description": "Comma-separated repo:commit overrides; each pair must already be within the capability's own scope or resolution fails invalid.",
+        "schema": {
+          "type": "string",
+          "maxLength": 16384
+        }
+      },
+      "PinnedSnapshotId": {
+        "name": "snapshot",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "$ref": "#/components/schemas/SnapshotId"
+        }
+      },
+      "SnapshotId": {
+        "name": "snapshot",
+        "in": "query",
+        "required": true,
+        "description": "The snapshot id snapshot.resolve returned; every later operation is pinned to it.",
+        "schema": {
+          "$ref": "#/components/schemas/SnapshotId"
+        }
+      },
+      "Generation": {
+        "name": "generation",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 20
+        }
+      },
+      "Cursor": {
+        "name": "cursor",
+        "in": "query",
+        "required": false,
+        "description": "Opaque cursor bound to this operation, the policy digest and the filter; invalidated by either changing.",
+        "schema": {
+          "type": "string",
+          "maxLength": 512
+        }
+      }
+    },
+    "schemas": {
+      "SnapshotId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 36
+      },
+      "RepositoryId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "CommitSha": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$"
+      },
+      "ModelId": {
+        "type": "string",
+        "minLength": 70,
+        "maxLength": 70
+      },
+      "TaskQueryDiagnostic": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "TaskQuerySnapshotSelection": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repo",
+          "sha"
+        ],
+        "properties": {
+          "repo": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "sha": {
+            "$ref": "#/components/schemas/CommitSha"
+          }
+        }
+      },
+      "TaskQuerySnapshotInfo": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "generation",
+          "selection",
+          "selectionDigest",
+          "freshness",
+          "currentId"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/SnapshotId"
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "selection": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskQuerySnapshotSelection"
+            }
+          },
+          "selectionDigest": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "freshness": {
+            "enum": [
+              "current",
+              "superseded"
+            ]
+          },
+          "currentId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "TaskQueryCoverage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repositories",
+          "completeness",
+          "outsideSelection"
+        ],
+        "properties": {
+          "repositories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "repositoryId",
+                "commitSha",
+                "status"
+              ],
+              "properties": {
+                "repositoryId": {
+                  "$ref": "#/components/schemas/RepositoryId"
+                },
+                "commitSha": {
+                  "$ref": "#/components/schemas/CommitSha"
+                },
+                "status": {
+                  "enum": [
+                    "full",
+                    "partial",
+                    "denied",
+                    "missing"
+                  ]
+                }
+              }
+            }
+          },
+          "completeness": {
+            "enum": [
+              "within-selection-complete",
+              "not-established"
+            ]
+          },
+          "outsideSelection": {
+            "type": "string"
+          }
+        }
+      },
+      "TaskQueryPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "limit",
+          "nextCursor",
+          "total"
+        ],
+        "properties": {
+          "limit": {
+            "type": "integer"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "total": {}
+        }
+      },
+      "TaskQueryEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operation",
+          "status",
+          "mode",
+          "coverage",
+          "diagnostics",
+          "schema"
+        ],
+        "properties": {
+          "operation": {
+            "enum": [
+              "snapshot_resolve",
+              "models_list",
+              "decision_references",
+              "contract_consumers",
+              "evidence_list",
+              "source_excerpt"
+            ]
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "partial",
+              "missing",
+              "stale",
+              "denied",
+              "invalid",
+              "limit",
+              "cancelled",
+              "unavailable"
+            ]
+          },
+          "mode": {
+            "enum": [
+              "files",
+              "database"
+            ]
+          },
+          "snapshot": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskQuerySnapshotInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/TaskQueryCoverage"
+          },
+          "page": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskQueryPage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {},
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskQueryDiagnostic"
+            }
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "schema": {
+            "const": "ce.task-query.v1"
+          }
+        }
+      },
+      "ModelSourceStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "sha256"
+        ],
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ModelSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "repositoryId",
+          "commitSha",
+          "unitPath",
+          "modelKind",
+          "coverage",
+          "diagnosticCount",
+          "source"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "authored",
+              "candidate"
+            ]
+          },
+          "repositoryId": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "commitSha": {
+            "$ref": "#/components/schemas/CommitSha"
+          },
+          "unitPath": {
+            "type": "string"
+          },
+          "modelKind": {
+            "enum": [
+              "bpmn",
+              "dmn",
+              "candidate"
+            ]
+          },
+          "coverage": {
+            "type": "string"
+          },
+          "diagnosticCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source": {
+            "$ref": "#/components/schemas/ModelSourceStatus"
+          }
+        }
+      },
+      "TaskQueryDecisionTarget": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "modelId",
+          "decisionId"
+        ],
+        "properties": {
+          "modelId": {
+            "type": "string"
+          },
+          "decisionId": {
+            "type": "string"
+          }
+        }
+      },
+      "TaskQueryDecisionReference": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "modelId",
+          "elementId",
+          "label",
+          "reference",
+          "status",
+          "target",
+          "evidenceClass",
+          "reviewed"
+        ],
+        "properties": {
+          "modelId": {
+            "$ref": "#/components/schemas/ModelId"
+          },
+          "elementId": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "missing",
+              "ambiguous",
+              "denied",
+              "external"
+            ]
+          },
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskQueryDecisionTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidenceClass": {
+            "const": "authored-model-reference"
+          },
+          "reviewed": {
+            "const": false
+          }
+        }
+      },
+      "EvidenceDto": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "repositoryId",
+          "commitSha",
+          "path",
+          "startLine",
+          "startColumn",
+          "endLine",
+          "endColumn"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "repositoryId": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "commitSha": {
+            "$ref": "#/components/schemas/CommitSha"
+          },
+          "path": {
+            "type": "string"
+          },
+          "startLine": {
+            "type": "integer"
+          },
+          "startColumn": {
+            "type": "integer"
+          },
+          "endLine": {
+            "type": "integer"
+          },
+          "endColumn": {
+            "type": "integer"
+          }
+        }
+      },
+      "TaskQueryConsumerDto": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "consumer",
+          "edge",
+          "connection",
+          "configuration",
+          "evidence",
+          "assertionClass"
+        ],
+        "properties": {
+          "consumer": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "key",
+              "name",
+              "kind",
+              "repositoryId",
+              "commitSha"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "unresolved",
+                  "symbol"
+                ]
+              },
+              "repositoryId": {
+                "$ref": "#/components/schemas/RepositoryId"
+              },
+              "commitSha": {
+                "$ref": "#/components/schemas/CommitSha"
+              }
+            }
+          },
+          "edge": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "relation",
+              "resolution",
+              "unresolvedReason"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "relation": {
+                "type": "string"
+              },
+              "resolution": {
+                "enum": [
+                  "unresolved",
+                  "candidate"
+                ]
+              },
+              "unresolvedReason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "connection": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "structuralCompatibility",
+              "semanticCorrespondence",
+              "configuredBinding",
+              "observedCommunication"
+            ],
+            "properties": {
+              "structuralCompatibility": {
+                "const": "evidenced"
+              },
+              "semanticCorrespondence": {
+                "const": "not-established"
+              },
+              "configuredBinding": {
+                "enum": [
+                  "evidenced",
+                  "not-established"
+                ]
+              },
+              "observedCommunication": {
+                "const": "no-observation-in-inputs"
+              }
+            }
+          },
+          "configuration": {
+            "type": "object"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvidenceDto"
+            }
+          },
+          "assertionClass": {
+            "const": "candidate"
+          }
+        }
+      },
+      "TaskQuerySourceExcerpt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repo",
+          "commit",
+          "path",
+          "highlightStart",
+          "highlightEnd",
+          "totalLines",
+          "lines"
+        ],
+        "properties": {
+          "repo": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "commit": {
+            "$ref": "#/components/schemas/CommitSha"
+          },
+          "path": {
+            "type": "string"
+          },
+          "highlightStart": {
+            "type": "integer"
+          },
+          "highlightEnd": {
+            "type": "integer"
+          },
+          "totalLines": {
+            "type": "integer"
+          },
+          "lines": {
+            "type": "array",
+            "maxItems": 216,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "n",
+                "text"
+              ],
+              "properties": {
+                "n": {
+                  "type": "integer"
+                },
+                "text": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "SnapshotResolveResult": {
+        "description": "The resolved snapshot (or the one denied/invalid envelope describing why none was resolved).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/TaskQueryEnvelope"
+            },
+            "examples": {
+              "synthetic": {
+                "$ref": "#/components/examples/SnapshotResolveResult"
+              }
+            }
+          }
+        }
+      },
+      "ModelsListResult": {
+        "description": "A bounded page of model summaries from the resolved snapshot.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/TaskQueryEnvelope"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ModelSummary"
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "examples": {
+              "synthetic": {
+                "$ref": "#/components/examples/ModelsListResult"
+              }
+            }
+          }
+        }
+      },
+      "DecisionReferencesResult": {
+        "description": "Every decision reference resolved (or not) for one model.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/TaskQueryEnvelope"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TaskQueryDecisionReference"
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "examples": {
+              "synthetic": {
+                "$ref": "#/components/examples/DecisionReferencesResult"
+              }
+            }
+          }
+        }
+      },
+      "ContractConsumersResult": {
+        "description": "A bounded page of HTTP-link candidate consumers for one endpoint key.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/TaskQueryEnvelope"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TaskQueryConsumerDto"
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "examples": {
+              "synthetic": {
+                "$ref": "#/components/examples/ContractConsumersResult"
+              }
+            }
+          }
+        }
+      },
+      "EvidenceListResult": {
+        "description": "A bounded page of evidence entries for one symbol key.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/TaskQueryEnvelope"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EvidenceDto"
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "examples": {
+              "synthetic": {
+                "$ref": "#/components/examples/EvidenceListResult"
+              }
+            }
+          }
+        }
+      },
+      "SourceExcerptResult": {
+        "description": "A bounded, cited-file source excerpt.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/TaskQueryEnvelope"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/TaskQuerySourceExcerpt"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            "examples": {
+              "synthetic": {
+                "$ref": "#/components/examples/SourceExcerptResult"
+              }
+            }
+          }
+        }
+      }
+    },
+    "examples": {
+      "SnapshotResolveResult": {
+        "summary": "Synthetic resolved snapshot, full default capability",
+        "value": {
+          "schema": "ce.task-query.v1",
+          "operation": "snapshot_resolve",
+          "status": "ok",
+          "mode": "files",
+          "snapshot": {
+            "id": "b3b2c4d4-6a2b-4c7e-9a6a-2a7c4a9c0a11",
+            "generation": 7,
+            "selection": [
+              {
+                "repo": "shop-cs",
+                "sha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              }
+            ],
+            "selectionDigest": "3b1e3d6a4c2f7e8b9d0a1c2e3f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5ca",
+            "freshness": "current",
+            "currentId": "b3b2c4d4-6a2b-4c7e-9a6a-2a7c4a9c0a11"
+          },
+          "coverage": {
+            "repositories": [
+              {
+                "repositoryId": "shop-cs",
+                "commitSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+                "status": "full"
+              }
+            ],
+            "completeness": "within-selection-complete",
+            "outsideSelection": "unknown"
+          },
+          "page": null,
+          "data": null,
+          "diagnostics": [],
+          "reason": null
+        }
+      },
+      "ModelsListResult": {
+        "summary": "Synthetic bounded models page",
+        "value": {
+          "schema": "ce.task-query.v1",
+          "operation": "models_list",
+          "status": "ok",
+          "mode": "files",
+          "snapshot": {
+            "id": "b3b2c4d4-6a2b-4c7e-9a6a-2a7c4a9c0a11",
+            "generation": 7,
+            "selection": [
+              {
+                "repo": "shop-cs",
+                "sha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              }
+            ],
+            "selectionDigest": "3b1e3d6a4c2f7e8b9d0a1c2e3f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5ca",
+            "freshness": "current",
+            "currentId": "b3b2c4d4-6a2b-4c7e-9a6a-2a7c4a9c0a11"
+          },
+          "coverage": {
+            "repositories": [
+              {
+                "repositoryId": "shop-cs",
+                "commitSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+                "status": "full"
+              }
+            ],
+            "completeness": "within-selection-complete",
+            "outsideSelection": "unknown"
+          },
+          "page": {
+            "limit": 20,
+            "nextCursor": null,
+            "total": 1
+          },
+          "data": [
+            {
+              "id": "p-order-shipment",
+              "kind": "authored",
+              "repositoryId": "shop-cs",
+              "commitSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+              "unitPath": "src/order.bpmn",
+              "modelKind": "bpmn",
+              "coverage": "within-selection-complete",
+              "diagnosticCount": 0,
+              "source": {
+                "status": "available",
+                "sha256": "9f0e1d2c3b4a5968778695a4b3c2d1e0f9e8d7c6b5a493827160fedcba09876"
+              }
+            }
+          ],
+          "diagnostics": [],
+          "reason": null
+        }
+      },
+      "DecisionReferencesResult": {
+        "summary": "Synthetic decision reference resolution, one resolved and one missing",
+        "value": {
+          "schema": "ce.task-query.v1",
+          "operation": "decision_references",
+          "status": "partial",
+          "mode": "files",
+          "snapshot": {
+            "id": "b3b2c4d4-6a2b-4c7e-9a6a-2a7c4a9c0a11",
+            "generation": 7,
+            "selection": [
+              {
+                "repo": "shop-cs",
+                "sha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              }
+            ],
+            "selectionDigest": "3b1e3d6a4c2f7e8b9d0a1c2e3f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5ca",
+            "freshness": "current",
+            "currentId": "b3b2c4d4-6a2b-4c7e-9a6a-2a7c4a9c0a11"
+          },
+          "coverage": {
+            "repositories": [
+              {
+                "repositoryId": "shop-cs",
+                "commitSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+                "status": "full"
+              }
+            ],
+            "completeness": "within-selection-complete",
+            "outsideSelection": "unknown"
+          },
+          "page": null,
+          "data": [
+            {
+              "modelId": "7e8b9d0a1c2e3f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c",
+              "elementId": "Flow_1",
+              "label": "approved?",
+              "reference": "dec-approve",
+              "status": "available",
+              "target": {
+                "modelId": "9a0b1c2d3e4f5061728394a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8",
+                "decisionId": "dec-approve"
+              },
+              "evidenceClass": "authored-model-reference",
+              "reviewed": false
+            },
+            {
+              "modelId": "7e8b9d0a1c2e3f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c",
+              "elementId": "Flow_2",
+              "label": "reject?",
+              "reference": "dec-reject",
+              "status": "missing",
+              "target": null,
+              "evidenceClass": "authored-model-reference",
+              "reviewed": false
+            }
+          ],
+          "diagnostics": [],
+          "reason": null
+        }
+      },
+      "ContractConsumersResult": {
+        "summary": "Synthetic HTTP-link candidate consumer, unresolved",
+        "value": {
+          "schema": "ce.task-query.v1",
+          "operation": "contract_consumers",
+          "status": "ok",
+          "mode": "files",
+          "snapshot": {
+            "id": "b3b2c4d4-6a2b-4c7e-9a6a-2a7c4a9c0a11",
+            "generation": 7,
+            "selection": [
+              {
+                "repo": "shop-cs",
+                "sha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              }
+            ],
+            "selectionDigest": "3b1e3d6a4c2f7e8b9d0a1c2e3f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5ca",
+            "freshness": "current",
+            "currentId": "b3b2c4d4-6a2b-4c7e-9a6a-2a7c4a9c0a11"
+          },
+          "coverage": {
+            "repositories": [
+              {
+                "repositoryId": "shop-cs",
+                "commitSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+                "status": "full"
+              }
+            ],
+            "completeness": "within-selection-complete",
+            "outsideSelection": "unknown"
+          },
+          "page": {
+            "limit": 20,
+            "nextCursor": null,
+            "total": 1
+          },
+          "data": [
+            {
+              "consumer": {
+                "key": "shop-stubs",
+                "name": "shop-stubs",
+                "kind": "unresolved",
+                "repositoryId": "shop-cs",
+                "commitSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              },
+              "edge": {
+                "id": "4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5061728394a5b6c7d8e9f0a1b2c3",
+                "relation": "calls",
+                "resolution": "unresolved",
+                "unresolvedReason": "no matching candidate symbol"
+              },
+              "connection": {
+                "structuralCompatibility": "unknown",
+                "semanticCorrespondence": "not-established",
+                "configuredBinding": "not-established",
+                "observedCommunication": "no-observation-in-inputs"
+              },
+              "configuration": {},
+              "evidence": [
+                {
+                  "id": "ev-1",
+                  "repositoryId": "shop-cs",
+                  "commitSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+                  "path": "src/order.cs",
+                  "startLine": 10,
+                  "startColumn": 1,
+                  "endLine": 12,
+                  "endColumn": 2
+                }
+              ],
+              "assertionClass": "candidate"
+            }
+          ],
+          "diagnostics": [],
+          "reason": null
+        }
+      },
+      "EvidenceListResult": {
+        "summary": "Synthetic evidence page",
+        "value": {
+          "schema": "ce.task-query.v1",
+          "operation": "evidence_list",
+          "status": "ok",
+          "mode": "files",
+          "snapshot": {
+            "id": "b3b2c4d4-6a2b-4c7e-9a6a-2a7c4a9c0a11",
+            "generation": 7,
+            "selection": [
+              {
+                "repo": "shop-cs",
+                "sha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              }
+            ],
+            "selectionDigest": "3b1e3d6a4c2f7e8b9d0a1c2e3f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5ca",
+            "freshness": "current",
+            "currentId": "b3b2c4d4-6a2b-4c7e-9a6a-2a7c4a9c0a11"
+          },
+          "coverage": {
+            "repositories": [
+              {
+                "repositoryId": "shop-cs",
+                "commitSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+                "status": "full"
+              }
+            ],
+            "completeness": "within-selection-complete",
+            "outsideSelection": "unknown"
+          },
+          "page": {
+            "limit": 20,
+            "nextCursor": null,
+            "total": 1
+          },
+          "data": [
+            {
+              "id": "ev-1",
+              "repositoryId": "shop-cs",
+              "commitSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+              "path": "src/order.cs",
+              "startLine": 10,
+              "startColumn": 1,
+              "endLine": 12,
+              "endColumn": 2
+            }
+          ],
+          "diagnostics": [],
+          "reason": null
+        }
+      },
+      "SourceExcerptResult": {
+        "summary": "Synthetic bounded source excerpt",
+        "value": {
+          "schema": "ce.task-query.v1",
+          "operation": "source_excerpt",
+          "status": "ok",
+          "mode": "files",
+          "snapshot": {
+            "id": "b3b2c4d4-6a2b-4c7e-9a6a-2a7c4a9c0a11",
+            "generation": 7,
+            "selection": [
+              {
+                "repo": "shop-cs",
+                "sha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+              }
+            ],
+            "selectionDigest": "3b1e3d6a4c2f7e8b9d0a1c2e3f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5ca",
+            "freshness": "current",
+            "currentId": "b3b2c4d4-6a2b-4c7e-9a6a-2a7c4a9c0a11"
+          },
+          "coverage": {
+            "repositories": [
+              {
+                "repositoryId": "shop-cs",
+                "commitSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+                "status": "full"
+              }
+            ],
+            "completeness": "within-selection-complete",
+            "outsideSelection": "unknown"
+          },
+          "page": null,
+          "data": {
+            "repo": "shop-cs",
+            "commit": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "path": "src/order.cs",
+            "highlightStart": 10,
+            "highlightEnd": 12,
+            "totalLines": 40,
+            "lines": [
+              {
+                "n": 6,
+                "text": "public sealed class Order"
+              },
+              {
+                "n": 10,
+                "text": "    public void Approve()"
+              }
+            ]
+          },
+          "diagnostics": [],
+          "reason": null
+        }
+      }
+    }
+  }
+}

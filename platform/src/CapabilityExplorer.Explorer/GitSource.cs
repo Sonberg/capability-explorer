@@ -2,6 +2,8 @@ using System.Diagnostics;
 
 namespace CapabilityExplorer.Explorer;
 
+public sealed class GitSourceContentLimitException() : IOException("Git source content exceeds the read limit");
+
 /// <summary>Read-only access to git objects of the analysed repositories. Never checks out or runs code.</summary>
 public sealed class GitSource(Func<string, string?> locate, CapabilityExplorer.Capabilities.GitHubAuth? auth = null)
 {
@@ -25,6 +27,17 @@ public sealed class GitSource(Func<string, string?> locate, CapabilityExplorer.C
         ReadFileAsync(repositoryId, commitSha, path).GetAwaiter().GetResult();
 
     public async Task<string?> ReadFileAsync(string repositoryId, string commitSha, string path, CancellationToken cancellationToken = default)
+    {
+        try { return await ReadCitedFileCoreAsync(repositoryId, commitSha, path, cancellationToken); }
+        catch (GitSourceContentLimitException) { return null; }
+    }
+
+    /// <summary>Reads cited content for the bounded task-query API, preserving the typed size-limit signal that
+    /// legacy callers intentionally continue to observe as a missing/unavailable source.</summary>
+    internal Task<string?> ReadTaskQueryFileAsync(string repositoryId, string commitSha, string path, CancellationToken cancellationToken = default) =>
+        ReadCitedFileCoreAsync(repositoryId, commitSha, path, cancellationToken);
+
+    private async Task<string?> ReadCitedFileCoreAsync(string repositoryId, string commitSha, string path, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!Commit(commitSha) || !SafePath(path)) return null;
@@ -112,10 +125,23 @@ public sealed class GitSource(Func<string, string?> locate, CapabilityExplorer.C
         timeout.CancelAfter(TimeSpan.FromSeconds(15));
         try
         {
-            var output = ReadBounded(process.StandardOutput, timeout.Token);
-            var error = ReadBounded(process.StandardError, timeout.Token);
-            await Task.WhenAll(output, error, process.WaitForExitAsync(timeout.Token));
+            var output = ReadBounded(process.StandardOutput, true, timeout.Token);
+            var error = ReadBounded(process.StandardError, false, timeout.Token);
+            var pending = new HashSet<Task> { output, error, process.WaitForExitAsync(timeout.Token) };
+            while (pending.Count > 0)
+            {
+                var completed = await Task.WhenAny(pending);
+                pending.Remove(completed);
+                await completed;
+            }
             return (process.ExitCode == 0, await output);
+        }
+        catch (GitSourceContentLimitException)
+        {
+            timeout.Cancel();
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            cancellationToken.ThrowIfCancellationRequested();
+            throw;
         }
         catch (Exception e) when (e is OperationCanceledException or IOException)
         {
@@ -124,14 +150,18 @@ public sealed class GitSource(Func<string, string?> locate, CapabilityExplorer.C
             return (false, "");
         }
     }
-    private static async Task<string> ReadBounded(StreamReader reader, CancellationToken ct)
+    private static async Task<string> ReadBounded(StreamReader reader, bool isSourceContent, CancellationToken ct)
     {
         var result = new System.Text.StringBuilder();
         var buffer = new char[8192];
         int count;
         while ((count = await reader.ReadAsync(buffer.AsMemory(), ct)) > 0)
         {
-            if (result.Length + count > 2 * 1024 * 1024) throw new IOException("Git output exceeds source limit");
+            if (result.Length + count > 2 * 1024 * 1024)
+            {
+                if (isSourceContent) throw new GitSourceContentLimitException();
+                throw new IOException("Git diagnostic output exceeds its read limit");
+            }
             result.Append(buffer, 0, count);
         }
         return result.ToString();
