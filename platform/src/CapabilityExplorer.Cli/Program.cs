@@ -23,6 +23,7 @@ const string Usage = """
       ce analysis-all [--capabilities <file>]
     ce match-integrations
       ce collection-freshness --previous <input-vector.json> --current <input-vector.json> [--as-of <ISO-8601-offset-time> --policy <observation-policy.json>]
+      ce classification-benchmark --artifact <file> --sha256 <hash> --corpus <file> --source <commit> --samples <1000..100000> --concurrency <1..4> --json <new-report.json>
       ce adapter-plan --root <source-dir> --manifest <manifest.json> --repository <id> --commit <sha> --tree <sha>
       ce collect --plan <plan.json> --out <directory>
       ce validate-collection <directory>
@@ -47,7 +48,7 @@ if (args.Length == 0)
 }
 
 var command = args[0];
-var strictCollectionOptions = command is "collect" or "validate-collection" or "collection-freshness" or "adapter-plan" or "embed";
+var strictCollectionOptions = command is "collect" or "validate-collection" or "collection-freshness" or "adapter-plan" or "embed" or "classification-benchmark";
 var options = new Dictionary<string, string>(StringComparer.Ordinal);
 var files = new List<string>();
 for (var i = 1; i < args.Length; i++)
@@ -78,6 +79,8 @@ NpgsqlDataSource OpenDatabase()
 
 switch (command)
 {
+    case "classification-benchmark":
+        return ClassificationBenchmark.Run(options, files);
     case "match-integrations":
         return AnalysisIntegrationReconciliation.Command(options, files);
     case "collect":

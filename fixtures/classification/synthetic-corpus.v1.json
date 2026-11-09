@@ -1,0 +1,14 @@
+{
+  "schema": "ce.classification-corpus.v1",
+  "purpose": "Synthetic contract oracle, not representative quality or calibration evidence",
+  "cases": [
+    {"id": "alpha", "features": [2, 0, 0], "outcome": "Decision", "reason": "None", "selectedClass": "Alpha"},
+    {"id": "beta", "features": [0, 2, 0], "outcome": "Decision", "reason": "None", "selectedClass": "Beta"},
+    {"id": "gamma", "features": [0, 0, 2], "outcome": "Decision", "reason": "None", "selectedClass": "Gamma"},
+    {"id": "unknown", "features": [0, 0, 0], "outcome": "Abstain", "reason": "LowScore", "selectedClass": null},
+    {"id": "ambiguous", "features": [3, 2.9, 0], "outcome": "Abstain", "reason": "LowMargin", "selectedClass": null},
+    {"id": "out-of-domain", "features": [9, 0, 0], "outcome": "Abstain", "reason": "OutOfDistribution", "selectedClass": null},
+    {"id": "negative-alpha", "features": [0, -2, -2], "outcome": "Decision", "reason": "None", "selectedClass": "Alpha"},
+    {"id": "positive-domain-boundary", "features": [8, 0, 0], "outcome": "Decision", "reason": "None", "selectedClass": "Alpha"}
+  ]
+}
