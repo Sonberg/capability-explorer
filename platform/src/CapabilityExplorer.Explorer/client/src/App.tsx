@@ -7,14 +7,9 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { ChatPanel } from "./components/ChatPanel";
 import { CommandPalette } from "./components/CommandPalette";
 import { FocusProvider } from "./focus";
-import { Artifacts } from "./views/Artifacts";
 import { Glossary } from "./views/Glossary";
-import { Calculations } from "./views/Calculations";
 import { Capabilities } from "./views/Capabilities";
-import { Changes } from "./views/Changes";
-import { Evaluation } from "./views/Evaluation";
 import { Explore } from "./views/Explore";
-import { BindingPreview } from "./views/BindingPreview";
 import { Integrations } from "./views/Integrations";
 import { Settings } from "./views/Settings";
 import { HealthStatus } from "./components/HealthStatus";
@@ -28,14 +23,9 @@ const VIEWS = [
   ["architecture", "Architecture"],
   ["integrations/exposed", "Integrations: Exposed"],
   ["integrations/consumed", "Integrations: Consumed"],
-  ["binding-preview", "Binding review"],
-  ["calculations", "Calculations"],
   ["glossary", "Glossary"],
-  ["changes", "Changes"],
   ["capabilities", "Capabilities"],
-  ["artifacts", "Artifacts"],
   ["processes-decisions", "Processes & decisions"],
-  ["evaluation", "Evaluation"],
 ] as const;
 
 export function App() {
@@ -183,25 +173,15 @@ function Routed({ path, params, scope, mode }: { path: string; params: URLSearch
       return <Integrations direction="exposed" />;
     case "integrations/consumed":
       return <Integrations direction="consumed" />;
-    case "binding-preview":
-      return <BindingPreview />;
     case "integrations":
       window.location.replace("#/integrations/exposed");
       return null;
-    case "calculations":
-      return <Calculations params={params} />;
     case "glossary":
       return <Glossary params={params} />;
-    case "changes":
-      return <Changes params={params} />;
     case "capabilities":
       return <Capabilities />;
-    case "artifacts":
-      return <Artifacts />;
     case "processes-decisions":
       return <ProcessesDecisions key={scope} scope={scope} params={params} mode={mode} />;
-    case "evaluation":
-      return <Evaluation />;
     case "settings":
       return <Settings />;
     default:

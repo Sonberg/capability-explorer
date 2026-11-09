@@ -63,7 +63,7 @@ export function ArchitectureFilterControls(props: ArchitectureFilterControlsProp
       {props.pins.length > 0 && <div className="flex flex-wrap gap-2" aria-label="Pinned elements">
         <span>Pinned:</span>
         {props.pins.map(id => (
-          <button key={id} type="button" disabled={id === props.selectedNodeId} aria-label={`Unpin ${id}`} title={id === props.selectedNodeId ? "The selected element is pinned on Apply" : "Remove this pin"} onClick={() => props.onUnpin(id)} className="rounded border border-zinc-300 px-2 py-1 disabled:opacity-60 dark:border-zinc-700">
+          <button key={id} type="button" disabled={id === props.selectedNodeId} aria-label={`Unpin ${id}`} title={`${id} — ${id === props.selectedNodeId ? "The selected element is pinned on Apply" : "Remove this pin"}`} onClick={() => props.onUnpin(id)} className="min-w-0 max-w-full truncate rounded border border-zinc-300 px-2 py-1 disabled:opacity-60 dark:border-zinc-700">
             {id === props.selectedNodeId ? `Selected · ${id}` : `Unpin · ${id}`}
           </button>
         ))}

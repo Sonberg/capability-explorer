@@ -38,9 +38,11 @@ export function useLiveModel(graph:LiveGraph, snapshot:string, associationIds?:R
     }
     setState({key, generation:requestId});
     let active = true;
+    let stopped = false;
+    let workerSnapshot = snapshot;
     let worker:Worker | undefined;
     let deadline:ReturnType<typeof setTimeout> | undefined;
-    const stop = () => {clearTimeout(deadline); worker?.terminate();};
+    const stop = () => {stopped = true; clearTimeout(deadline); worker?.terminate();};
     const fail = (error:string) => {stop(); if (active) setState({key, generation:requestId, error});};
     try {
       worker = new Worker(new URL('./live-model.worker.ts', import.meta.url), {type:'module'});
@@ -48,14 +50,20 @@ export function useLiveModel(graph:LiveGraph, snapshot:string, associationIds?:R
         if (!active || data.requestId !== requestId) return;
         stop();
         if (!data.ok) {fail(data.error); return;}
-        if (data.result.snapshot !== snapshot) {fail('The background model returned a different snapshot.'); return;}
+        if (data.result.snapshot !== workerSnapshot) {fail('The background model returned a different snapshot.'); return;}
         remember(key, data.result);
         setState({key, generation:requestId, result:data.result});
       };
       worker.onerror = event => {event.preventDefault(); fail('Background diagram compilation failed. Retry to rebuild this snapshot.');};
       worker.onmessageerror = () => fail('The background diagram result could not be read.');
       deadline = setTimeout(() => fail('Diagram compilation exceeded 30 seconds. Retry or select a smaller scope.'), 30_000);
-      worker.postMessage({...input, requestId} satisfies LiveModelRequest);
+      const post = () => {if (active && !stopped) worker?.postMessage({...input, snapshot:workerSnapshot, requestId} satisfies LiveModelRequest);};
+      if (snapshot.length > 4096) {
+        crypto.subtle.digest('SHA-256', new TextEncoder().encode(snapshot)).then(hash => {
+          workerSnapshot = `sha256:${Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('')}`;
+          post();
+        }).catch(() => fail('The diagram snapshot identity could not be computed. Retry diagram.'));
+      } else post();
     } catch (error) {fail(error instanceof Error ? error.message : String(error));}
     return () => {active = false; stop();};
   }, [input, key, retry, snapshot]);
