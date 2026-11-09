@@ -16,6 +16,11 @@ history or imply that existing private package versions are product releases.
   Browser tests cover that UI boundary; a separate real journal-to-HTTP test
   confirms the existing public error sanitization.
 
+- Bounded health transition logs emit warnings on dependency failure and
+  information on recovery, with per-check attribution and no raw exceptions.
+  HTTP tests exercise readiness and liveness during host-lifetime shutdown;
+  deployed SIGTERM, ingress, TLS and alert qualification remain separate.
+
 - HTTP capability recommendations in architecture inspection and binding review,
   with explainable observed route coverage, request/endpoint source evidence,
   explicit cross-capability destination revisions and stale-review protection.
