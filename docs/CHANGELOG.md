@@ -11,6 +11,12 @@ history or imply that existing private package versions are product releases.
 
 ### Added
 
+- Six deny-default, bounded task-evidence queries over file and PostgreSQL
+  snapshots, shared by HTTP and an isolated MCP stdio entry point. Results
+  distinguish candidates, incomplete coverage and typed failures; source
+  excerpts require exact revisions and cited paths. File snapshot identifiers
+  remain process-local, and no deployment or human UX acceptance is implied.
+
 - Bounded health transition logs emit warnings on dependency failure and
   information on recovery, with per-check attribution and no raw exceptions.
   HTTP tests exercise readiness and liveness during host-lifetime shutdown;
