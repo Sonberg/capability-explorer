@@ -70,7 +70,16 @@ function useNavOverflow(view: string) {
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
-    const update = () => setEdges({ before: element.scrollLeft > 1, after: element.scrollLeft + element.clientWidth < element.scrollWidth - 1 });
+    const update = () => {
+      const next = { before: element.scrollLeft > 1, after: element.scrollLeft + element.clientWidth < element.scrollWidth - 1 };
+      const focused = document.activeElement;
+      if (focused?.parentElement === element.parentElement &&
+          (!next.before && focused.getAttribute("aria-label") === "Show earlier views" ||
+           !next.after && focused.getAttribute("aria-label") === "Show more views")) {
+        element.focus({ preventScroll: true });
+      }
+      setEdges(next);
+    };
     const active = element.querySelector<HTMLElement>("[aria-current=page]");
     if (active) element.scrollLeft = Math.max(0, active.offsetLeft - element.offsetLeft - Math.max(0, element.clientWidth - active.offsetWidth) / 2);
     update();
@@ -116,7 +125,7 @@ function Shell() {
         </a>
         <div className="flex min-w-0 items-center">
         {nav.before && <button type="button" aria-label="Show earlier views" onClick={() => nav.scroll(-1)} className={NAV_SCROLL}>‹</button>}
-        <nav ref={nav.ref} aria-label="Views" className="flex min-w-0 gap-0.5 overflow-x-auto [scrollbar-width:none]">
+        <nav ref={nav.ref} tabIndex={-1} aria-label="Views" className="flex min-w-0 gap-0.5 overflow-x-auto [scrollbar-width:none]">
           {VIEWS.map(([id, label]) => id === "integrations/consumed" ? null : id === "integrations/exposed" ? (
             <select
               key="integrations"

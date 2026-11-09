@@ -211,6 +211,14 @@ test("Dense ownership reports page with focus on the announced range and keep th
     await more.waitFor();
     await more.click();
     await page.getByRole("button", { name: "Show earlier views", exact: true }).waitFor();
+    for (let step = 0; step < 10 && await more.count(); step++) {
+      await more.focus();
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(100);
+    }
+    assert.equal(await more.count(), 0, "The navigation must reach its trailing boundary.");
+    assert.equal(await page.getByRole("navigation", { name: "Views", exact: true })
+      .evaluate(element => element === document.activeElement), true, "A disappearing scroll control must transfer keyboard focus to stable navigation.");
     await page.goto(`${origin}/#/ownership-alignment`);
     const link = page.getByRole("link", { name: "Ownership alignment", exact: true });
     const [box, nav] = await Promise.all([link.boundingBox(), page.getByRole("navigation", { name: "Views", exact: true }).boundingBox()]);
