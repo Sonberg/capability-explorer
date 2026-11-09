@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Text.Json;
 using CapabilityExplorer.Extractors.CSharp;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
 
 namespace CapabilityExplorer.Extractors.Tests;
@@ -172,6 +174,128 @@ public sealed class ProjectReferencesTests : IDisposable
         });
     }
 
+    [Theory]
+    [InlineData(" ReferenceOutputAssembly=\"false\"", "")]
+    [InlineData("", "<ReferenceOutputAssembly>false</ReferenceOutputAssembly>")]
+    [InlineData(" ReferenceOutputAssembly=\" FALSE \"", "")]
+    public void Build_order_only_reference_excludes_project_transitive_and_package_symbols(string attributes, string metadata)
+    {
+        var packages = Path.Combine(_root, "packages");
+        var lib = Directory.CreateDirectory(Path.Combine(packages, "package", "1.0.0", "lib", "net10.0")).FullName;
+        var framework = Directory.EnumerateDirectories(Path.Combine(Packs(), "Microsoft.NETCore.App.Ref"))
+            .Order(StringComparer.Ordinal).Select(d => Path.Combine(d, "ref", "net10.0")).Last(Directory.Exists);
+        var frameworkReferences = Directory.EnumerateFiles(framework, "*.dll")
+            .Order(StringComparer.Ordinal).Select(p => MetadataReference.CreateFromFile(p)).ToArray();
+        var package = CSharpCompilation.Create("Package",
+            [CSharpSyntaxTree.ParseText("namespace Package; public static class Api { public static int Read() => 3; }")],
+            frameworkReferences, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        Assert.True(package.Emit(Path.Combine(lib, "Package.dll")).Success);
+        Project("C", "namespace C; public static class Api { public static int Read() => 1; }");
+        Project("B", "namespace B; public static class Api { public static int Read() => C.Api.Read() + Package.Api.Read(); }", "C");
+        var bPath = Path.Combine(_root, "B", "B.csproj");
+        File.WriteAllText(bPath, File.ReadAllText(bPath).Replace("</ItemGroup>",
+            "<PackageReference Include=\"Package\" Version=\"1.0.0\" /></ItemGroup>", StringComparison.Ordinal));
+        const string caller = """
+            namespace A;
+            public static class Caller
+            {
+                public static int Direct() => B.Api.Read();
+                public static int Transitive() => C.Api.Read();
+                public static int PackageCall() => Package.Api.Read();
+            }
+            """;
+        Project("A", caller, "B");
+        ReferenceMetadata(attributes, metadata);
+
+        // This oracle intentionally has no B, C or package reference, independently of project XML parsing.
+        var oracle = CSharpCompilation.Create("Oracle", [CSharpSyntaxTree.ParseText(caller)], frameworkReferences,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var oracleErrors = oracle.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
+        Assert.Equal(3, oracleErrors.Length);
+        Assert.All(oracleErrors, d => Assert.Equal("CS0103", d.Id));
+
+        IReadOnlyList<UnitResult> Run() => new CSharpExtractor(new ExtractorOptions(_root, "projects", Sha, packages, Packs())).Extract();
+        var first = Run();
+        var second = Run();
+        Assert.Equal(first.Select(u => u.Jsonl), second.Select(u => u.Jsonl));
+        var records = Records(Unit(first, "A"));
+        AssertDependencies(records, "A", "B");
+        var diagnostic = Assert.Single(OfKind(records, "diagnostic"));
+        Assert.Equal($"COMPILER_{oracleErrors[0].Id}", diagnostic.GetProperty("code").GetString());
+        Assert.Equal(oracleErrors[0].GetMessage(System.Globalization.CultureInfo.InvariantCulture),
+            diagnostic.GetProperty("message").GetString());
+        foreach (var method in new[] { "Direct", "Transitive", "PackageCall" })
+        {
+            var call = Assert.Single(Calls(records, $"cs|projects|A|M:A.Caller.{method}"));
+            Assert.Equal("unresolved", call.GetProperty("resolution").GetString());
+            Assert.False(call.TryGetProperty("to", out _));
+        }
+        Assert.Equal("partial", Complete(records).GetProperty("status").GetString());
+        AssertAllFull(first.Where(u => u.UnitName != "A"));
+    }
+
+    [Theory]
+    [InlineData("", "")]
+    [InlineData(" ReferenceOutputAssembly=\"true\"", "")]
+    [InlineData("", "<ReferenceOutputAssembly> TRUE </ReferenceOutputAssembly>")]
+    public void Default_and_literal_true_metadata_preserve_compile_visibility(string attributes, string metadata)
+    {
+        Project("C", "namespace C; public static class Api { public static int Read() => 1; }");
+        Project("B", "namespace B; public static class Api { public static int Read() => C.Api.Read(); }", "C");
+        Project("A", "namespace A; public static class Caller { public static int Read() => B.Api.Read() + C.Api.Read(); }", "B");
+        ReferenceMetadata(attributes, metadata);
+        var units = Extract();
+        var records = Records(Unit(units, "A"));
+        AssertDependencies(records, "A", "B");
+        AssertCalls(records, "cs|projects|A|M:A.Caller.Read", "cs|projects|B|M:B.Api.Read", "cs|projects|C|M:C.Api.Read");
+        AssertAllFull(units);
+    }
+
+    [Fact]
+    public void Build_order_only_reference_without_symbol_usage_preserves_full_coverage()
+    {
+        Project("B", "namespace B; public static class Api { public static int Read() => 1; }");
+        Project("A", "namespace A; public static class Caller { public static int Read() => 2; }", "B");
+        ReferenceMetadata(" ReferenceOutputAssembly=\"false\"", "");
+        var units = Extract();
+        AssertDependencies(Records(Unit(units, "A")), "A", "B");
+        AssertAllFull(units);
+    }
+
+    [Theory]
+    [InlineData("", "<ReferenceOutputAssembly Condition=\"'$(Configuration)' == 'Debug'\">true</ReferenceOutputAssembly>")]
+    [InlineData(" ReferenceOutputAssembly=\"$(ExposeDependency)\"", "")]
+    [InlineData("", "<ReferenceOutputAssembly>$(ExposeDependency)</ReferenceOutputAssembly>")]
+    [InlineData(" ReferenceOutputAssembly=\"true\"", "<ReferenceOutputAssembly>false</ReferenceOutputAssembly>")]
+    [InlineData("", "<ReferenceOutputAssembly>true</ReferenceOutputAssembly><ReferenceOutputAssembly>false</ReferenceOutputAssembly>")]
+    [InlineData(" ReferenceOutputAssembly=\"not-a-boolean\"", "")]
+    public void Unsupported_output_metadata_is_diagnosed_without_compile_visibility(string attributes, string metadata)
+    {
+        Project("B", "namespace B; public static class Api { public static int Read() => 1; }");
+        Project("A", "namespace A; public static class Caller { public static int Read() => B.Api.Read(); }", "B");
+        ReferenceMetadata(attributes, metadata);
+        var units = Extract();
+        var records = Records(Unit(units, "A"));
+        AssertDependencies(records, "A", "B");
+        var diagnostic = Assert.Single(OfKind(records, "diagnostic"),
+            d => d.GetProperty("code").GetString() == "UNSUPPORTED_PROJECT_REFERENCE_METADATA");
+        Assert.True(diagnostic.GetProperty("affectsCoverage").GetBoolean());
+        Assert.Equal("warning", diagnostic.GetProperty("severity").GetString());
+        Assert.Equal("A/A.csproj", diagnostic.GetProperty("path").GetString());
+        var call = Assert.Single(Calls(records, "cs|projects|A|M:A.Caller.Read"));
+        Assert.Equal("unresolved", call.GetProperty("resolution").GetString());
+        Assert.False(call.TryGetProperty("to", out _));
+        Assert.Equal("partial", Complete(records).GetProperty("status").GetString());
+        Assert.Equal(units.Select(u => u.Jsonl), Extract().Select(u => u.Jsonl));
+    }
+
+    private void ReferenceMetadata(string attributes, string metadata)
+    {
+        var path = Path.Combine(_root, "A", "A.csproj");
+        File.WriteAllText(path, File.ReadAllText(path).Replace("<ProjectReference Include=\"../B/B.csproj\" />",
+            $"<ProjectReference Include=\"../B/B.csproj\"{attributes}>{metadata}</ProjectReference>", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task Legacy_and_selected_modes_from_the_same_binary_emit_identical_artifact_bytes()
     {
@@ -249,10 +373,11 @@ public sealed class ProjectReferencesTests : IDisposable
 
     private IReadOnlyList<UnitResult> Extract()
     {
-        var packs = Path.GetFullPath(Path.Combine(
-            System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", "..", "packs"));
-        return new CSharpExtractor(new ExtractorOptions(_root, "projects", Sha, PackagesRoot: null, ReferencePacks: packs)).Extract();
+        return new CSharpExtractor(new ExtractorOptions(_root, "projects", Sha, PackagesRoot: null, ReferencePacks: Packs())).Extract();
     }
+
+    private static string Packs() => Path.GetFullPath(Path.Combine(
+        System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", "..", "packs"));
 
     private static UnitResult Unit(IEnumerable<UnitResult> units, string name) =>
         Assert.Single(units, u => u.UnitPath == $"{name}/{name}.csproj");
