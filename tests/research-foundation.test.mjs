@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { canonical, readBounded, readEvidence, sha256, verifySealedCorpus } from '../scripts/research/evidence.mjs';
 import { run, validateCorpus, validateRegister } from '../scripts/research/check-code-insights.mjs';
 import { councilPacketHash, validateTool } from '../scripts/research/tool-gates.mjs';
+import { compareIssueObservations, freezeIssueObservation } from '../scripts/research/issue-observations.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const load = path => JSON.parse(readFileSync(join(root, path), 'utf8'));
@@ -177,6 +178,184 @@ for (const verdict of ['defer', 'reject', 'retain']) test(`${verdict} is complet
   const f = fixture(t); f.d.deskDecision = verdict; f.sealDesk(); delete f.d.trial;
   assert.equal(validateTool(f.d, 'desk', f.dir).verdict, verdict);
   for (const stage of ['trial', 'decision', 'pr']) assert.throws(() => validateTool(f.d, stage, f.dir), /not a trial pass/);
+});
+
+const observationNow = '2026-11-10T02:45:00.000Z';
+const syntheticIssue = (number, state = 'open') => ({
+  nodeID: `synthetic-node-${number}`, number, state, title: `Synthetic item ${number}`,
+  body: 'Synthetic café 🦉\r\n- unchecked source text\r\n', updatedAt: '2026-11-10T02:40:00.000Z',
+});
+function observation(issues = [syntheticIssue(1), syntheticIssue(2)]) {
+  return {
+    context: { repoID: 'synthetic-repo', owner: 'synthetic-owner', name: 'synthetic-project',
+      sourceCommit: h, sourceInputSha256: 'a'.repeat(64) },
+    provenance: 'synthetic', scope: { state: 'all', filter: 'issues only; no additional filter' },
+    bounds: { maxPages: 4, maxIssues: 8, maxUtf8Bytes: 16384, maxAgeMs: 600000, maxDurationMs: 60000 },
+    capture: { startedAt: '2026-11-10T02:40:00.000Z', endedAt: '2026-11-10T02:40:01.000Z',
+      status: 'observed', terminal: 'observed', truncated: false },
+    pages: [{ number: 1, cursor: null, nextCursor: null, status: 'observed', issues }],
+  };
+}
+const freezeObservation = value => freezeIssueObservation(value, observationNow);
+
+test('issue observations detach literal source, normalize only record order and recheck integrity', () => {
+  const input = observation(), frozen = freezeObservation(input);
+  const reversed = observation(structuredClone(input.pages[0].issues).reverse());
+  assert.deepEqual(freezeObservation(reversed), frozen);
+  input.pages[0].issues[0].body = 'caller mutation';
+  input.context.owner = 'changed-owner';
+  assert.equal(frozen.declaration.pages[0].issues[0].body, syntheticIssue(1).body);
+  assert.equal(frozen.bodyDigests[0].sha256, sha256(syntheticIssue(1).body));
+  assert.equal(Object.isFrozen(frozen.declaration.pages[0].issues[0]), true);
+  const same = compareIssueObservations(frozen, freezeObservation(reversed), observationNow);
+  assert.deepEqual(same.bodyChanged, []); assert.deepEqual(same.metadataChanged, []);
+  assert.deepEqual(same.uncertainty, []); assert.equal(same.approval, 'not-established');
+  const tampered = structuredClone(frozen);
+  tampered.declaration.pages[0].issues[0].body = 'changed after sealing';
+  assert.throws(() => compareIssueObservations(tampered, frozen, observationNow), /snapshot integrity/);
+  const context = structuredClone(frozen); context.declaration.context.repoID = 'other-repo';
+  assert.throws(() => compareIssueObservations(context, frozen, observationNow), /snapshot integrity/);
+  const digest = structuredClone(frozen); digest.bodyDigests[0].sha256 = 'f'.repeat(64);
+  assert.throws(() => compareIssueObservations(digest, frozen, observationNow), /snapshot integrity/);
+});
+
+test('issue observations retain closed, reopened, new, missing, body and metadata changes independently', () => {
+  const before = observation([syntheticIssue(1), syntheticIssue(2, 'closed'), syntheticIssue(4)]);
+  const after = observation([syntheticIssue(1, 'closed'), syntheticIssue(2), syntheticIssue(3)]);
+  after.pages[0].issues[0].body += 'changed source';
+  after.pages[0].issues[0].title = 'Different synthetic title';
+  const a = freezeObservation(before), b = freezeObservation(after);
+  const delta = compareIssueObservations(a, b, observationNow);
+  for (const [field, expected] of [['new', [3]], ['missingFromObservedScope', [4]],
+    ['closed', [1]], ['reopened', [2]], ['bodyChanged', [1]], ['metadataChanged', [1]]])
+    assert.deepEqual(delta[field].map(item => item.number), expected);
+  assert.notEqual(a.bodyDigests[0].sha256, b.bodyDigests[0].sha256);
+  assert.equal(delta.compatible, true); assert.equal(delta.approval, 'not-established');
+});
+
+test('issue observations never infer missing from truncated, nonterminal or incompatible scope captures', () => {
+  const before = freezeObservation(observation());
+  for (const mode of ['truncated', 'nonterminal', 'open-only', 'filter-change']) {
+    const after = observation([syntheticIssue(1)]);
+    if (mode === 'truncated') after.capture.truncated = true;
+    if (mode === 'nonterminal') {
+      after.pages[0].nextCursor = 'synthetic-next'; after.capture.terminal = 'unknown';
+    }
+    if (mode === 'open-only') after.scope.state = 'open';
+    if (mode === 'filter-change') after.scope.filter = 'synthetic different filter';
+    const delta = compareIssueObservations(before, freezeObservation(after), observationNow);
+    assert.deepEqual(delta.missingFromObservedScope, [], mode);
+    assert.ok(delta.uncertainty.length > 0, mode);
+  }
+  const otherRepo = observation(); otherRepo.context.repoID = 'different-synthetic-repo';
+  const incompatible = compareIssueObservations(before, freezeObservation(otherRepo), observationNow);
+  assert.equal(incompatible.compatible, false);
+  assert.ok(incompatible.uncertainty.includes('incompatible-repository'));
+});
+
+test('issue observations bind a contiguous page chain, not page order normalization', () => {
+  const input = observation([syntheticIssue(1)]);
+  input.pages[0].nextCursor = 'synthetic-page-two';
+  input.pages.push({ number: 2, cursor: 'synthetic-page-two', nextCursor: null,
+    status: 'observed', issues: [syntheticIssue(2)] });
+  const frozen = freezeObservation(input);
+  assert.deepEqual(frozen.bodyDigests.map(i => i.number), [1, 2]);
+  assert.deepEqual(compareIssueObservations(frozen, frozen, observationNow).uncertainty, []);
+  input.pages.reverse();
+  assert.throws(() => freezeObservation(input), /page chain/);
+});
+
+test('issue observations do not compare different declared source inputs, bounds or provenance as compatible', () => {
+  const before = freezeObservation(observation());
+  for (const [change, reason] of [
+    [d => { d.context.sourceCommit = 'b'.repeat(40); }, 'incompatible-source-inputs'],
+    [d => { d.context.sourceInputSha256 = 'b'.repeat(64); }, 'incompatible-source-inputs'],
+    [d => { d.bounds.maxIssues = 9; }, 'incompatible-bounds'],
+    [d => { d.provenance = 'declared'; }, 'incompatible-provenance'],
+  ]) {
+    const after = observation([syntheticIssue(1), syntheticIssue(3)]);
+    after.pages[0].issues[0].body = 'different declared body';
+    change(after);
+    const delta = compareIssueObservations(before, freezeObservation(after), observationNow);
+    assert.equal(delta.compatible, false, reason);
+    assert.ok(delta.uncertainty.includes(reason));
+    for (const field of ['new', 'missingFromObservedScope', 'bodyChanged']) assert.deepEqual(delta[field], []);
+  }
+});
+
+test('issue observations do not promote records on unavailable pages into observed changes', () => {
+  const before = freezeObservation(observation());
+  const after = observation([syntheticIssue(1, 'closed')]);
+  after.pages[0].issues[0].body = 'unavailable cached body';
+  after.capture.status = after.capture.terminal = after.pages[0].status = 'unavailable';
+  const delta = compareIssueObservations(before, freezeObservation(after), observationNow);
+  assert.ok(delta.uncertainty.includes('after:page:1:unavailable'));
+  for (const field of ['new', 'missingFromObservedScope', 'closed', 'bodyChanged']) assert.deepEqual(delta[field], []);
+});
+
+test('issue observations retain common observed changes while later pages are unavailable', () => {
+  const before = freezeObservation(observation());
+  const after = observation([syntheticIssue(1, 'closed')]);
+  after.pages[0].issues[0].body = 'observed changed body';
+  after.pages[0].nextCursor = 'synthetic-unavailable-page';
+  after.pages.push({ number: 2, cursor: 'synthetic-unavailable-page', nextCursor: null, status: 'unavailable', issues: [] });
+  after.capture.terminal = 'unavailable';
+  const delta = compareIssueObservations(before, freezeObservation(after), observationNow);
+  assert.ok(delta.uncertainty.includes('after:page:2:unavailable'));
+  assert.deepEqual(delta.closed.map(i => i.number), [1]);
+  assert.deepEqual(delta.bodyChanged.map(i => i.number), [1]);
+  assert.deepEqual(delta.missingFromObservedScope, []);
+});
+
+test('issue observations preserve explicit unavailable states and freshness/duration uncertainty', () => {
+  const before = freezeObservation(observation());
+  for (const status of ['absent', 'denied', 'unavailable', 'unknown', 'unsupported', 'stale', 'unstable']) {
+    const after = observation([]);
+    after.capture.status = status; after.capture.terminal = status;
+    after.pages = [];
+    const frozen = freezeObservation(after);
+    assert.equal(frozen.declaration.capture.status, status);
+    const delta = compareIssueObservations(before, frozen, observationNow);
+    assert.ok(delta.uncertainty.includes(`after:capture:${status}`));
+    assert.deepEqual(delta.missingFromObservedScope, []);
+  }
+  const stale = observation([]); stale.bounds.maxAgeMs = 100;
+  assert.ok(compareIssueObservations(before, freezeObservation(stale), observationNow)
+    .uncertainty.includes('after:stale'));
+  const slow = observation([]); slow.bounds.maxDurationMs = 100;
+  assert.ok(compareIssueObservations(before, freezeObservation(slow), observationNow)
+    .uncertainty.includes('after:capture-duration'));
+  const page = observation([]); page.pages[0].status = 'denied'; page.capture.terminal = 'denied';
+  assert.ok(compareIssueObservations(before, freezeObservation(page), observationNow)
+    .uncertainty.includes('after:page:1:denied'));
+});
+
+test('issue observations reject malformed identities, duplicate chains, invalid time and unsafe budgets', () => {
+  for (const [change, error] of [
+    [d => { d.pages[0].issues[1].number = 1; }, /duplicate issue number/],
+    [d => { d.pages[0].issues[1].nodeID = d.pages[0].issues[0].nodeID; }, /duplicate issue node/],
+    [d => { d.pages.push(structuredClone(d.pages[0])); }, /page chain/],
+    [d => { d.pages[0].nextCursor = 'loop'; d.pages.push({ ...d.pages[0], number: 2, cursor: 'loop', issues: [] }); }, /cursor/],
+    [d => { d.capture.endedAt = 'not-a-date'; }, /date/],
+    [d => { d.capture.endedAt = '2026-11-10T02:39:00.000Z'; }, /interval/],
+    [d => { d.bounds.maxIssues = Infinity; }, /budget/],
+    [d => { d.bounds.maxPages = 0; }, /budget/],
+    [d => { d.bounds.maxIssues = 1; }, /issue budget/],
+    [d => { d.bounds.maxDurationMs = Number.MAX_SAFE_INTEGER + 1; }, /budget/],
+    [d => { d.bounds.maxUtf8Bytes = 1; }, /UTF8 byte budget/],
+    [d => { d.pages[0].issues[0].body = '\ud800'; }, /Unicode/],
+    [d => { d.pages[0].issues[0].state = 'done'; }, /issue state/],
+    [d => { d.context.repoID = ''; }, /repoID/],
+    [d => { d.pages[0].nextCursor = 'not-terminal'; }, /terminal/],
+  ]) {
+    const d = observation(); change(d); assert.throws(() => freezeObservation(d), error);
+  }
+  const before = freezeObservation(observation()), after = observation();
+  after.pages[0].issues[0].nodeID = 'synthetic-replacement';
+  assert.throws(() => compareIssueObservations(before, freezeObservation(after), observationNow), /issue identity mapping/);
+  const renumbered = observation(); renumbered.pages[0].issues[0].number = 3;
+  assert.throws(() => compareIssueObservations(before, freezeObservation(renumbered), observationNow), /issue identity mapping/);
+  assert.throws(() => freezeIssueObservation(observation()), /date/);
 });
 
 test('CLI errors and global research gates cannot be hidden by passing foundation', () => {
