@@ -346,6 +346,10 @@ capability files and reloads when they change, and the UI refetches what it show
   Code inside a constructor body (lambdas included) belongs to it. Only repository types are recorded:
   `new List<int>()` and an `ILogger` parameter say nothing about the system. Field and property initializers
   are not attributed to a constructor.
+- Explicit non-event fields are `Field` nodes. Repository creations in their initializers give lexical
+  `Field REFERENCES Type`, not `CALLS` or containing-constructor execution. Static and instance fields
+  follow the same rule; deferred lambda/anonymous bodies are excluded. Property initializers belong
+  to the declared property and use constructor `CALLS` or implicit-default type `REFERENCES`.
 - Compiler errors make the affected files `partial`.
 - Rules: ASP.NET Core controllers and minimal APIs, DI (including keyed services and reflection),
   EF Core, Dapper, Azure Service Bus, typed `HttpClient`.

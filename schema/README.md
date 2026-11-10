@@ -90,7 +90,9 @@ Rules:
   Static and instance fields follow the same lexical rule. Creations inside lambda or anonymous-method
   bodies in field initializers are excluded, as are framework/package and unresolved creations.
   Helper invocations and fields without creations add no field-owned behavior edges. Fields are never
-  relabeled as properties and never originate `CALLS`; existing property/member behavior is unchanged.
+  relabeled as properties and never originate `CALLS`. Property initializers use their declared
+  `Property` owner: `CALLS` for declared repository constructors, otherwise `REFERENCES` to the type.
+  Ordinary method and constructor-body ownership is unchanged.
 - **External symbols** use `@ext` as the repository: `cs|@ext|System.Runtime|M:System.Math.Round(System.Decimal,System.Int32)`
   and `ts|@ext|typescript|lib.es5.d.ts|Math.round#value`.
 - **SQL built-ins**: `sql|@builtin:<dialect>|<FUNCTION>`.

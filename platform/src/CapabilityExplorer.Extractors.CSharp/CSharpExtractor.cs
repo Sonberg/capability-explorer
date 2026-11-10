@@ -511,11 +511,16 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             var owner = Owner(file.Model, node.SpanStart);
             if (owner is null)
             {
-                // Deferred anonymous bodies are not part of this bounded field-initializer observation.
-                var variable = node.Ancestors().TakeWhile(ancestor => ancestor is not AnonymousFunctionExpressionSyntax)
-                    .OfType<VariableDeclaratorSyntax>().FirstOrDefault(candidate =>
-                        candidate.Parent?.Parent is FieldDeclarationSyntax && candidate.Initializer is not null);
-                owner = variable is null ? null : file.Model.GetDeclaredSymbol(variable) as IFieldSymbol;
+                // Initializers need their declaration owner; deferred anonymous bodies are excluded.
+                var initializer = node.Ancestors().TakeWhile(ancestor => ancestor is not AnonymousFunctionExpressionSyntax)
+                    .OfType<EqualsValueClauseSyntax>().FirstOrDefault();
+                owner = initializer?.Parent switch
+                {
+                    VariableDeclaratorSyntax variable when variable.Parent?.Parent is FieldDeclarationSyntax =>
+                        file.Model.GetDeclaredSymbol(variable) as IFieldSymbol,
+                    PropertyDeclarationSyntax property => file.Model.GetDeclaredSymbol(property),
+                    _ => null,
+                };
             }
 
             if (owner is null || !b.HasNode(keys.Of(owner)) || file.Model.GetSymbolInfo(node).Symbol is not IMethodSymbol { MethodKind: MethodKind.Constructor } ctor)
