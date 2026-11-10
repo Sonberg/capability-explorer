@@ -105,13 +105,14 @@ function classConstructor(ctx: Ctx, c: ts.ClassDeclaration, owner: string, gener
   if (!implementation) return;
   const key = ctx.keyOf(implementation);
   if (!key) return;
-  const props: Props = { constructor: true, signature: implementation.parameters.map(parameter => parameter.getText()) };
+  const props: Props = { constructor: true };
+  const signature = `(${implementation.parameters.map(parameter => parameter.getText()).join(", ")})`;
   if (has(implementation, ts.SyntaxKind.PrivateKeyword)) props.accessibility = "private";
   else if (has(implementation, ts.SyntaxKind.ProtectedKeyword)) props.accessibility = "protected";
   const overloads = declarations.filter(declaration => !declaration.body);
   if (overloads.length) props.overloads = overloads.map(declaration => signatureText(declaration));
   const evidence = declarations.map(declaration => ctx.headerEv(declaration));
-  ctx.b.node(key, "Method", c.name!.text, evidence, { generated: !!generated, props });
+  ctx.b.node(key, "Method", c.name!.text, evidence, { signature, generated: !!generated, props });
   ctx.b.edge({ from: owner, rel: "DECLARES", to: key, evidence });
 }
 
