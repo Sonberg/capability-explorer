@@ -73,6 +73,112 @@ public sealed class PackageConstructorTests : IDisposable
                 || to.GetString()!.Contains("System.Object", StringComparison.Ordinal)));
     }
 
+    [Fact]
+    public void Class_and_record_primary_base_calls_use_the_declared_primary_constructor_owner()
+    {
+        const string source = """
+            namespace Repo;
+            public class Base(int value) { }
+            public class ClassDerived(int value) : Base(value) { }
+            public record RecordBase(int value);
+            public record RecordDerived(int value) : RecordBase(value);
+            """;
+        Project("App", source);
+
+        var first = Extract();
+        var records = Records(Assert.Single(first).Jsonl);
+        AssertFull(records);
+        Assert.Equal(first.Select(unit => unit.Jsonl), Extract().Select(unit => unit.Jsonl));
+        Assert.Equal(2, Calls(records).Count());
+        AssertCall(records, "cs|packages|App|M:Repo.ClassDerived.#ctor(System.Int32)",
+            "cs|packages|App|M:Repo.Base.#ctor(System.Int32)", source, 3, 40, 51, "Base(value)");
+        AssertCall(records, "cs|packages|App|M:Repo.RecordDerived.#ctor(System.Int32)",
+            "cs|packages|App|M:Repo.RecordBase.#ctor(System.Int32)", source, 5, 42, 59, "RecordBase(value)");
+    }
+
+    [Fact]
+    public void Primary_base_call_to_selected_package_uses_generic_original_definition()
+    {
+        Package("namespace Library; public class Base<T> { public Base(T value) { } }");
+        const string source = """
+            namespace Repo;
+            public class Derived(int value) : Library.Base<int>(value) { }
+            """;
+        Project("App", source, PackageReference);
+
+        var first = Extract();
+        var records = Records(Assert.Single(first).Jsonl);
+        AssertFull(records);
+        Assert.Equal(first.Select(unit => unit.Jsonl), Extract().Select(unit => unit.Jsonl));
+        AssertCall(records, "cs|packages|App|M:Repo.Derived.#ctor(System.Int32)",
+            "cs|@ext|Surface|M:Library.Base`1.#ctor(`0)", source, 2, 35, 59, "Library.Base<int>(value)");
+        Assert.DoesNotContain(records, record => Is(record, "node")
+            && record.GetProperty("symbolKey").GetString()!.StartsWith("cs|@ext|", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Framework_primary_base_call_is_omitted()
+    {
+        const string source = """
+            public class Host(string message) : System.Exception(message) { }
+            """;
+        Project("App", source);
+
+        var records = Records(Assert.Single(Extract()).Jsonl);
+
+        AssertFull(records);
+        Assert.Empty(Calls(records));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Disabled_or_missing_package_cache_does_not_fabricate_primary_base_calls(bool disabled)
+    {
+        Package();
+        const string source = """
+            public class Derived(int value) : Library.Widget(value) { }
+            """;
+        Project("App", source, PackageReference);
+        var cache = disabled ? null : Path.Combine(_root, "missing-packages");
+
+        var records = Records(Assert.Single(Extract(cache)).Jsonl);
+
+        Assert.Empty(Calls(records));
+        Assert.Contains(records, record => Is(record, "diagnostic") && record.GetProperty("code").GetString() == "UNRESOLVED_PACKAGE");
+        Assert.Contains(records, record => Is(record, "diagnostic") && record.GetProperty("code").GetString() == "COMPILER_CS0246"
+            && record.GetProperty("affectsCoverage").GetBoolean());
+        Assert.Equal("partial", records[^1].GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public void Missing_candidate_and_ambiguous_primary_base_calls_remain_compiler_diagnostics()
+    {
+        var metadata = Package();
+        const string source = """
+            namespace Repo;
+            public class Missing(int value) : Library.Ghost(value) { }
+            public class Ambiguous(string? value) : Library.Choice(null) { }
+            public class Candidate(bool value) : Library.Widget(value) { }
+            """;
+        Project("App", source, PackageReference);
+        var oracle = Compilation("Oracle", source, FrameworkReferences().Append(MetadataReference.CreateFromFile(metadata)));
+        foreach (var id in new[] { "CS0246", "CS0121", "CS1503" })
+        {
+            Assert.Contains(oracle.GetDiagnostics(), item => item.Severity == DiagnosticSeverity.Error && item.Id == id);
+        }
+
+        var records = Records(Assert.Single(Extract()).Jsonl);
+
+        Assert.Empty(Calls(records));
+        foreach (var id in new[] { "CS0246", "CS0121", "CS1503" })
+        {
+            Assert.Contains(records, record => Is(record, "diagnostic") && record.GetProperty("code").GetString() == $"COMPILER_{id}"
+                && record.GetProperty("affectsCoverage").GetBoolean());
+        }
+        Assert.Equal("partial", records[^1].GetProperty("status").GetString());
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
