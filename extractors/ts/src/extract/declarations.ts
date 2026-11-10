@@ -79,6 +79,7 @@ function cls(ctx: Ctx, c: ts.ClassDeclaration, generated: string | true | undefi
   }
   ctx.b.node(key, "Type", c.name!.text, evidence, { generated: !!generated, props });
   heritage(ctx, c, key);
+  classConstructor(ctx, c, key, generated);
   for (const m of c.members) {
     const name = nameOf(m);
     if (!name) continue;
@@ -96,6 +97,22 @@ function cls(ctx: Ctx, c: ts.ClassDeclaration, generated: string | true | undefi
       ctx.b.edge({ from: key, rel: "DECLARES", to: mk, evidence: [ctx.headerEv(m)] });
     }
   }
+}
+
+function classConstructor(ctx: Ctx, c: ts.ClassDeclaration, owner: string, generated: string | true | undefined) {
+  const declarations = c.members.filter(ts.isConstructorDeclaration);
+  const implementation = declarations.find(declaration => declaration.body) ?? declarations[0];
+  if (!implementation) return;
+  const key = ctx.keyOf(implementation);
+  if (!key) return;
+  const props: Props = { constructor: true, signature: implementation.parameters.map(parameter => parameter.getText()) };
+  if (has(implementation, ts.SyntaxKind.PrivateKeyword)) props.accessibility = "private";
+  else if (has(implementation, ts.SyntaxKind.ProtectedKeyword)) props.accessibility = "protected";
+  const overloads = declarations.filter(declaration => !declaration.body);
+  if (overloads.length) props.overloads = overloads.map(declaration => signatureText(declaration));
+  const evidence = declarations.map(declaration => ctx.headerEv(declaration));
+  ctx.b.node(key, "Method", c.name!.text, evidence, { generated: !!generated, props });
+  ctx.b.edge({ from: owner, rel: "DECLARES", to: key, evidence });
 }
 
 function heritage(ctx: Ctx, c: ts.ClassDeclaration | ts.InterfaceDeclaration, key: string) {
