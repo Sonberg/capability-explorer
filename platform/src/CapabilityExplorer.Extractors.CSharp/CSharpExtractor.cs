@@ -138,6 +138,10 @@ public sealed class CSharpExtractor(ExtractorOptions options)
         var p = unit.Project;
         var b = new ArtifactBuilder(options.RepositoryId, options.CommitSha, Tool);
         var keys = context.Keys;
+        var packageAssemblies = unit.Compilation.References.OfType<PortableExecutableReference>()
+            .Where(reference => reference.FilePath is { } path && !unit.FrameworkPaths.Contains(path))
+            .Select(reference => unit.Compilation.GetAssemblyOrModuleSymbol(reference)).OfType<IAssemblySymbol>()
+            .ToHashSet<IAssemblySymbol>(SymbolEqualityComparer.Default);
         var projectText = File.ReadAllText(p.FullPath);
         var projectKey = $"proj|{options.RepositoryId}|{p.RelativePath}";
         b.Node(projectKey, "Project", p.AssemblyName, [b.LineEvidence(p.RelativePath, p.SdkLine, projectText)]);
@@ -220,7 +224,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             var file = FileOf(tree)!;
             Declarations(b, keys, file, projectKey);
             Calls(b, keys, file);
-            Creations(b, keys, file);
+            Creations(b, keys, file, packageAssemblies);
             foreach (var decl in tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>())
             {
                 if (file.Model.GetDeclaredSymbol(decl) is IMethodSymbol method && b.HasNode(keys.Of(method)))
@@ -503,8 +507,8 @@ public sealed class CSharpExtractor(ExtractorOptions options)
         }
     }
 
-    /// <summary>Records constructor calls or type references for repository types; framework/package types are omitted.</summary>
-    private static void Creations(ArtifactBuilder b, SymbolKeys keys, SourceFile file)
+    /// <summary>Records repository creations and resolved selected-package constructor calls; framework creations are omitted.</summary>
+    private static void Creations(ArtifactBuilder b, SymbolKeys keys, SourceFile file, HashSet<IAssemblySymbol> packageAssemblies)
     {
         foreach (var node in file.Tree.GetRoot().DescendantNodes().Where(n => n is BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax))
         {
@@ -529,12 +533,17 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             }
 
             var type = ctor.ContainingType.OriginalDefinition;
+            var from = keys.Of(owner);
             if (keys.Of(type).StartsWith("cs|@ext|", StringComparison.Ordinal))
             {
+                if (owner is IMethodSymbol or IPropertySymbol && packageAssemblies.Contains(ctor.ContainingAssembly))
+                {
+                    b.Edge(from, "CALLS", keys.Of(ctor.OriginalDefinition), [file.Evidence(b, node)]);
+                }
+
                 continue;
             }
 
-            var from = keys.Of(owner);
             if (owner is not IFieldSymbol && IsDeclaredConstructor(ctor))
             {
                 b.Edge(from, "CALLS", keys.Of(ctor.OriginalDefinition), [file.Evidence(b, node)]);

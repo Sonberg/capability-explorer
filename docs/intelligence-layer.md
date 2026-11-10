@@ -146,6 +146,42 @@ disconnected cases, connected-code depth/cycles/item limits, and selected-view
 isolation. `ChatApiTests` separately covers the scripted model/tool round trip.
 Neither establishes live-model correctness or browser acceptance for issue #25.
 
+### Optional current-client tab history
+
+Chat is **memory-only by default**. In the Ask panel, explicitly enable
+**Remember chat in this tab** to retain one conversation in `sessionStorage`.
+The visible storage summary shows the limits; expand it for the full privacy
+terms. This is not encrypted storage. Browser session restore or duplicated
+tabs may keep a copy, so closing a tab does not guarantee deletion.
+
+The versioned record is bound to the analyzed snapshot, capability, effective
+repository revisions and navigation view. A record from a different scope is
+not restored and is removed with a notice when that scope opens successfully.
+Opening or restoring chat never sends a model request. Questions pin the same
+effective revisions rather than replaying evidence under a mutable default.
+
+Only the most recent **20 whole user/assistant turns**, including sources,
+lookups and retrieval metadata, are saved, up to **512 KiB of serialized UTF-8**.
+Older turns remain in memory until closing or reloading. No turn or source text
+is truncated to fit: an oversized or failed save disables remembering and
+attempts to remove the previous record while leaving the conversation usable.
+Malformed, unsupported and invalid stored data is rejected with a notice.
+Storage and removal failures are visible; failed deletion is not reported as
+successful and the old record might return after reload.
+
+**Clear chat** aborts the pending request, clears the transcript and draft,
+turns remembering off and removes the retained record when storage permits.
+Turning remembering off alone keeps the current in-memory conversation.
+Scope changes and closing the panel abort pending requests; late replies
+cannot repopulate cleared or different-scope history. The API still receives
+only the last ten messages, and the endpoint does not durably store them.
+
+`chat-history.test.ts` exercises validation, bounds and expected storage failures.
+`chat-panel.browser.ts` uses the actual built current client with synthetic
+transport to check consent, reload, clear, scoped requests, cancellation,
+citations and compact/desktop layouts. This is not live-model, real-corpus,
+browser-session deletion or native-tooltip-pixel qualification.
+
 ### Ollama context and native macOS setup
 
 Configure context on the **Ollama server or model**, not in Explorer's endpoint

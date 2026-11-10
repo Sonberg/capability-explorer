@@ -1,29 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
-import { request } from "../api";
+import { ApiError, request } from "../api";
+import { chatScope, clearChatHistory, loadChatHistory, saveChatHistory, type ChatSource as Source, type ChatTurn as Turn } from "../chatHistory";
 import { useFocus } from "../focus";
-import { symbolHref, useRoute, useSelection } from "../state";
+import { symbolHref, useApi, useRoute, useSelection } from "../state";
 import { Button, ErrorBox, inputClass, Mono, Muted, Note, Pill } from "./ui";
 
-interface Source {
-  n: number;
-  kind: string;
-  key: string;
-  name: string;
-  repository: string;
-  found: string;
-  text: string;
-}
-
-interface Turn {
-  role: "user" | "assistant";
-  content: string;
-  sources?: Source[];
-  retrieval?: string[];
-  steps?: string[];
-}
-
 type Chip = "capability" | "view" | "item";
+interface Draft {
+  input: string;
+  setInput: Dispatch<SetStateAction<string>>;
+  off: Set<Chip>;
+  setOff: Dispatch<SetStateAction<Set<Chip>>>;
+  onClose: () => void;
+}
 
 /** Concepts, integrations and paths are summaries, not a single symbol to open. */
 const isSymbol = (s: Source) => !["Concept", "Integration", "Path"].includes(s.kind);
@@ -53,14 +43,42 @@ const markdown: Components = {
 
 /** Cmd/Ctrl+J: ask about the selected capability. Answers cite numbered items retrieved on the server. */
 export function ChatPanel({ onClose }: { onClose: () => void }) {
-  const { meta, scope, capability } = useSelection();
+  const { scope } = useSelection();
+  const route = useRoute();
+  const [input, setInput] = useState("");
+  const [off, setOff] = useState<Set<Chip>>(new Set());
+  return <ScopedConversation key={JSON.stringify([scope, route.path])} {...{ input, setInput, off, setOff, onClose }} />;
+}
+
+/** Resolve this exact query afresh: SelectionProvider can briefly expose the previous view while loading. */
+function ScopedConversation(props: Draft) {
+  const { scope, meta, capability } = useSelection();
+  const route = useRoute();
+  const resolved = useApi<Record<string, string>>(`/api/view?${scope}`);
+  if (!resolved.data) {
+    return (
+      <aside aria-label="Ask about capabilities" className="fixed inset-y-0 right-0 z-20 flex w-full flex-col border-l border-zinc-200 bg-white p-4 shadow-xl sm:w-[420px] dark:border-zinc-800 dark:bg-zinc-900">
+        <button type="button" onClick={props.onClose} aria-label="Close chat">✕</button>
+        {resolved.error ? <ErrorBox message={resolved.error} /> : <Muted>Resolving the selected revisions…</Muted>}
+      </aside>
+    );
+  }
+  const identity = chatScope(meta.snapshotId, capability, resolved.data, route.path);
+  return <Conversation key={identity} identity={identity} view={resolved.data} {...props} />;
+}
+
+function Conversation({ identity, view, input, setInput, off, setOff, onClose }: Draft & { identity: string; view: Record<string, string> }) {
+  const { meta, capability } = useSelection();
   const route = useRoute();
   const focus = useFocus();
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [input, setInput] = useState("");
+  const [remember, setRemember] = useState(false);
+  const [notice, setNotice] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  const [off, setOff] = useState<Set<Chip>>(new Set());
+  const remembering = useRef(false);
+  const initialized = useRef(false);
+  const pending = useRef<AbortController | null>(null);
   const end = useRef<HTMLDivElement>(null);
   const capabilityName = meta.capabilities.find((c) => c.id === capability)?.name;
   const chips: [Chip, string, string | undefined][] = [
@@ -69,9 +87,53 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
     ["item", focus?.kind ?? "Selection", focus?.label],
   ];
 
+  useLayoutEffect(() => {
+    if (!initialized.current) {
+      initialized.current = true;
+      const saved = loadChatHistory(identity);
+      setTurns(saved.turns);
+      remembering.current = saved.remember;
+      setRemember(saved.remember);
+      setNotice(saved.notice);
+    }
+    return () => {
+      pending.current?.abort();
+      pending.current = null;
+    };
+  }, [identity]);
+
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" }); // block body: an effect must not return scrollIntoView's result
   }, [turns, busy]);
+
+  const retain = (next: Turn[]) => {
+    if (!remembering.current) return;
+    const saved = saveChatHistory(identity, next);
+    setNotice(saved.notice ?? "Chat saved in sessionStorage for this snapshot, capability and revision/view.");
+    if (!saved.saved) {
+      remembering.current = false;
+      setRemember(false);
+    }
+  };
+
+  const changeRemember = (enabled: boolean) => {
+    remembering.current = enabled;
+    setRemember(enabled);
+    if (enabled) retain(turns);
+    else setNotice(clearChatHistory() ?? "Remembering is off. The retained chat record was removed.");
+  };
+
+  const clear = () => {
+    pending.current?.abort();
+    pending.current = null;
+    remembering.current = false;
+    setRemember(false);
+    setTurns([]);
+    setInput("");
+    setBusy(false);
+    setError(undefined);
+    setNotice(clearChatHistory() ?? "Chat cleared. Remembering is off; the retained chat record was removed.");
+  };
 
   const toggle = (chip: Chip) => setOff((s) => {
     const next = new Set(s);
@@ -81,20 +143,24 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
 
   async function send() {
     const question = input.trim();
-    if (!question || busy) return;
+    if (!question || pending.current) return;
+    const controller = new AbortController();
+    pending.current = controller;
     const history: Turn[] = [...turns, { role: "user", content: question }];
-    const params = new URLSearchParams(scope);
     setTurns(history);
     setInput("");
     setBusy(true);
     setError(undefined);
+    retain(history);
+    let completed: Turn[] | undefined;
     try {
       const answer = await request<{ answer: string; sources: Source[]; retrieval: string[]; steps: string[] }>("/api/chat", {
         method: "POST",
+        signal: controller.signal,
         body: JSON.stringify({
           messages: history.slice(-10).map(({ role, content }) => ({ role, content })),
-          view: params.get("view") ?? undefined,
-          cap: params.get("cap") ?? undefined,
+          view: Object.keys(view).sort().map(repository => `${repository}:${view[repository]}`).join(",") || undefined,
+          cap: capability || undefined,
           focus: {
             capability: off.has("capability") ? undefined : capabilityName,
             view: off.has("view") ? undefined : route.path,
@@ -104,11 +170,21 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
           },
         }),
       });
-      setTurns([...history, { role: "assistant", content: answer.answer, sources: answer.sources, retrieval: answer.retrieval, steps: answer.steps }]);
+      if (pending.current !== controller || controller.signal.aborted) return;
+      completed = [...history, { role: "assistant", content: answer.answer, sources: answer.sources, retrieval: answer.retrieval, steps: answer.steps }];
     } catch (e) {
-      setError((e as Error).message);
+      if (pending.current !== controller || controller.signal.aborted) return;
+      if (!(e instanceof ApiError || e instanceof TypeError || e instanceof SyntaxError)) throw e;
+      setError(e.message);
     } finally {
-      setBusy(false);
+      if (pending.current === controller) {
+        pending.current = null;
+        setBusy(false);
+      }
+    }
+    if (completed && !controller.signal.aborted) {
+      setTurns(completed);
+      retain(completed);
     }
   }
 
@@ -118,7 +194,25 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
         <h2 className="font-semibold">Ask</h2>
         <button type="button" onClick={onClose} aria-label="Close chat" className="rounded-md px-2 py-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800">✕</button>
       </header>
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3 text-[13px]">
+      <div className="space-y-1 border-b border-zinc-200 px-4 py-2 text-xs dark:border-zinc-800">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={remember} onChange={(e) => changeRemember(e.target.checked)} />
+            Remember chat in this tab
+          </label>
+          <button type="button" onClick={clear} className="underline">Clear chat</button>
+        </div>
+        {/* The summary keeps the default, bounds and encryption caveat visible; the full privacy terms stay one click away. */}
+        <details>
+          <summary className="cursor-pointer text-zinc-600 dark:text-zinc-400">Memory only by default · opt-in keeps the last 20 whole turns, up to 512 KiB, unencrypted</summary>
+          <div className="mt-1 space-y-1">
+            <p>Default: memory only. Opt-in retains one conversation: the most recent 20 whole turns, at most 512 KiB including sources. No text is truncated.</p>
+            <p>sessionStorage only, not encrypted. Browser session restore or duplicated tabs may keep a copy; closing a tab does not guarantee deletion.</p>
+          </div>
+        </details>
+        {notice && <p role="status">{notice}</p>}
+      </div>
+      <div role="log" aria-label="Conversation" className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3 text-[13px]">
         {!meta.interpretation.chat && (
           <Note>No chat model is configured. Set one in <a href="#/settings">Settings</a>.</Note>
         )}

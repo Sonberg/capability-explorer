@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { after, before, test } from "node:test";
 import playwright from "../spikes/likec4/node_modules/playwright/index.js";
 import { preview } from "../platform/src/CapabilityExplorer.Explorer/client/node_modules/vite/dist/node/index.js";
@@ -64,7 +64,7 @@ after(async () => {
   });
 });
 
-test("Built current chat: synthetic selected-scope request, lookups and citation/source hover metadata", { timeout: 30_000 }, async t => {
+test("Built current chat: synthetic scoped evidence, opt-in reload and request isolation", { timeout: 45_000 }, async t => {
   t.diagnostic(`Synthetic transport; built assets/app.js sha256=${entrySha256}. No model, retriever or real-corpus acceptance.`);
   const browser = await playwright.chromium.launch({ headless: true });
   try {
@@ -74,6 +74,11 @@ test("Built current chat: synthetic selected-scope request, lookups and citation
     const unexpected: string[] = [];
     const scripts: string[] = [];
     let chatRequests = 0;
+    const controlled: { release?: () => void; ready?: () => void; delay: boolean } = { delay: false };
+    const holdAnswer = () => {
+      controlled.delay = true;
+      return new Promise<void>(resolve => { controlled.ready = resolve; });
+    };
     page.on("pageerror", error => errors.push(error.message));
     page.on("response", response => {
       if (response.request().resourceType() === "script") scripts.push(new URL(response.url()).pathname);
@@ -88,6 +93,11 @@ test("Built current chat: synthetic selected-scope request, lookups and citation
       }
       if (url.pathname === "/api/chat" && request.method() === "POST") {
         chatRequests++;
+        if (controlled.delay) {
+          const gate = new Promise<void>(resolve => { controlled.release = resolve; });
+          controlled.ready?.();
+          await gate;
+        }
         await route.fulfill({ json: {
           answer: "Synthetic answer: CreateOrder records an order [1–2].",
           sources, steps, retrieval: ["semantic search: synthetic fixture only"],
@@ -114,7 +124,9 @@ test("Built current chat: synthetic selected-scope request, lookups and citation
             const cap = url.searchParams.get("cap");
             if (cap !== null && cap !== capability.id) break;
             if (view === "") payload = { [repository]: latest };
-            else if (view === `${repository}:${selected}`) payload = { [repository]: selected };
+            else if (view === `${repository}:${selected}` || view === `${repository}:${latest}`) {
+              payload = { [repository]: view.split(":")[1] };
+            }
             break;
           }
           case "/api/search": payload = { items: [], nextCursor: null, total: 0, snapshotId }; break;
@@ -162,7 +174,24 @@ test("Built current chat: synthetic selected-scope request, lookups and citation
     const open = page.getByRole("button", { name: /^Ask (?:⌘J|Ctrl J)$/ });
     await open.click();
     const panel = page.getByRole("complementary", { name: "Ask about capabilities", exact: true });
+    const remember = panel.getByRole("checkbox", { name: "Remember chat in this tab", exact: true });
+    const retained = () => page.evaluate(() => sessionStorage.getItem("ce.chatHistory"));
+    const reopenAfterReload = async () => {
+      await page.reload();
+      await page.getByRole("region", { name: "Symbol results" }).locator('[role="list"][aria-busy="false"]').waitFor({ state: "attached" });
+      await open.click();
+      await remember.waitFor();
+    };
+    const exchange = async () => {
+      await panel.getByRole("textbox", { name: "Question", exact: true }).fill(question);
+      await panel.getByRole("button", { name: "Ask", exact: true }).click();
+      await panel.getByText("semantic search: synthetic fixture only", { exact: true }).waitFor();
+    };
     await panel.waitFor();
+    await panel.getByRole("textbox", { name: "Question", exact: true }).waitFor();
+    assert.equal(await remember.count(), 1, "The ready chat must offer an explicit opt-in retention control.");
+    assert.equal(await remember.isChecked(), false, "Retention must be opt-in.");
+    assert.equal(await retained(), null);
     assert.equal(await open.getAttribute("aria-pressed"), "true");
     const capabilityChip = panel.getByRole("button", { name: `Capability: ${capability.name}`, exact: true });
     await capabilityChip.waitFor();
@@ -210,11 +239,174 @@ test("Built current chat: synthetic selected-scope request, lookups and citation
     assert.equal(await panel.getByRole("link", { name: "2", exact: true }).count(), 0);
     assert.match(await panel.innerText(), /Synthetic answer: CreateOrder records an order \[1, 2\]\./);
     assert.equal(chatRequests, 1, "Expanding or hovering evidence must not invoke chat again.");
+    assert.equal(await retained(), null, "A completed default-off exchange must stay memory-only.");
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, [], "No live/private API or external service may participate.");
     await panel.getByRole("button", { name: "Close chat", exact: true }).click();
     await panel.waitFor({ state: "detached" });
     assert.equal(await open.getAttribute("aria-pressed"), "false");
+
+    await reopenAfterReload();
+    assert.equal(await remember.isChecked(), false);
+    assert.equal(await panel.getByText(question, { exact: true }).count(), 0);
+    assert.equal(chatRequests, 1, "Reloading and opening must not call chat.");
+    assert.match(await panel.innerText(), /20 whole turns/);
+    assert.match(await panel.innerText(), /512 KiB/);
+    await remember.check();
+    await exchange();
+    assert.ok(await retained());
+    await reopenAfterReload();
+    assert.equal(await remember.isChecked(), true);
+    await panel.getByText(question, { exact: true }).waitFor();
+    assert.equal(await panel.getByRole("link", { name: "1", exact: true }).getAttribute("href"), citationHref);
+    assert.equal(chatRequests, 2, "Restoration must not replay a model request.");
+    await panel.getByRole("textbox", { name: "Question", exact: true }).fill("Synthetic discarded draft");
+    await panel.getByRole("button", { name: "Clear chat", exact: true }).click();
+    assert.equal(await panel.getByRole("textbox", { name: "Question", exact: true }).inputValue(), "");
+    assert.equal(await retained(), null);
+    assert.equal(await panel.getByText(question, { exact: true }).count(), 0);
+    await reopenAfterReload();
+    assert.equal(await remember.isChecked(), false);
+    assert.equal(await panel.getByText(question, { exact: true }).count(), 0);
+    await remember.check();
+    await exchange();
+    await remember.uncheck();
+    assert.equal(await retained(), null);
+    assert.equal(await panel.getByText(question, { exact: true }).count(), 1, "Turning retention off must keep the in-memory conversation usable.");
+    await reopenAfterReload();
+    assert.equal(await remember.isChecked(), false);
+    assert.equal(await panel.getByText(question, { exact: true }).count(), 0);
+    assert.equal(chatRequests, 3);
+
+    await remember.check();
+    await exchange();
+    const changed = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/view" && url.searchParams.get("view") === `${repository}:${latest}`;
+    });
+    await scope.getByLabel(`Revision of ${repository}`, { exact: true }).selectOption(latest);
+    await changed;
+    await remember.waitFor();
+    await panel.getByText(/Saved chat.*(?:different|changed|scope)/).waitFor();
+    assert.equal(await retained(), null);
+    assert.equal(await panel.getByText(question, { exact: true }).count(), 0, "Different revisions must never replay old evidence.");
+
+    const heldForClear = holdAnswer();
+    await remember.check();
+    await panel.getByRole("textbox", { name: "Question", exact: true }).fill("Synthetic pending request to clear");
+    const pending = page.waitForRequest(request => new URL(request.url()).pathname === "/api/chat");
+    await panel.getByRole("button", { name: "Ask", exact: true }).click();
+    await pending;
+    await heldForClear;
+    const released = page.waitForEvent("requestfailed", {
+      predicate: request => new URL(request.url()).pathname === "/api/chat",
+    });
+    await panel.getByRole("button", { name: "Clear chat", exact: true }).click();
+    assert.equal(await retained(), null);
+    // Controlled transport, not a sleep: clear must abort the pending request.
+    assert.ok(controlled.release);
+    controlled.release();
+    await released;
+    controlled.delay = false;
+    await exchange();
+    assert.equal(await panel.getByText("Synthetic pending request to clear", { exact: true }).count(), 0);
+    assert.equal(await retained(), null, "A late response must not re-enable cleared retention.");
+    assert.equal(await panel.getByRole("button", { name: "Ask", exact: true }).isDisabled(), true);
+
+    await remember.check();
+    const heldForScope = holdAnswer();
+    await panel.getByRole("textbox", { name: "Question", exact: true }).fill("Synthetic old-scope request");
+    await panel.getByRole("button", { name: "Ask", exact: true }).click();
+    await heldForScope;
+    const releaseOld = controlled.release!;
+    const oldAborted = page.waitForEvent("requestfailed", {
+      predicate: request => new URL(request.url()).pathname === "/api/chat",
+    });
+    await scope.getByLabel(`Revision of ${repository}`, { exact: true }).selectOption(selected);
+    await remember.waitFor();
+    await panel.getByText(/Saved chat.*(?:different|changed|scope)/).waitFor();
+    const heldForNew = holdAnswer();
+    await panel.getByRole("textbox", { name: "Question", exact: true }).fill("Synthetic new-scope request");
+    await panel.getByRole("button", { name: "Ask", exact: true }).click();
+    await heldForNew;
+    const releaseNew = controlled.release!;
+    releaseOld();
+    await oldAborted;
+    assert.equal(await panel.getByText("Thinking…", { exact: true }).count(), 1, "An old finally must not reset the newer scope's pending request.");
+    assert.equal(await panel.getByText("Synthetic old-scope request", { exact: true }).count(), 0);
+    assert.equal(await retained(), null);
+    releaseNew();
+    await panel.getByText("semantic search: synthetic fixture only", { exact: true }).waitFor();
+    assert.equal(await panel.getByText("Synthetic new-scope request", { exact: true }).count(), 1);
+    assert.equal(await panel.getByText("semantic search: synthetic fixture only", { exact: true }).count(), 1);
+
+    const heldForClose = holdAnswer();
+    await panel.getByRole("textbox", { name: "Question", exact: true }).fill("Synthetic request to close");
+    await panel.getByRole("button", { name: "Ask", exact: true }).click();
+    await heldForClose;
+    const closedAborted = page.waitForEvent("requestfailed", {
+      predicate: request => new URL(request.url()).pathname === "/api/chat",
+    });
+    await panel.getByRole("button", { name: "Close chat", exact: true }).click();
+    controlled.release!();
+    await closedAborted;
+    controlled.delay = false;
+    await open.click();
+    await remember.waitFor();
+    assert.equal(await panel.getByText("Synthetic request to close", { exact: true }).count(), 0);
+    assert.equal(await retained(), null);
+    await panel.getByRole("button", { name: "Close chat", exact: true }).click();
+    await page.evaluate(() => localStorage.removeItem("ce.overrides"));
+    await reopenAfterReload();
+    const defaultSent = page.waitForRequest(request => new URL(request.url()).pathname === "/api/chat");
+    await exchange();
+    assert.equal((await defaultSent).postDataJSON().view, `${repository}:${latest}`,
+      "A mutable default selection must send the effective revisions used to bind retained evidence.");
+    await remember.check();
+    const screenshots = new URL("../.sandbox-cache/chat-history-layout/", import.meta.url);
+    await mkdir(screenshots, { recursive: true });
+    for (const viewport of [
+      { name: "desktop", width: 1440, height: 1000 },
+      { name: "mobile", width: 390, height: 844 },
+      { name: "compact", width: 320, height: 568 },
+      { name: "landscape", width: 844, height: 390 },
+    ]) {
+      await page.setViewportSize(viewport);
+      const bounds = await panel.boundingBox();
+      const log = await panel.getByRole("log", { name: "Conversation", exact: true }).boundingBox();
+      const composer = await panel.getByRole("textbox", { name: "Question", exact: true }).boundingBox();
+      await page.screenshot({ path: new URL(`${viewport.name}.png`, screenshots).pathname });
+      t.diagnostic(`Chat layout ${viewport.name}: ${JSON.stringify({ bounds, log, composer })}`);
+      assert.ok(bounds && log && composer);
+      assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= viewport.width, "Chat must fit the viewport horizontally.");
+      assert.ok(composer.y >= 0 && composer.y + composer.height <= viewport.height, "The question must remain on screen.");
+      assert.ok(log.height >= 80, "Retention controls must leave a readable, scrollable conversation in short viewports.");
+    }
+    await remember.uncheck();
+    await page.evaluate(() => sessionStorage.setItem("ce.chatHistory", "{"));
+    const beforeInvalidReload = chatRequests;
+    await reopenAfterReload();
+    await panel.getByRole("status").filter({ hasText: /malformed.*not restored/i }).waitFor();
+    assert.equal(await remember.isChecked(), false);
+    assert.equal(await retained(), null);
+    assert.equal(chatRequests, beforeInvalidReload, "Rejecting stored data must not invoke chat.");
+
+    await page.evaluate(() => {
+      const set = Storage.prototype.setItem;
+      Storage.prototype.setItem = function(key: string, value: string) {
+        if (key === "ce.chatHistory") throw new DOMException("Synthetic chat quota", "QuotaExceededError");
+        set.call(this, key, value);
+      };
+    });
+    await remember.click();
+    await panel.getByRole("status").filter({ hasText: /not saved.*unavailable or full/i }).waitFor();
+    assert.equal(await remember.isChecked(), false, "Failed retention must turn the opt-in back off.");
+    assert.equal(await retained(), null);
+    await exchange();
+    assert.equal(await remember.isChecked(), false);
+    assert.equal(await retained(), null, "A quota failure must leave ordinary in-memory chat usable without silently saving.");
+    assert.deepEqual(errors, []);
+    assert.deepEqual(unexpected, [], "Reload/retention checks remain synthetic-only.");
   } finally {
     await browser.close();
   }
