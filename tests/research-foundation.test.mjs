@@ -200,7 +200,7 @@ const freezeObservation = value => freezeIssueObservation(value, observationNow)
 
 test('issue observations detach literal source, normalize only record order and recheck integrity', () => {
   const input = observation(), frozen = freezeObservation(input);
-  const reversed = observation([...input.pages[0].issues].reverse());
+  const reversed = observation(structuredClone(input.pages[0].issues).reverse());
   assert.deepEqual(freezeObservation(reversed), frozen);
   input.pages[0].issues[0].body = 'caller mutation';
   input.context.owner = 'changed-owner';
@@ -263,6 +263,48 @@ test('issue observations bind a contiguous page chain, not page order normalizat
   assert.deepEqual(compareIssueObservations(frozen, frozen, observationNow).uncertainty, []);
   input.pages.reverse();
   assert.throws(() => freezeObservation(input), /page chain/);
+});
+
+test('issue observations do not compare different declared source inputs, bounds or provenance as compatible', () => {
+  const before = freezeObservation(observation());
+  for (const [change, reason] of [
+    [d => { d.context.sourceCommit = 'b'.repeat(40); }, 'incompatible-source-inputs'],
+    [d => { d.context.sourceInputSha256 = 'b'.repeat(64); }, 'incompatible-source-inputs'],
+    [d => { d.bounds.maxIssues = 9; }, 'incompatible-bounds'],
+    [d => { d.provenance = 'declared'; }, 'incompatible-provenance'],
+  ]) {
+    const after = observation([syntheticIssue(1), syntheticIssue(3)]);
+    after.pages[0].issues[0].body = 'different declared body';
+    change(after);
+    const delta = compareIssueObservations(before, freezeObservation(after), observationNow);
+    assert.equal(delta.compatible, false, reason);
+    assert.ok(delta.uncertainty.includes(reason));
+    for (const field of ['new', 'missingFromObservedScope', 'bodyChanged']) assert.deepEqual(delta[field], []);
+  }
+});
+
+test('issue observations do not promote records on unavailable pages into observed changes', () => {
+  const before = freezeObservation(observation());
+  const after = observation([syntheticIssue(1, 'closed')]);
+  after.pages[0].issues[0].body = 'unavailable cached body';
+  after.capture.status = after.capture.terminal = after.pages[0].status = 'unavailable';
+  const delta = compareIssueObservations(before, freezeObservation(after), observationNow);
+  assert.ok(delta.uncertainty.includes('after:page:1:unavailable'));
+  for (const field of ['new', 'missingFromObservedScope', 'closed', 'bodyChanged']) assert.deepEqual(delta[field], []);
+});
+
+test('issue observations retain common observed changes while later pages are unavailable', () => {
+  const before = freezeObservation(observation());
+  const after = observation([syntheticIssue(1, 'closed')]);
+  after.pages[0].issues[0].body = 'observed changed body';
+  after.pages[0].nextCursor = 'synthetic-unavailable-page';
+  after.pages.push({ number: 2, cursor: 'synthetic-unavailable-page', nextCursor: null, status: 'unavailable', issues: [] });
+  after.capture.terminal = 'unavailable';
+  const delta = compareIssueObservations(before, freezeObservation(after), observationNow);
+  assert.ok(delta.uncertainty.includes('after:page:2:unavailable'));
+  assert.deepEqual(delta.closed.map(i => i.number), [1]);
+  assert.deepEqual(delta.bodyChanged.map(i => i.number), [1]);
+  assert.deepEqual(delta.missingFromObservedScope, []);
 });
 
 test('issue observations preserve explicit unavailable states and freshness/duration uncertainty', () => {
