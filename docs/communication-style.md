@@ -24,9 +24,19 @@ Do not install global output styles or change another contributor's settings.
 Controlled terminology and direct sentences can reduce ambiguity. A blanket
 restricted vocabulary or "explain like I am five" style can instead remove
 necessary distinctions. Preserve technical precision and simplify the prose
-around it. The [project glossary](ubiquitous-language.md) and
-[MADR-0002](adr/0002-ubiquitous-language.md) already govern shared meanings.
-The executable contracts retain the authority described there.
+around it. Terminology and prose style are separate: this guide changes how
+ideas are expressed, not what project terms mean. The
+[project glossary](ubiquitous-language.md) and
+[MADR-0002](adr/0002-ubiquitous-language.md) govern shared meanings, subject to
+the executable contracts. If they conflict, report the conflict; do not silently
+change a contract or redefine a term.
+
+Name the model or context when a term could mean different things. For example,
+the project's technical **Capability** selects repositories for analysis; it
+does not mean a business ability. Model ownership, process grouping and
+deployment are separate concepts. Provenance is not approval, and a concept
+mapping is not record identity or a runtime connection. These are local modeling
+distinctions, not universal standards.
 
 The council recommended a bounded pilot before broad adoption. Its roles shared
 sources and model lineage; agreement is not independent validation or contributor
@@ -44,9 +54,11 @@ ADR ledger or accepting any existing proposal.
    place a prerequisite before an action that depends on it.
 3. Prefer active voice when the actor is known. When the actor is unknown, say
    so or use passive voice. Do not invent responsibility.
-4. Use the same defined term for the same concept. Explain an unfamiliar acronym
-   on first use when the reader needs it. Technical names are allowed; invented
-   jargon and unnecessary synonyms are not useful substitutes.
+4. Use the same defined term for the same concept. Name the model or context
+   when a term is overloaded or its meaning is not obvious. Explain an unfamiliar
+   acronym on first use when the reader needs it. Keep necessary technical nouns,
+   verbs, names and acronyms; direct prose does not require replacing them with
+   vague or less precise words.
 5. Preserve conditions, negation, quantities, units, actor, scope and obligation.
    **Must** states a requirement, **should** a recommendation, and **may**
    permission where that is the intended meaning. Do not silently change a
@@ -55,9 +67,9 @@ ADR ledger or accepting any existing proposal.
    safe to retry. **Candidate** does not mean confirmed. Partial observation
    does not establish absence. Tested, reviewed, approved and authorized are
    different claims. Necessary qualifications are not needless hedging.
-7. Keep literal code, commands, filenames, identifiers, logs and quotations exact
-   when they are needed and safe to share. Explain them separately. Do not edit
-   evidence to make it appear clearer or more favorable.
+7. Keep literal code, commands, filenames, identifiers, logs and necessary
+   quotations exact when they are needed and safe to share. Explain them
+   separately. Do not edit evidence to make it appear clearer or more favorable.
 8. Protect confidential information. Neutral names alone do not make a log or
    example safe to publish. Remove or withhold secrets, private URLs and sensitive
    source details before sharing; label a redacted excerpt as redacted. Prefer
@@ -65,6 +77,13 @@ ADR ledger or accepting any existing proposal.
 9. Include enough detail for the reader to act correctly. Do not use analogies,
    sentence-length limits, readability scores or shortness as substitutes for
    factual accuracy. Use tables or lists only when they help the reader.
+   Concern categories can help organize a response, but they are not a mandatory
+   answer template.
+
+The operator's "up to 80%" phrase is an informal adaptation for ordinary prose.
+It is not a measured compliance rate, quota, readability score, or formal
+ASD-STE100 conformance or certification. Apply the principles without changing
+technical meaning; do not claim that a percentage measures compliance.
 
 ## GitHub issues
 
