@@ -152,6 +152,35 @@ paired, unblinded synthetic review is not independent human acceptance, measured
 operational improvement or formal standard conformity. Human contributor review
 remains necessary before repository-wide adoption.
 
+## Scoped follow-up: context and prose clarity
+
+This additive follow-up extends the existing pilot criteria with eight neutral,
+synthetic scenarios. It does not replace or re-rate the earlier sample review.
+The existing fidelity requirement still applies: no material change to meaning,
+obligation or privacy. Clarity is judged separately. The screening target remains
+at least six of eight equally clear or clearer, with none materially less clear.
+
+| # | Before | After | Fidelity check |
+|---|---|---|---|
+| 1. Technical and business meaning | "The capability groups two repositories for analysis." | "In this tool, a technical Capability groups repositories for analysis. It is not a business ability." | Keeps the repository-selection meaning and rules out a business meaning. |
+| 2. Context-specific ownership | "The owner selects repository sources and approves conceptual-model changes." | "Here, 'repository owner' means the person who selects source repositories. 'Model owner' means the person who approves conceptual-model changes. These labels alone do not show whether one person holds both roles." | Names each context without assuming the two roles have the same or different holder. |
+| 3. Unknown run state | "The final state of run R-17 is unknown." | "Run R-17 has no known final state. Do not call it failed or terminated. The unknown state does not permit a retry." | Keeps the state unknown; neither failure, termination nor retry permission is inferred. |
+| 4. Attributed concept correspondence | "The review note attributes a possible concept correspondence between records A and B." | "The review note says records A and B may correspond as concepts. It does not establish owner approval, record identity or a runtime connection." | Retains the attributed possibility and excludes approval, identity and runtime claims. |
+| 5. Condition, negation, quantity and must | "If coverage is partial, the operator must not report an unobserved declaration as removed. The operator must retain all 3 records." | "With partial coverage, the operator must not report any unobserved declaration as removed. The operator must retain all 3 records." | Preserves the condition, negation, quantity and both must obligations. |
+| 6. Literal command and identifier | "For run `run-17`, use `tool inspect --run run-17`." | "Inspect run `run-17` with `tool inspect --run run-17`." | Keeps the command and identifier literal and unchanged. |
+| 7. Historical status | "The sample says the export is available." | "In fictional revision R1, the sample marked the export as available. That historical status does not show whether the export is available now." | Qualifies the example's old status without claiming current availability. |
+| 8. Informal STE adaptation | "Aim for up to 80% STE style in ordinary prose." | "Use STE-inspired clarity principles in ordinary prose. The 'up to 80%' phrase is informal; it is not a measured compliance rate, quota, readability score or formal ASD-STE100 conformance or certification." | Retains the style intent while making clear that the percentage is not a measure or certification claim. |
+
+### Author self-check and review status
+
+The author checked each pair against the fidelity column and found no material
+change to meaning, obligation or privacy. The author's separate clarity
+self-check judged all eight rewrites at least equally clear and none materially
+less clear. These are author judgments, not independent ratings or evidence of
+effectiveness. The parent/integration owner's inspection and any council review
+of these eight examples are pending. No human acceptance is claimed; AI agreement
+would not count as designated human acceptance.
+
 ## Implementation checks
 
 These checks were recorded in the original local pilot before publication.
