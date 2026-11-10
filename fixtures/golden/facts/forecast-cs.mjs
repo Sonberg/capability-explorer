@@ -33,12 +33,15 @@ export const k = {
   loader: cs("T:Forecast.Api.Forecasting.StrategyLoader"),
   resolve: cs("M:Forecast.Api.Forecasting.StrategyLoader.Resolve(System.IServiceProvider,System.String)"),
   series: cs("T:Forecast.Api.Forecasting.WeeklySeries"),
+  seriesCtor: cs(`M:Forecast.Api.Forecasting.WeeklySeries.#ctor(${INTS})`),
   quantities: cs("P:Forecast.Api.Forecasting.WeeklySeries.Quantities"),
   totalUnits: cs("M:Forecast.Api.Forecasting.WeeklySeries.TotalUnits"),
   dbContext: cs("T:Forecast.Api.Data.ForecastDbContext"),
+  dbContextCtor: cs("M:Forecast.Api.Data.ForecastDbContext.#ctor(Microsoft.EntityFrameworkCore.DbContextOptions{Forecast.Api.Data.ForecastDbContext})"),
   forecastEntry: cs("T:Forecast.Api.Data.ForecastEntry"),
   weeklyHistory: cs("T:Forecast.Api.Data.WeeklyHistory"),
   repository: cs("T:Forecast.Api.Data.Repository`1"),
+  repositoryCtor: cs("M:Forecast.Api.Data.Repository`1.#ctor(Forecast.Api.Data.ForecastDbContext)"),
   listAsync: cs("M:Forecast.Api.Data.Repository`1.ListAsync(System.Linq.Expressions.Expression{System.Func{`0,System.Boolean}},System.Threading.CancellationToken)"),
   addAsync: cs("M:Forecast.Api.Data.Repository`1.AddAsync(`0,System.Threading.CancellationToken)"),
   consumer: cs("T:Forecast.Api.Messaging.StatsUpdatedConsumer"),
@@ -123,11 +126,14 @@ export default function forecastCs(repo, tag) {
     at: [[series, "public sealed partial class WeeklySeries(IReadOnlyList<int> quantities)"], [seriesStats, "public sealed partial class WeeklySeries"]],
   });
   a.node({ key: k.quantities, kind: "Property", name: "Quantities", at: [series, "public IReadOnlyList<int> Quantities { get; }"] });
+  a.node({ key: k.seriesCtor, kind: "Method", name: ".ctor", at: [series, "public sealed partial class WeeklySeries(IReadOnlyList<int> quantities)"] });
   a.node({ key: k.totalUnits, kind: "Method", name: "TotalUnits", at: [seriesStats, "public int TotalUnits()"] });
   a.node({ key: k.dbContext, kind: "Type", name: "ForecastDbContext", props: { typeKind: "class" }, at: [ctx, "public sealed class ForecastDbContext"] });
+  a.node({ key: k.dbContextCtor, kind: "Method", name: ".ctor", at: [ctx, "public sealed class ForecastDbContext(DbContextOptions<ForecastDbContext> options)"] });
   a.node({ key: k.forecastEntry, kind: "Type", name: "ForecastEntry", props: { typeKind: "class" }, at: [entry, "public sealed class ForecastEntry"] });
   a.node({ key: k.weeklyHistory, kind: "Type", name: "WeeklyHistory", props: { typeKind: "class" }, at: [hist, "public sealed class WeeklyHistory"] });
   a.node({ key: k.repository, kind: "Type", name: "Repository", props: { typeKind: "class", genericArity: 1 }, at: [repoFile, "public sealed class Repository<T>(ForecastDbContext db)"] });
+  a.node({ key: k.repositoryCtor, kind: "Method", name: ".ctor", at: [repoFile, "public sealed class Repository<T>(ForecastDbContext db)"] });
   a.node({ key: k.listAsync, kind: "Method", name: "ListAsync", at: [repoFile, "public Task<List<T>> ListAsync("] });
   a.node({ key: k.addAsync, kind: "Method", name: "AddAsync", at: [repoFile, "public async Task AddAsync(T entity, CancellationToken cancellationToken)"] });
   a.node({ key: k.consumer, kind: "Type", name: "StatsUpdatedConsumer", props: { typeKind: "class", partial: true }, at: [consumer, "public sealed partial class StatsUpdatedConsumer"] });
@@ -217,6 +223,11 @@ export default function forecastCs(repo, tag) {
   a.edge({ from: k.program, rel: "REGISTERS", to: k.consumer, derivation: "rule", rule: DI, props: { lifetime: "hostedService" }, at: [program, "builder.Services.AddHostedService<StatsUpdatedConsumer>()"] });
 
   // ---- code graph ----
+  a.edge({ from: k.series, rel: "DECLARES", to: k.seriesCtor, at: [series, "public sealed partial class WeeklySeries(IReadOnlyList<int> quantities)"] });
+  a.edge({ from: k.dbContext, rel: "DECLARES", to: k.dbContextCtor, at: [ctx, "public sealed class ForecastDbContext(DbContextOptions<ForecastDbContext> options)"] });
+  a.edge({ from: k.repository, rel: "DECLARES", to: k.repositoryCtor, at: [repoFile, "public sealed class Repository<T>(ForecastDbContext db)"] });
+  a.edge({ from: k.repositoryCtor, rel: "REFERENCES", to: k.dbContext, at: [repoFile, "ForecastDbContext db"] });
+  a.edge({ from: k.getForecast, rel: "CALLS", to: k.seriesCtor, at: [ep, "new WeeklySeries(rows.OrderBy(r => r.WeekStart).Select(r => r.Units).ToList())"] });
   a.edge({ from: k.program, rel: "CALLS", to: k.mapEndpoints, at: [program, "MapForecastEndpoints()"] });
   for (const [impl, method, file, decl] of [[k.moving, k.movingForecast, mov, "MovingAverageStrategy : IForecastStrategy"], [k.smoothing, k.smoothingForecast, exp, "ExponentialSmoothingStrategy : IForecastStrategy"]]) {
     a.edge({ from: impl, rel: "IMPLEMENTS", to: k.iStrategy, at: [file, decl] });
