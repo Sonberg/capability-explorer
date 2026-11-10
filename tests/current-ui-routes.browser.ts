@@ -3,6 +3,7 @@ import { after, before, test } from "node:test";
 import playwright from "../spikes/likec4/node_modules/playwright/index.js";
 import { createServer } from "../platform/src/CapabilityExplorer.Explorer/client/node_modules/vite/dist/node/index.js";
 import type { ViteDevServer } from "../platform/src/CapabilityExplorer.Explorer/client/node_modules/vite/dist/node/index.js";
+import { listenBrowserServer } from "./browser-server.ts";
 
 const retired = [
   ["evaluation", "Evaluation"],
@@ -21,10 +22,7 @@ before(async () => {
     server: { host: "127.0.0.1", port: 0, fs: { allow: [new URL("..", import.meta.url).pathname] } },
     logLevel: "error",
   });
-  await server.listen();
-  const url = server.resolvedUrls?.local[0];
-  assert.ok(url);
-  origin = url.replace(/\/$/, "");
+  origin = await listenBrowserServer(server);
 });
 after(async () => { await server?.close(); });
 
