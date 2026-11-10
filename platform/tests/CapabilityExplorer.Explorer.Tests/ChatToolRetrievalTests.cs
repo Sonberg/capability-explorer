@@ -257,11 +257,11 @@ public sealed class ChatToolRetrievalTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Given_equal_hop_chains_when_artifact_order_changes_then_symbol_and_relation_ties_are_stable(bool incoming)
+    public async Task Given_equal_hop_chains_when_artifact_order_changes_then_symbol_ties_are_stable(bool incoming)
     {
         JsonObject[] edges = incoming
-            ? [Edge(Key(2), Key(0)), Edge(Key(3), Key(2)), Edge(Key(1), Key(0), "REFERENCES"), Edge(Key(1), Key(0)), Edge(Key(3), Key(1))]
-            : [Edge(Key(0), Key(2)), Edge(Key(2), Key(3)), Edge(Key(0), Key(1), "REFERENCES"), Edge(Key(0), Key(1)), Edge(Key(1), Key(3))];
+            ? [Edge(Key(2), Key(0)), Edge(Key(3), Key(2)), Edge(Key(1), Key(0)), Edge(Key(3), Key(1))]
+            : [Edge(Key(0), Key(2)), Edge(Key(2), Key(3)), Edge(Key(0), Key(1)), Edge(Key(1), Key(3))];
         foreach (var reverse in new[] { false, true })
         {
             using var graph = new SyntheticGraph(Rows("client", Revision,
@@ -298,14 +298,15 @@ public sealed class ChatToolRetrievalTests
             [Edge(Key(2), Key(3)), Edge(Key(1), Key(3))]));
         foreach (var reverse in new[] { false, true })
         {
-            var alternatives = new List<(string To, string Via)> { (Key(2), "candidate-only"), (Key(1), "candidate-only") };
+            var alternatives = new List<(string To, string Via)>
+                { (Key(2), "candidate-z"), (Key(1), "candidate-z"), (Key(1), "candidate-a") };
             if (reverse) alternatives.Reverse();
             var links = new Dictionary<string, List<(string To, string Via)>>(StringComparer.Ordinal) { [Key(0)] = alternatives };
             var hops = GraphPaths.Shortest(graph.Index.View(null), [Key(0)],
                 new HashSet<string>(StringComparer.Ordinal) { Key(3) }, links);
             Assert.NotNull(hops);
             Assert.Equal(new[] { Key(0), Key(1), Key(3) }, hops.Select(h => h.Key));
-            Assert.Equal("candidate-only", hops[1].Via);
+            Assert.Equal("candidate-a", hops[1].Via);
         }
     }
 
