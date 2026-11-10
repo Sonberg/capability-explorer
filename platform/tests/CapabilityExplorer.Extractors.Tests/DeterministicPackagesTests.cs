@@ -94,6 +94,10 @@ public sealed class DeterministicPackagesTests : IDisposable
     [InlineData("1.0.*", "1.0.9;1.0.10;1.1.0", "1.0.10")]
     [InlineData(null, "1.9.0;1.10.0;2.0.0-beta.1", "1.10.0")]
     [InlineData("1.0.0-*", "1.0.0-beta.1;2.0.0", "1.0.0-beta.1")]
+    [InlineData("(1.0.0,2.0.0)", "1.0.0;1.1.0;1.5.0;2.0.0", "1.1.0")]
+    [InlineData("(1.0.0,)", "1.0.0;2.0.0;3.0.0", "2.0.0")]
+    [InlineData("(1.0.0,2.0.0)", "1.0.0;2.0.0", null)]
+    [InlineData("[1.0.0,2.0.0)", "1.0.0;1.1.0", "1.0.0")]
     public async Task Feed_selection_preserves_the_request_and_semantic_version_order(string? request, string available, string? expected)
     {
         var source = Source(request);
