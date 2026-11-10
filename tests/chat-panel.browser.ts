@@ -348,10 +348,18 @@ test("Built current chat: synthetic scoped evidence, opt-in reload and request i
     await panel.getByRole("button", { name: "Close chat", exact: true }).click();
     controlled.release!();
     await closedAborted;
+    controlled.delay = false;
     await open.click();
     await remember.waitFor();
     assert.equal(await panel.getByText("Synthetic request to close", { exact: true }).count(), 0);
     assert.equal(await retained(), null);
+    await panel.getByRole("button", { name: "Close chat", exact: true }).click();
+    await page.evaluate(() => localStorage.removeItem("ce.overrides"));
+    await reopenAfterReload();
+    const defaultSent = page.waitForRequest(request => new URL(request.url()).pathname === "/api/chat");
+    await exchange();
+    assert.equal((await defaultSent).postDataJSON().view, `${repository}:${latest}`,
+      "A mutable default selection must send the effective revisions used to bind retained evidence.");
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, [], "Reload/retention checks remain synthetic-only.");
   } finally {
