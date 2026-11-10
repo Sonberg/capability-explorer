@@ -175,11 +175,20 @@ at least six of eight equally clear or clearer, with none materially less clear.
 
 The parent inspection found lost quantity in case 1, altered actor/identity in
 case 2, and invented historical context in case 7. The author corrected those
-source/rewrite premises; the parent recheck remains pending. The parent's
-provisional clarity assessment is equal-or-better for all eight only after these
-corrections. That is not final acceptance or independent human review. No human
-acceptance is claimed; AI agreement would not count as designated human
-acceptance.
+source/rewrite premises and made the informal preference explicit in case 8.
+The parent/integration AI review rechecked the corrected eight pairs at commit
+`96ce1e1b40a6ee95c5f7aad9a99c9d391ce47c0a` on 2026-11-10.
+
+| Cases | Fidelity recheck | Separate clarity judgment |
+|---|---|---|
+| 1, 3, 5, 7, 8 | No material change to actor, meaning, quantity, obligation, uncertainty or privacy found. | Equally clear. |
+| 2, 4, 6 | No material change found; context, evidence attribution and literal command remain intact. | Clearer role labels, evidence boundaries or action wording. |
+
+This passes the bounded screening threshold by AI inspection: eight equally
+clear or clearer, none materially less clear, and no remaining material fidelity
+defect found. It is not independent human acceptance, measured operational
+readability, exhaustive source review or formal standard conformity. The earlier
+pilot ratings are unchanged; designated human acceptance remains separate.
 
 ## Implementation checks
 
