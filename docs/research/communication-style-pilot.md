@@ -152,6 +152,44 @@ paired, unblinded synthetic review is not independent human acceptance, measured
 operational improvement or formal standard conformity. Human contributor review
 remains necessary before repository-wide adoption.
 
+## Scoped follow-up: context and prose clarity
+
+This additive follow-up extends the existing pilot criteria with eight neutral,
+synthetic scenarios. It does not replace or re-rate the earlier sample review.
+The existing fidelity requirement still applies: no material change to meaning,
+obligation or privacy. Clarity is judged separately. The screening target remains
+at least six of eight equally clear or clearer, with none materially less clear.
+
+| # | Before | After | Fidelity check |
+|---|---|---|---|
+| 1. Technical and business meaning | "In this tool, the technical Capability groups 2 repositories for analysis; it does not mean a business ability." | "In this tool, a technical Capability groups 2 repositories for analysis. It is not a business ability." | Preserves the quantity, repository-selection context and distinction from a business ability. |
+| 2. Context-specific ownership | "In the repository context, 'owner' means the person who selects source repositories. In the conceptual-model context, 'owner' means the person who approves model changes. The example does not identify who holds either role." | "In the repository context, the repository owner selects source repositories. In the conceptual-model context, the model owner approves model changes. The example does not identify who holds either role." | Names the same two contexts and meanings; does not assert whether one or two people hold the roles. |
+| 3. Unknown run state | "The final state of run R-17 is unknown." | "Run R-17 has no known final state. Do not call it failed or terminated. The unknown state does not permit a retry." | Keeps the state unknown; neither failure, termination nor retry permission is inferred. |
+| 4. Attributed concept correspondence | "The review note attributes a possible concept correspondence between records A and B." | "The review note says records A and B may correspond as concepts. It does not establish owner approval, record identity or a runtime connection." | Retains the attributed possibility and excludes approval, identity and runtime claims. |
+| 5. Condition, negation, quantity and must | "If coverage is partial, the operator must not report an unobserved declaration as removed. The operator must retain all 3 records." | "With partial coverage, the operator must not report any unobserved declaration as removed. The operator must retain all 3 records." | Preserves the condition, negation, quantity and both must obligations. |
+| 6. Literal command and identifier | "For run `run-17`, use `tool inspect --run run-17`." | "Inspect run `run-17` with `tool inspect --run run-17`." | Keeps the command and identifier literal and unchanged. |
+| 7. Historical status | "In fictional revision R1, a revision note says the export was available at that time; current availability is unverified." | "The revision note in fictional revision R1 marks the export as available at that time. It does not verify current availability." | Preserves the fictional revision, note, historical status and uncertainty about current availability. |
+| 8. Informal STE adaptation | "For ordinary prose, an informal preference is 'up to 80% STE style'; it is not a measured quota or claim of ASD-STE100 conformance." | "Use STE-inspired clarity principles as an informal preference for ordinary prose. 'Up to 80%' is not a measured quota or claim of ASD-STE100 conformance." | Keeps the informal preference and its non-measured, non-conformance scope. |
+
+### Author self-check and review status
+
+The parent inspection found lost quantity in case 1, altered actor/identity in
+case 2, and invented historical context in case 7. The author corrected those
+source/rewrite premises and made the informal preference explicit in case 8.
+The parent/integration AI review rechecked the corrected eight pairs at commit
+`96ce1e1b40a6ee95c5f7aad9a99c9d391ce47c0a` on 2026-11-10.
+
+| Cases | Fidelity recheck | Separate clarity judgment |
+|---|---|---|
+| 1, 3, 5, 7, 8 | No material change to actor, meaning, quantity, obligation, uncertainty or privacy found. | Equally clear. |
+| 2, 4, 6 | No material change found; context, evidence attribution and literal command remain intact. | Clearer role labels, evidence boundaries or action wording. |
+
+This passes the bounded screening threshold by AI inspection: eight equally
+clear or clearer, none materially less clear, and no remaining material fidelity
+defect found. It is not independent human acceptance, measured operational
+readability, exhaustive source review or formal standard conformity. The earlier
+pilot ratings are unchanged; designated human acceptance remains separate.
+
 ## Implementation checks
 
 These checks were recorded in the original local pilot before publication.
