@@ -3,6 +3,7 @@ import { test } from "node:test";
 import playwright from "../spikes/likec4/node_modules/playwright/index.js";
 import type { Page } from "../spikes/likec4/node_modules/playwright/index.js";
 import { createServer } from "../platform/src/CapabilityExplorer.Explorer/client/node_modules/vite/dist/node/index.js";
+import { listenBrowserServer } from "./browser-server.ts";
 
 const capability = {
   id: "orders", name: "Orders", analysed: 0,
@@ -14,7 +15,7 @@ async function withIngestionPage(run: (page: Page, origin: string) => Promise<vo
     root: new URL("../platform/src/CapabilityExplorer.Explorer/client", import.meta.url).pathname,
     server: { host: "127.0.0.1", port: 0 }, logLevel: "error",
   });
-  await server.listen();
+  const origin = await listenBrowserServer(server);
   const browser = await playwright.chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
@@ -42,7 +43,7 @@ async function withIngestionPage(run: (page: Page, origin: string) => Promise<vo
         await route.fulfill({ json: {} });
       }
     });
-    await run(page, server.resolvedUrls!.local[0]);
+    await run(page, origin);
   } finally {
     await browser.close();
     await server.close();

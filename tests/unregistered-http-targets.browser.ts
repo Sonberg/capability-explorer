@@ -5,6 +5,7 @@ import type { Locator, Page, Request } from "../spikes/likec4/node_modules/playw
 import { createServer } from "../platform/src/CapabilityExplorer.Explorer/client/node_modules/vite/dist/node/index.js";
 import type { ViteDevServer } from "../platform/src/CapabilityExplorer.Explorer/client/node_modules/vite/dist/node/index.js";
 import { LikeC4 } from "../spikes/likec4/node_modules/likec4/dist/index.mjs";
+import { listenBrowserServer } from "./browser-server.ts";
 
 // Issue #102 frontend acceptance scenarios. Synthetic API fixtures only; the backend wire
 // contract is the frozen camelCase ArchitectureGraph.unregisteredHttpTargets DTO.
@@ -66,10 +67,7 @@ before(async () => {
     // The live canvas worker lives in spikes/likec4, outside the client package root.
     server: { host: "127.0.0.1", port: 0, fs: { allow: [new URL("..", import.meta.url).pathname] } }, logLevel: "error",
   });
-  await server.listen();
-  const local = server.resolvedUrls?.local[0];
-  assert.ok(local, "The Explorer dev server must expose a local URL.");
-  origin = local.replace(/\/$/, "");
+  origin = await listenBrowserServer(server);
 });
 
 after(async () => { await server?.close(); });
