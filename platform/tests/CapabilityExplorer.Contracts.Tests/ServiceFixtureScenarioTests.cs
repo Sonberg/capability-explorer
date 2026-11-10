@@ -143,7 +143,7 @@ public sealed class ServiceFixtureScenarioTests
     public void Partial_classes_and_overloads_are_one_symbol_with_several_declarations()
     {
         var series = A("forecast-cs/v1-base/Forecast.Api.jsonl");
-        var node = series.Nodes.Single(n => n.Name == "WeeklySeries");
+        var node = series.Nodes.Single(n => n.NodeKind == "Type" && n.Name == "WeeklySeries");
         Assert.Equal(2, series.Evidence.Where(e => node.Evidence.Contains(e.Id)).Select(e => e.Path).Distinct().Count());
 
         var pricing = A("pricing-node/v1-base/_fixture_pricing.jsonl");
