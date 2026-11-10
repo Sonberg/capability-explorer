@@ -20,7 +20,7 @@ internal static class GraphPaths
     {
         var parent = new Dictionary<string, (string Prev, string Via)>(StringComparer.Ordinal);
         var queue = new Queue<(string Key, int Depth)>();
-        foreach (var start in from.Where(k => !to.Contains(k)))
+        foreach (var start in from.Where(k => !to.Contains(k)).Distinct(StringComparer.Ordinal).OrderBy(k => k, StringComparer.Ordinal))
         {
             parent[start] = ("", "");
             queue.Enqueue((start, 0));
@@ -49,7 +49,8 @@ internal static class GraphPaths
                 continue;
             }
 
-            foreach (var e in view.Outgoing[key].Where(e => e.Record.Relation != "DECLARES" && e.Record.To is not null))
+            foreach (var e in view.Outgoing[key].Where(e => e.Record.Relation != "DECLARES" && e.Record.To is not null)
+                         .OrderBy(e => e.Record.To, StringComparer.Ordinal).ThenBy(e => e.Record.Relation, StringComparer.Ordinal))
             {
                 if (parent.TryAdd(e.Record.To!, (key, $"-{e.Record.Relation}->")))
                 {
@@ -57,7 +58,8 @@ internal static class GraphPaths
                 }
             }
 
-            foreach (var e in view.Incoming[key].Where(e => e.Record.Relation != "DECLARES"))
+            foreach (var e in view.Incoming[key].Where(e => e.Record.Relation != "DECLARES")
+                         .OrderBy(e => e.Record.From, StringComparer.Ordinal).ThenBy(e => e.Record.Relation, StringComparer.Ordinal))
             {
                 if (parent.TryAdd(e.Record.From, (key, $"<-{e.Record.Relation}-")))
                 {
@@ -66,7 +68,8 @@ internal static class GraphPaths
             }
 
             // Across repositories a request reaches its endpoint only through the route match, which is not an edge in the artifacts.
-            foreach (var (next, via) in links is not null && links.TryGetValue(key, out var extra) ? extra : [])
+            List<(string To, string Via)> additional = links is not null && links.TryGetValue(key, out var extra) ? extra : [];
+            foreach (var (next, via) in additional.OrderBy(e => e.To, StringComparer.Ordinal).ThenBy(e => e.Via, StringComparer.Ordinal))
             {
                 if (parent.TryAdd(next, (key, via)))
                 {
