@@ -82,8 +82,8 @@ test-capability-ingestion-browser: restore-ui
 
 .PHONY: test-unregistered-http-targets-browser
 test-unregistered-http-targets-browser: restore-ui
-	node spikes/likec4/node_modules/typescript/bin/tsc --noEmit --ignoreConfig --strict --target ES2022 --module ESNext --moduleResolution Bundler --esModuleInterop --allowImportingTsExtensions --skipLibCheck --types node --typeRoots spikes/likec4/node_modules/@types tests/unregistered-http-targets.browser.ts tests/current-ui-routes.browser.ts tests/current-ui-layout.browser.ts tests/ownership-alignment.browser.ts
-	node --experimental-strip-types --test tests/unregistered-http-targets.browser.ts tests/current-ui-routes.browser.ts tests/current-ui-layout.browser.ts tests/ownership-alignment.browser.ts
+	node spikes/likec4/node_modules/typescript/bin/tsc --noEmit --ignoreConfig --strict --target ES2022 --module ESNext --moduleResolution Bundler --esModuleInterop --allowImportingTsExtensions --skipLibCheck --types node --typeRoots spikes/likec4/node_modules/@types tests/unregistered-http-targets.browser.ts tests/current-ui-routes.browser.ts tests/current-ui-layout.browser.ts tests/ownership-alignment.browser.ts tests/chat-panel.browser.ts
+	node --experimental-strip-types --test tests/unregistered-http-targets.browser.ts tests/current-ui-routes.browser.ts tests/current-ui-layout.browser.ts tests/ownership-alignment.browser.ts tests/chat-panel.browser.ts
 
 test-package-feeds:
 	node --test tests/package-feeds.test.mjs tests/explorer-environment.test.mjs
