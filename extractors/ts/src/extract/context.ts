@@ -162,7 +162,11 @@ export class Ctx {
         if (isFunctionInit(p.initializer)) return this.keyOf(p);
         if (!executableOnly) return this.classKey(p.parent);
       }
-      if (ts.isConstructorDeclaration(p) && ts.isClassLike(p.parent) && !executableOnly) return this.classKey(p.parent);
+      if (ts.isConstructorDeclaration(p) && ts.isClassLike(p.parent)) {
+        const key = this.keyOf(p);
+        if (key && this.b.hasNode(key)) return key;
+        if (!executableOnly) return this.classKey(p.parent);
+      }
       // A module-level variable owns code only when it is a function; other initializers are top-level code.
       if (ts.isVariableDeclaration(p) && ts.isIdentifier(p.name) && isModuleLevel(p) && isFunctionInit(p.initializer)) return this.keyOf(p);
       if (ts.isClassLike(p) && isModuleLevel(p) && !executableOnly) return this.classKey(p);

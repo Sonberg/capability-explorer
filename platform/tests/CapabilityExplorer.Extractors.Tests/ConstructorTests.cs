@@ -325,6 +325,118 @@ public sealed class ConstructorTests : IDisposable
         Assert.True(report.IsValid, string.Join("; ", report.Problems));
     }
 
+    private const string FieldSource = """
+        using System;
+        namespace Synthetic;
+        public class Explicit { public Explicit() { } }
+        public class Implicit { }
+        public class Fields
+        {
+            [Obsolete] private readonly Explicit instance = new Explicit();
+            public static Explicit shared = new();
+            private Explicit first = new Explicit(), second = new();
+            private Implicit implicitValue = new();
+            private object framework = new object();
+            private Explicit empty;
+            private Explicit viaCall = Make();
+            private Func<Explicit> deferred = () => new Explicit();
+            private Func<Explicit> anonymous = delegate { return new Explicit(); };
+            public event Action Changed = delegate { _ = new Explicit(); };
+            public Explicit ExplicitProperty { get; } = new Explicit();
+            public static Implicit ImplicitProperty { get; } = new();
+            public Fields() : this(0) { }
+            public Fields(int marker) { }
+            static Fields() { }
+            private static Explicit Make() => new Explicit();
+        }
+        """;
+
+    [Fact]
+    public void Field_initializers_reference_repository_types_without_inventing_constructor_execution()
+    {
+        var records = Extract(FieldSource);
+        var fields = records.Where(r => r.GetProperty("kind").GetString() == "node"
+            && r.GetProperty("nodeKind").GetString() == "Field").ToArray();
+        Assert.Equal(new[] { "anonymous", "deferred", "empty", "first", "framework", "implicitValue", "instance", "second", "shared", "viaCall" },
+            fields.Select(r => r.GetProperty("name").GetString()!).Order(StringComparer.Ordinal));
+        foreach (var field in fields)
+        {
+            var name = field.GetProperty("name").GetString()!;
+            var key = Ns + "F:Synthetic.Fields." + name;
+            Assert.Equal(key, field.GetProperty("symbolKey").GetString());
+            Assert.Equal(name, SourceEvidence(records, field.GetProperty("evidence")[0], FieldSource));
+            Assert.Contains(records, r => r.GetProperty("kind").GetString() == "edge"
+                && r.GetProperty("from").GetString() == Ns + "T:Synthetic.Fields"
+                && r.GetProperty("relation").GetString() == "DECLARES" && To(r) == key);
+        }
+        var edges = records.Where(r => r.GetProperty("kind").GetString() == "edge").ToArray();
+        var references = edges.Where(r => r.GetProperty("from").GetString()!.StartsWith(Ns + "F:", StringComparison.Ordinal))
+            .Select(r => (r.GetProperty("from").GetString()!, r.GetProperty("relation").GetString()!, To(r)!,
+                SourceEvidence(records, r.GetProperty("evidence")[0], FieldSource))).OrderBy(r => r.Item1, StringComparer.Ordinal).ToArray();
+        Assert.Equal(new[]
+        {
+            (Ns + "F:Synthetic.Fields.first", "REFERENCES", Ns + "T:Synthetic.Explicit", "new Explicit()"),
+            (Ns + "F:Synthetic.Fields.implicitValue", "REFERENCES", Ns + "T:Synthetic.Implicit", "new()"),
+            (Ns + "F:Synthetic.Fields.instance", "REFERENCES", Ns + "T:Synthetic.Explicit", "new Explicit()"),
+            (Ns + "F:Synthetic.Fields.second", "REFERENCES", Ns + "T:Synthetic.Explicit", "new()"),
+            (Ns + "F:Synthetic.Fields.shared", "REFERENCES", Ns + "T:Synthetic.Explicit", "new()"),
+        }, references);
+        Assert.DoesNotContain(edges, r => r.GetProperty("from").GetString()!.StartsWith(Ns + "M:Synthetic.Fields.#", StringComparison.Ordinal)
+            && (To(r) == Ns + "T:Synthetic.Explicit" || To(r) == Ns + "M:Synthetic.Explicit.#ctor"));
+        Assert.DoesNotContain(records, r => r.GetProperty("kind").GetString() == "node"
+            && r.GetProperty("symbolKey").GetString() == Ns + "E:Synthetic.Fields.Changed");
+    }
+
+    [Theory]
+    [InlineData("P:Synthetic.Fields.ExplicitProperty", "CALLS", "M:Synthetic.Explicit.#ctor", "new Explicit()")]
+    [InlineData("P:Synthetic.Fields.ImplicitProperty", "REFERENCES", "T:Synthetic.Implicit", "new()")]
+    [InlineData("M:Synthetic.Fields.#ctor", "CALLS", "M:Synthetic.Fields.#ctor(System.Int32)", ": this(0)")]
+    [InlineData("M:Synthetic.Fields.Make", "CALLS", "M:Synthetic.Explicit.#ctor", "new Explicit()")]
+    public void Property_initializers_and_constructor_chaining_keep_existing_owners_and_relations(
+        string owner, string relation, string target, string expression)
+    {
+        var records = Extract(FieldSource);
+        var edges = records.Where(r => r.GetProperty("kind").GetString() == "edge").ToArray();
+        var edge = Assert.Single(edges, r => r.GetProperty("from").GetString() == Ns + owner
+            && r.GetProperty("relation").GetString() == relation && To(r) == Ns + target);
+        Assert.Equal(expression, SourceEvidence(records, edge.GetProperty("evidence")[0], FieldSource));
+    }
+
+    [Fact]
+    public void Unresolved_field_creation_retains_diagnostic_without_a_fabricated_reference()
+    {
+        var records = Extract("namespace Synthetic; public class Broken { private object missing = new Missing(); }");
+        Assert.Contains(records, r => r.GetProperty("kind").GetString() == "node"
+            && r.GetProperty("nodeKind").GetString() == "Field"
+            && r.GetProperty("symbolKey").GetString() == Ns + "F:Synthetic.Broken.missing");
+        Assert.DoesNotContain(records, r => r.GetProperty("kind").GetString() == "edge"
+            && r.GetProperty("from").GetString() == Ns + "F:Synthetic.Broken.missing");
+        Assert.Contains(records, r => r.GetProperty("kind").GetString() == "diagnostic"
+            && r.GetProperty("code").GetString() == "COMPILER_CS0246" && r.GetProperty("affectsCoverage").GetBoolean());
+        Assert.Equal("partial", records[^1].GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public void Field_initializer_artifacts_are_contract_valid_and_byte_deterministic()
+    {
+        var records = Extract(FieldSource);
+        Assert.Equal(records.Select(r => r.GetRawText()), Extract(FieldSource).Select(r => r.GetRawText()));
+        var report = ArtifactValidator.Validate(string.Join('\n', records.Select(r => r.GetRawText())) + "\n");
+        Assert.True(report.IsValid, string.Join("; ", report.Problems));
+        Assert.Equal("full", records[^1].GetProperty("status").GetString());
+    }
+
+    private static string SourceEvidence(JsonElement[] records, JsonElement reference, string source)
+    {
+        var evidence = Assert.Single(records, r => r.GetProperty("kind").GetString() == "evidence"
+            && r.GetProperty("id").GetString() == reference.GetString());
+        Assert.Equal("Code.cs", evidence.GetProperty("path").GetString());
+        var span = evidence.GetProperty("span");
+        Assert.Equal(span.GetProperty("startLine").GetInt32(), span.GetProperty("endLine").GetInt32());
+        var line = source.Split('\n')[span.GetProperty("startLine").GetInt32() - 1];
+        return line[(span.GetProperty("startColumn").GetInt32() - 1)..(span.GetProperty("endColumn").GetInt32() - 1)];
+    }
+
     private JsonElement[] Extract(string code)
     {
         var source = Path.Combine(_root, Guid.NewGuid().ToString("N"));

@@ -432,6 +432,22 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             b.Edge(keys.Of(property.ContainingType), "DECLARES", key, [file.Evidence(b, span)]);
         }
 
+        foreach (var declaration in file.Tree.GetRoot().DescendantNodes().OfType<FieldDeclarationSyntax>())
+        {
+            foreach (var variable in declaration.Declaration.Variables)
+            {
+                if (file.Model.GetDeclaredSymbol(variable) is not IFieldSymbol field || field.IsImplicitlyDeclared || field.Name.Length == 0)
+                {
+                    continue;
+                }
+
+                var key = keys.Of(field);
+                var evidence = file.Evidence(b, variable.Identifier.Span);
+                b.Node(key, "Field", field.Name, [evidence], generated: file.Generated);
+                b.Edge(keys.Of(field.ContainingType), "DECLARES", key, [evidence]);
+            }
+        }
+
         // Top-level statements: the synthesized entry point owns the code, as in the compiler.
         if (file.Tree.GetRoot() is CompilationUnitSyntax cu && cu.Members.OfType<GlobalStatementSyntax>().FirstOrDefault() is { } first
             && file.Model.GetEnclosingSymbol(first.SpanStart) is IMethodSymbol entry)
@@ -492,7 +508,22 @@ public sealed class CSharpExtractor(ExtractorOptions options)
     {
         foreach (var node in file.Tree.GetRoot().DescendantNodes().Where(n => n is BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax))
         {
-            if (Owner(file.Model, node.SpanStart) is not { } owner || !b.HasNode(keys.Of(owner)) || file.Model.GetSymbolInfo(node).Symbol is not IMethodSymbol { MethodKind: MethodKind.Constructor } ctor)
+            var owner = Owner(file.Model, node.SpanStart);
+            if (owner is null)
+            {
+                // Initializers need their declaration owner; deferred anonymous bodies are excluded.
+                var initializer = node.Ancestors().TakeWhile(ancestor => ancestor is not AnonymousFunctionExpressionSyntax)
+                    .OfType<EqualsValueClauseSyntax>().FirstOrDefault();
+                owner = initializer?.Parent switch
+                {
+                    VariableDeclaratorSyntax variable when variable.Parent?.Parent is FieldDeclarationSyntax =>
+                        file.Model.GetDeclaredSymbol(variable) as IFieldSymbol,
+                    PropertyDeclarationSyntax property => file.Model.GetDeclaredSymbol(property),
+                    _ => null,
+                };
+            }
+
+            if (owner is null || !b.HasNode(keys.Of(owner)) || file.Model.GetSymbolInfo(node).Symbol is not IMethodSymbol { MethodKind: MethodKind.Constructor } ctor)
             {
                 continue; // ponytail: an unresolved `new X()` is not recorded; invocations are, because a call is a claim about behaviour and a missing type is a compile diagnostic already
             }
@@ -504,7 +535,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             }
 
             var from = keys.Of(owner);
-            if (IsDeclaredConstructor(ctor))
+            if (owner is not IFieldSymbol && IsDeclaredConstructor(ctor))
             {
                 b.Edge(from, "CALLS", keys.Of(ctor.OriginalDefinition), [file.Evidence(b, node)]);
             }

@@ -10,11 +10,22 @@ export function calls(ctx: Ctx) {
     const visit = (node: ts.Node) => {
       if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return;
       if (ts.isCallExpression(node) && node.expression.kind !== ts.SyntaxKind.SuperKeyword && node.expression.kind !== ts.SyntaxKind.ImportKeyword) call(ctx, node);
+      if (ts.isNewExpression(node)) construct(ctx, node);
       if (ts.isIdentifier(node)) reference(ctx, node, referenced);
       ts.forEachChild(node, visit);
     };
     ts.forEachChild(sf, visit);
   }
+}
+
+function construct(ctx: Ctx, node: ts.NewExpression) {
+  const from = ctx.owner(node, true);
+  if (!from) return;
+  const declaration = ctx.checker.getResolvedSignature(node)?.declaration;
+  if (!declaration || !ts.isConstructorDeclaration(declaration)) return;
+  const to = ctx.keyOf(declaration);
+  if (!to || !ctx.b.hasNode(to)) return;
+  ctx.b.edge({ from, rel: "CALLS", to, evidence: [ctx.ev(node)] });
 }
 
 function call(ctx: Ctx, node: ts.CallExpression) {

@@ -346,6 +346,10 @@ capability files and reloads when they change, and the UI refetches what it show
   Code inside a constructor body (lambdas included) belongs to it. Only repository types are recorded:
   `new List<int>()` and an `ILogger` parameter say nothing about the system. Field and property initializers
   are not attributed to a constructor.
+- Explicit non-event fields are `Field` nodes. Repository creations in their initializers give lexical
+  `Field REFERENCES Type`, not `CALLS` or containing-constructor execution. Static and instance fields
+  follow the same rule; deferred lambda/anonymous bodies are excluded. Property initializers belong
+  to the declared property and use constructor `CALLS` or implicit-default type `REFERENCES`.
 - Compiler errors make the affected files `partial`.
 - Rules: ASP.NET Core controllers and minimal APIs, DI (including keyed services and reflection),
   EF Core, Dapper, Azure Service Bus, typed `HttpClient`.
@@ -363,6 +367,9 @@ capability files and reloads when they change, and the UI refetches what it show
   belongs to the deepest unit that includes it.
 - Imported packages are not installed. Calls into them are left out, and a `DEPENDENCIES_NOT_INSTALLED`
   info diagnostic names them. Calls into the TypeScript libs resolve to `ts|@ext|typescript|…`.
+- Named class constructors are `Method` nodes (`props.constructor`, `signature`, `Class.(new)#value`).
+  Owned `new` expressions call declared constructor nodes; constructor bodies own their calls and type references.
+  Implicit, external and dynamic constructors are not invented. Other initializer ownership stays unchanged.
 - Rules: Express routes (apps, nested routers, `route()` chains), `fetch`, axios clients, generated
   OpenAPI clients, `pg` SQL, Azure Service Bus (literal values in imported JSON config bind the
   channel), and handler maps behind dynamic dispatch (as `candidate` edges).
