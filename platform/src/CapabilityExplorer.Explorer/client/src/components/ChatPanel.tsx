@@ -195,13 +195,21 @@ function Conversation({ identity, view, input, setInput, off, setOff, onClose }:
         <button type="button" onClick={onClose} aria-label="Close chat" className="rounded-md px-2 py-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800">✕</button>
       </header>
       <div className="space-y-1 border-b border-zinc-200 px-4 py-2 text-xs dark:border-zinc-800">
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={remember} onChange={(e) => changeRemember(e.target.checked)} />
-          Remember chat in this tab
-        </label>
-        <p>Default: memory only. Opt-in retains one conversation: the most recent 20 whole turns, at most 512 KiB including sources. No text is truncated.</p>
-        <p>sessionStorage only, not encrypted. Browser session restore or duplicated tabs may keep a copy; closing a tab does not guarantee deletion.</p>
-        <button type="button" onClick={clear} className="underline">Clear chat</button>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={remember} onChange={(e) => changeRemember(e.target.checked)} />
+            Remember chat in this tab
+          </label>
+          <button type="button" onClick={clear} className="underline">Clear chat</button>
+        </div>
+        {/* The summary keeps the default, bounds and encryption caveat visible; the full privacy terms stay one click away. */}
+        <details>
+          <summary className="cursor-pointer text-zinc-600 dark:text-zinc-400">Memory only by default · opt-in keeps the last 20 whole turns, up to 512 KiB, unencrypted</summary>
+          <div className="mt-1 space-y-1">
+            <p>Default: memory only. Opt-in retains one conversation: the most recent 20 whole turns, at most 512 KiB including sources. No text is truncated.</p>
+            <p>sessionStorage only, not encrypted. Browser session restore or duplicated tabs may keep a copy; closing a tab does not guarantee deletion.</p>
+          </div>
+        </details>
         {notice && <p role="status">{notice}</p>}
       </div>
       <div role="log" aria-label="Conversation" className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3 text-[13px]">
