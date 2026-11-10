@@ -387,23 +387,19 @@ public sealed class ConstructorTests : IDisposable
             && r.GetProperty("symbolKey").GetString() == Ns + "E:Synthetic.Fields.Changed");
     }
 
-    [Fact]
-    public void Property_initializers_and_constructor_chaining_keep_existing_owners_and_relations()
+    [Theory]
+    [InlineData("P:Synthetic.Fields.ExplicitProperty", "CALLS", "M:Synthetic.Explicit.#ctor", "new Explicit()")]
+    [InlineData("P:Synthetic.Fields.ImplicitProperty", "REFERENCES", "T:Synthetic.Implicit", "new()")]
+    [InlineData("M:Synthetic.Fields.#ctor", "CALLS", "M:Synthetic.Fields.#ctor(System.Int32)", ": this(0)")]
+    [InlineData("M:Synthetic.Fields.Make", "CALLS", "M:Synthetic.Explicit.#ctor", "new Explicit()")]
+    public void Property_initializers_and_constructor_chaining_keep_existing_owners_and_relations(
+        string owner, string relation, string target, string expression)
     {
         var records = Extract(FieldSource);
         var edges = records.Where(r => r.GetProperty("kind").GetString() == "edge").ToArray();
-        foreach (var expected in new[]
-        {
-            (Ns + "P:Synthetic.Fields.ExplicitProperty", "CALLS", Ns + "M:Synthetic.Explicit.#ctor", "new Explicit()"),
-            (Ns + "P:Synthetic.Fields.ImplicitProperty", "REFERENCES", Ns + "T:Synthetic.Implicit", "new()"),
-            (Ns + "M:Synthetic.Fields.#ctor", "CALLS", Ns + "M:Synthetic.Fields.#ctor(System.Int32)", ": this(0)"),
-            (Ns + "M:Synthetic.Fields.Make", "CALLS", Ns + "M:Synthetic.Explicit.#ctor", "new Explicit()"),
-        })
-        {
-            var edge = Assert.Single(edges, r => r.GetProperty("from").GetString() == expected.Item1
-                && r.GetProperty("relation").GetString() == expected.Item2 && To(r) == expected.Item3);
-            Assert.Equal(expected.Item4, SourceEvidence(records, edge.GetProperty("evidence")[0], FieldSource));
-        }
+        var edge = Assert.Single(edges, r => r.GetProperty("from").GetString() == Ns + owner
+            && r.GetProperty("relation").GetString() == relation && To(r) == Ns + target);
+        Assert.Equal(expression, SourceEvidence(records, edge.GetProperty("evidence")[0], FieldSource));
     }
 
     [Fact]
