@@ -33,6 +33,8 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
     private int _fetched;
     private int _present;
 
+    private enum DownloadResult { Success, Missing, Failed }
+
     public async Task<FetchResult> FetchAsync(IEnumerable<(string Project, IReadOnlyList<PackageRef> Roots)> projects, CancellationToken cancellationToken = default)
         => await FetchAsync(projects.Select(p => (p.Project, p.Roots, Target: (string?)"net10.0")), cancellationToken);
 
@@ -84,13 +86,43 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
             PackageSafety.NoLinks(packagesRoot, dir);
             if (!Directory.Exists(dir) || !Directory.EnumerateFiles(dir, "*.nuspec").Any())
             {
-                if (!await DownloadAsync(id, version, dir, cancellationToken))
+                var download = await DownloadAsync(id, version, dir, cancellationToken);
+                if (download == DownloadResult.Missing
+                    && PackageVersionSelection.Parse(range) is { MinVersion: not null, IsMinInclusive: true } bounds
+                    && (bounds.MaxVersion is null || VersionComparer.VersionRelease.Compare(bounds.MinVersion, bounds.MaxVersion) < 0))
                 {
+                    var fallback = await ResolveVersionAsync(id, range, cancellationToken, missingMinimum: true);
+                    if (fallback is not null && PackageSafety.Version(fallback))
+                    {
+                        version = fallback;
+                        dir = Path.Combine(packagesRoot, id.ToLowerInvariant(), version.ToLowerInvariant());
+                        PackageSafety.NoLinks(packagesRoot, dir);
+                        if (Directory.Exists(dir) && Directory.EnumerateFiles(dir, "*.nuspec").Any())
+                        {
+                            download = DownloadResult.Success;
+                            if (_done.Add($"{id}/{version}")) _present++;
+                        }
+                        else
+                        {
+                            download = await DownloadAsync(id, version, dir, cancellationToken);
+                            if (download == DownloadResult.Success)
+                            {
+                                _fetched++;
+                                _done.Add($"{id}/{version}");
+                            }
+                        }
+                    }
+                }
+                else if (download == DownloadResult.Success)
+                {
+                    _fetched++;
+                    _done.Add($"{id}/{version}");
+                }
+                if (download != DownloadResult.Success)
+                {
+                    if (download == DownloadResult.Missing) Fail($"{id} {version}: not on any configured feed (private feed without credentials?)");
                     continue;
                 }
-
-                _fetched++;
-                _done.Add($"{id}/{version}");
             }
             else if (_done.Add($"{id}/{version}"))
             {
@@ -122,7 +154,7 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
     }
 
     /// <summary>Inclusive lower bounds are used as written; exclusive floors choose the lowest matching version above them. Other feed-index queries choose the newest match.</summary>
-    private async Task<string?> ResolveVersionAsync(string id, string? range, CancellationToken cancellationToken)
+    private async Task<string?> ResolveVersionAsync(string id, string? range, CancellationToken cancellationToken, bool missingMinimum = false)
     {
         if (range is not null && range.Contains('$', StringComparison.Ordinal))
         {
@@ -132,7 +164,7 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
         var min = range?.Trim().Trim('[', '(', ']', ')', ' ').Split(',')[0].Trim();
         var exclusiveFloor = range is not null && VersionRange.TryParse(range, out var constraint)
             && constraint.MinVersion is not null && !constraint.IsMinInclusive;
-        if (!string.IsNullOrEmpty(min) && !min.Contains('*', StringComparison.Ordinal) && !exclusiveFloor)
+        if (!missingMinimum && !string.IsNullOrEmpty(min) && !min.Contains('*', StringComparison.Ordinal) && !exclusiveFloor)
         {
             return min;
         }
@@ -149,28 +181,56 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
             {
                 if (await BaseAsync(feed, cancellationToken) is not { } baseUrl)
                 {
+                    if (missingMinimum) return null;
                     continue;
                 }
 
                 using var response = await SendAsync(feed, new Uri($"{baseUrl}{id.ToLowerInvariant()}/index.json"), HttpCompletionOption.ResponseHeadersRead, cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
+                    if (missingMinimum && response.StatusCode != HttpStatusCode.NotFound)
+                    {
+                        Fail($"{id}: feed {feed.Name} version index returned {(int)response.StatusCode}");
+                        return null;
+                    }
                     continue;
                 }
 
                 using var doc = JsonDocument.Parse(await ReadMetadataAsync(response, cancellationToken));
+                if (missingMinimum && (doc.RootElement.ValueKind != JsonValueKind.Object
+                    || !doc.RootElement.TryGetProperty("versions", out var entries)
+                    || entries.ValueKind != JsonValueKind.Array
+                    || entries.EnumerateArray().Any(v => v.ValueKind != JsonValueKind.String || !NuGetVersion.TryParse(v.GetString(), out _))))
+                {
+                    Fail($"{id}: feed {feed.Name} version index has invalid versions");
+                    return null;
+                }
                 var versions = doc.RootElement.GetProperty("versions").EnumerateArray().Select(v => v.GetString()!).ToList();
+                if (missingMinimum && versions.Any(v => VersionComparer.VersionRelease.Equals(NuGetVersion.Parse(v), PackageVersionSelection.Parse(range)!.MinVersion)))
+                {
+                    Fail($"{id}: feed {feed.Name} lists the missing minimum package");
+                    return null;
+                }
                 var matching = versions.Where(v => PackageVersionSelection.AllowsLocked(range ?? "*", v))
                     .OrderBy(v => NuGetVersion.Parse(v), VersionComparer.VersionRelease)
                     .ThenBy(v => v, StringComparer.Ordinal);
-                var pick = exclusiveFloor ? matching.FirstOrDefault() : matching.LastOrDefault();
+                var pick = exclusiveFloor || missingMinimum ? matching.FirstOrDefault() : matching.LastOrDefault();
                 if (pick is not null)
                 {
                     return _floating[cacheKey] = pick;
                 }
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or KeyNotFoundException)
             {
+                if (missingMinimum)
+                {
+                    Fail($"{id}: feed {feed.Name} version index rejected ({e.GetType().Name})");
+                    return null;
+                }
                 // try the next feed
             }
         }
@@ -208,6 +268,10 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
                 }
             }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or KeyNotFoundException)
         {
             // reported as unavailable below
@@ -222,7 +286,7 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
     }
 
     /// <summary>GET with manual redirects; the Authorization header is only ever attached for the feed's own host over https.</summary>
-    private async Task<HttpResponseMessage> SendAsync(PackageFeed feed, Uri url, HttpCompletionOption completion, CancellationToken cancellationToken)
+    private async Task<HttpResponseMessage> SendAsync(PackageFeed feed, Uri url, HttpCompletionOption completion, CancellationToken cancellationToken, Action? onRedirect = null)
     {
         var feedUri = new Uri(feed.Url);
         RequireOrigin(feedUri);
@@ -238,6 +302,7 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
             var response = await http.SendAsync(request, completion, cancellationToken);
             if ((int)response.StatusCode is 301 or 302 or 303 or 307 or 308 && response.Headers.Location is { } location)
             {
+                onRedirect?.Invoke();
                 response.Dispose();
                 url = location.IsAbsoluteUri ? location : new Uri(url, location);
                 if (url.Scheme != Uri.UriSchemeHttps)
@@ -254,24 +319,28 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
         throw new HttpRequestException("too many redirects");
     }
 
-    private async Task<bool> DownloadAsync(string id, string version, string dir, CancellationToken cancellationToken)
+    private async Task<DownloadResult> DownloadAsync(string id, string version, string dir, CancellationToken cancellationToken)
     {
         var lower = id.ToLowerInvariant();
         var staging = dir + ".partial-" + Guid.NewGuid().ToString("N")[..8];
         try
         {
             MemoryStream? buffer = null;
+            var allNotFound = true;
             foreach (var feed in _feeds)
             {
                 if (await BaseAsync(feed, cancellationToken) is not { } baseUrl)
                 {
+                    allNotFound = false;
                     continue;
                 }
 
                 var url = new Uri($"{baseUrl}{lower}/{version.ToLowerInvariant()}/{lower}.{version.ToLowerInvariant()}.nupkg");
-                using var response = await SendAsync(feed, url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                var redirected = false;
+                using var response = await SendAsync(feed, url, HttpCompletionOption.ResponseHeadersRead, cancellationToken, () => redirected = true);
                 if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
                 {
+                    if (response.StatusCode != HttpStatusCode.NotFound || redirected) allNotFound = false;
                     continue; // another feed may have it
                 }
 
@@ -279,7 +348,7 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
                 if (response.Content.Headers.ContentLength > MaxPackageBytes)
                 {
                     Fail($"{id} {version}: larger than {MaxPackageBytes / 1024 / 1024} MB, skipped");
-                    return false;
+                    return DownloadResult.Failed;
                 }
 
                 var received = new MemoryStream();
@@ -293,7 +362,7 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
                         {
                             Fail($"{id} {version}: larger than {MaxPackageBytes / 1024 / 1024} MB, skipped");
                             await received.DisposeAsync();
-                            return false;
+                            return DownloadResult.Failed;
                         }
 
                         received.Write(chunk, 0, read);
@@ -306,8 +375,9 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
 
             if (buffer is null)
             {
+                if (allNotFound) return DownloadResult.Missing;
                 Fail($"{id} {version}: not on any configured feed (private feed without credentials?)");
-                return false;
+                return DownloadResult.Failed;
             }
 
             using var owned = buffer;
@@ -347,12 +417,16 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
             }
 
             Directory.Move(staging, dir);
-            return true;
+            return DownloadResult.Success;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidDataException or IOException)
         {
             Fail($"{id} {version}: package download or archive rejected ({e.GetType().Name})");
-            return false;
+            return DownloadResult.Failed;
         }
         finally
         {

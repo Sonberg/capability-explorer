@@ -98,6 +98,11 @@ public sealed class DeterministicPackagesTests : IDisposable
     [InlineData("(1.0.0,)", "1.0.0;2.0.0;3.0.0", "2.0.0")]
     [InlineData("(1.0.0,2.0.0)", "1.0.0;2.0.0", null)]
     [InlineData("[1.0.0,2.0.0)", "1.0.0;1.1.0", "1.0.0")]
+    [InlineData("[1.0.0,2.0.0)", "1.1.0;1.10.0;2.0.0", "1.1.0")]
+    [InlineData("1.0.0", "1.1.0;1.10.0", "1.1.0")]
+    [InlineData("[1.0.0,2.0.0)", "2.0.0;3.0.0", null)]
+    [InlineData("[1.0.0]", "1.1.0", null)]
+    [InlineData("[1.0.0,2.0.0)", "1.1.0-beta.1;1.2.0", "1.2.0")]
     public async Task Feed_selection_preserves_the_request_and_semantic_version_order(string? request, string available, string? expected)
     {
         var source = Source(request);
@@ -128,6 +133,87 @@ public sealed class DeterministicPackagesTests : IDisposable
             Assert.Empty(diagnostics);
             Assert.Contains("\"status\":\"full\"", artifact);
         }
+    }
+
+    [Theory]
+    [InlineData("unauthorized-package")]
+    [InlineData("corrupt-package")]
+    [InlineData("unauthorized-index")]
+    [InlineData("invalid-index")]
+    [InlineData("invalid-index-shape")]
+    public async Task Inclusive_fallback_does_not_hide_feed_or_package_failures(string failure)
+    {
+        var source = Source("[1.0.0,2.0.0)");
+        var feed = new FakeFeed().Add("Fake.Lib", "1.1.0", "namespace Fake.Lib { public static class Lib { public static int Value() => 1; } }");
+        var handler = new InterceptHandler(new FeedRouter(feed), request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith(".nupkg", StringComparison.Ordinal) && failure == "unauthorized-package")
+                return new(System.Net.HttpStatusCode.Unauthorized);
+            if (path.EndsWith(".nupkg", StringComparison.Ordinal) && failure == "corrupt-package")
+                return new(System.Net.HttpStatusCode.OK) { Content = new StringContent("not a package") };
+            if (path.EndsWith("/fake.lib/index.json", StringComparison.Ordinal) && failure == "unauthorized-index")
+                return new(System.Net.HttpStatusCode.Unauthorized);
+            if (path.EndsWith("/fake.lib/index.json", StringComparison.Ordinal) && failure == "invalid-index")
+                return new(System.Net.HttpStatusCode.OK) { Content = new StringContent("not JSON") };
+            if (path.EndsWith("/fake.lib/index.json", StringComparison.Ordinal) && failure == "invalid-index-shape")
+                return new(System.Net.HttpStatusCode.OK) { Content = new StringContent("""{"versions":42}""") };
+            return null;
+        });
+        var fetched = await Fetch(source, Path.Combine(_root, "cache"), handler, [new("test", feed.IndexUrl)]);
+        Assert.NotEmpty(fetched.Failed);
+        Assert.Empty(fetched.Lock.For("App/App.csproj"));
+        Assert.DoesNotContain(feed.Requests, r => r.Url.AbsolutePath.Contains("/1.1.0/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Inclusive_minimum_on_later_feed_wins_before_fallback()
+    {
+        var first = new FakeFeed().Add("Fake.Lib", "1.1.0", "namespace Fake.Lib { public static class Lib { public static int Value() => 1; } }");
+        var second = new FakeFeed("private.test").Add("Fake.Lib", "1.0.0", "namespace Fake.Lib { public static class Lib { public static int Value() => 1; } }");
+        var fetched = await Fetch(Source("[1.0.0,2.0.0)"), Path.Combine(_root, "cache"),
+            new FeedRouter(first, second), [new("first", first.IndexUrl), new("second", second.IndexUrl)]);
+        Assert.Empty(fetched.Failed);
+        Assert.Equal("1.0.0", Assert.Single(fetched.Lock.For("App/App.csproj")).Version);
+        Assert.DoesNotContain(first.Requests, r => r.Url.AbsolutePath.EndsWith("/fake.lib/index.json", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Missing_minimum_listed_in_index_is_reported_as_inconsistent()
+    {
+        var feed = new FakeFeed().Add("Fake.Lib", "1.0.0", "namespace Fake.Lib { public static class Lib { public static int Value() => 1; } }")
+            .Add("Fake.Lib", "1.1.0", "namespace Fake.Lib { public static class Lib { public static int Value() => 1; } }");
+        var handler = new InterceptHandler(new FeedRouter(feed), request =>
+            request.RequestUri!.AbsolutePath.EndsWith("/fake.lib.1.0.0.nupkg", StringComparison.Ordinal)
+                ? new(System.Net.HttpStatusCode.NotFound) : null);
+        var fetched = await Fetch(Source("[1.0.0,2.0.0)"), Path.Combine(_root, "cache"), handler, [new("test", feed.IndexUrl)]);
+        Assert.Contains(fetched.Failed, failure => failure.Contains("lists the missing minimum", StringComparison.Ordinal));
+        Assert.Empty(fetched.Lock.For("App/App.csproj"));
+    }
+
+    [Fact]
+    public async Task Cancelling_fallback_index_lookup_cancels_the_fetch()
+    {
+        var feed = new FakeFeed().Add("Fake.Lib", "1.1.0", "namespace Fake.Lib { public static class Lib { public static int Value() => 1; } }");
+        using var cancellation = new CancellationTokenSource();
+        using var http = new HttpClient(new InterceptHandler(new FeedRouter(feed), request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/fake.lib/index.json", StringComparison.Ordinal))
+            {
+                cancellation.Cancel();
+                throw new OperationCanceledException(cancellation.Token);
+            }
+            return null;
+        }));
+        var fetcher = new PackageFetcher(Path.Combine(_root, "cache"), http, [new("test", feed.IndexUrl)], new PackageFeedPolicy("https://feed.test"));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetcher.FetchAsync(
+            [("App.csproj", (IReadOnlyList<PackageRef>)[new("Fake.Lib", "[1.0.0,2.0.0)", 1)])], cancellation.Token));
+    }
+
+    private sealed class InterceptHandler(HttpMessageHandler inner, Func<HttpRequestMessage, HttpResponseMessage?> intercept) : DelegatingHandler(inner)
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            intercept(request) is { } response ? Task.FromResult(response) : base.SendAsync(request, cancellationToken);
     }
 
     [Fact]
