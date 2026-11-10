@@ -7,7 +7,7 @@ import type { AnyRecord } from "../src/contracts/records.ts";
 import { validateArtifact } from "../src/contracts/validateArtifact.ts";
 import { extract } from "../src/extract/extractor.ts";
 
-type Fact = AnyRecord & { props?: Record<string, unknown> };
+type Fact = AnyRecord & { signature?: string; props?: Record<string, unknown> };
 const key = (symbol: string, file = "src/core.ts") => `ts|constructors|example|${file}|${symbol}`;
 
 function run(source: string, javascript = false) {
@@ -52,7 +52,7 @@ test("TypeScript construction binds declared constructor nodes and their executa
   assert.equal(declared.nodeKind, "Method");
   assert.equal(declared.name, "Cart");
   assert.equal(declared.props?.constructor, true);
-  assert.deepEqual(declared.props?.signature, ["public dep: Dependency"]);
+  assert.equal(declared.signature, "(public dep: Dependency)");
   const evidence = result.records.find(record => record.kind === "evidence" && declared.evidence.includes(record.id));
   assert.ok(evidence?.kind === "evidence");
   assert.equal(evidence.path, "src/core.ts");
@@ -77,7 +77,7 @@ test("constructor overload signatures share one node and resolve construction to
   const constructor = key("Box.(new)#value");
   assert.equal(records.filter(record => record.kind === "node" && record.symbolKey === constructor).length, 1);
   const declared = node(records, constructor);
-  assert.deepEqual(declared.props?.signature, ["value: string | number"]);
+  assert.equal(declared.signature, "(value: string | number)");
   assert.deepEqual(declared.props?.overloads, ["(value: string)", "(value: number)"]);
   assert.equal(declared.evidence.length, 3);
   assert.ok(records.some(record => record.kind === "edge" && record.from === key("make#value") &&
