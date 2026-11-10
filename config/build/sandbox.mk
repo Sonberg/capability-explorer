@@ -65,6 +65,7 @@ actions-audit:
 
 test-local-ci:
 	$(OFFLINE) node bash tests/local-ci.test.sh
+	$(OFFLINE) node bash tests/source-context.test.sh
 
 test-mapping-replay:
 	$(OFFLINE) node node --test tests/mapping-replay.test.mjs

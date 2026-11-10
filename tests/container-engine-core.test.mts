@@ -125,7 +125,7 @@ function fixture(t: TestContext, engines: string[] = ['docker', 'podman']) {
   writeFileSync(join(bin, 'uname'), '#!/bin/sh\nif [ "$1" = -m ]; then echo arm64; else echo "${MOCK_HOST_OS:-Linux}"; fi\n', { mode: 0o755 });
   // Prevent later-slice entrypoints from contacting real Git or restoring/building code.
   for (const cmd of ['gh', 'dotnet', 'curl']) writeFileSync(join(bin, cmd), '#!/bin/sh\nexit 91\n', { mode: 0o755 });
-  writeFileSync(join(bin, 'git'), '#!/bin/sh\nif [ "$1" = rev-parse ] && [ "$2" = --show-toplevel ]; then printf "%s\\n" "$TEST_FIXTURE_ROOT"; else exit 91; fi\n', { mode: 0o755 });
+  writeFileSync(join(bin, 'git'), '#!/bin/sh\nif [ "$1" = rev-parse ]; then case "$2" in --show-toplevel) printf "%s\\n" "$TEST_FIXTURE_ROOT";; --is-inside-work-tree) echo true;; *) exit 91;; esac; else exit 91; fi\n', { mode: 0o755 });
   const env: NodeJS.ProcessEnv = { ...process.env, PATH: bin, TEST_ENGINE_LOG: log, TEST_FIXTURE_ROOT: root,
     TEST_PODMAN_IDENTITY: identity, MOCK_HOST_OS: 'Linux' };
   for (const key of [...selectors, 'MAKEFLAGS', 'MAKEOVERRIDES', 'MAKELEVEL', 'MFLAGS', ...Object.keys(env).filter(k => k.startsWith('MOCK_'))]) delete env[key];
