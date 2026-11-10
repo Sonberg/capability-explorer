@@ -64,11 +64,11 @@ function ScopedConversation(props: Draft) {
     );
   }
   const identity = chatScope(meta.snapshotId, capability, resolved.data, route.path);
-  return <Conversation key={identity} identity={identity} {...props} />;
+  return <Conversation key={identity} identity={identity} view={resolved.data} {...props} />;
 }
 
-function Conversation({ identity, input, setInput, off, setOff, onClose }: Draft & { identity: string }) {
-  const { meta, scope, capability } = useSelection();
+function Conversation({ identity, view, input, setInput, off, setOff, onClose }: Draft & { identity: string; view: Record<string, string> }) {
+  const { meta, capability } = useSelection();
   const route = useRoute();
   const focus = useFocus();
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -129,6 +129,7 @@ function Conversation({ identity, input, setInput, off, setOff, onClose }: Draft
     remembering.current = false;
     setRemember(false);
     setTurns([]);
+    setInput("");
     setBusy(false);
     setError(undefined);
     setNotice(clearChatHistory() ?? "Chat cleared. Remembering is off; the retained chat record was removed.");
@@ -146,7 +147,6 @@ function Conversation({ identity, input, setInput, off, setOff, onClose }: Draft
     const controller = new AbortController();
     pending.current = controller;
     const history: Turn[] = [...turns, { role: "user", content: question }];
-    const params = new URLSearchParams(scope);
     setTurns(history);
     setInput("");
     setBusy(true);
@@ -159,8 +159,8 @@ function Conversation({ identity, input, setInput, off, setOff, onClose }: Draft
         signal: controller.signal,
         body: JSON.stringify({
           messages: history.slice(-10).map(({ role, content }) => ({ role, content })),
-          view: params.get("view") ?? undefined,
-          cap: params.get("cap") ?? undefined,
+          view: Object.keys(view).sort().map(repository => `${repository}:${view[repository]}`).join(",") || undefined,
+          cap: capability || undefined,
           focus: {
             capability: off.has("capability") ? undefined : capabilityName,
             view: off.has("view") ? undefined : route.path,
@@ -204,7 +204,7 @@ function Conversation({ identity, input, setInput, off, setOff, onClose }: Draft
         <button type="button" onClick={clear} className="underline">Clear chat</button>
         {notice && <p role="status">{notice}</p>}
       </div>
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3 text-[13px]">
+      <div role="log" aria-label="Conversation" className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3 text-[13px]">
         {!meta.interpretation.chat && (
           <Note>No chat model is configured. Set one in <a href="#/settings">Settings</a>.</Note>
         )}
