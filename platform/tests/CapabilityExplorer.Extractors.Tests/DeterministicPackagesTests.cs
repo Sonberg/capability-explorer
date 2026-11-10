@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CapabilityExplorer.Extractors.CSharp;
+using Microsoft.CodeAnalysis;
 using Xunit;
 
 namespace CapabilityExplorer.Extractors.Tests;
@@ -13,15 +14,16 @@ public sealed class DeterministicPackagesTests : IDisposable
 
     private static string Packs => Path.GetFullPath(Path.Combine(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", "..", "packs"));
 
-    private string Source(string packageVersion = "1.*", string? nugetConfig = null, string package = "Fake.Lib")
+    private string Source(string? packageVersion = "1.*", string? nugetConfig = null, string package = "Fake.Lib")
     {
         var src = Path.Combine(_root, "src-" + Guid.NewGuid().ToString("N")[..6]);
         Directory.CreateDirectory(Path.Combine(src, "App"));
+        var versionAttribute = packageVersion is null ? "" : $" Version=\"{packageVersion}\"";
         File.WriteAllText(Path.Combine(src, "App", "App.csproj"),
             $"""
             <Project Sdk="Microsoft.NET.Sdk">
               <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
-              <ItemGroup><PackageReference Include="{package}" Version="{packageVersion}" /></ItemGroup>
+              <ItemGroup><PackageReference Include="{package}"{versionAttribute} /></ItemGroup>
             </Project>
             """);
         File.WriteAllText(Path.Combine(src, "App", "Calc.cs"), $"namespace App; public class Calc {{ public int Run() => {package}.Lib.Value(); }}\n");
@@ -83,6 +85,86 @@ public sealed class DeterministicPackagesTests : IDisposable
         // Control: without the lock the shared cache decides (the old behaviour), and the artifact says so.
         var legacy = Extract(source, cacheB, lockFile: null);
         Assert.NotEqual(ConfigHashes(outputA), ConfigHashes(legacy));
+    }
+
+    [Theory]
+    [InlineData("1.*", "2.0.0", null)]
+    [InlineData("1.*", "1.0.0-beta.1", null)]
+    [InlineData("1.*", "1.9.0;1.10.0;2.0.0", "1.10.0")]
+    [InlineData("1.0.*", "1.0.9;1.0.10;1.1.0", "1.0.10")]
+    [InlineData(null, "1.9.0;1.10.0;2.0.0-beta.1", "1.10.0")]
+    [InlineData("1.0.0-*", "1.0.0-beta.1;2.0.0", "1.0.0-beta.1")]
+    public async Task Feed_selection_preserves_the_request_and_semantic_version_order(string? request, string available, string? expected)
+    {
+        var source = Source(request);
+        var feed = new FakeFeed();
+        var framework = Directory.EnumerateDirectories(Path.Combine(Packs, "Microsoft.NETCore.App.Ref"))
+            .SelectMany(d => Directory.EnumerateDirectories(Path.Combine(d, "ref"))).Single();
+        var references = Directory.EnumerateFiles(framework, "*.dll").Select(p => MetadataReference.CreateFromFile(p)).ToArray();
+        foreach (var version in available.Split(';'))
+            feed.Add("Fake.Lib", version, "namespace Fake.Lib { public static class Lib { public static int Value() => 1; } }", references);
+        var cache = Path.Combine(_root, "cache");
+        var fetched = await Fetch(source, cache, new FeedRouter(feed), [new("test", feed.IndexUrl)]);
+        if (expected is null)
+        {
+            Assert.NotEmpty(fetched.Failed);
+            Assert.Empty(fetched.Lock.For("App/App.csproj"));
+        }
+        else
+        {
+            Assert.Empty(fetched.Failed);
+            Assert.Equal(expected, Assert.Single(fetched.Lock.For("App/App.csproj")).Version);
+            var artifact = Assert.Single(Extract(source, cache, fetched.Lock)).Jsonl;
+            var diagnostics = artifact.Split('\n').Where(line => line.Contains("\"kind\":\"diagnostic\"", StringComparison.Ordinal))
+                .Select(line =>
+                {
+                    using var record = JsonDocument.Parse(line);
+                    return record.RootElement.GetProperty("code").GetString();
+                }).ToArray();
+            Assert.Empty(diagnostics);
+            Assert.Contains("\"status\":\"full\"", artifact);
+        }
+    }
+
+    [Fact]
+    public async Task Feed_selection_cache_keeps_distinct_complete_ranges_separate()
+    {
+        var feed = PublicFeed().Add("Fake.Lib", "2.0.0", "namespace Fake { public static class Lib { public static int Value() => 2; } }");
+        using var http = new HttpClient(new FeedRouter(feed));
+        var cache = Path.Combine(_root, "cache");
+        IReadOnlyList<(string Project, IReadOnlyList<PackageRef> Roots)> projects =
+        [
+            ("A.csproj", [new("Fake.Lib", "(,2.0.0)", 1)]),
+            ("B.csproj", [new("Fake.Lib", "(,3.0.0)", 1)]),
+        ];
+        var fetched = await new PackageFetcher(cache, http, [new("test", feed.IndexUrl)],
+            new PackageFeedPolicy("https://feed.test")).FetchAsync(projects);
+        Assert.Empty(fetched.Failed);
+        Assert.Equal("1.0.0", Assert.Single(fetched.Lock.For("A.csproj")).Version);
+        Assert.Equal("2.0.0", Assert.Single(fetched.Lock.For("B.csproj")).Version);
+        foreach (var project in projects)
+        {
+            var resolved = new PackageResolver(cache).Resolve(project.Roots, fetched.Lock.For(project.Project));
+            Assert.Equal(fetched.Lock.For(project.Project), resolved.Resolved);
+            Assert.Empty(resolved.Issues);
+        }
+    }
+
+    [Fact]
+    public async Task Feed_selection_cache_does_not_replace_an_invalid_empty_request_with_an_omitted_one()
+    {
+        var feed = PublicFeed();
+        using var http = new HttpClient(new FeedRouter(feed));
+        IReadOnlyList<(string Project, IReadOnlyList<PackageRef> Roots)> projects =
+        [
+            ("A.csproj", [new("Fake.Lib", null, 1)]),
+            ("B.csproj", [new("Fake.Lib", "", 1)]),
+        ];
+        var fetched = await new PackageFetcher(Path.Combine(_root, "cache"), http, [new("test", feed.IndexUrl)],
+            new PackageFeedPolicy("https://feed.test")).FetchAsync(projects);
+        Assert.Single(fetched.Failed);
+        Assert.Equal("1.0.0", Assert.Single(fetched.Lock.For("A.csproj")).Version);
+        Assert.Empty(fetched.Lock.For("B.csproj"));
     }
 
     [Fact]
