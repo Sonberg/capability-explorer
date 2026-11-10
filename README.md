@@ -340,16 +340,20 @@ capability files and reloads when they change, and the UI refetches what it show
   dependencies but hides compiler symbols; unsupported metadata is diagnosed. SDK packs and step 2 supply assemblies.
 - Source generators do not run. Their absence is an info diagnostic.
 - Repository constructors, including class/record primary ones, are `Method` nodes named after their type (`props.constructor`,
-  parameter list as `signature`). `new T(...)` and explicit `: base(...)`/`: this(...)` emit `CALLS` to declared repository constructors;
-  implicit repository default constructors get a type `REFERENCES` instead. Constructors and ordinary methods
+  parameter list as `signature`). `new T(...)`, explicit `: base(...)`/`: this(...)`, and explicit class/record primary-base
+  `Base(args)` syntax emit `CALLS` to declared repository constructors. A primary-base call is owned by its declared primary
+  constructor; it records explicit source syntax, not runtime initialization order. Implicit repository default
+  constructors get a type `REFERENCES` instead. Constructors and ordinary methods
   `REFERENCES` repository parameter types; methods also reference return types, including nested generic/array types.
-  Code inside a constructor body (lambdas included) belongs to it. Compiler-resolved package constructions
-  also emit resolved `CALLS` from existing method/property owners to external (`@ext`) constructor keys,
-  using the generic constructor's original definition. No external declaration nodes or signatures are invented.
+  Code inside a constructor body (lambdas included) belongs to it. Compiler-resolved package constructions,
+  including primary-base calls, also emit resolved `CALLS` from existing method/property owners (including a
+  primary-constructor Method) to external (`@ext`) constructor keys, using the generic constructor's original
+  definition. No external declaration nodes or signatures are invented.
   Provenance comes from the actual selected compilation's portable-executable references outside that unit's
   SDK framework paths, including transitive package references; namespace and assembly names do not classify packages.
-  SDK-framework constructions (`new List<int>()`, `new object()`) and external parameter/return type references
-  remain omitted. Missing, candidate-only and ambiguous constructions do not invent targets; compiler coverage
+  SDK-framework creations (for example `new List<int>()` and `new object()`), SDK-framework primary-base
+  calls (for example `System.Exception(message)`) and external parameter/return type references remain omitted.
+  Missing, candidate-only and ambiguous constructions do not invent targets; compiler coverage
   diagnostics stay unchanged. Field and property initializers are not attributed to a constructor.
 - Explicit non-event fields are `Field` nodes. Repository creations in their initializers give lexical
   `Field REFERENCES Type`, not `CALLS` or containing-constructor execution. Static and instance fields
