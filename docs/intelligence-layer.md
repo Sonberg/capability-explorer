@@ -103,9 +103,11 @@ Retrieval uses the selected analyzed revisions and capability scope:
 - Paths: one shortest chain, walking relations in either direction, at most six
   hops and a 20,000-visited-node search budget. Declaration edges are skipped;
   undeclared external and heavily shared symbols are not traversed as bridges.
-  Shared channel and SQL resource keys can be bridges. Equal-length alternatives
-  are not ranked or exhaustively returned. HTTP route-only links are explicitly
-  candidates, not confirmed service identity.
+  Shared channel and SQL resource keys can be bridges. Ties use ordinal symbol
+  keys, then relation labels, with outgoing relations before incoming relations
+  before HTTP candidate links. This is deterministic ordering, not relevance
+  ranking; alternatives are not exhaustively returned. HTTP route-only links
+  are explicitly candidates, not confirmed service identity.
 - Flows: bounded entry-to-vendor chains assembled from HTTP endpoint matches and
   graph relations. A route-only entry keeps its candidate label. No flow is
   added when a matching vendor or connected entry chain is absent.
