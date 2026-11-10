@@ -50,6 +50,19 @@ public sealed class ResolutionFidelityTests : IDisposable
     }
 
     [Fact]
+    public void A_stale_exact_package_lock_cannot_produce_a_resolved_compiler_artifact()
+    {
+        Package("Same", "net8.0", "namespace Shared; public static class Api { public static int Read() => 1; }");
+        Project("<PackageReference Include=\"Same\" Version=\"[2.0.0]\" />", "public class App { public int Run() => Shared.Api.Read(); }");
+        var packages = new PackageLock();
+        packages.Set("App.csproj", [new("Same", "1.0.0")]);
+        var error = Assert.Throws<InvalidOperationException>(() => new CSharpExtractor(new ExtractorOptions(
+            Path.Combine(_root, "src"), "resolution", "0123456789abcdef0123456789abcdef01234567", Cache, Packs, packages)).Extract());
+        Assert.Contains("Same", error.Message);
+        Assert.Contains("[2.0.0]", error.Message);
+    }
+
+    [Fact]
     public void Extension_blocks_emit_named_members_without_unnamed_type_nodes()
     {
         Project("", "public static class Extensions { extension(string value) { public bool IsLong() => value.Length > 3; public int Count => value.Length; } }");
