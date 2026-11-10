@@ -339,17 +339,23 @@ capability files and reloads when they change, and the UI refetches what it show
 - It builds Roslyn compilations from `.csproj` XML. Literal `ReferenceOutputAssembly=false` keeps declared
   dependencies but hides compiler symbols; unsupported metadata is diagnosed. SDK packs and step 2 supply assemblies.
 - Source generators do not run. Their absence is an info diagnostic.
-- Constructors, including class/record primary ones, are `Method` nodes named after their type (`props.constructor`,
-  parameter list as `signature`). `new T(...)` and explicit `: base(...)`/`: this(...)` emit `CALLS` to declared constructors;
-  implicit default constructors get a type `REFERENCES` instead. Constructors and ordinary methods
+- Repository constructors, including class/record primary ones, are `Method` nodes named after their type (`props.constructor`,
+  parameter list as `signature`). `new T(...)` and explicit `: base(...)`/`: this(...)` emit `CALLS` to declared repository constructors;
+  implicit repository default constructors get a type `REFERENCES` instead. Constructors and ordinary methods
   `REFERENCES` repository parameter types; methods also reference return types, including nested generic/array types.
-  Code inside a constructor body (lambdas included) belongs to it. Only repository types are recorded:
-  `new List<int>()` and an `ILogger` parameter say nothing about the system. Field and property initializers
-  are not attributed to a constructor.
+  Code inside a constructor body (lambdas included) belongs to it. Compiler-resolved package constructions
+  also emit resolved `CALLS` from existing method/property owners to external (`@ext`) constructor keys,
+  using the generic constructor's original definition. No external declaration nodes or signatures are invented.
+  Provenance comes from the actual selected compilation's portable-executable references outside that unit's
+  SDK framework paths, including transitive package references; namespace and assembly names do not classify packages.
+  SDK-framework constructions (`new List<int>()`, `new object()`) and external parameter/return type references
+  remain omitted. Missing, candidate-only and ambiguous constructions do not invent targets; compiler coverage
+  diagnostics stay unchanged. Field and property initializers are not attributed to a constructor.
 - Explicit non-event fields are `Field` nodes. Repository creations in their initializers give lexical
   `Field REFERENCES Type`, not `CALLS` or containing-constructor execution. Static and instance fields
-  follow the same rule; deferred lambda/anonymous bodies are excluded. Property initializers belong
-  to the declared property and use constructor `CALLS` or implicit-default type `REFERENCES`.
+  follow the same rule; package/framework field creations remain omitted and deferred lambda/anonymous bodies
+  are excluded. Property initializers belong to the declared property and use constructor `CALLS` or,
+  for implicit repository defaults, type `REFERENCES`.
 - Compiler errors make the affected files `partial`.
 - Rules: ASP.NET Core controllers and minimal APIs, DI (including keyed services and reflection),
   EF Core, Dapper, Azure Service Bus, typed `HttpClient`.
