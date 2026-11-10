@@ -138,7 +138,8 @@ test("class initialization calls belong to an executable owner rather than a Typ
   const calls = unit!.records.filter(record => record.relation === "CALLS");
   assert.equal(calls.length, 6);
   for (const edge of calls) assert.notEqual(nodes.get(edge.from), "Type");
-  assert.equal(calls.filter(edge => edge.from?.endsWith("|(module)#namespace")).length, 4);
+  assert.equal(calls.filter(edge => edge.from?.endsWith("|(module)#namespace")).length, 3);
+  assert.ok(calls.some(edge => edge.from?.endsWith("|App.(new)#value")));
   assert.ok(calls.some(edge => edge.from?.endsWith("|App.run#value")));
   assert.ok(calls.some(edge => edge.from?.endsWith("|App.callback#value")));
 });
