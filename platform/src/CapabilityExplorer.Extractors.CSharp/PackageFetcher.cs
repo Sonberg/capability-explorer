@@ -121,7 +121,7 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
         }
     }
 
-    /// <summary>Fixed lower bounds are used as written; feed-index queries choose the newest matching version, with prereleases only when explicitly requested.</summary>
+    /// <summary>Inclusive lower bounds are used as written; exclusive floors choose the lowest matching version above them. Other feed-index queries choose the newest match.</summary>
     private async Task<string?> ResolveVersionAsync(string id, string? range, CancellationToken cancellationToken)
     {
         if (range is not null && range.Contains('$', StringComparison.Ordinal))
@@ -130,7 +130,9 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
         }
 
         var min = range?.Trim().Trim('[', '(', ']', ')', ' ').Split(',')[0].Trim();
-        if (!string.IsNullOrEmpty(min) && !min.Contains('*', StringComparison.Ordinal))
+        var exclusiveFloor = range is not null && VersionRange.TryParse(range, out var constraint)
+            && constraint.MinVersion is not null && !constraint.IsMinInclusive;
+        if (!string.IsNullOrEmpty(min) && !min.Contains('*', StringComparison.Ordinal) && !exclusiveFloor)
         {
             return min;
         }
@@ -158,9 +160,10 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
 
                 using var doc = JsonDocument.Parse(await ReadMetadataAsync(response, cancellationToken));
                 var versions = doc.RootElement.GetProperty("versions").EnumerateArray().Select(v => v.GetString()!).ToList();
-                var pick = versions.Where(v => PackageVersionSelection.AllowsLocked(range ?? "*", v))
+                var matching = versions.Where(v => PackageVersionSelection.AllowsLocked(range ?? "*", v))
                     .OrderBy(v => NuGetVersion.Parse(v), VersionComparer.VersionRelease)
-                    .ThenBy(v => v, StringComparer.Ordinal).LastOrDefault();
+                    .ThenBy(v => v, StringComparer.Ordinal);
+                var pick = exclusiveFloor ? matching.FirstOrDefault() : matching.LastOrDefault();
                 if (pick is not null)
                 {
                     return _floating[cacheKey] = pick;
