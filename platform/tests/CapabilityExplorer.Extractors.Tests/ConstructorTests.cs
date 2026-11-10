@@ -150,8 +150,8 @@ public sealed class ConstructorTests : IDisposable
             && record.GetProperty("name").GetString() == "LineBundle"
             && record.TryGetProperty("props", out var props) && props.TryGetProperty("constructor", out _));
         var bundleKey = bundleCtor.GetProperty("symbolKey").GetString()!;
-        var lineReference = Assert.Single(Edges("REFERENCES").Where(edge => edge.GetProperty("from").GetString() == bundleKey
-            && To(edge) == Ns + "T:Synthetic.Line"));
+        var lineReference = Assert.Single(Edges("REFERENCES"), edge => edge.GetProperty("from").GetString() == bundleKey
+            && To(edge) == Ns + "T:Synthetic.Line");
         Assert.Equal("Line[] Lines", EvidenceText(lineReference.GetProperty("evidence")[0]));
         Assert.True(Has(Ns + "M:Synthetic.Handler.CreateBundle", "CALLS", bundleKey));
 
