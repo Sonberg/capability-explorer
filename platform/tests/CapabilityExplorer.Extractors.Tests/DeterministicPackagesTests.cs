@@ -139,6 +139,23 @@ public sealed class DeterministicPackagesTests : IDisposable
     }
 
     [Fact]
+    public async Task Feed_selection_cache_does_not_replace_an_invalid_empty_request_with_an_omitted_one()
+    {
+        var feed = PublicFeed();
+        using var http = new HttpClient(new FeedRouter(feed));
+        IReadOnlyList<(string Project, IReadOnlyList<PackageRef> Roots)> projects =
+        [
+            ("A.csproj", [new("Fake.Lib", null, 1)]),
+            ("B.csproj", [new("Fake.Lib", "", 1)]),
+        ];
+        var fetched = await new PackageFetcher(Path.Combine(_root, "cache"), http, [new("test", feed.IndexUrl)],
+            new PackageFeedPolicy("https://feed.test")).FetchAsync(projects);
+        Assert.Single(fetched.Failed);
+        Assert.Equal("1.0.0", Assert.Single(fetched.Lock.For("A.csproj")).Version);
+        Assert.Empty(fetched.Lock.For("B.csproj"));
+    }
+
+    [Fact]
     public async Task The_resolved_package_set_is_part_of_the_config_hash()
     {
         var source = Source("1.0.0");
