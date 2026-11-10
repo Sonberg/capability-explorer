@@ -126,14 +126,14 @@ export default function forecastCs(repo, tag) {
     at: [[series, "public sealed partial class WeeklySeries(IReadOnlyList<int> quantities)"], [seriesStats, "public sealed partial class WeeklySeries"]],
   });
   a.node({ key: k.quantities, kind: "Property", name: "Quantities", at: [series, "public IReadOnlyList<int> Quantities { get; }"] });
-  a.node({ key: k.seriesCtor, kind: "Method", name: ".ctor", at: [series, "public sealed partial class WeeklySeries(IReadOnlyList<int> quantities)"] });
+  a.node({ key: k.seriesCtor, kind: "Method", name: "WeeklySeries", at: [series, "public sealed partial class WeeklySeries(IReadOnlyList<int> quantities)"] });
   a.node({ key: k.totalUnits, kind: "Method", name: "TotalUnits", at: [seriesStats, "public int TotalUnits()"] });
   a.node({ key: k.dbContext, kind: "Type", name: "ForecastDbContext", props: { typeKind: "class" }, at: [ctx, "public sealed class ForecastDbContext"] });
-  a.node({ key: k.dbContextCtor, kind: "Method", name: ".ctor", at: [ctx, "public sealed class ForecastDbContext(DbContextOptions<ForecastDbContext> options)"] });
+  a.node({ key: k.dbContextCtor, kind: "Method", name: "ForecastDbContext", at: [ctx, "public sealed class ForecastDbContext(DbContextOptions<ForecastDbContext> options)"] });
   a.node({ key: k.forecastEntry, kind: "Type", name: "ForecastEntry", props: { typeKind: "class" }, at: [entry, "public sealed class ForecastEntry"] });
   a.node({ key: k.weeklyHistory, kind: "Type", name: "WeeklyHistory", props: { typeKind: "class" }, at: [hist, "public sealed class WeeklyHistory"] });
   a.node({ key: k.repository, kind: "Type", name: "Repository", props: { typeKind: "class", genericArity: 1 }, at: [repoFile, "public sealed class Repository<T>(ForecastDbContext db)"] });
-  a.node({ key: k.repositoryCtor, kind: "Method", name: ".ctor", at: [repoFile, "public sealed class Repository<T>(ForecastDbContext db)"] });
+  a.node({ key: k.repositoryCtor, kind: "Method", name: "Repository", at: [repoFile, "public sealed class Repository<T>(ForecastDbContext db)"] });
   a.node({ key: k.listAsync, kind: "Method", name: "ListAsync", at: [repoFile, "public Task<List<T>> ListAsync("] });
   a.node({ key: k.addAsync, kind: "Method", name: "AddAsync", at: [repoFile, "public async Task AddAsync(T entity, CancellationToken cancellationToken)"] });
   a.node({ key: k.consumer, kind: "Type", name: "StatsUpdatedConsumer", props: { typeKind: "class", partial: true }, at: [consumer, "public sealed partial class StatsUpdatedConsumer"] });

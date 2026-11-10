@@ -339,9 +339,9 @@ capability files and reloads when they change, and the UI refetches what it show
 - It builds Roslyn compilations from `.csproj` XML. Literal `ReferenceOutputAssembly=false` keeps declared
   dependencies but hides compiler symbols; unsupported metadata is diagnosed. SDK packs and step 2 supply assemblies.
 - Source generators do not run. Their absence is an info diagnostic.
-- Constructors are `Method` nodes named after their type (`props.constructor`, parameter list as `signature`).
-  `new T(...)` and `: base(...)`/`: this(...)` are `CALLS` to the declared constructor; a type with no declared one
-  (default, or a record's primary constructor) gets a `REFERENCES` instead. Constructors and ordinary methods
+- Constructors, including class/record primary ones, are `Method` nodes named after their type (`props.constructor`,
+  parameter list as `signature`). `new T(...)` and explicit `: base(...)`/`: this(...)` emit `CALLS` to declared constructors;
+  implicit default constructors get a type `REFERENCES` instead. Constructors and ordinary methods
   `REFERENCES` repository parameter types; methods also reference return types, including nested generic/array types.
   Code inside a constructor body (lambdas included) belongs to it. Only repository types are recorded:
   `new List<int>()` and an `ILogger` parameter say nothing about the system. Field and property initializers
