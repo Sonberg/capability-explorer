@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { after, before, test } from "node:test";
 import playwright from "../spikes/likec4/node_modules/playwright/index.js";
 import { preview } from "../platform/src/CapabilityExplorer.Explorer/client/node_modules/vite/dist/node/index.js";
@@ -260,7 +260,9 @@ test("Built current chat: synthetic scoped evidence, opt-in reload and request i
     await panel.getByText(question, { exact: true }).waitFor();
     assert.equal(await panel.getByRole("link", { name: "1", exact: true }).getAttribute("href"), citationHref);
     assert.equal(chatRequests, 2, "Restoration must not replay a model request.");
+    await panel.getByRole("textbox", { name: "Question", exact: true }).fill("Synthetic discarded draft");
     await panel.getByRole("button", { name: "Clear chat", exact: true }).click();
+    assert.equal(await panel.getByRole("textbox", { name: "Question", exact: true }).inputValue(), "");
     assert.equal(await retained(), null);
     assert.equal(await panel.getByText(question, { exact: true }).count(), 0);
     await reopenAfterReload();
@@ -360,6 +362,25 @@ test("Built current chat: synthetic scoped evidence, opt-in reload and request i
     await exchange();
     assert.equal((await defaultSent).postDataJSON().view, `${repository}:${latest}`,
       "A mutable default selection must send the effective revisions used to bind retained evidence.");
+    const screenshots = new URL("../.sandbox-cache/chat-history-layout/", import.meta.url);
+    await mkdir(screenshots, { recursive: true });
+    for (const viewport of [
+      { name: "desktop", width: 1440, height: 1000 },
+      { name: "mobile", width: 390, height: 844 },
+      { name: "compact", width: 320, height: 568 },
+      { name: "landscape", width: 844, height: 390 },
+    ]) {
+      await page.setViewportSize(viewport);
+      const bounds = await panel.boundingBox();
+      const log = await panel.getByRole("log", { name: "Conversation", exact: true }).boundingBox();
+      const composer = await panel.getByRole("textbox", { name: "Question", exact: true }).boundingBox();
+      await page.screenshot({ path: new URL(`${viewport.name}.png`, screenshots).pathname });
+      t.diagnostic(`Chat layout ${viewport.name}: ${JSON.stringify({ bounds, log, composer })}`);
+      assert.ok(bounds && log && composer);
+      assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= viewport.width, "Chat must fit the viewport horizontally.");
+      assert.ok(composer.y >= 0 && composer.y + composer.height <= viewport.height, "The question must remain on screen.");
+      assert.ok(log.height >= 80, "Retention controls must leave a readable, scrollable conversation in short viewports.");
+    }
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, [], "Reload/retention checks remain synthetic-only.");
   } finally {
