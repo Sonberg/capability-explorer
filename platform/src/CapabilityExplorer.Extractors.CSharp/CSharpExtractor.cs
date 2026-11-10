@@ -373,25 +373,13 @@ public sealed class CSharpExtractor(ExtractorOptions options)
 
         foreach (var decl in file.Tree.GetRoot().DescendantNodes().OfType<BaseTypeDeclarationSyntax>())
         {
-            var parameterList = decl switch
-            {
-                ClassDeclarationSyntax classDecl => classDecl.ParameterList,
-                RecordDeclarationSyntax recordDecl => recordDecl.ParameterList,
-                _ => null,
-            };
+            var parameterList = PrimaryConstructorParameters(decl);
             if (parameterList is null || file.Model.GetDeclaredSymbol(decl) is not INamedTypeSymbol type)
             {
                 continue;
             }
 
-            var ctor = parameterList.Parameters
-                .Select(parameter => file.Model.GetDeclaredSymbol(parameter))
-                .OfType<IParameterSymbol>()
-                .Select(parameter => parameter.ContainingSymbol)
-                .OfType<IMethodSymbol>()
-                .FirstOrDefault(candidate => candidate.MethodKind == MethodKind.Constructor)
-                ?? type.InstanceConstructors.FirstOrDefault(candidate => candidate.DeclaringSyntaxReferences.Any(reference =>
-                    reference.SyntaxTree == decl.SyntaxTree && (reference.Span == decl.Span || reference.Span == parameterList.Span)));
+            var ctor = PrimaryConstructor(file.Model, decl, parameterList, type);
             if (ctor is null || ctor.ContainingType.Name.Length == 0)
             {
                 continue;
@@ -510,9 +498,12 @@ public sealed class CSharpExtractor(ExtractorOptions options)
     /// <summary>Records repository creations and resolved selected-package constructor calls; framework creations are omitted.</summary>
     private static void Creations(ArtifactBuilder b, SymbolKeys keys, SourceFile file, HashSet<IAssemblySymbol> packageAssemblies)
     {
-        foreach (var node in file.Tree.GetRoot().DescendantNodes().Where(n => n is BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax))
+        foreach (var node in file.Tree.GetRoot().DescendantNodes().Where(n =>
+            n is BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax or PrimaryConstructorBaseTypeSyntax))
         {
-            var owner = Owner(file.Model, node.SpanStart);
+            var owner = node is PrimaryConstructorBaseTypeSyntax primaryBase
+                ? PrimaryBaseOwner(file, primaryBase)
+                : Owner(file.Model, node.SpanStart);
             if (owner is null)
             {
                 // Initializers need their declaration owner; deferred anonymous bodies are excluded.
@@ -554,6 +545,40 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             }
         }
     }
+
+    private static ISymbol? PrimaryBaseOwner(SourceFile file, PrimaryConstructorBaseTypeSyntax primaryBase)
+    {
+        var declaration = primaryBase.Ancestors().OfType<BaseTypeDeclarationSyntax>().FirstOrDefault();
+        var parameters = declaration is null ? null : PrimaryConstructorParameters(declaration);
+        if (declaration is null || parameters is null || file.Model.GetDeclaredSymbol(declaration) is not INamedTypeSymbol type)
+        {
+            return null;
+        }
+
+        var ctor = PrimaryConstructor(file.Model, declaration, parameters, type);
+        return ctor is not null && IsDeclaredConstructor(ctor) ? ctor : null;
+    }
+
+    private static ParameterListSyntax? PrimaryConstructorParameters(BaseTypeDeclarationSyntax declaration) => declaration switch
+    {
+        ClassDeclarationSyntax classDeclaration => classDeclaration.ParameterList,
+        RecordDeclarationSyntax recordDeclaration => recordDeclaration.ParameterList,
+        _ => null,
+    };
+
+    private static IMethodSymbol? PrimaryConstructor(
+        SemanticModel model,
+        BaseTypeDeclarationSyntax declaration,
+        ParameterListSyntax parameters,
+        INamedTypeSymbol type) =>
+        parameters.Parameters
+            .Select(parameter => model.GetDeclaredSymbol(parameter))
+            .OfType<IParameterSymbol>()
+            .Select(parameter => parameter.ContainingSymbol)
+            .OfType<IMethodSymbol>()
+            .FirstOrDefault(candidate => candidate.MethodKind == MethodKind.Constructor)
+        ?? type.InstanceConstructors.FirstOrDefault(candidate => candidate.DeclaringSyntaxReferences.Any(reference =>
+            reference.SyntaxTree == declaration.SyntaxTree && (reference.Span == declaration.Span || reference.Span == parameters.Span)));
 
     private static bool IsDeclaredConstructor(IMethodSymbol ctor) => ctor.OriginalDefinition.DeclaringSyntaxReferences.Any(reference => reference.GetSyntax() switch
     {
