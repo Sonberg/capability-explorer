@@ -103,6 +103,27 @@ public sealed class ProjectReferencesTests : IDisposable
     }
 
     [Fact]
+    public void Missing_build_order_only_project_preserves_diagnostic_and_resolvable_neighbor()
+    {
+        Project("C", "namespace C; public static class Api { public static int Read() => 7; }");
+        Project("A", "namespace A; public static class Caller { public static int Read() => C.Api.Read(); }", "B", "C");
+        ReferenceMetadata(" ReferenceOutputAssembly=\"false\"", "");
+
+        var units = Extract();
+        var records = Records(Unit(units, "A"));
+        var diagnostic = Assert.Single(OfKind(records, "diagnostic"));
+        Assert.Equal("MISSING_PROJECT_REFERENCE", diagnostic.GetProperty("code").GetString());
+        Assert.Equal("error", diagnostic.GetProperty("severity").GetString());
+        Assert.Equal("A/A.csproj", diagnostic.GetProperty("path").GetString());
+        Assert.True(diagnostic.GetProperty("affectsCoverage").GetBoolean());
+        Assert.Contains("../B/B.csproj", diagnostic.GetProperty("message").GetString());
+        Assert.Equal("partial", Complete(records).GetProperty("status").GetString());
+        AssertDependencies(records, "A", "C");
+        AssertCalls(records, "cs|projects|A|M:A.Caller.Read", "cs|projects|C|M:C.Api.Read");
+        AssertAllFull([Unit(units, "C")]);
+    }
+
+    [Fact]
     public void Unrelated_discovered_project_does_not_make_its_symbols_visible_to_A()
     {
         Project("B", "namespace B; public static class Api { public static int Read() => 7; }");
