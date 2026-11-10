@@ -154,35 +154,26 @@ public sealed class PackageConstructorTests : IDisposable
         Assert.Equal("partial", records[^1].GetProperty("status").GetString());
     }
 
-    [Fact]
-    public void Missing_candidate_and_ambiguous_primary_base_calls_remain_compiler_diagnostics()
+    [Theory]
+    [InlineData("public class Missing(int value) : MissingBase(value) { }", "CS0246")]
+    [InlineData("public class Ambiguous(string value) : Library.Choice(null) { }", "CS0121")]
+    [InlineData("public class Candidate(bool value) : Library.Widget(value) { }", "CS1503")]
+    public void Missing_candidate_and_ambiguous_primary_base_calls_remain_compiler_diagnostics(string source, string diagnosticId)
     {
         var metadata = Package("""
             namespace Library;
             public class Widget { public Widget(int value) { } }
             public class Choice { public Choice(string value) { } public Choice(System.Uri value) { } }
             """);
-        const string source = """
-            namespace Repo;
-            public class Missing(int value) : MissingBase(value) { }
-            public class Ambiguous(string value) : Library.Choice(null) { }
-            public class Candidate(bool value) : Library.Widget(value) { }
-            """;
         Project("App", source, PackageReference);
         var oracle = Compilation("Oracle", source, FrameworkReferences().Append(MetadataReference.CreateFromFile(metadata)));
-        foreach (var id in new[] { "CS0246", "CS0121", "CS1503" })
-        {
-            Assert.Contains(oracle.GetDiagnostics(), item => item.Severity == DiagnosticSeverity.Error && item.Id == id);
-        }
+        Assert.Contains(oracle.GetDiagnostics(), item => item.Severity == DiagnosticSeverity.Error && item.Id == diagnosticId);
 
         var records = Records(Assert.Single(Extract()).Jsonl);
 
         Assert.Empty(Calls(records));
-        foreach (var id in new[] { "CS0246", "CS0121", "CS1503" })
-        {
-            Assert.Contains(records, record => Is(record, "diagnostic") && record.GetProperty("code").GetString() == $"COMPILER_{id}"
-                && record.GetProperty("affectsCoverage").GetBoolean());
-        }
+        Assert.Contains(records, record => Is(record, "diagnostic") && record.GetProperty("code").GetString() == $"COMPILER_{diagnosticId}"
+            && record.GetProperty("affectsCoverage").GetBoolean());
         Assert.Equal("partial", records[^1].GetProperty("status").GetString());
     }
 
