@@ -118,11 +118,16 @@ public static class BindingPreview
     private static List<(LoadedFrom From, Artifact Artifact)> Combine(List<(LoadedFrom From, Artifact Artifact)> sources, List<(LoadedFrom From, Artifact Artifact)> targets)
     {
         var all = sources.Concat(targets).ToList();
+        ValidateSources(all);
+        return all.DistinctBy(item => (item.From.RepositoryId, item.From.UnitPath)).ToList();
+    }
+
+    internal static void ValidateSources(IReadOnlyList<(LoadedFrom From, Artifact Artifact)> all)
+    {
         foreach (var item in all) _ = Source(item.From, item.Artifact);
         if (all.GroupBy(item => item.From.RepositoryId).Any(group => group.Select(item => item.From.CommitSha).Distinct(StringComparer.Ordinal).Count() > 1)
             || all.GroupBy(item => (item.From.RepositoryId, item.From.UnitPath)).Any(group => group.Select(item => item.Artifact.ContentSha256).Distinct(StringComparer.Ordinal).Count() > 1))
             throw new ArgumentException("Select one exact revision and artifact per repository and unit.");
-        return all.DistinctBy(item => (item.From.RepositoryId, item.From.UnitPath)).ToList();
     }
 
     private static BindingPreviewSource Source(LoadedFrom from, Artifact artifact)

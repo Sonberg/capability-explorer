@@ -17,12 +17,13 @@ public sealed record IntegrationContractAssessment(string Status, int ComparedOp
 
 public static class IntegrationMatching
 {
-    public const string AlgorithmVersion = "integration-cluster-v1";
+    public const string AlgorithmVersion = "integration-cluster-v2";
 
     public static IReadOnlyList<IntegrationMatch> Build(IReadOnlyList<IntegrationMatchInput> inputs, BindingFile bindings)
     {
         ArgumentNullException.ThrowIfNull(inputs);
         ArgumentNullException.ThrowIfNull(bindings);
+        BindingPreview.ValidateSources(inputs.Select(input => (input.From, input.Artifact)).ToList());
         var bound = Binder.Bind(inputs.Select(input => (input.From, input.Artifact)), bindings).Edges
             .DistinctBy(edge => (edge.Artifact, edge.Original.Id))
             .ToDictionary(edge => (edge.Artifact, edge.Original.Id));
@@ -47,7 +48,8 @@ public static class IntegrationMatching
                 var candidates = exact[key].ToList();
                 var strong = candidates.Count > 0 && Known(key);
                 if (!strong && binding is null && Tail(key) is not ("GET /" or "HEAD /")) candidates = routes[Tail(key)].ToList();
-                var owners = candidates.Select(candidate => candidate.Input.CapabilityId).Distinct(StringComparer.Ordinal).Count();
+                var owners = candidates.Select(candidate => (candidate.Input.CapabilityId,
+                    candidate.Input.From.RepositoryId, candidate.Input.From.UnitPath)).Distinct().Count();
                 foreach (var candidate in candidates.Where(candidate => candidate.Input.CapabilityId != input.CapabilityId
                              && candidate.Input.From.RepositoryId != input.From.RepositoryId))
                 {

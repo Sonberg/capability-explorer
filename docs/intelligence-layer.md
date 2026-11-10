@@ -61,6 +61,91 @@ diff already holds the answer and the model only phrases it. That makes validati
 evaluation easy against the fixture variants (calendar vs active weeks, rounding modes, null
 handling).
 
+## Chat over analyzed code (current implementation)
+
+The file-backed Explorer offers optional `POST /api/chat` through the configured
+chat model and Microsoft Agent Framework. The model **proposes an answer**; it
+does not write code facts, review findings or approve connections. The panel
+labels answers with sources as **AI-written, unreviewed**. Chat responses are
+returned to the caller, not stored as reviewed interpretation proposals. The
+proposal storage and validation requirements above are not guarantees supplied
+by the chat endpoint.
+
+The request contains `messages`, optional `focus`, and optional `view` revision
+selection and `cap` scope. The server accepts up to ten user/assistant turns,
+ending with a user question of 1–1,000 characters after trimming. A missing chat
+model returns 409; an invalid conversation returns 400; a model failure reported
+as unavailable returns 503. Focus describes what is on screen; it does not widen
+the selected code view.
+
+### Retrieval and citations
+
+Each answer has `answer`, `sources`, `retrieval`, `model` and `steps`. Up-front
+retrieval and subsequent tool lookups share numbered items. The model is
+instructed to cite them as `[1]`, `[2]`, and so on. Each source records its number,
+kind, key, name, repository, first retrieval origin (`found`) and a text preview
+capped at 600 characters plus an ellipsis. Reusing an item preserves its number
+and first origin. `steps` lists tool names and arguments in invocation order;
+`retrieval` reports retriever activity or semantic-search unavailability, not a
+proof that each retriever contributed evidence.
+
+Retrieval uses the selected analyzed revisions and capability scope:
+
+- Up front: the focused symbol, optional embedding neighbours, keyword matches,
+  HTTP integrations and shared resources, vendor flows, graph paths and glossary
+  concepts. There are at most 32 up-front items and 40 items for the whole answer.
+- Tools: `search_symbols`, `get_symbol`, `get_connected_code`, `find_path` and
+  `list_integrations`. `semantic_search` is offered only when the legacy
+  similarity store and embedding model are configured. Without them, names and
+  graph retrieval remain available and the response reports why semantic search
+  is off. Snapshot projection readiness does not enable PostgreSQL similarity
+  search; see the projection status section below.
+- Paths: one shortest chain, walking relations in either direction, at most six
+  hops and a 20,000-visited-node search budget. Declaration edges are skipped;
+  undeclared external and heavily shared symbols are not traversed as bridges.
+  Shared channel and SQL resource keys can be bridges. Equal-length alternatives
+  are not ranked or exhaustively returned. HTTP route-only links are explicitly
+  candidates, not confirmed service identity.
+- Flows: bounded entry-to-vendor chains assembled from HTTP endpoint matches and
+  graph relations. A route-only entry keeps its candidate label. No flow is
+  added when a matching vendor or connected entry chain is absent.
+- Connected code: incoming and outgoing declared neighbours, excluding
+  declaration edges. The tool clamps depth to one or two steps, returns at most
+  eight neighbours, deduplicates cycles and respects the shared item limit.
+
+Tools return explicit missing-symbol or no-chain messages. Missing paths mean
+**not observed within these bounds**, not that interaction is impossible.
+Context and tool results are bounded rather than exhaustive: tool text is
+capped at 6,000 characters plus an ellipsis. Available source snippets are read
+at analyzed commits, with a shared budget of 24 snippets, each at most 25 lines
+and 900 characters plus an ellipsis. Source previews can be shorter than the
+context used by the model.
+
+### Trust and current limits
+
+Repository names, comments, strings and source snippets are **untrusted data**,
+not instructions. The system prompt tells the model not to follow instructions
+inside retrieved items, to cite evidence, to preserve route-match uncertainty
+and to say when an answer was not observed. These instructions are not an
+injection-proof boundary or a deterministic check of answer correctness.
+The endpoint does not validate every generated citation or claim against the
+retrieved items. Review the cited sources before relying on an answer.
+
+The agent allows up to five tool-invocation iterations per request. If a model
+call fails as unavailable while tools are offered, chat retries without tools
+using the same retrieved context; this fallback is not proof of model tool
+support. Responses are non-streaming; the model adapter's streaming method is
+not implemented. Conversation history is supplied by the client and is not
+durably stored by this endpoint. No supported-model quality, latency, throughput
+or real-corpus accuracy is established by synthetic retrieval tests.
+
+`ChatToolRetrievalTests` exercises the existing tool functions and context
+builders with sealed synthetic artifacts, without a model or private inputs.
+It covers path citations and bounds, candidate-labelled flows, missing and
+disconnected cases, connected-code depth/cycles/item limits, and selected-view
+isolation. `ChatApiTests` separately covers the scripted model/tool round trip.
+Neither establishes live-model correctness or browser acceptance for issue #25.
+
 ## Integration assessments
 
 The file-backed architecture inspector now offers an optional integration

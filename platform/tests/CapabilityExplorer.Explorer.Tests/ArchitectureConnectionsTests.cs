@@ -17,6 +17,29 @@ public sealed class ArchitectureConnectionsTests : IDisposable
     private readonly HttpClient _client;
 
     [Fact]
+    public async Task Given_an_old_matching_algorithm_when_reading_cached_results_then_the_catalogue_is_unavailable_not_reused()
+    {
+        var source = ArtifactValidator.Validate(Fixtures.Golden("api-cs/v1-base/Sales.Api.jsonl")).Artifact!;
+        var from = new BindingPreviewSource(source.Header.RepositoryId, source.Header.CommitSha, source.Header.Unit.Path, source.ContentSha256);
+        var match = new IntegrationMatch("old-match", "first", "second", "source-run", "target-run", from, from,
+            "old-edge", source.Nodes[0].SymbolKey, source.Nodes[0].SymbolKey, "REQUESTS", "http", "matched",
+            "An old algorithm's conclusion.", [], []);
+        var store = new IntegrationMatchCatalogueStore(_root);
+        using (store.AcquireWriter()) store.Write(new("integration-cluster-v1", new string('a', 64), DateTimeOffset.UtcNow,
+            [new("first", "source-run", from)], 1, 0, [match]));
+        var path = Path.Combine(_root, ".sandbox-cache", "integration-matches.json");
+        var before = File.ReadAllBytes(path);
+        using var response = await _client.GetAsync("/api/architecture/integration-matches");
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        var graph = await _client.GetFromJsonAsync<JsonElement>("/api/architecture?level=landscape");
+        Assert.DoesNotContain(graph.GetProperty("edges").EnumerateArray(),
+            edge => edge.GetProperty("id").GetString() == "automatic:old-match");
+        Assert.Contains(graph.GetProperty("notes").EnumerateArray(),
+            note => note.GetString()!.Contains("unavailable", StringComparison.Ordinal));
+        Assert.Equal(before, File.ReadAllBytes(path));
+    }
+
+    [Fact]
     public async Task Given_shared_target_clusters_when_viewing_one_capability_then_only_its_incoming_and_outgoing_connections_are_shown()
     {
         var source = ArtifactValidator.Validate(Fixtures.Golden("api-cs/v1-base/Sales.Api.jsonl")).Artifact!;

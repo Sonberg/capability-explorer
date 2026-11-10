@@ -334,8 +334,10 @@ public sealed class AnalysisAdapterShadowTests
         Assert.Null(outcome.PlanSha256);
     }
 
-    [Fact]
-    public async Task Given_an_already_cancelled_stop_token_then_the_real_cancellation_propagates()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(120)]
+    public async Task Given_an_already_cancelled_stop_token_then_the_real_cancellation_propagates(int seconds)
     {
         using var repo = new Repo();
         repo.Write("Api/Api.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>");
@@ -347,7 +349,7 @@ public sealed class AnalysisAdapterShadowTests
 
         await Assert.ThrowsAsync<OperationCanceledException>(() => AnalysisAdapterShadow.PlanAsync(
             export.Destination, "repo", sha, export.TreeSha, export.Result.Skipped, shadow,
-            TimeSpan.FromSeconds(120), cancelled.Token));
+            TimeSpan.FromSeconds(seconds), cancelled.Token));
     }
 
     private static async Task<string> BlobSha(Repo repo, string relativePath) =>

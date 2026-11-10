@@ -120,6 +120,72 @@ public sealed class HttpBindingRecommendationTests
         return (new(repo, artifact.Header.CommitSha, artifact.Header.Unit.Path), artifact);
     }
 
+    [Theory]
+    [InlineData("repository")]
+    [InlineData("revision")]
+    [InlineData("unit")]
+    public void Given_mismatched_source_identity_when_matching_then_the_input_is_rejected(string field)
+    {
+        var source = Load("pricing-node", "v1-base", "@fixture/pricing");
+        var from = field switch
+        {
+            "repository" => source.From with { RepositoryId = "other" },
+            "revision" => source.From with { CommitSha = new string('f', 40) },
+            _ => source.From with { UnitPath = "other-unit" },
+        };
+        Assert.Throws<ArgumentException>(() => IntegrationMatching.Build(
+            [new("pricing", "source-run", from, source.Artifact)], BindingFile.Empty));
+    }
+
+    [Fact]
+    public void Given_multiple_provider_revisions_when_matching_then_selection_is_rejected()
+    {
+        var first = Load("forecast-cs", "v1-base", "Forecast.Api");
+        var second = Load("forecast-cs", "v2-contract", "Forecast.Api");
+        Assert.Throws<ArgumentException>(() => IntegrationMatching.Build([
+            new("forecast", "first-run", first.From, first.Artifact),
+            new("forecast", "second-run", second.From, second.Artifact),
+        ], BindingFile.Empty));
+    }
+
+    [Fact]
+    public void Given_conflicting_artifact_content_at_one_revision_when_matching_then_selection_is_rejected()
+    {
+        var target = Load("forecast-cs", "v1-base", "Forecast.Api");
+        var changed = ArtifactValidator.Validate(Fixtures.Golden("forecast-cs/v1-base/Forecast.Api.jsonl")
+            .Replace(target.Artifact.Header.ConfigHash, new string('f', 64), StringComparison.Ordinal));
+        Assert.True(changed.IsValid, string.Join("; ", changed.Problems));
+        Assert.Throws<ArgumentException>(() => IntegrationMatching.Build([
+            new("forecast", "first-run", target.From, target.Artifact),
+            new("forecast", "second-run", target.From, changed.Artifact!),
+        ], BindingFile.Empty));
+    }
+
+    [Fact]
+    public void Given_two_provider_units_in_one_capability_when_binding_then_identity_remains_ambiguous()
+    {
+        var source = Load("pricing-node", "v1-base", "@fixture/pricing");
+        var target = Load("forecast-cs", "v1-base", "Forecast.Api");
+        var rows = Fixtures.Golden("forecast-cs/v1-base/Forecast.Api.jsonl")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line => JsonNode.Parse(line)!).ToList();
+        rows[0]["unit"]!["path"] = "Forecast.Other";
+        var changed = ArtifactValidator.Validate(string.Join('\n', rows.Select(row => row.ToJsonString())));
+        Assert.True(changed.IsValid, string.Join("; ", changed.Problems));
+        var other = changed.Artifact!;
+        var bindings = BindingFile.Parse(JsonSerializer.Serialize(new { bindings = new[] { new { hint = Hint, target = Target } } }));
+        IntegrationMatchInput[] inputs = [
+            new("pricing", "source-run", source.From, source.Artifact),
+            new("forecast", "target-run", target.From, target.Artifact),
+            new("forecast", "target-run", new(target.From.RepositoryId, target.From.CommitSha, other.Header.Unit.Path), other),
+        ];
+        var matches = IntegrationMatching.Build(inputs, bindings).Where(match => match.Kind == "http").ToList();
+        Assert.Equal(2, matches.Count);
+        Assert.All(matches, match => Assert.Equal("suggested", match.Status));
+        Assert.All(matches, match => { Assert.NotEmpty(match.SourceEvidence); Assert.NotEmpty(match.TargetEvidence); });
+        Assert.Equal(matches.Select(match => match.Id),
+            IntegrationMatching.Build(inputs.Reverse().ToArray(), bindings).Where(match => match.Kind == "http").Select(match => match.Id));
+    }
+
     private static (LoadedFrom From, Artifact Artifact) ChangedPricing(Func<string, string> change)
     {
         var report = ArtifactValidator.Validate(change(Fixtures.Golden("pricing-node/v1-base/_fixture_pricing.jsonl")));
