@@ -68,12 +68,13 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             {
                 var target = r.ResolvedPath is null ? null : projects.FirstOrDefault(x => x.FullPath == r.ResolvedPath);
                 projectReferenceInputs.Add(target is null ? $"{r.Include}:missing" : $"{target.RelativePath}:{ArtifactBuilder.Sha256(File.ReadAllText(target.FullPath))}");
-                if (target is null || visiting.Contains(target.FullPath))
+                if (target is null || r.ReferenceOutputAssembly && visiting.Contains(target.FullPath))
                 {
                     missingProjects.Add(r);
                     continue;
                 }
 
+                if (!r.ReferenceOutputAssembly) continue;
                 if (p.TargetFramework is null || target.TargetFramework is null)
                 {
                     issues.Add(new("UNSUPPORTED_PROJECT_TARGET", $"Project reference {target.RelativePath} cannot be checked because a target framework is unresolved; its symbols are omitted"));
@@ -309,6 +310,24 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             var header = Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(HeaderStart(decl.Modifiers, decl.ReturnType.GetFirstToken()), decl.ParameterList.OpenParenToken.Span.End);
             b.Node(key, "Method", method.Name, [file.Evidence(b, header)], generated: file.Generated);
             b.Edge(keys.Of(method.ContainingType), "DECLARES", key, [file.Evidence(b, header)]);
+            foreach (var parameter in decl.ParameterList.Parameters)
+            {
+                if (file.Model.GetDeclaredSymbol(parameter) is not IParameterSymbol symbol)
+                {
+                    continue;
+                }
+
+                foreach (var type in RepositoryTypes(keys, symbol.Type))
+                {
+                    b.Edge(key, "REFERENCES", keys.Of(type), [file.Evidence(b, parameter)]);
+                }
+            }
+
+            foreach (var type in RepositoryTypes(keys, method.ReturnType))
+            {
+                b.Edge(key, "REFERENCES", keys.Of(type), [file.Evidence(b, decl.ReturnType)]);
+            }
+
             foreach (var iface in method.ContainingType.AllInterfaces)
             {
                 foreach (var member in iface.GetMembers().OfType<IMethodSymbol>())
@@ -344,6 +363,51 @@ public sealed class CSharpExtractor(ExtractorOptions options)
                 foreach (var type in RepositoryTypes(keys, symbol.Type))
                 {
                     b.Edge(key, "REFERENCES", keys.Of(type), [file.Evidence(b, parameter)]);
+                }
+            }
+        }
+
+        foreach (var decl in file.Tree.GetRoot().DescendantNodes().OfType<BaseTypeDeclarationSyntax>())
+        {
+            var parameterList = decl switch
+            {
+                ClassDeclarationSyntax classDecl => classDecl.ParameterList,
+                RecordDeclarationSyntax recordDecl => recordDecl.ParameterList,
+                _ => null,
+            };
+            if (parameterList is null || file.Model.GetDeclaredSymbol(decl) is not INamedTypeSymbol type)
+            {
+                continue;
+            }
+
+            var ctor = parameterList.Parameters
+                .Select(parameter => file.Model.GetDeclaredSymbol(parameter))
+                .OfType<IParameterSymbol>()
+                .Select(parameter => parameter.ContainingSymbol)
+                .OfType<IMethodSymbol>()
+                .FirstOrDefault(candidate => candidate.MethodKind == MethodKind.Constructor)
+                ?? type.InstanceConstructors.FirstOrDefault(candidate => candidate.DeclaringSyntaxReferences.Any(reference =>
+                    reference.SyntaxTree == decl.SyntaxTree && (reference.Span == decl.Span || reference.Span == parameterList.Span)));
+            if (ctor is null || ctor.ContainingType.Name.Length == 0)
+            {
+                continue;
+            }
+
+            var key = keys.Of(ctor);
+            var header = Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(HeaderStart(decl.Modifiers, decl.Identifier), parameterList.CloseParenToken.Span.End);
+            b.Node(key, "Method", ctor.ContainingType.Name, [file.Evidence(b, header)], signature: parameterList.ToString(), generated: file.Generated,
+                props: new JsonObject { ["constructor"] = true, ["static"] = ctor.IsStatic ? true : null }.WithoutNulls());
+            b.Edge(keys.Of(ctor.ContainingType), "DECLARES", key, [file.Evidence(b, header)]);
+            foreach (var parameter in parameterList.Parameters)
+            {
+                if (file.Model.GetDeclaredSymbol(parameter) is not IParameterSymbol symbol)
+                {
+                    continue;
+                }
+
+                foreach (var referencedType in RepositoryTypes(keys, symbol.Type))
+                {
+                    b.Edge(key, "REFERENCES", keys.Of(referencedType), [file.Evidence(b, parameter)]);
                 }
             }
         }
@@ -440,8 +504,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             }
 
             var from = keys.Of(owner);
-            var declared = ctor.OriginalDefinition.DeclaringSyntaxReferences.Any(r => r.GetSyntax() is ConstructorDeclarationSyntax);
-            if (declared)
+            if (IsDeclaredConstructor(ctor))
             {
                 b.Edge(from, "CALLS", keys.Of(ctor.OriginalDefinition), [file.Evidence(b, node)]);
             }
@@ -451,6 +514,16 @@ public sealed class CSharpExtractor(ExtractorOptions options)
             }
         }
     }
+
+    private static bool IsDeclaredConstructor(IMethodSymbol ctor) => ctor.OriginalDefinition.DeclaringSyntaxReferences.Any(reference => reference.GetSyntax() switch
+    {
+        ConstructorDeclarationSyntax => true,
+        ClassDeclarationSyntax { ParameterList: not null } => true,
+        RecordDeclarationSyntax { ParameterList: not null } => true,
+        ParameterListSyntax { Parent: ClassDeclarationSyntax { ParameterList: not null } } => true,
+        ParameterListSyntax { Parent: RecordDeclarationSyntax { ParameterList: not null } } => true,
+        _ => false,
+    });
 
     /// <summary>The repository types a type mentions: itself, its type arguments and its element type (<c>IReadOnlyList&lt;Cart&gt;</c> mentions Cart).</summary>
     private static IEnumerable<INamedTypeSymbol> RepositoryTypes(SymbolKeys keys, ITypeSymbol type)

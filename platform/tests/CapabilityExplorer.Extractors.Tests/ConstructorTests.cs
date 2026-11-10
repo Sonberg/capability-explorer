@@ -15,6 +15,7 @@ public sealed class ConstructorTests : IDisposable
     private const string Ns = "cs|synthetic|Synthetic|";
     private const string InputCtor = Ns + "M:Synthetic.OrderInput.#ctor(Synthetic.Cart,Synthetic.Quote,System.Threading.CancellationToken)";
     private const string LineCtor = Ns + "M:Synthetic.OrderLine.#ctor(Synthetic.Line,System.Decimal)";
+    private const string MoneyCtor = Ns + "M:Synthetic.Money.#ctor(System.Decimal)";
     private readonly string _root = Directory.CreateTempSubdirectory("ce-ctor-").FullName;
     private readonly JsonElement[] _records;
 
@@ -25,7 +26,12 @@ public sealed class ConstructorTests : IDisposable
         namespace Synthetic;
 
         public class Line { }
+        public class Box<T> { }
+        public record LineBundle(Line[] Lines);
         public class Cart { public List<Line> Lines { get; } = new(); }
+        public class Primary(Box<Line[]> lines, Line[,] matrix, CancellationToken cancellationToken) { }
+        public partial class Split(int count) { }
+        public partial class Split { }
         public class Quote
         {
             public decimal TaxRate => 0.25m;
@@ -53,8 +59,14 @@ public sealed class ConstructorTests : IDisposable
         public class Handler
         {
             public OrderInput Build(Cart cart, Quote quote) => new OrderInput(cart, quote);
+            public Primary CreatePrimary() => new Primary(new Box<Line[]>(), new Line[1, 1], default);
+            public LineBundle CreateBundle() => new LineBundle(new Line[0]);
+            public Split CreateSplit() => new Split(1);
+            public Cart EmptyCart() => new Cart();
+            public Box<OrderLine[]> Wrap(IReadOnlyList<OrderLine> lines, Cart cart) => new();
             public Money Zero() => new Money(0m);
             public object Framework() => new List<int>();
+            public void FrameworkOnly(CancellationToken cancellationToken) { }
         }
         """);
 
@@ -65,6 +77,22 @@ public sealed class ConstructorTests : IDisposable
     private static string? To(JsonElement e) => e.TryGetProperty("to", out var to) ? to.GetString() : null;
 
     private bool Has(string from, string relation, string to) => Edges(relation).Any(e => e.GetProperty("from").GetString() == from && To(e) == to);
+
+    private string EvidenceText(JsonElement reference)
+    {
+        var evidence = Assert.Single(_records, record => record.GetProperty("kind").GetString() == "evidence"
+            && record.GetProperty("id").GetString() == reference.GetString());
+        var path = evidence.GetProperty("path").GetString()!;
+        var file = Assert.Single(Directory.GetFiles(_root, Path.GetFileName(path), SearchOption.AllDirectories));
+        var span = evidence.GetProperty("span");
+        var startLine = span.GetProperty("startLine").GetInt32();
+        var endLine = span.GetProperty("endLine").GetInt32();
+        Assert.Equal(startLine, endLine);
+        var line = File.ReadAllLines(file)[startLine - 1];
+        var startColumn = span.GetProperty("startColumn").GetInt32();
+        var endColumn = span.GetProperty("endColumn").GetInt32();
+        return line[(startColumn - 1)..(endColumn - 1)];
+    }
 
     [Fact]
     public void A_constructor_is_a_method_named_after_its_type_with_its_parameters_as_signature()
@@ -87,6 +115,113 @@ public sealed class ConstructorTests : IDisposable
     }
 
     [Fact]
+    public void Class_primary_constructor_is_a_method_with_repository_parameter_references_and_exact_evidence()
+    {
+        var constructor = Assert.Single(_records, record => record.GetProperty("kind").GetString() == "node"
+            && record.GetProperty("name").GetString() == "Primary"
+            && record.TryGetProperty("props", out var props) && props.TryGetProperty("constructor", out _));
+        var key = constructor.GetProperty("symbolKey").GetString()!;
+        Assert.Equal("Method", constructor.GetProperty("nodeKind").GetString());
+        Assert.Contains("Box<Line[]> lines, Line[,] matrix", constructor.GetProperty("signature").GetString(), StringComparison.Ordinal);
+        Assert.Equal("public class Primary(Box<Line[]> lines, Line[,] matrix, CancellationToken cancellationToken)",
+            EvidenceText(constructor.GetProperty("evidence")[0]));
+        Assert.True(Has(Ns + "T:Synthetic.Primary", "DECLARES", key));
+
+        var references = Edges("REFERENCES").Where(edge => edge.GetProperty("from").GetString() == key).ToList();
+        Assert.Contains(references, edge => To(edge) == Ns + "T:Synthetic.Box`1" && EvidenceText(edge.GetProperty("evidence")[0]) == "Box<Line[]> lines");
+        Assert.Contains(references, edge => To(edge) == Ns + "T:Synthetic.Line" && EvidenceText(edge.GetProperty("evidence")[0]) == "Box<Line[]> lines");
+        Assert.Contains(references, edge => To(edge) == Ns + "T:Synthetic.Line" && EvidenceText(edge.GetProperty("evidence")[0]) == "Line[,] matrix");
+        Assert.DoesNotContain(references, edge => To(edge)!.Contains("CancellationToken", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Record_primary_constructor_is_a_method_and_object_creation_calls_primary_nodes()
+    {
+        var recordCtor = Assert.Single(_records, record => record.GetProperty("kind").GetString() == "node"
+            && record.GetProperty("symbolKey").GetString() == MoneyCtor);
+        Assert.Equal("Method", recordCtor.GetProperty("nodeKind").GetString());
+        Assert.True(recordCtor.GetProperty("props").GetProperty("constructor").GetBoolean());
+        Assert.Equal("Money", recordCtor.GetProperty("name").GetString());
+        Assert.Contains("decimal Amount", recordCtor.GetProperty("signature").GetString(), StringComparison.Ordinal);
+        Assert.Contains("public record Money(decimal Amount)", EvidenceText(recordCtor.GetProperty("evidence")[0]));
+        Assert.True(Has(Ns + "M:Synthetic.Handler.Zero", "CALLS", MoneyCtor));
+
+        var bundleCtor = Assert.Single(_records, record => record.GetProperty("kind").GetString() == "node"
+            && record.GetProperty("name").GetString() == "LineBundle"
+            && record.TryGetProperty("props", out var props) && props.TryGetProperty("constructor", out _));
+        var bundleKey = bundleCtor.GetProperty("symbolKey").GetString()!;
+        var lineReference = Assert.Single(Edges("REFERENCES"), edge => edge.GetProperty("from").GetString() == bundleKey
+            && To(edge) == Ns + "T:Synthetic.Line");
+        Assert.Equal("Line[] Lines", EvidenceText(lineReference.GetProperty("evidence")[0]));
+        Assert.True(Has(Ns + "M:Synthetic.Handler.CreateBundle", "CALLS", bundleKey));
+
+        var primary = Assert.Single(_records, record => record.GetProperty("kind").GetString() == "node"
+            && record.GetProperty("name").GetString() == "Primary"
+            && record.TryGetProperty("props", out var props) && props.TryGetProperty("constructor", out _));
+        Assert.True(Has(Ns + "M:Synthetic.Handler.CreatePrimary", "CALLS", primary.GetProperty("symbolKey").GetString()!));
+    }
+
+    [Fact]
+    public void Partial_primary_constructor_is_emitted_once_and_implicit_constructor_keeps_type_reference_behavior()
+    {
+        var constructor = Assert.Single(_records, record => record.GetProperty("kind").GetString() == "node"
+            && record.GetProperty("name").GetString() == "Split"
+            && record.TryGetProperty("props", out var props) && props.TryGetProperty("constructor", out _));
+        var key = constructor.GetProperty("symbolKey").GetString()!;
+        Assert.True(Has(Ns + "M:Synthetic.Handler.CreateSplit", "CALLS", key));
+        Assert.True(Has(Ns + "M:Synthetic.Handler.EmptyCart", "REFERENCES", Ns + "T:Synthetic.Cart"));
+    }
+
+    [Fact]
+    public void Primary_constructor_artifacts_are_deterministic()
+    {
+        const string code = """
+            using System.Threading;
+            namespace Synthetic;
+            public class Leaf { }
+            public class Box<T> { }
+            public class Primary<T>(Box<Leaf[]> payload, Leaf[] values, CancellationToken token) { }
+            public record Result(Leaf Value);
+            public class Handler
+            {
+                public Primary<int> Create() => new Primary<int>(new Box<Leaf[]>(), new Leaf[1], default);
+                public Result Make() => new Result(new Leaf());
+            }
+            """;
+
+        var first = Extract(code).Select(record => record.GetRawText()).ToArray();
+        Assert.Equal(first, Extract(code).Select(record => record.GetRawText()).ToArray());
+    }
+
+    [Fact]
+    public void Ordinary_method_parameters_and_return_types_reference_repository_types_with_evidence()
+    {
+        var method = Ns + "M:Synthetic.Handler.Build(Synthetic.Cart,Synthetic.Quote)";
+        var references = Edges("REFERENCES").Where(edge => edge.GetProperty("from").GetString() == method).ToList();
+
+        Assert.Contains(references, edge => To(edge) == Ns + "T:Synthetic.Cart");
+        Assert.Contains(references, edge => To(edge) == Ns + "T:Synthetic.Quote");
+        Assert.Contains(references, edge => To(edge) == Ns + "T:Synthetic.OrderInput");
+        Assert.All(references, edge => Assert.NotEmpty(edge.GetProperty("evidence").EnumerateArray()));
+    }
+
+    [Fact]
+    public void Ordinary_method_signatures_include_nested_repository_types_but_not_framework_types()
+    {
+        var method = Ns + "M:Synthetic.Handler.Wrap(System.Collections.Generic.IReadOnlyList{Synthetic.OrderLine},Synthetic.Cart)";
+        var referenced = Edges("REFERENCES").Where(edge => edge.GetProperty("from").GetString() == method).Select(To).ToList();
+
+        Assert.Contains(Ns + "T:Synthetic.Box`1", referenced);
+        Assert.Contains(Ns + "T:Synthetic.OrderLine", referenced);
+        Assert.Contains(Ns + "T:Synthetic.Cart", referenced);
+        Assert.DoesNotContain(referenced, target => target!.Contains("IReadOnlyList", StringComparison.Ordinal));
+
+        var frameworkOnly = Ns + "M:Synthetic.Handler.FrameworkOnly(System.Threading.CancellationToken)";
+        Assert.DoesNotContain(Edges("REFERENCES"), edge => edge.GetProperty("from").GetString() == frameworkOnly);
+        Assert.DoesNotContain(Edges("REFERENCES"), edge => edge.GetProperty("from").GetString() == Ns + "M:Synthetic.Handler.Framework");
+    }
+
+    [Fact]
     public void Creating_an_object_calls_its_declared_constructor()
     {
         Assert.True(Has(Ns + "M:Synthetic.Handler.Build(Synthetic.Cart,Synthetic.Quote)", "CALLS", InputCtor));
@@ -106,9 +241,9 @@ public sealed class ConstructorTests : IDisposable
     }
 
     [Fact]
-    public void A_type_without_a_declared_constructor_is_referenced_instead()
+    public void Creating_a_type_with_an_implicit_default_constructor_references_its_type()
     {
-        Assert.True(Has(Ns + "M:Synthetic.Handler.Zero", "REFERENCES", Ns + "T:Synthetic.Money")); // record primary constructor: nothing to call
+        Assert.True(Has(Ns + "M:Synthetic.Handler.EmptyCart", "REFERENCES", Ns + "T:Synthetic.Cart"));
     }
 
     [Fact]

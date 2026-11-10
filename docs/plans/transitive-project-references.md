@@ -130,3 +130,20 @@ C100/100 iteration1: fullCI40/alignment30/trace20/handoff10. Brain closeout:
 sparc/CARD/sparc-card; no new runtime primitive. Scores apply to this bounded
 contract, not all issue6 mapping behavior. Untested limits remain as above.
 Native worker cost unknown; no paid provider API execution or runtime model calls.
+
+## Subsequent bounded qualification, 2026-11-10
+
+The original deferrals above remain historical. The follow-up now honors literal
+`ReferenceOutputAssembly=false` in an attribute or unconditional child element:
+declared dependency edges remain, but the reference supplies no compilation,
+transitive-project or package symbols. Absent metadata and literal true preserve
+existing visibility. Conditional, property-valued, invalid or conflicting output
+metadata is diagnosed as `UNSUPPORTED_PROJECT_REFERENCE_METADATA`, affects
+coverage and does not silently grant compiler visibility. Full MSBuild evaluation
+and `DisableTransitiveProjectReferences` remain outside this slice.
+
+The parent ran the new regressions before the fix: nine intended failures with
+ten existing/positive cases passing. The integrated constructor, project-reference
+and resolution suite then passed 75 cases with zero skips, including an independent
+Roslyn exclusion oracle and repeated byte equality. Publication and main acceptance
+are separate gates; this does not establish private-corpus mapping completeness.
