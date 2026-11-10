@@ -7,7 +7,7 @@ import type { AnyRecord } from "../src/contracts/records.ts";
 import { validateArtifact } from "../src/contracts/validateArtifact.ts";
 import { extract } from "../src/extract/extractor.ts";
 
-type Fact = AnyRecord & { signature?: string; props?: Record<string, unknown> };
+type Fact = AnyRecord & { signature?: string; props?: { constructor?: boolean; overloads?: string[] } };
 const key = (symbol: string, file = "src/core.ts") => `ts|constructors|example|${file}|${symbol}`;
 
 function run(source: string, javascript = false) {
