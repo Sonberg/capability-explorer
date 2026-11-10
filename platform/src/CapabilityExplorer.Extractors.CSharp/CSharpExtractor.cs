@@ -508,7 +508,7 @@ public sealed class CSharpExtractor(ExtractorOptions options)
     }
 
     /// <summary>Records repository creations and resolved selected-package constructor calls; framework creations are omitted.</summary>
-    private static void Creations(ArtifactBuilder b, SymbolKeys keys, SourceFile file, IReadOnlySet<IAssemblySymbol> packageAssemblies)
+    private static void Creations(ArtifactBuilder b, SymbolKeys keys, SourceFile file, HashSet<IAssemblySymbol> packageAssemblies)
     {
         foreach (var node in file.Tree.GetRoot().DescendantNodes().Where(n => n is BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax))
         {
