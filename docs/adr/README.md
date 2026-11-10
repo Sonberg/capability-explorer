@@ -23,14 +23,16 @@ separate implementation approvals and operational exceptions remain in force.
 | Red | D: draft | Not yet ready for decision review; not a severity rating. |
 | Gray | H: historical | Rejected, deprecated or superseded; retain the decision and replacement links. |
 
-There are **38 local records: 38 scoped accepted (37 newly accepted plus
-1 previously accepted), 0 proposed, 0 draft, 0 historical**.
+There are **39 local records: 39 scoped accepted (37 accepted on 2026-11-09,
+1 previously accepted and 1 accepted on 2026-11-10), 0 proposed, 0 draft,
+0 historical**.
 MADR-0016's prior acceptance for the **operator workflow only** is unchanged.
 Both `0005` paths are distinct records, named `0005-G` and `0005-PR` below solely
 for navigation. No `0015` exists; this is a numbering gap, not a missing file
 invented by the index. MADR-0035 covers measurable SLOs, MADR-0036 covers
 configurable evidence retention, MADR-0037 covers HTTP recommendations, and
-MADR-0038 covers balanced RAM and disk use.
+MADR-0038 covers balanced RAM and disk use, and MADR-0039 records the
+desktop/laptop UI target.
 MADR-0025 landed in owner-merged #55; decision acceptance now comes from the
 2026-11-09 approval, not that merge. Its implementation qualifications remain.
 
@@ -74,6 +76,7 @@ MADR-0025 landed in owner-merged #55; decision acceptance now comes from the
 | 0036 | [Configure evidence retention and age-based historical resolution](0036-configurable-evidence-retention.md) | A: configurable retention design; numeric durations, custody and enforcement require separate approval |
 | 0037 | [Recommend HTTP capabilities from observed route coverage without adopting bindings](0037-http-capability-recommendations.md) | A: bounded HTTP recommendation and explicit revision-bound review; no binding adoption |
 | 0038 | [Balance RAM and disk use with performance and developer productivity](0038-balanced-resource-use.md) | A: resource-use decision method; no budget enforcement, monitoring or cleanup implemented |
+| 0039 | [Design the Explorer UI for desktop and laptop use](0039-desktop-only-ui.md) | A: desktop/laptop UI target; mobile devices are unsupported; desktop accessibility remains required |
 
 ## Relationship map
 
@@ -108,6 +111,7 @@ flowchart LR
     a35["0035 Measurable SLOs [A]"]:::accepted
     a36["0036 Evidence retention [A]"]:::accepted
     a38["0038 Balanced resource use [A]"]:::accepted
+    a39["0039 Desktop UI target [A]"]:::accepted
   end
   subgraph Evidence_and_language
     a02["0002 Ubiquitous language [A]"]:::accepted
