@@ -146,6 +146,61 @@ disconnected cases, connected-code depth/cycles/item limits, and selected-view
 isolation. `ChatApiTests` separately covers the scripted model/tool round trip.
 Neither establishes live-model correctness or browser acceptance for issue #25.
 
+### Ollama context and native macOS setup
+
+Configure context on the **Ollama server or model**, not in Explorer's endpoint
+field. Retrieved graph facts, source snippets, tool results and conversation
+history all consume context. A larger window also consumes more memory; 16,384
+tokens below is an example, not a guarantee that every request fits or that a
+particular model supports the tools, hardware or desired response time.
+
+For the native macOS app, set its environment and then quit and reopen Ollama:
+
+```sh
+launchctl setenv OLLAMA_CONTEXT_LENGTH 16384
+```
+
+This configures the app's launch environment, not an already running process,
+and is not a reboot-persistent setting. For a terminal-managed server instead,
+set `OLLAMA_CONTEXT_LENGTH=16384 ollama serve` before it starts; do not launch a
+second server on the app's existing port. Native macOS Ollama supports Metal GPU
+acceleration. A Linux Ollama container on macOS does not provide that native
+Metal path.
+
+For a persistent, model-specific configuration, save a local Modelfile, for
+example `.sandbox-cache/Chat.Modelfile`, containing:
+
+```text
+FROM qwen2.5:7b
+PARAMETER num_ctx 16384
+```
+
+Run `ollama create ce-chat-16k -f .sandbox-cache/Chat.Modelfile` against the server
+you intend to use, then select `ce-chat-16k` as the chat model in Explorer's
+Settings. The alias stores the parameter in that server's model data, so keep
+that data across restarts. This does not establish model quality or supported
+hardware, and creating/pulling a model requires its download and disk budget.
+
+`make ollama` first reuses a responding host server, otherwise starts the
+existing `ce-ollama` container or creates one. It does not configure context or
+replace a container's environment. Exporting `OLLAMA_CONTEXT_LENGTH` only for
+`make ollama` therefore does not configure the existing server or its container.
+The target also pulls its selected models: use Settings for a locally created
+alias rather than passing that unpublished alias as `OLLAMA_CHAT`. Existing
+`.sandbox-cache/model.json` settings are preserved; selecting a different alias
+requires an explicit Settings change.
+
+Use the native server's reachable `/v1` URL for the selected execution profile:
+normally `http://127.0.0.1:11434/v1` for native Explorer and
+`http://host.docker.internal:11434/v1` for sandbox Explorer. Keep access local;
+do not expose an unauthenticated model server just to enlarge its context.
+These are configuration instructions, not a live-model or post-reboot
+qualification receipt.
+
+Upstream references: [server context and app environment](https://github.com/ollama/ollama/blob/main/docs/faq.mdx),
+[model parameters](https://github.com/ollama/ollama/blob/main/docs/modelfile.mdx)
+and [Metal support](https://github.com/ollama/ollama/blob/main/docs/gpu.mdx).
+
 ## Integration assessments
 
 The file-backed architecture inspector now offers an optional integration
