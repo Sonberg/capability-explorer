@@ -188,7 +188,8 @@ test("Built current chat: synthetic scoped evidence, opt-in reload and request i
       await panel.getByText("semantic search: synthetic fixture only", { exact: true }).waitFor();
     };
     await panel.waitFor();
-    await remember.waitFor();
+    await panel.getByRole("textbox", { name: "Question", exact: true }).waitFor();
+    assert.equal(await remember.count(), 1, "The ready chat must offer an explicit opt-in retention control.");
     assert.equal(await remember.isChecked(), false, "Retention must be opt-in.");
     assert.equal(await retained(), null);
     assert.equal(await open.getAttribute("aria-pressed"), "true");
