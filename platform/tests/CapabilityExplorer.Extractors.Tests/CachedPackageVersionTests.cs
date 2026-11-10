@@ -74,7 +74,9 @@ public sealed class CachedPackageVersionTests : IDisposable
     [InlineData("[1.0.0,2.0.0)", "1.5.0")]
     [InlineData("1.*", "1.5.0")]
     [InlineData("1.0.0-*", "1.0.0-beta.1")]
-    public void Compatible_locked_requests_preserve_the_exact_pin(string request, string pinned)
+    [InlineData(null, "1.5.0")]
+    [InlineData(null, "1.5.0-beta.1")]
+    public void Compatible_locked_requests_preserve_the_exact_pin(string? request, string pinned)
     {
         Directory.CreateDirectory(Path.Combine(_root, "example.package", pinned));
         Directory.CreateDirectory(Path.Combine(_root, "example.package", "9.0.0"));
@@ -88,13 +90,15 @@ public sealed class CachedPackageVersionTests : IDisposable
     [Theory]
     [InlineData("[2.0.0]", false)]
     [InlineData("[1.0.0,2.0.0)", true)]
-    public void Locked_transitive_requests_are_checked_without_selecting_another_cached_version(string request, bool compatible)
+    [InlineData(null, true)]
+    public void Locked_transitive_requests_are_checked_without_selecting_another_cached_version(string? request, bool compatible)
     {
         var root = Directory.CreateDirectory(Path.Combine(_root, "root", "1.0.0")).FullName;
         Directory.CreateDirectory(Path.Combine(_root, "child", "1.0.0"));
         Directory.CreateDirectory(Path.Combine(_root, "child", "2.0.0"));
+        var versionAttribute = request is null ? "" : $" version=\"{request}\"";
         File.WriteAllText(Path.Combine(root, "root.nuspec"),
-            $"<package><metadata><dependencies><dependency id=\"Child\" version=\"{request}\" /></dependencies></metadata></package>");
+            $"<package><metadata><dependencies><dependency id=\"Child\"{versionAttribute} /></dependencies></metadata></package>");
         PackageResolution Resolve() => new PackageResolver(_root).Resolve(
             [new("Root", "1.0.0", 1)], [new("Root", "1.0.0"), new("Child", "1.0.0")]);
         if (compatible)
@@ -108,6 +112,7 @@ public sealed class CachedPackageVersionTests : IDisposable
         {
             var error = Assert.Throws<InvalidOperationException>(Resolve);
             Assert.Contains("Child", error.Message);
+            Assert.NotNull(request);
             Assert.Contains(request, error.Message);
         }
     }

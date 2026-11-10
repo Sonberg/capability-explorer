@@ -48,6 +48,11 @@ public sealed class PackageResolver(string? packagesRoot, IReadOnlyDictionary<st
 
             }
 
+            foreach (var request in roots)
+            {
+                if (byId.TryGetValue(request.Id, out var pinned)) ValidateLockedVersion(pinned, request.Version);
+            }
+
             missing.AddRange(roots.Where(p => !byId.ContainsKey(p.Id) && !FrameworkPackageCoverage.Satisfies(frameworkPackages, p.Id, p.Version)));
             var queue = new Queue<string>(roots.Select(p => p.Id));
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -61,6 +66,7 @@ public sealed class PackageResolver(string? packagesRoot, IReadOnlyDictionary<st
                 foreach (var dependency in FrameworkSelection.DependencyElements(root, targetFramework))
                 {
                     if ((string?)dependency.Attribute("id") is not { } depId) continue;
+                    if (byId.TryGetValue(depId, out var pinned)) ValidateLockedVersion(pinned, (string?)dependency.Attribute("version"));
                     if (!byId.ContainsKey(depId) && !FrameworkPackageCoverage.Satisfies(frameworkPackages, depId, (string?)dependency.Attribute("version")))
                     {
                         issues.Add(new("UNRESOLVED_TRANSITIVE_PACKAGE", $"Locked package {package.Id} requires {depId} for {targetFramework}, which is absent from the lock; run the packages step again"));
@@ -93,6 +99,12 @@ public sealed class PackageResolver(string? packagesRoot, IReadOnlyDictionary<st
             InputFingerprint = inputFingerprint,
             Unselected = unselected.OrderBy(u => u.Id, StringComparer.OrdinalIgnoreCase).ThenBy(u => u.Version, StringComparer.Ordinal).ToList(),
         };
+    }
+
+    private static void ValidateLockedVersion(LockedPackage package, string? request)
+    {
+        if (!PackageVersionSelection.AllowsLocked(request, package.Version))
+            throw new InvalidOperationException($"locked package {package.Id} {package.Version} does not satisfy requested range {request ?? "none"}; run the packages step again");
     }
 
     private static void Add(string root, LockedPackage package, string? target, List<string> assemblies, List<ResolutionIssue> issues, List<UnselectedPackage> unselected)
