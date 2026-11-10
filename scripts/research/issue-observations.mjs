@@ -193,6 +193,8 @@ function uncertainty(snapshot, now) {
  * from the declared observed scope, never deletion or satisfaction. Membership
  * changes require both enumerations to have no uncertainty. Common observed
  * records still report independent changes when enumeration is uncertain.
+ * Compatibility requires the same declared source inputs, bounds and provenance;
+ * it does not establish completeness, authenticity or permission.
  * Metadata here is literal title and updatedAt; state and body have separate axes.
  * @param {Snapshot} before @param {Snapshot} after @param {string} now @returns {Comparison} */
 export function compareIssueObservations(before, after, now) {
@@ -201,11 +203,17 @@ export function compareIssueObservations(before, after, now) {
   need(date(left.capture.endedAt) <= date(right.capture.endedAt), 'invalid comparison capture interval');
   const sameRepository = ['repoID', 'owner', 'name'].every(k => left.context[k] === right.context[k]);
   const sameScope = canonical(left.scope) === canonical(right.scope);
+  const sameSource = ['sourceCommit', 'sourceInputSha256'].every(k => left.context[k] === right.context[k]);
+  const sameBounds = canonical(left.bounds) === canonical(right.bounds);
+  const sameProvenance = left.provenance === right.provenance;
   const reasons = [...uncertainty(a, now).map(r => `before:${r}`), ...uncertainty(b, now).map(r => `after:${r}`)];
   if (!sameRepository) reasons.push('incompatible-repository');
   if (!sameScope) reasons.push('incompatible-scope');
-  const oldIssues = left.pages.flatMap(p => p.issues).sort((x, z) => x.number - z.number);
-  const newIssues = right.pages.flatMap(p => p.issues).sort((x, z) => x.number - z.number);
+  if (!sameSource) reasons.push('incompatible-source-inputs');
+  if (!sameBounds) reasons.push('incompatible-bounds');
+  if (!sameProvenance) reasons.push('incompatible-provenance');
+  const oldIssues = left.pages.filter(p => p.status === 'observed').flatMap(p => p.issues).sort((x, z) => x.number - z.number);
+  const newIssues = right.pages.filter(p => p.status === 'observed').flatMap(p => p.issues).sort((x, z) => x.number - z.number);
   const oldNumbers = new Map(oldIssues.map(i => [i.number, i]));
   const oldNodes = new Map(oldIssues.map(i => [i.nodeID, i]));
   if (sameRepository) for (const i of newIssues) {
@@ -213,7 +221,8 @@ export function compareIssueObservations(before, after, now) {
       && (!oldNodes.has(i.nodeID) || oldNodes.get(i.nodeID).number === i.number), 'changed issue identity mapping');
   }
   /** @type {Comparison} */
-  const result = { compatible: sameRepository && sameScope, beforeDigest: a.digest, afterDigest: b.digest,
+  const result = { compatible: sameRepository && sameScope && sameSource && sameBounds && sameProvenance,
+    beforeDigest: a.digest, afterDigest: b.digest,
     uncertainty: reasons, new: [], missingFromObservedScope: [], closed: [], reopened: [],
     bodyChanged: [], metadataChanged: [], approval: 'not-established' };
   if (!result.compatible) return immutable(result);
