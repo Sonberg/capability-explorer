@@ -29,15 +29,15 @@ public sealed class FakeFeed : HttpMessageHandler
     public List<(Uri Url, string? Authorization)> Requests { get; } = [];
 
     /// <summary>Adds a package whose single assembly (lib/net8.0) is compiled from <paramref name="source"/>.</summary>
-    public FakeFeed Add(string id, string version, string source)
+    public FakeFeed Add(string id, string version, string source, IEnumerable<MetadataReference>? references = null)
     {
-        _packages[(id.ToLowerInvariant(), version)] = Pack(id, version, source);
+        _packages[(id.ToLowerInvariant(), version)] = Pack(id, version, source, references);
         return this;
     }
 
-    public static byte[] Pack(string id, string version, string source)
+    public static byte[] Pack(string id, string version, string source, IEnumerable<MetadataReference>? references = null)
     {
-        var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
+        var refs = references ?? ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p));
         var compilation = CSharpCompilation.Create(id, [CSharpSyntaxTree.ParseText(source)], refs, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         using var dll = new MemoryStream();

@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Text.Json;
 using System.Xml.Linq;
+using NuGet.Versioning;
 
 namespace CapabilityExplorer.Extractors.CSharp;
 
@@ -120,7 +121,7 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
         }
     }
 
-    /// <summary>Exact versions are used as written; ranges take their lower bound; floating or missing versions the newest stable on the first feed that has the package.</summary>
+    /// <summary>Fixed lower bounds are used as written; feed-index queries choose the newest matching version, with prereleases only when explicitly requested.</summary>
     private async Task<string?> ResolveVersionAsync(string id, string? range, CancellationToken cancellationToken)
     {
         if (range is not null && range.Contains('$', StringComparison.Ordinal))
@@ -134,13 +135,12 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
             return min;
         }
 
-        var cacheKey = $"{id}|{min}";
+        var cacheKey = range is null ? $"{id}|missing" : $"{id}|range:{range}";
         if (_floating.TryGetValue(cacheKey, out var cached))
         {
             return cached;
         }
 
-        var prefix = min?.TrimEnd('*') ?? "";
         foreach (var feed in _feeds)
         {
             try
@@ -158,7 +158,9 @@ public sealed class PackageFetcher(string packagesRoot, HttpClient http, IReadOn
 
                 using var doc = JsonDocument.Parse(await ReadMetadataAsync(response, cancellationToken));
                 var versions = doc.RootElement.GetProperty("versions").EnumerateArray().Select(v => v.GetString()!).ToList();
-                var pick = versions.LastOrDefault(v => !v.Contains('-', StringComparison.Ordinal) && v.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) ?? versions.LastOrDefault();
+                var pick = versions.Where(v => PackageVersionSelection.AllowsLocked(range ?? "*", v))
+                    .OrderBy(v => NuGetVersion.Parse(v), VersionComparer.VersionRelease)
+                    .ThenBy(v => v, StringComparer.Ordinal).LastOrDefault();
                 if (pick is not null)
                 {
                     return _floating[cacheKey] = pick;

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CapabilityExplorer.Extractors.CSharp;
+using Microsoft.CodeAnalysis;
 using Xunit;
 
 namespace CapabilityExplorer.Extractors.Tests;
@@ -97,8 +98,11 @@ public sealed class DeterministicPackagesTests : IDisposable
     {
         var source = Source(request);
         var feed = new FakeFeed();
+        var framework = Directory.EnumerateDirectories(Path.Combine(Packs, "Microsoft.NETCore.App.Ref"))
+            .SelectMany(d => Directory.EnumerateDirectories(Path.Combine(d, "ref"))).Single();
+        var references = Directory.EnumerateFiles(framework, "*.dll").Select(p => MetadataReference.CreateFromFile(p)).ToArray();
         foreach (var version in available.Split(';'))
-            feed.Add("Fake.Lib", version, "namespace Fake { public static class Lib { public static int Value() => 1; } }");
+            feed.Add("Fake.Lib", version, "namespace Fake.Lib { public static class Lib { public static int Value() => 1; } }", references);
         var cache = Path.Combine(_root, "cache");
         var fetched = await Fetch(source, cache, new FeedRouter(feed), [new("test", feed.IndexUrl)]);
         if (expected is null)
@@ -110,7 +114,15 @@ public sealed class DeterministicPackagesTests : IDisposable
         {
             Assert.Empty(fetched.Failed);
             Assert.Equal(expected, Assert.Single(fetched.Lock.For("App/App.csproj")).Version);
-            Assert.Contains("\"status\":\"full\"", Assert.Single(Extract(source, cache, fetched.Lock)).Jsonl);
+            var artifact = Assert.Single(Extract(source, cache, fetched.Lock)).Jsonl;
+            var diagnostics = artifact.Split('\n').Where(line => line.Contains("\"kind\":\"diagnostic\"", StringComparison.Ordinal))
+                .Select(line =>
+                {
+                    using var record = JsonDocument.Parse(line);
+                    return record.RootElement.GetProperty("code").GetString();
+                }).ToArray();
+            Assert.Empty(diagnostics);
+            Assert.Contains("\"status\":\"full\"", artifact);
         }
     }
 
