@@ -80,6 +80,7 @@ public sealed class PackageConstructorTests : IDisposable
             namespace Repo;
             public class Base(int value) { }
             public class ClassDerived(int value) : Base(value) { }
+            public class EmptyDerived() : Base(0) { }
             public record RecordBase(int value);
             public record RecordDerived(int value) : RecordBase(value);
             """;
@@ -89,11 +90,13 @@ public sealed class PackageConstructorTests : IDisposable
         var records = Records(Assert.Single(first).Jsonl);
         AssertFull(records);
         Assert.Equal(first.Select(unit => unit.Jsonl), Extract().Select(unit => unit.Jsonl));
-        Assert.Equal(2, Calls(records).Count());
+        Assert.Equal(3, Calls(records).Count());
         AssertCall(records, "cs|packages|App|M:Repo.ClassDerived.#ctor(System.Int32)",
             "cs|packages|App|M:Repo.Base.#ctor(System.Int32)", source, 3, 40, 51, "Base(value)");
+        AssertCall(records, "cs|packages|App|M:Repo.EmptyDerived.#ctor",
+            "cs|packages|App|M:Repo.Base.#ctor(System.Int32)", source, 4, 31, 38, "Base(0)");
         AssertCall(records, "cs|packages|App|M:Repo.RecordDerived.#ctor(System.Int32)",
-            "cs|packages|App|M:Repo.RecordBase.#ctor(System.Int32)", source, 5, 42, 59, "RecordBase(value)");
+            "cs|packages|App|M:Repo.RecordBase.#ctor(System.Int32)", source, 6, 42, 59, "RecordBase(value)");
     }
 
     [Fact]
@@ -154,11 +157,15 @@ public sealed class PackageConstructorTests : IDisposable
     [Fact]
     public void Missing_candidate_and_ambiguous_primary_base_calls_remain_compiler_diagnostics()
     {
-        var metadata = Package();
+        var metadata = Package("""
+            namespace Library;
+            public class Widget { public Widget(int value) { } }
+            public class Choice { public Choice(string value) { } public Choice(System.Uri value) { } }
+            """);
         const string source = """
             namespace Repo;
-            public class Missing(int value) : Library.Ghost(value) { }
-            public class Ambiguous(string? value) : Library.Choice(null) { }
+            public class Missing(int value) : MissingBase(value) { }
+            public class Ambiguous(string value) : Library.Choice(null) { }
             public class Candidate(bool value) : Library.Widget(value) { }
             """;
         Project("App", source, PackageReference);
