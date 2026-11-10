@@ -362,6 +362,7 @@ test("Built current chat: synthetic scoped evidence, opt-in reload and request i
     await exchange();
     assert.equal((await defaultSent).postDataJSON().view, `${repository}:${latest}`,
       "A mutable default selection must send the effective revisions used to bind retained evidence.");
+    await remember.check();
     const screenshots = new URL("../.sandbox-cache/chat-history-layout/", import.meta.url);
     await mkdir(screenshots, { recursive: true });
     for (const viewport of [
@@ -381,6 +382,29 @@ test("Built current chat: synthetic scoped evidence, opt-in reload and request i
       assert.ok(composer.y >= 0 && composer.y + composer.height <= viewport.height, "The question must remain on screen.");
       assert.ok(log.height >= 80, "Retention controls must leave a readable, scrollable conversation in short viewports.");
     }
+    await remember.uncheck();
+    await page.evaluate(() => sessionStorage.setItem("ce.chatHistory", "{"));
+    const beforeInvalidReload = chatRequests;
+    await reopenAfterReload();
+    await panel.getByRole("status").filter({ hasText: /malformed.*not restored/i }).waitFor();
+    assert.equal(await remember.isChecked(), false);
+    assert.equal(await retained(), null);
+    assert.equal(chatRequests, beforeInvalidReload, "Rejecting stored data must not invoke chat.");
+
+    await page.evaluate(() => {
+      const set = Storage.prototype.setItem;
+      Storage.prototype.setItem = function(key: string, value: string) {
+        if (key === "ce.chatHistory") throw new DOMException("Synthetic chat quota", "QuotaExceededError");
+        set.call(this, key, value);
+      };
+    });
+    await remember.click();
+    await panel.getByRole("status").filter({ hasText: /not saved.*unavailable or full/i }).waitFor();
+    assert.equal(await remember.isChecked(), false, "Failed retention must turn the opt-in back off.");
+    assert.equal(await retained(), null);
+    await exchange();
+    assert.equal(await remember.isChecked(), false);
+    assert.equal(await retained(), null, "A quota failure must leave ordinary in-memory chat usable without silently saving.");
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, [], "Reload/retention checks remain synthetic-only.");
   } finally {
