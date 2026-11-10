@@ -81,6 +81,16 @@ Rules:
   `props.typeArguments`. Rules that depend on them (EF table per entity) name them in
   `props.typeArgument`.
 - **Partial types** are one symbol, with evidence in every file that declares part of it.
+- **C# fields** are distinct `Field` nodes identified by Roslyn's field documentation ID
+  (`F:Namespace.Type.name`), with declaration-name evidence and a `DECLARES` edge from their type.
+  A resolved repository object creation inside an explicit non-event field initializer produces
+  `Field REFERENCES Type`, with evidence at the creation expression, whether the target constructor
+  is explicit or implicit. This is a lexical type observation, not a constructor call or a claim
+  about execution order, frequency, argument flow, or which containing constructor runs it.
+  Static and instance fields follow the same lexical rule. Creations inside lambda or anonymous-method
+  bodies in field initializers are excluded, as are framework/package and unresolved creations.
+  Helper invocations and fields without creations add no field-owned behavior edges. Fields are never
+  relabeled as properties and never originate `CALLS`; existing property/member behavior is unchanged.
 - **External symbols** use `@ext` as the repository: `cs|@ext|System.Runtime|M:System.Math.Round(System.Decimal,System.Int32)`
   and `ts|@ext|typescript|lib.es5.d.ts|Math.round#value`.
 - **SQL built-ins**: `sql|@builtin:<dialect>|<FUNCTION>`.
