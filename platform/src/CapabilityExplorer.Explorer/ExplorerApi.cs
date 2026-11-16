@@ -106,6 +106,7 @@ public static class ExplorerApi
         api.MapArchitectureConnections();
         api.MapIntegrationSuggestions();
         api.MapAutomaticIntegrationConnections();
+        api.MapLandscapeAnalysis();
 
         // Snapshot identity also changes on restart, when the numeric generation can still be zero.
         api.MapGet("/generation", (ExplorerState state) =>
