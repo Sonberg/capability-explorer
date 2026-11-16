@@ -1,0 +1,285 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://capability-explorer/schema/models/process-landscape.v1.schema.json",
+  "title": "Capability Explorer local process-landscape snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "snapshotId", "manifestVersion", "repositoryId", "contentProfile",
+    "coverage", "diagnostics", "sources", "processes", "searchIndex",
+    "crossProcessEvents", "objectLifecycle", "phaseJourney", "overlays"
+  ],
+  "properties": {
+    "schema": { "const": "ce.process-landscape.v1" },
+    "snapshotId": { "type": "string", "pattern": "^landscape:[a-f0-9]{64}$" },
+    "manifestVersion": { "const": 1 },
+    "repositoryId": { "type": "string", "minLength": 1 },
+    "contentProfile": { "enum": ["structural", "model-content"] },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
+    "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+    "processes": { "type": "array", "items": { "$ref": "#/$defs/process" } },
+    "searchIndex": { "type": "array", "items": { "$ref": "#/$defs/searchEntry" } },
+    "crossProcessEvents": { "type": "array", "items": { "$ref": "#/$defs/crossProcessEvent" } },
+    "objectLifecycle": { "type": "array", "items": { "$ref": "#/$defs/objectLifecycle" } },
+    "phaseJourney": { "type": "array", "items": { "$ref": "#/$defs/phaseJourneyPhase" } },
+    "navigator": { "$ref": "#/$defs/navigator" },
+    "overlays": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["context", "phase"],
+      "properties": {
+        "context": { "type": "array", "items": { "$ref": "#/$defs/overlayEntry" } },
+        "phase": { "type": "array", "items": { "$ref": "#/$defs/overlayEntry" } }
+      }
+    }
+  },
+  "if": {
+    "properties": { "contentProfile": { "const": "structural" } },
+    "required": ["contentProfile"]
+  },
+  "then": {
+    "properties": {
+      "sources": {
+        "type": "array",
+        "items": { "not": { "type": "object", "required": ["sourceBytesBase64"] } }
+      }
+    }
+  },
+  "$defs": {
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "supported", "limitations"],
+      "properties": {
+        "status": { "enum": ["full", "partial"] },
+        "supported": { "type": "array", "items": { "type": "string" } },
+        "limitations": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "diagnosticSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" },
+        "element": { "type": "string" },
+        "ref": { "type": "string" }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "disposition"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string" },
+        "disposition": { "enum": ["partial", "unresolved"] },
+        "source": { "$ref": "#/$defs/diagnosticSource" }
+      }
+    },
+    "elementSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "element": { "type": "string" }
+      }
+    },
+    "element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "kind", "namespace", "id", "type", "order", "attributes", "source"],
+      "properties": {
+        "identity": { "type": "string", "pattern": "^landscape-element:[a-f0-9]{64}$" },
+        "kind": { "enum": ["bpmn", "opaqueExtension", "unsupported"] },
+        "namespace": { "type": "string" },
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "minLength": 1 },
+        "order": { "type": "integer", "minimum": 0 },
+        "parent": { "type": "string", "pattern": "^landscape-element:[a-f0-9]{64}$" },
+        "attributes": { "type": "object", "additionalProperties": { "type": "string" } },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text"],
+          "properties": { "text": { "type": "string" }, "language": { "type": "string" } }
+        },
+        "source": { "$ref": "#/$defs/elementSource" }
+      }
+    },
+    "relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "kind", "source", "target", "order"],
+      "properties": {
+        "identity": { "type": "string", "pattern": "^landscape-relationship:[a-f0-9]{64}$" },
+        "kind": { "enum": ["sequenceFlow", "messageFlow", "association", "reference"] },
+        "source": { "type": "string", "pattern": "^landscape-element:[a-f0-9]{64}$" },
+        "target": { "type": "string", "pattern": "^landscape-element:[a-f0-9]{64}$" },
+        "order": { "type": "integer", "minimum": 0 },
+        "condition": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "text": { "type": "string" }, "language": { "type": "string" } }
+        }
+      }
+    },
+    "process": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "processIdentity", "path", "byteLength", "sha256", "contextTags", "phaseTags",
+        "coverage", "diagnostics", "elements", "relationships"
+      ],
+      "properties": {
+        "processIdentity": { "type": "string", "pattern": "^landscape-process:[a-f0-9]{64}$" },
+        "path": { "type": "string", "minLength": 1 },
+        "byteLength": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "processId": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "proposalStatus": { "enum": ["draft", "proposed", "approved"] },
+        "contextTags": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "phaseTags": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "coverage": { "$ref": "#/$defs/coverage" },
+        "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
+        "elements": { "type": "array", "items": { "$ref": "#/$defs/element" } },
+        "relationships": { "type": "array", "items": { "$ref": "#/$defs/relationship" } }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "byteLength", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "byteLength": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "sourceBytesBase64": { "type": "string" }
+      }
+    },
+    "navigatorBundleIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "byteLength", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "byteLength": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "navigator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundle", "verified"],
+      "properties": {
+        "bundle": { "$ref": "#/$defs/navigatorBundleIdentity" },
+        "verified": { "type": "boolean" },
+        "catalogue": {},
+        "elements": {},
+        "links": {},
+        "events": {},
+        "lifecycle": {},
+        "journey": {},
+        "contexts": {},
+        "procFile": {},
+        "dmn": {},
+        "phases": {},
+        "generated": {}
+      }
+    },
+    "searchEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["term", "kind", "processIdentity", "deepLink"],
+      "properties": {
+        "term": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["process", "element"] },
+        "processIdentity": { "type": "string", "pattern": "^landscape-process:[a-f0-9]{64}$" },
+        "elementIdentity": { "type": "string", "pattern": "^landscape-element:[a-f0-9]{64}$" },
+        "deepLink": { "type": "string", "minLength": 1 }
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["processId", "resolved"],
+      "properties": {
+        "processId": { "type": "string", "minLength": 1 },
+        "elementId": { "type": "string", "minLength": 1 },
+        "processIdentity": { "type": "string", "pattern": "^landscape-process:[a-f0-9]{64}$" },
+        "elementIdentity": { "type": "string", "pattern": "^landscape-element:[a-f0-9]{64}$" },
+        "resolved": { "type": "boolean" }
+      }
+    },
+    "crossProcessEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId", "source", "target"],
+      "properties": {
+        "eventId": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "source": { "$ref": "#/$defs/endpoint" },
+        "target": { "$ref": "#/$defs/endpoint" }
+      }
+    },
+    "lifecycleStage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage", "order", "processId", "resolved"],
+      "properties": {
+        "stage": { "type": "string", "minLength": 1 },
+        "order": { "type": "integer", "minimum": 0 },
+        "processId": { "type": "string", "minLength": 1 },
+        "elementId": { "type": "string", "minLength": 1 },
+        "processIdentity": { "type": "string", "pattern": "^landscape-process:[a-f0-9]{64}$" },
+        "elementIdentity": { "type": "string", "pattern": "^landscape-element:[a-f0-9]{64}$" },
+        "resolved": { "type": "boolean" }
+      }
+    },
+    "objectLifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectId", "stages"],
+      "properties": {
+        "objectId": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "stages": { "type": "array", "items": { "$ref": "#/$defs/lifecycleStage" } }
+      }
+    },
+    "journeyStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["order", "processId", "resolved"],
+      "properties": {
+        "order": { "type": "integer", "minimum": 0 },
+        "processId": { "type": "string", "minLength": 1 },
+        "elementId": { "type": "string", "minLength": 1 },
+        "processIdentity": { "type": "string", "pattern": "^landscape-process:[a-f0-9]{64}$" },
+        "elementIdentity": { "type": "string", "pattern": "^landscape-element:[a-f0-9]{64}$" },
+        "resolved": { "type": "boolean" }
+      }
+    },
+    "phaseJourneyPhase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["phaseId", "order", "steps"],
+      "properties": {
+        "phaseId": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "order": { "type": "integer", "minimum": 0 },
+        "steps": { "type": "array", "items": { "$ref": "#/$defs/journeyStep" } }
+      }
+    },
+    "overlayEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tag", "processIdentities"],
+      "properties": {
+        "tag": { "type": "string", "minLength": 1 },
+        "processIdentities": { "type": "array", "items": { "type": "string", "pattern": "^landscape-process:[a-f0-9]{64}$" } }
+      }
+    }
+  }
+}

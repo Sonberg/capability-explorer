@@ -64,6 +64,7 @@ if (dataSource is not null)
 }
 builder.Services.AddTaskQueries(source);
 builder.Services.AddOwnershipAlignment();
+builder.Services.AddProcessLandscape();
 var intelligence = new Intelligence(interpretation, builder.Configuration["modelSettings"] ?? ModelSettings.DefaultPath,
     dataSource is null ? null : new EmbeddingStore(dataSource), metadataOnly: source == "postgres",
     embeddingConfiguration: source == "postgres"
@@ -111,6 +112,7 @@ app.MapDeprecationsApi();
 app.MapModelApi(source);
 app.MapTaskQueryApi();
 app.MapOwnershipAlignmentApi();
+app.MapProcessLandscapeApi();
 if (source == "postgres") app.MapPostgresExplorerApi();
 else
 {
