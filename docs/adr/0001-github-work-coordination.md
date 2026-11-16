@@ -110,6 +110,27 @@ Makefile, pipeline scripts and handoff documentation belong to the integration
 owner. A dependency failure suspends dependent workers until the contract is
 reconciled. Preserve failed worktrees for diagnosis.
 
+#### Frugal delegation
+
+Prefer bounded subagent work when it reduces the coordinator's foreground load or
+wall-clock time at a lower total cost than doing the work serially. Give each
+worker a concrete outcome and exact scope; do not spawn filler agents or treat
+the concurrency limit as a target. Launch independent lanes in parallel instead
+of serializing them and idling while they run. Keep dependent work behind its
+required interface or acceptance decision, and suspend dependent lanes on
+failure.
+
+Writing workers use separate worktrees and non-overlapping paths. Read-only
+research can share a checkout. The queen remains accountable for integration and
+validation; delegation does not transfer release authority or make agent
+recommendations equivalent to test evidence. Keep the existing limit of four
+active agents including the queen unless separately authorized. If delegation
+would cost more coordination or spend than it saves, do the work directly. Do
+not claim savings without supporting evidence.
+
+This refinement was requested by the operator on 2026-11-16 and recorded in
+[issue #151](https://github.com/Sonberg/capability-explorer/issues/151#issuecomment-6913710067).
+
 Use a hierarchical swarm and a shared hive-memory record for assignments,
 interface decisions, evidence and dissent. Ruflo records coordination; native
 Codex subagents perform work. Select supported CLI/MCP operations by live help;
