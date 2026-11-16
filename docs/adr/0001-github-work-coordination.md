@@ -20,6 +20,15 @@ implementation, measured SLO compliance, particular retention durations, real-so
 access, business assertions, deletion authority or experimental-tool activation.
 Existing operational exceptions and separately required action approvals remain in force.
 
+## Policy update (2026-11-16)
+
+At the operator's request, integration-owner acknowledgement is no longer a
+prerequisite to creating an isolated worktree or starting non-overlapping work.
+Contributors must still record exact scope and check current claims before work.
+Known overlapping claims require an explicit handoff, agreement or scope change;
+silence does not release a claim. This update does not change review, merge or
+publication authority.
+
 ## Context and problem statement
 
 Several contributors work on the same branch. Local agent memory and an agent's
@@ -30,7 +39,7 @@ comments as atomic locks. The existing handoff identifies shared integration fil
 
 ## Decision drivers
 
-* One writer per worktree and one acknowledged owner per overlapping path.
+* One writer per worktree and one recorded owner per overlapping path.
 * A durable, contributor-visible history of intent, changes and evidence.
 * Cheap coordination, bounded concurrency, deterministic validation.
 * Explicit distinction between proposed work, active work and merged work.
@@ -58,11 +67,12 @@ accepts the decision policy; contributors still load and apply it cooperatively.
 2. Open or reuse one issue per work package. Record the owner, UTC time, exact base
    SHA, branch/worktree, goal, exclusions, exact owned paths, shared files,
    dependencies, acceptance commands and next update time.
-3. The designated integration owner acknowledges each implementation claim in an
-   issue comment before that worker writes. A parent claim may acknowledge its
-   own worker allocation explicitly. Check other claims immediately before the
-   acknowledgement. A conflicting existing claim requires its owner's explicit
-   handoff or agreement; silence is not consent.
+3. An issue claim records implementation scope; it is not an approval gate or
+   lock. After checking current issues and PRs and recording exact ownership,
+   contributors may create isolated worktrees and start non-overlapping work
+   without integration-owner acknowledgement. A known conflicting claim requires
+   its owner's explicit handoff or agreement to narrow or sequence the paths;
+   silence is not consent.
 4. Use states `proposed`, `claimed`, `active`, `blocked`, `ready-for-review`,
    `released`, `merged`. Every transition names the previous state and the owner.
    Planning claims reserve documentation only, not the future implementation.
@@ -99,13 +109,14 @@ advanced, integrate it and rerun the gate. Record both SHAs in the handoff. GitH
 can change after a check, so this is not an atomic remote merge guarantee; hosted
 CI and the final mergeability check remain required. After opening a PR, revisit
 issue3/HANDOFF and relevant open issues, use Brain Prompt to bound the next slice,
-and acknowledge its exact ownership before implementation.
+and record its exact ownership before implementation.
 
 ### Agent execution and shared state
 
 The queen is the sole integration writer and assigns workers exact scopes.
-Each writing worker gets its own worktree rooted at the recorded base; read-only
-reviewers can share a checkout. Shared manifests, lockfiles, evaluator settings,
+Each writing worker gets its own worktree rooted at the recorded base with
+recorded, disjoint paths; read-only reviewers can share a checkout. Shared
+manifests, lockfiles, evaluator settings,
 Makefile, pipeline scripts and handoff documentation belong to the integration
 owner. A dependency failure suspends dependent workers until the contract is
 reconciled. Preserve failed worktrees for diagnosis.
@@ -142,13 +153,13 @@ Positive: ownership and handoffs are visible to humans and agents, parallel work
 is bounded, and reviews can reproduce evidence from exact commits. No new service
 or paid model dependency is required.
 
-Negative: acknowledgement adds a small delay, comments can become stale, and
-GitHub offers no atomic path locking. The protocol depends on cooperation and
-must not be represented as mechanically enforced fencing or consensus.
+Negative: claims can become stale, and GitHub offers no atomic path locking.
+The protocol depends on cooperation and must not be represented as mechanically
+enforced fencing or consensus.
 
 ## Validation and acceptance
 
-A reviewing contributor should verify a sample claim, acknowledgement, scope
+A reviewing contributor should verify a sample claim, conflict/handoff, scope
 change and release in issue #3; missing transitions remain missing evidence.
 The explicit 2026-11-09 approval above supplies decision acceptance, not proof
 of those validation transitions. A commit alone is still not acceptance.

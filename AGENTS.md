@@ -36,12 +36,13 @@ own tools; this file does not configure other sessions automatically.
    ID, owner, designated integration owner, exact base SHA, branch/worktree
    identifier, goal/exclusions, owned paths, shared files, dependencies,
    validation and next update time. Do not publish private local paths or secrets.
-4. Obtain the designated integration owner's explicit acknowledgement of that
-   **session and exact scope before editing**. Record the operator/maintainer
-   designation; posting first does not appoint an owner. If no owner is
-   designated or another claim overlaps, remain read-only until the authorized
-   operator/maintainer allocates or reconciles ownership. A parent may acknowledge
-   its explicitly authorized worker allocation, not take over another package.
+4. An integration-owner acknowledgement is not required for non-overlapping
+   work. Once the exact scope is recorded and current claims are checked,
+   contributors may start in an isolated worktree. If another claim overlaps,
+   pause only the conflicting paths until the owners agree to a handoff, scope
+   change or sequence. Silence does not release a claim. Record the integration
+   owner for shared contracts, manifests, locks, CI/build files and common docs;
+   lack of an acknowledgement does not block unrelated work.
 5. Give each writing session its own worktree. Only one writer owns an overlapping
    path; name the individual integration owner of each shared manifest, lockfile,
    schema, CI/build file or shared document. Read-only reviewers may share a checkout.
@@ -49,12 +50,12 @@ own tools; this file does not configure other sessions automatically.
 ## While working and at handoff
 
 - Check current claims again after a pause or checkpoint restore. Scope expansion
-  requires a fresh overlap check and amended acknowledgement **before** new edits.
+  requires a fresh overlap check and an amended claim before new edits.
 - Update the issue at phase boundaries, blockers and at least every 60 minutes.
   A missed update or stale claim is uncertain, not expired or available to steal.
-- If GitHub state or acknowledgement cannot be verified, pause affected writes.
-  Conflicting acknowledgements require reconciliation; neither timestamp order
-  nor issue assignment is an atomic lock. Read-only investigation may continue.
+- If GitHub state or a known overlap cannot be verified, pause affected writes.
+  Conflicting claims require reconciliation; neither timestamp order nor issue
+  assignment is an atomic lock. Read-only investigation may continue.
 - Release or hand off claims explicitly, linking commits/PRs, actual validation,
   remaining risks and the next owner. A PR does not implicitly release ownership.
 - Preserve others' changes and active worktrees. Claims and council recommendations

@@ -89,9 +89,11 @@ missing reasons or imply post-merge review has occurred. No standing merge
 permission follows from that exception.
 
 Each package has one integration owner. Workers use separate worktrees with
-acknowledged, disjoint paths. The integration owner alone changes shared contracts,
-manifests/locks, pipeline wiring, HANDOFF and common documentation. Review feedback
-that overlaps a worker claim is sequenced or explicitly handed over first.
+recorded, disjoint path scopes. Contributors check current claims and resolve
+known overlap before writing; non-overlapping work does not require integration-owner
+acknowledgement. The integration owner alone changes shared contracts, manifests/locks,
+pipeline wiring, HANDOFF and common documentation. Review feedback that overlaps a
+worker claim is sequenced or explicitly handed over first.
 
 ### New contributor workflow
 
