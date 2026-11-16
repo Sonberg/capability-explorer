@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CapabilityExplorer.Explorer;
+using CapabilityExplorer.Explorer.GeneratedModels;
 using CapabilityExplorer.Interpretation;
 using CapabilityExplorer.Store;
 using Npgsql;
@@ -70,6 +71,7 @@ var intelligence = new Intelligence(interpretation, builder.Configuration["model
         ? () => EmbeddingHostConfiguration.Resolve(embeddingOptions, configuration: key => builder.Configuration[key], contentRoot: builder.Environment.ContentRootPath)
         : null) { DataSource = dataSource };
 builder.Services.AddSingleton(intelligence);
+builder.Services.AddSingleton<GeneratedModelAnalysisService>();
 builder.Services.AddSingleton(new PackageFeedSettingsStore(builder.Configuration["packageFeedCatalog"] ?? PackageFeedSettingsStore.DefaultPath));
 builder.Services.AddSingleton(new GlossaryReviewService(dataSource));
 builder.Services.AddTransient(_ => intelligence.Layer);
@@ -110,6 +112,7 @@ app.MapHealthApi();
 app.MapDeprecationsApi();
 app.MapModelApi(source);
 app.MapTaskQueryApi();
+app.MapGeneratedModelsApi();
 app.MapOwnershipAlignmentApi();
 if (source == "postgres") app.MapPostgresExplorerApi();
 else

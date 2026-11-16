@@ -8,6 +8,10 @@ namespace CapabilityExplorer.Interpretation;
 /// </summary>
 public sealed record ModelSettings(string? Endpoint, string? ChatModel, string? EmbeddingModel, string? ApiKey)
 {
+    public bool AllowGeneratedModelAnalysis { get; init; }
+
+    public bool AllowSourceSnippets { get; init; }
+
     public const string DefaultPath = ".sandbox-cache/model.json";
 
     /// <summary>Ollama on the host, as seen from the sandbox container (or from the host itself via localhost).</summary>

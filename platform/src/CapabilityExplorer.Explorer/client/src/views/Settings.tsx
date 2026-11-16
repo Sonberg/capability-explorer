@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { request, type ModelSettings, type PackageFeedSettings } from "../api";
+import { request, type GeneratedModelAuthorization, type ModelSettings, type PackageFeedSettings } from "../api";
 import { Button, Card, ErrorBox, H1, H2, inputClass, Loading, Mono, Muted, Note, Pill } from "../components/ui";
 import { useApi, useSelection } from "../state";
 
@@ -7,18 +7,29 @@ import { useApi, useSelection } from "../state";
 export function Settings() {
   const { reloadMeta } = useSelection();
   const current = useApi<ModelSettings>("/api/settings/model");
-  const [form, setForm] = useState({ endpoint: "", chatModel: "", embeddingModel: "", apiKey: "", clearApiKey: false });
+  const generated = useApi<GeneratedModelAuthorization>("/api/generated-models/settings");
+  const [form, setForm] = useState({
+    endpoint: "", chatModel: "", embeddingModel: "", apiKey: "", clearApiKey: false,
+    allowGeneratedModelAnalysis: false, allowSourceSnippets: false,
+  });
   const [status, setStatus] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const d = current.data;
-    if (d) setForm({ endpoint: d.endpoint ?? "", chatModel: d.chatModel ?? "", embeddingModel: d.embeddingModel ?? "", apiKey: "", clearApiKey: false });
-  }, [current.data]);
+    if (d) setForm({
+      endpoint: d.endpoint ?? "", chatModel: d.chatModel ?? "", embeddingModel: d.embeddingModel ?? "",
+      apiKey: "", clearApiKey: false,
+      allowGeneratedModelAnalysis: generated.data?.providerAuthorized ?? false,
+      allowSourceSnippets: generated.data?.sourceSnippetsAuthorized ?? false,
+    });
+  }, [current.data, generated.data]);
 
   if (current.error) return <ErrorBox message={current.error} />;
-  if (!current.data) return <Loading />;
+  if (generated.error) return <ErrorBox message={generated.error} />;
+  if (!current.data || !generated.data) return <Loading />;
   const d = current.data;
+  const generatedStatus = generated.data;
 
   const save = async (e: FormEvent) => {
     e.preventDefault();
@@ -28,6 +39,7 @@ export function Settings() {
       await request<ModelSettings>("/api/settings/model", { method: "PUT", body: JSON.stringify(form) });
       setStatus({ tone: "ok", text: "Saved and applied." });
       current.reload();
+      generated.reload();
       reloadMeta();
     } catch (err) {
       setStatus({ tone: "bad", text: (err as Error).message });
@@ -105,6 +117,30 @@ export function Settings() {
               Remove the saved key
             </label>
           )}
+          <fieldset className="space-y-2 rounded-md border border-zinc-200 p-3 dark:border-zinc-700">
+            <legend className="px-1 text-[13px] font-semibold">Generated model analysis</legend>
+            <p className="text-xs text-zinc-500">
+              Provider: {generatedStatus.providerConfigured ? `${generatedStatus.provider} (${generatedStatus.model})` : "not available"}.
+              Runs disclose selected repositories, revisions, artifact evidence, and whether source excerpts are included.
+            </p>
+            <label className="flex items-start gap-2 text-[13px]">
+              <input
+                type="checkbox"
+                checked={form.allowGeneratedModelAnalysis}
+                onChange={(e) => setForm({ ...form, allowGeneratedModelAnalysis: e.target.checked, allowSourceSnippets: e.target.checked && form.allowSourceSnippets })}
+              />
+              <span>Allow the configured provider to receive selected published model evidence for generated process and decision proposals.</span>
+            </label>
+            <label className="flex items-start gap-2 text-[13px]">
+              <input
+                type="checkbox"
+                checked={form.allowSourceSnippets}
+                disabled={!form.allowGeneratedModelAnalysis}
+                onChange={(e) => setForm({ ...form, allowSourceSnippets: e.target.checked })}
+              />
+              <span>Also allow explicitly selected, cited source excerpts. Each run will disclose the provider and data scope.</span>
+            </label>
+          </fieldset>
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <Button type="submit" disabled={busy}>
               Save

@@ -29,7 +29,7 @@ public static class EvidenceProfileSchema
         return problems.Length == 0 ? ["Evidence does not match the declared profile schema"] : problems;
     }
 
-    internal static bool HasUnambiguousStructure(JsonElement value, int depth = 0)
+    public static bool HasUnambiguousStructure(JsonElement value, int depth = 0)
     {
         if (depth > 32) return false;
         try

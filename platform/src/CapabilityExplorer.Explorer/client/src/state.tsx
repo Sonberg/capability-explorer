@@ -94,9 +94,8 @@ interface Selection {
   reloadMeta: () => void;
   capability: string;
   setCapability: (id: string) => void;
-  /** Effective revision per repository, as resolved by the server (capability locks, defaults, overrides). */
+  /** Effective revision per repository, as resolved by the server (capability locks or latest defaults). */
   view: Record<string, string>;
-  setRevision: (repo: string, sha: string) => void;
   /** Query string fragment for every scoped API call. */
   scope: string;
 }
@@ -108,14 +107,11 @@ export function SelectionProvider({ meta, reloadMeta, children }: { meta: Meta; 
     const saved = read("ce.capability", "");
     return meta.capabilities.some((c) => c.id === saved) ? saved : "";
   });
-  const [overrides, setOverrides] = useState<Record<string, Record<string, string>>>(() => read("ce.overrides", {}));
 
   const known = meta.capabilities.some((c) => c.id === capability);
   const effective = known ? capability : "";
-  const own = overrides[effective || "*"] ?? {};
-  const spec = Object.entries(own).map(([r, s]) => `${r}:${s}`).join(",");
   // Generation detects changed inputs; snapshot identity also invalidates views after a server restart.
-  const scope = `view=${encodeURIComponent(spec)}${effective ? `&cap=${encodeURIComponent(effective)}` : ""}&g=${meta.generation}&instance=${encodeURIComponent(meta.snapshotId)}`;
+  const scope = `${effective ? `cap=${encodeURIComponent(effective)}&` : ""}g=${meta.generation}&instance=${encodeURIComponent(meta.snapshotId)}`;
   const resolved = useApi<Record<string, string>>(`/api/view?${scope}`);
 
   const setCapability = useCallback((id: string) => {
@@ -123,20 +119,9 @@ export function SelectionProvider({ meta, reloadMeta, children }: { meta: Meta; 
     write("ce.capability", id);
   }, []);
 
-  const setRevision = useCallback(
-    (repo: string, sha: string) => {
-      setOverrides((all) => {
-        const next = { ...all, [effective || "*"]: { ...(all[effective || "*"] ?? {}), [repo]: sha } };
-        write("ce.overrides", next);
-        return next;
-      });
-    },
-    [effective],
-  );
-
   const value = useMemo<Selection>(
-    () => ({ meta, reloadMeta, capability: effective, setCapability, view: resolved.data ?? {}, setRevision, scope }),
-    [meta, reloadMeta, effective, setCapability, resolved.data, setRevision, scope],
+    () => ({ meta, reloadMeta, capability: effective, setCapability, view: resolved.data ?? {}, scope }),
+    [meta, reloadMeta, effective, setCapability, resolved.data, scope],
   );
   return <SelectionContext.Provider value={value}>{children}</SelectionContext.Provider>;
 }

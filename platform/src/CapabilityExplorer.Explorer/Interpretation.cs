@@ -101,7 +101,11 @@ public sealed partial class Intelligence
             && !SameAuthority(Saved.Endpoint, endpoint))
             return "Changing the endpoint authority requires an explicit new API key or clearing the saved key";
         var apiKey = request.ClearApiKey ? null : request.ApiKey is { Length: > 0 } key ? key.Trim() : Saved?.ApiKey;
-        var settings = new ModelSettings(endpoint is { Length: > 0 } ? endpoint : null, request.ChatModel?.Trim(), request.EmbeddingModel?.Trim(), apiKey);
+        var settings = new ModelSettings(endpoint is { Length: > 0 } ? endpoint : null, request.ChatModel?.Trim(), request.EmbeddingModel?.Trim(), apiKey)
+        {
+            AllowGeneratedModelAnalysis = request.AllowGeneratedModelAnalysis,
+            AllowSourceSnippets = request.AllowSourceSnippets,
+        };
         State state;
         try
         {
@@ -145,7 +149,14 @@ public sealed partial class Intelligence
     private static partial Regex ModelName();
 }
 
-public sealed record ModelSettingsRequest(string? Endpoint, string? ChatModel, string? EmbeddingModel, string? ApiKey, bool ClearApiKey = false);
+public sealed record ModelSettingsRequest(
+    string? Endpoint,
+    string? ChatModel,
+    string? EmbeddingModel,
+    string? ApiKey,
+    bool ClearApiKey = false,
+    bool AllowGeneratedModelAnalysis = false,
+    bool AllowSourceSnippets = false);
 
 public sealed record SimilarHit(string Key, string Name, string Kind, string RepositoryId, string Unit, bool HasCalculation, double Score);
 

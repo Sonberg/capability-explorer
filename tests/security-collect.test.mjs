@@ -134,11 +134,11 @@ test('scanner containers receive no Docker socket, credentials or network by def
   assert.throws(() => dockerArgs(config().tools.trivy, [{ source: '/tmp/bad,readonly=false', target: '/source' }]), /mount/);
 });
 test('inventory includes all lockfiles and test source, while labels unsupported configuration explicitly', () => {
-  const inv = inventories(['package-lock.json', 'nested/packages.lock.json', 'tests/example.ts', '.github/workflows/ci.yml', 'Dockerfile', 'infra/app.tf', 'scripts/analyze'].map(path => ({ path })));
+  const inv = inventories(['package-lock.json', 'nested/packages.lock.json', 'tests/example.ts', '.github/workflows/release.yml', 'Dockerfile', 'infra/app.tf', 'scripts/analyze'].map(path => ({ path })));
   assert.deepEqual(inv.dependencies, ['nested/packages.lock.json', 'package-lock.json']);
   assert.ok(inv.sast.includes('tests/example.ts')); assert.ok(!inv.sast.includes('scripts/analyze')); assert.ok(inv.unsupportedSast.includes('scripts/analyze'));
   assert.deepEqual(inv.misconfiguration, ['Dockerfile', 'infra/app.tf']);
-  assert.ok(inv.unsupportedConfiguration.includes('.github/workflows/ci.yml'));
+  assert.ok(inv.unsupportedConfiguration.includes('.github/workflows/release.yml'));
 });
 test('dependency snapshot includes untracked lockfiles and required companion manifests without private config', t => {
   const root = temp(t), files = [
@@ -197,7 +197,7 @@ test('fresh history check detects changed branch tips independently of the manif
 
 function runtimeFixture(t) {
   const root = temp(t), cfg = config();
-  for (const file of ['config/runtime/images.env', 'config/security/trivy-image', 'scripts/sandbox', 'scripts/local-check', 'Makefile', '.github/workflows/ci.yml', 'platform/tests/CapabilityExplorer.Store.Tests/ImporterTests.cs']) {
+  for (const file of ['config/runtime/images.env', 'config/security/trivy-image', 'scripts/sandbox', 'scripts/local-check', 'Makefile', 'platform/tests/CapabilityExplorer.Store.Tests/ImporterTests.cs']) {
     fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true }); fs.writeFileSync(path.join(root, file), '');
   }
   fs.writeFileSync(path.join(root, 'config/runtime/images.env'), ['DOTNET', 'NODE', 'PG', 'OLLAMA', 'ACT', 'BROWSER', 'RYUK'].map(role => `${role}_IMAGE=${image}`).join('\n'));

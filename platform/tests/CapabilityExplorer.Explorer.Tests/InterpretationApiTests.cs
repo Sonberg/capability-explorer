@@ -104,12 +104,25 @@ public sealed class ModelSettingsApiTests(SettingsExplorerFactory factory) : ICl
     [Fact]
     public async Task Saving_applies_at_once_and_the_api_key_is_never_sent_back()
     {
-        var saved = await _client.PutAsJsonAsync("/api/settings/model", new { endpoint = "https://res.services.ai.azure.com", chatModel = "chat", embeddingModel = "emb", apiKey = "s3cret-key" });
+        var saved = await _client.PutAsJsonAsync("/api/settings/model", new
+        {
+            endpoint = "https://res.services.ai.azure.com",
+            chatModel = "chat",
+            embeddingModel = "emb",
+            apiKey = "s3cret-key",
+            allowGeneratedModelAnalysis = true,
+            allowSourceSnippets = true,
+        });
         Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
         var text = await saved.Content.ReadAsStringAsync();
         Assert.DoesNotContain("s3cret-key", text, StringComparison.Ordinal);
         var status = JsonDocument.Parse(text).RootElement;
         Assert.Equal(("saved", true, "saved"), (status.GetProperty("source").GetString(), status.GetProperty("hasApiKey").GetBoolean(), status.GetProperty("apiKeySource").GetString()));
+        Assert.True(ModelSettings.Load(factory.SettingsPath)!.AllowGeneratedModelAnalysis);
+        Assert.True(ModelSettings.Load(factory.SettingsPath)!.AllowSourceSnippets);
+        var generatedAuthorization = await _client.GetFromJsonAsync<JsonElement>("/api/generated-models/settings");
+        Assert.True(generatedAuthorization.GetProperty("providerAuthorized").GetBoolean());
+        Assert.True(generatedAuthorization.GetProperty("sourceSnippetsAuthorized").GetBoolean());
 
         var meta = await _client.GetFromJsonAsync<JsonElement>("/api/meta");
         Assert.True(meta.GetProperty("interpretation").GetProperty("enabled").GetBoolean());
