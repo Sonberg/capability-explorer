@@ -159,6 +159,88 @@ export interface ModelSettings {
   problem?: string;
 }
 
+export interface GeneratedModelAuthorization {
+  provider: string;
+  model?: string;
+  providerConfigured: boolean;
+  providerAuthorized: boolean;
+  sourceSnippetsAuthorized: boolean;
+  modelEvidenceAccessGranted: boolean;
+  sourceExcerptAccessGranted: boolean;
+  dataPolicy: string;
+}
+
+export interface GeneratedModelCitation {
+  modelId: string;
+  candidateId: string;
+  repositoryId: string;
+  commitSha: string;
+  unitPath: string;
+  startLine: number;
+  endLine: number;
+  sourceSha256: string;
+  artifactSha256: string;
+}
+
+export interface GeneratedModelDiagram {
+  id: string;
+  kind: "bpmn" | "dmn";
+  title: string;
+  reviewStatus: string;
+  repositoryId: string;
+  commitSha: string;
+  unitPath: string;
+  elements: { id: string; kind: string; label: string; condition?: string; citation: GeneratedModelCitation }[];
+  flows: { id: string; from: string; to: string; condition?: string; citation: GeneratedModelCitation }[];
+  bpmnXml?: string;
+  dmnXml?: string;
+  evidence: GeneratedModelCitation[];
+}
+
+export interface GeneratedModelSnapshot {
+  schema: string;
+  status: string;
+  capability: string;
+  snapshotId: string;
+  generation: number;
+  selection: Record<string, string>;
+  inputDigest: string;
+  inputs: { id: string; profile: string; repositoryId: string; commitSha: string; unitPath: string; artifactSha256: string; coverage: string; sourceStatus: string }[];
+  diagrams: GeneratedModelDiagram[];
+  proposals: { fromCandidateId: string; toCandidateId: string; relation: string; rationale: string; evidenceCandidateIds: string[]; evidenceClass: string; reviewStatus: string }[];
+  diagnostics: string[];
+  provider: string;
+  dataScope: string;
+  sourceSnippetsIncluded: boolean;
+  createdAt: string;
+  contentHash: string;
+}
+
+export interface GeneratedModelRunState {
+  runId: string;
+  status: "running" | "complete" | "partial" | "failed" | "cancelled";
+  startedAt: string;
+  completedAt?: string;
+  error?: string;
+  provider?: string;
+  dataScope?: string;
+  snapshotId: string;
+  generation: number;
+  selection: Record<string, string>;
+}
+
+export interface GeneratedModelRunResponse {
+  run: GeneratedModelRunState;
+  snapshot?: GeneratedModelSnapshot;
+}
+
+export interface GeneratedModelLatestResponse {
+  snapshot: GeneratedModelSnapshot;
+  stale: boolean;
+  currentSnapshotId?: string;
+  currentGeneration?: number;
+}
+
 export interface PackageFeed {
   id: string;
   kind: "nuget" | "npm";

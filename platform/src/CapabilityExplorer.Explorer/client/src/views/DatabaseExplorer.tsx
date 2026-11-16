@@ -5,6 +5,7 @@ import { databaseUrl, useDatabaseInfinitePage, useDatabasePage, useDebouncedText
 import { DatabaseInspector } from "./DatabaseInspector";
 import { DatabasePager } from "../components/DatabasePager";
 import { EmbeddingStatusPanel } from "../components/embedding-status";
+import { GeneratedModelsPanel } from "../components/GeneratedModelsPanel";
 import { href, useRoute } from "../state";
 
 const ProcessesDecisions = lazy(() => import("./ProcessesDecisions").then((module) => ({ default: module.ProcessesDecisions })));
@@ -59,6 +60,13 @@ function DatabaseWorkspace({ meta, route, loadLatest }: { meta: DatabaseMeta; ro
         <RevisionChooser scope={scope} selection={selection} change={resetSelection} />
       </details>
     </div>
+    <Card>
+      <GeneratedModelsPanel
+        capability={{ id: meta.capability, repositories: Object.entries(selection).map(([id, lockedSha]) => ({ id, lockedSha })) }}
+        snapshotId={meta.snapshotId}
+        generation={meta.generation}
+      />
+    </Card>
     <EmbeddingStatusPanel scope={scope} meta={meta} selection={selection} />
     <Card><h2 className="font-semibold">Migration status</h2>
       <Muted>Available: bounded symbol search, symbol and evidence detail, adjacency, calculations and artifact metadata.</Muted>
