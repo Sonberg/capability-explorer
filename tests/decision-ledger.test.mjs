@@ -58,6 +58,46 @@ test('inventory coverage', () => {
   assert.throws(() => reconcile(fixture, wrongTitle.config, wrongTitle.ledger), /title mismatch/);
 });
 
+test('partial inventory preserves and exposes unreviewed sources and relationships', t => {
+  const config = readJSON(resolve(root, 'config/decisions/project.json'));
+  const ledger = readJSON(resolve(root, config.sidecar));
+  const model = reconcile(root, config, ledger);
+  const coverage = model.diagnostics.find(d => d.kind === 'partial-inventory');
+  assert.deepEqual([coverage.records, coverage.unreviewedRecords, coverage.relationships, coverage.unreviewedRelationships], [2, 37, 1, 53]);
+  assert.equal(model.diagnostics.filter(d => d.kind === 'unreviewed-record').length, coverage.unreviewedRecords);
+  assert.equal(model.diagnostics.filter(d => d.kind === 'unreviewed-relationship').length, coverage.unreviewedRelationships);
+  assert.match(projections(model, config, root)['index.md'], /Incomplete inventory/);
+  assert.equal(JSON.parse(projections(model, config, root)['ledger.json']).coverage.mode, 'partial');
+  const altered = structuredClone(ledger);
+  altered.records.pop();
+  assert.throws(() => reconcile(root, config, altered), /inventory revision mismatch/);
+  const unknown = structuredClone(config);
+  unknown.review.includedRecords.push('["capability-explorer","missing"]');
+  assert.throws(() => reconcile(root, unknown, ledger), /unknown included record/);
+  const stale = structuredClone(ledger);
+  const selected = stale.records.find(r => config.review.includedRecords.includes(key(r.project, r.id)));
+  selected.status.evidence.quote = 'changed';
+  const updated = structuredClone(config);
+  updated.review.inventorySha256 = sha256(canonical(stale));
+  assert.throws(() => reconcile(root, updated, stale), /evidence/);
+  const base = workspace(t), sample = data();
+  const pending = sample.ledger.records.find(r => r.project === 'alpha');
+  sample.config.review = {
+    mode: 'partial',
+    inventorySha256: sha256(canonical(sample.ledger)),
+    includedRecords: sample.ledger.records.filter(r => r !== pending).map(r => key(r.project, r.id))
+  };
+  const partial = reconcile(base, sample.config, sample.ledger);
+  assert.ok(partial.diagnostics.some(d => d.kind === 'unreviewed-source-present' && d.record === key(pending.project, pending.id)));
+  const selectedFile = sample.ledger.records.find(r => r.project === 'alpha' && r !== pending);
+  const unexpected = resolve(base, sample.config.projects.find(p => p.id === selectedFile.project).root, 'decisions/unexpected.md');
+  writeFileSync(unexpected, '# Unexpected\n\n* Status: proposed\n');
+  assert.throws(() => reconcile(base, sample.config, sample.ledger), /inventory coverage/);
+  rmSync(unexpected);
+  rmSync(resolve(base, sample.config.projects.find(p => p.id === selectedFile.project).root, selectedFile.path));
+  assert.throws(() => reconcile(base, sample.config, sample.ledger), /uncovered sidecar source/);
+});
+
 test('heterogeneous adapters', () => {
   const model = baseline();
   assert.equal(model.records.length, 7);

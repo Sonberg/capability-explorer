@@ -1,0 +1,126 @@
+# Canonical delivery contract: README "Before pushing", scripts/local-check and
+# scripts/ci/check-frugal-ci.mjs. The focused feature workflow is additional,
+# never a replacement for this job. Keep required-plan.json source-bound.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body) && 'metadata' || 'source' }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    # Metadata-only edits must not replace or cancel the required source check.
+    name: ${{ github.event.action == 'edited' && !github.event.changes.base && (github.event.changes.title || github.event.changes.body) && 'PR target' || 'ci' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Require main as the PR target
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          PR_BASE: ${{ github.base_ref }}
+        run: |
+          test "$PR_BASE" = main || {
+            echo 'PRs must target main; other merge destinations are prohibited.' >&2
+            exit 1
+          }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test merge-evidence policy
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 tests/merge-proof.test.py
+          PYTHONDONTWRITEBYTECODE=1 python3 tests/docs-ci.test.py
+      - name: Select complete CI or verified post-merge check
+        id: proof
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/merge-proof.py select
+      - name: Require current main in the PR head
+        if: ${{ !env.ACT && github.event_name == 'pull_request' && steps.proof.outputs.mode != 'metadata' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/merge-proof.py aligned
+      - name: Validate Markdown without building applications
+        if: ${{ steps.proof.outputs.mode == 'docs' }}
+        env:
+          DOCS_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          DOCS_HEAD: ${{ github.event.pull_request.head.sha || github.event.after }}
+        run: python3 scripts/ci/docs-check.py check "$DOCS_BASE" "$DOCS_HEAD"
+      - name: Cache sandbox packages
+        if: ${{ !env.ACT && steps.proof.outputs.mode == 'full' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .sandbox-cache/nuget
+            .sandbox-cache/nuget-http
+            .sandbox-cache/npm
+            .sandbox-cache/trivy
+            .sandbox-cache/tools
+          key: sandbox-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('config/runtime/images.env', 'scripts/sandbox', 'config/build/sandbox.mk', 'platform/**/packages.lock.json', 'platform/**/*.csproj', 'platform/**/*.props', 'platform/**/NuGet.Config', 'extractors/ts/package.json', 'extractors/ts/package-lock.json', 'platform/src/CapabilityExplorer.Explorer/client/package.json', 'platform/src/CapabilityExplorer.Explorer/client/package-lock.json', 'platform/src/CapabilityExplorer.Explorer/client-next/package.json', 'platform/src/CapabilityExplorer.Explorer/client-next/package-lock.json', 'spikes/likec4/package.json', 'spikes/likec4/package-lock.json', 'fixtures/src/**/*.csproj', 'fixtures/src/**/package.json', 'fixtures/src/**/package-lock.json') }}
+      - name: Audit action dependencies
+        if: ${{ !env.ACT && steps.proof.outputs.mode == 'full' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/actions-audit audit
+      - name: Pull sandbox images
+        if: ${{ steps.proof.outputs.mode == 'full' }}
+        run: |
+          source config/runtime/images.env
+          for image in "$DOTNET_IMAGE" "$NODE_IMAGE" "$PG_IMAGE"; do
+            if [ "${ACT:-}" != "true" ] || ! docker image inspect "$image" >/dev/null 2>&1; then
+              docker pull "$image"
+            fi
+          done
+      - name: Provision pinned scanner signature verifier
+        if: ${{ steps.proof.outputs.mode == 'full' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64) asset=cosign-linux-amd64; expected=424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa ;;
+            aarch64|arm64) asset=cosign-linux-arm64; expected=ade83b7aac62e131cacfe96d958948b2150cc9efec46a570a2649b8e27dedad2 ;;
+            *) echo 'Unsupported scanner verifier architecture' >&2; exit 1 ;;
+          esac
+          mkdir -p .sandbox-cache/tools
+          binary="$PWD/.sandbox-cache/tools/cosign-v3.1.4-$asset"
+          if ! printf '%s  %s\n' "$expected" "$binary" | sha256sum --check --strict --status; then
+            temporary="$(mktemp "$PWD/.sandbox-cache/tools/.cosign.XXXXXX")"
+            trap 'rm -f "$temporary"' EXIT
+            curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+              --connect-timeout 15 --max-time 120 \
+              "https://github.com/sigstore/cosign/releases/download/v3.1.4/$asset" --output "$temporary"
+            printf '%s  %s\n' "$expected" "$temporary" | sha256sum --check --strict
+            chmod 500 "$temporary"
+            mv "$temporary" "$binary"
+          fi
+          chmod 500 "$binary"
+          printf 'COSIGN_BINARY=%s\n' "$binary" >> "$GITHUB_ENV"
+      # ACT=true selects full in the retained, tested proof helper; it cannot
+      # select a documentation, metadata or verified-post-merge shortcut.
+      - run: make EXECUTION=sandbox ci
+        if: ${{ steps.proof.outputs.mode == 'full' }}
+      - name: Record exact tested merge tree
+        if: ${{ !env.ACT && github.event_name == 'pull_request' && steps.proof.outputs.mode == 'full' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/merge-proof.py emit "${RUNNER_TEMP}/merge-proof.json"
+      - name: Retain pre-merge evidence
+        if: ${{ !env.ACT && github.event_name == 'pull_request' && steps.proof.outputs.mode == 'full' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/merge-proof.json
+          if-no-files-found: error
+          retention-days: 7

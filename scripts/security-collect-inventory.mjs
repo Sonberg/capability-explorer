@@ -99,7 +99,7 @@ export function runtimeInventory(root, config) {
   const required = new Set([...registry.values(), ...Object.values(config.tools).map(tool => tool.image)]);
   for (const reference of required) need(config.images.some(image => image.reference === reference), `image inventory omits runtime/scanner reference: ${reference}`);
   for (const tool of Object.values(config.tools)) need(config.images.some(image => image.reference === tool.image && image.platform === tool.platform), 'scanner image platform absent from vulnerability inventory');
-  const launchSites = ['scripts/sandbox', 'scripts/local-check', 'Makefile', 'platform/tests/CapabilityExplorer.Store.Tests/ImporterTests.cs'];
+  const launchSites = ['scripts/sandbox', 'scripts/local-check', 'Makefile', '.github/workflows/ci.yml', 'platform/tests/CapabilityExplorer.Store.Tests/ImporterTests.cs'];
   for (const relative of ['config/build/native.mk', 'config/build/sandbox.mk'])
     if (fs.existsSync(path.join(root, relative))) launchSites.push(relative);
   for (const relative of launchSites) {

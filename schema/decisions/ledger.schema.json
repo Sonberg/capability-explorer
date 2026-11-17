@@ -158,6 +158,15 @@
         "projects": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/project"}},
         "sidecar": {"$ref": "#/$defs/text"},
         "output": {"$ref": "#/$defs/text"},
+        "review": {
+          "type": "object", "additionalProperties": false,
+          "required": ["mode", "inventorySha256", "includedRecords"],
+          "properties": {
+            "mode": {"const": "partial"},
+            "inventorySha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "includedRecords": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/text"}}
+          }
+        },
         "vocabulary": {
           "type": "array", "items": {
             "type": "object", "additionalProperties": false, "required": ["facet", "values"],

@@ -197,7 +197,7 @@ test('fresh history check detects changed branch tips independently of the manif
 
 function runtimeFixture(t) {
   const root = temp(t), cfg = config();
-  for (const file of ['config/runtime/images.env', 'config/security/trivy-image', 'scripts/sandbox', 'scripts/local-check', 'Makefile', 'platform/tests/CapabilityExplorer.Store.Tests/ImporterTests.cs']) {
+  for (const file of ['config/runtime/images.env', 'config/security/trivy-image', 'scripts/sandbox', 'scripts/local-check', 'Makefile', '.github/workflows/ci.yml', 'platform/tests/CapabilityExplorer.Store.Tests/ImporterTests.cs']) {
     fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true }); fs.writeFileSync(path.join(root, file), '');
   }
   fs.writeFileSync(path.join(root, 'config/runtime/images.env'), ['DOTNET', 'NODE', 'PG', 'OLLAMA', 'ACT', 'BROWSER', 'RYUK'].map(role => `${role}_IMAGE=${image}`).join('\n'));
@@ -209,6 +209,13 @@ test('runtime inventory requires every runtime and scanner image independently o
   const different = `node:2@sha256:${'b'.repeat(64)}`;
   fs.appendFileSync(path.join(f.root, 'config/runtime/images.env'), `\nEXTRA_IMAGE=${different}`);
   assert.throws(() => runtimeInventory(f.root, f.cfg), /omits runtime/);
+});
+test('canonical workflow must exist and cannot launch an unregistered image', t => {
+  const f = runtimeFixture(t), workflow = path.join(f.root, '.github/workflows/ci.yml');
+  fs.writeFileSync(workflow, `image: unreviewed:1@sha256:${'b'.repeat(64)}`);
+  assert.throws(() => runtimeInventory(f.root, f.cfg), /unregistered image at .github\/workflows\/ci.yml/);
+  fs.unlinkSync(workflow);
+  assert.throws(() => runtimeInventory(f.root, f.cfg), /missing required image launch site: .github\/workflows\/ci.yml/);
 });
 test('missing runtime role, stale hardcoded image and changed scanner platform fail', t => {
   const f = runtimeFixture(t), registry = path.join(f.root, 'config/runtime/images.env'), original = fs.readFileSync(registry, 'utf8');
