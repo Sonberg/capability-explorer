@@ -319,6 +319,7 @@ export async function runStandardSecurityCheck(root, injectedRun) {
       database: { ...database, origin: 'ghcr.io/aquasecurity/trivy-db', publisherSignatureVerified: false,
         trustBasis: 'TLS registry acquisition by verified pinned Trivy; metadata freshness and sealed byte identity; no database publisher signature verification' },
       reportSha256: sha(scan.stdout), scannedTargets: coverage.targets, findingCount: coverage.findings.length,
+      findings: coverage.findings,
       sourceFreeAcquisition: true, offlineScan: true,
     }));
     return coverage.findings.length ? 1 : 0;
