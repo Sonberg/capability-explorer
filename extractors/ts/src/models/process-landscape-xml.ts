@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import modelSupport from "../../../../schema/models/support.json" with { type: "json" };
 import { BPMN_NAMESPACE, DEFAULT_XML_LIMITS, ModelXmlError, parseXml, type XmlNode } from "./xml.ts";
 import { constructsFor, FLOW_NODE_TYPES, isStandardLayoutNamespace, validateFlowDirectionDeclarations, type SupportConstruct } from "./extract-semantics.ts";
-import type { LandscapeCoverage, LandscapeDiagnostic, LandscapeElement, LandscapeRelationship } from "./process-landscape-types.ts";
+import type { LandscapeCoverage, LandscapeDiagnostic, LandscapeDocument, LandscapeElement, LandscapeRelationship } from "./process-landscape-types.ts";
+import { extractDocumentGraph } from "./process-landscape-document.ts";
 
 const SUPPORT_CONSTRUCTS = (modelSupport as { constructs: SupportConstruct[] }).constructs;
 
@@ -44,6 +45,8 @@ export interface BpmnFileExtraction {
   documentDiagnostics: LandscapeDiagnostic[];
   processes: BpmnDiagramExtraction[];
   pendingCalledElements: PendingCalledElement[];
+  document?: LandscapeDocument;
+  documentSupported?: string[];
 }
 
 function hash(value: string): string {
@@ -103,16 +106,18 @@ function requireReferenceTarget(reference: string, idNodes: Map<string, XmlNode>
  * strict per-element ownership partition only activates once a document declares two or more.
  *
  * A relationship (sequenceFlow/messageFlow/association) whose own element, source, or target
- * resolve to different owning processes -- or to no process at all, such as a messageFlow between
- * collaboration participants -- is a legitimate cross-process reference that BPMN does not confine
- * to a single process body. It is never silently dropped or misattributed to an arbitrary process:
+ * resolve to different owning processes -- or to no process at all -- cannot be represented by
+ * the current per-process relationship contract. This includes invalid cross-process sequence
+ * flows as well as valid collaboration message flows. It is never misattributed to a process:
  * it is surfaced as an explicit, document-scoped `cross-process-relationship-unresolved`
  * diagnostic. Non-relationship elements that are not owned by any `<process>` (document-level
  * content such as `<collaboration>`/`<participant>`) are likewise never silently included under an
  * arbitrarily chosen process; they are summarized in one explicit `unowned-bpmn-element`
- * diagnostic per document.
+ * diagnostic per document. Layout uses explicit `bpmnElement` references rather than XML ancestry:
+ * geometry is retained with its referenced process, and shared layout containers are repeated as
+ * context in each relevant process so that every retained parent reference remains local.
  */
-export function extractBpmnDiagram(xml: string, path: string, identityScope: string): BpmnFileExtraction {
+export function extractBpmnDiagram(xml: string, path: string, identityScope: string, includeDocumentGraph = false): BpmnFileExtraction {
   const root = parseXml(xml, DEFAULT_XML_LIMITS);
   if (root.namespace !== BPMN_NAMESPACE || root.localName !== "definitions") {
     throw new ModelXmlError("unsupported-model-namespace", `Unsupported BPMN namespace or root: ${root.namespace || "(none)"}/${root.localName}`);
@@ -162,20 +167,75 @@ export function extractBpmnDiagram(xml: string, path: string, identityScope: str
 
   validateFlowDirectionDeclarations(nodes, idNodes);
 
+  const documentGraph = includeDocumentGraph && multiProcessDocument ? extractDocumentGraph({
+    nodes, idNodes, assignedIds, identities: elementIdentities, ownerOf, path, identityScope,
+  }) : undefined;
+  if (documentGraph) documentDiagnostics.push(...documentGraph.diagnostics);
+
+  const layoutScopes = new Map<XmlNode, Set<number>>();
+  if (multiProcessDocument) {
+    const visitLayout = (node: XmlNode, inherited?: number): Set<number> => {
+      const scopes = new Set<number>();
+      const layout = isStandardLayoutNamespace("bpmn", node.namespace);
+      let owner = layout ? inherited ?? ownerOf(node) : undefined;
+      if (layout) {
+        layoutScopes.set(node, scopes);
+        const reference = attribute(node, "bpmnElement");
+        if (reference) {
+          const target = idNodes.get(reference);
+          owner = target?.namespace === BPMN_NAMESPACE ? ownerOf(target) : undefined;
+          if (owner !== undefined && target && RELATIONSHIP_ELEMENT_NAMES.has(target.localName)) {
+            const source = idNodes.get(attribute(target, "sourceRef") ?? "");
+            const destination = idNodes.get(attribute(target, "targetRef") ?? "");
+            if (!source || !destination || ownerOf(source) !== owner || ownerOf(destination) !== owner) owner = undefined;
+          }
+          // A collaboration plane can contain shapes from several processes, but the
+          // collaboration itself is not made a process-owned semantic element.
+          const collaborationPlane = node.localName === "BPMNPlane"
+            && target?.namespace === BPMN_NAMESPACE && target.localName === "collaboration";
+          if (owner === undefined && !collaborationPlane) {
+            if (!documentGraph?.retainedNodes.has(target!)) documentDiagnostics.push({
+              code: "unresolved-layout-reference",
+              message: "Layout reference has no representable process-owned BPMN target",
+              disposition: "unresolved",
+              source: { path, element: assignedIds.get(node)!, ref: reference },
+            });
+            for (const descendant of collectNodes(node)) {
+              if (isStandardLayoutNamespace("bpmn", descendant.namespace)) layoutScopes.set(descendant, new Set());
+            }
+            return scopes;
+          }
+        }
+        if (owner !== undefined) scopes.add(owner);
+      }
+      for (const child of node.children) {
+        const childScopes = visitLayout(child, owner);
+        if (layout) for (const scope of childScopes) scopes.add(scope);
+      }
+      return scopes;
+    };
+    visitLayout(root);
+  }
+
   const perScopeElements: LandscapeElement[][] = Array.from({ length: scopeCount }, () => []);
   const perScopeRelationships: LandscapeRelationship[][] = Array.from({ length: scopeCount }, () => []);
   const pendingCalledElements: PendingCalledElement[] = [];
   let unownedElementCount = 0;
   const unownedElementTypes = new Set<string>();
 
-  for (const node of nodes) {
+  const scopedNodes = nodes.flatMap(node => {
+    const scopes = layoutScopes.get(node);
+    const owners = scopes && scopes.size > 0 ? [...scopes] : [scopes ? undefined : ownerOf(node)];
+    return owners.map(owner => ({ node, owner }));
+  });
+  for (const { node, owner } of scopedNodes) {
     if (node.namespace === BPMN_NAMESPACE && node.localName === "text") continue;
-    const owner = ownerOf(node);
     const isRelationshipNode = node.namespace === BPMN_NAMESPACE && RELATIONSHIP_ELEMENT_NAMES.has(node.localName);
     const id = assignedIds.get(node)!;
 
     if (!isRelationshipNode) {
       if (owner === undefined) {
+        if (documentGraph?.retainedNodes.has(node)) continue;
         unownedElementCount++;
         unownedElementTypes.add(node.localName);
         continue;
@@ -196,6 +256,7 @@ export function extractBpmnDiagram(xml: string, path: string, identityScope: str
       const targetOwner = ownerOf(targetNode);
       const sameScope = owner !== undefined && owner === sourceOwner && owner === targetOwner;
       if (!sameScope) {
+        if (documentGraph?.retainedNodes.has(node)) continue;
         documentDiagnostics.push({
           code: "cross-process-relationship-unresolved",
           message: `${node.localName} spans more than one process (or an unowned document element) and is not attributed to a single process`,
@@ -256,7 +317,10 @@ export function extractBpmnDiagram(xml: string, path: string, identityScope: str
       attributes: node.attributes,
       source: { path, element: id },
     };
-    if (node.parent && ownerOf(node.parent) === owner) element.parent = elementIdentities.get(node.parent);
+    if (node.parent && (layoutScopes.get(node.parent)?.has(owner!) ?? ownerOf(node.parent) === owner)
+      && (!documentGraph || documentGraph.retainedNodes.has(node.parent) || documentGraph.semanticNodes.has(node.parent))) {
+      element.parent = elementIdentities.get(node.parent);
+    }
     perScopeElements[owner!]!.push(element);
 
     if (relationKind && relationshipTargets) {
@@ -316,7 +380,7 @@ export function extractBpmnDiagram(xml: string, path: string, identityScope: str
     const diagnostics = perScopeDiagnostics[index]!;
     const limitations = [...new Set(diagnostics.map(({ code }) => code))].sort();
     const scopeNodes = multiProcessDocument
-      ? nodes.filter((node) => ownerOf(node) === index)
+      ? nodes.filter((node) => layoutScopes.get(node)?.has(index) ?? ownerOf(node) === index)
       : nodes;
     const supported = [...new Set(SUPPORT_CONSTRUCTS.filter(item =>
       item.family === "bpmn"
@@ -335,5 +399,8 @@ export function extractBpmnDiagram(xml: string, path: string, identityScope: str
     });
   }
 
-  return { documentDiagnostics, processes, pendingCalledElements };
+  return {
+    documentDiagnostics, processes, pendingCalledElements,
+    ...(documentGraph ? { document: documentGraph.document, documentSupported: documentGraph.supported } : {}),
+  };
 }

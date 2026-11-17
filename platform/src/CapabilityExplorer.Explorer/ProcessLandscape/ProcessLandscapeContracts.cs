@@ -31,8 +31,25 @@ public sealed record ProcessLandscapeElement(
 
 public sealed record ProcessLandscapeRelationshipCondition(string? Text = null, string? Language = null);
 
+/// <summary>Endpoints are process-local except a <c>reference</c> from a BPMN callActivity to a unique,
+/// declared BPMN process root in another admitted process, matching the caller's local calledElement id.
+/// Other relationship kinds cannot use this cross-process exception.</summary>
 public sealed record ProcessLandscapeRelationship(
     string Identity, string Kind, string Source, string Target, int Order,
+    ProcessLandscapeRelationshipCondition? Condition = null);
+
+/// <summary>Opt-in canonical, same-file collaboration/layout graph. Process semantics remain in
+/// <c>processes[]</c>; repeated process DI/DC elements are checked projections, not new owners.
+/// Unresolved collaboration facts remain elements plus snapshot diagnostics, never invented edges.</summary>
+public sealed record ProcessLandscapeDocument(
+    string Path, IReadOnlyList<ProcessLandscapeElement> Elements,
+    IReadOnlyList<ProcessLandscapeDocumentRelationship> Relationships);
+
+/// <summary>A document-local messageFlow with its authored carrier and endpoint identities. Activities/events
+/// resolve to exactly one participant in the carrier's collaboration; explicit participant endpoints name
+/// their own pools. This does not authorize cross-process sequenceFlow or other process relationships.</summary>
+public sealed record ProcessLandscapeDocumentRelationship(
+    string Identity, string Kind, string Source, string Target, int Order, string ElementIdentity,
     ProcessLandscapeRelationshipCondition? Condition = null);
 
 /// <summary>A single BPMN process definition. Multiple process records may repeat the same <c>Path</c>/
@@ -97,7 +114,9 @@ public sealed record ProcessLandscapeOverlays(
 /// other top-level member is rejected as unknown rather than tolerated. Embedded XML model content is already
 /// stripped by the producer for structural snapshots, and structural validation additionally scans the whole
 /// payload to reject any embedded XML/raw bytes outright. Treated the same as any other embedded model content
-/// for the deny-by-default <c>contentProfile</c> gate: see <see cref="ProcessLandscapeValidation"/>.</param>
+/// for the deny-by-default <c>contentProfile</c> gate. Known category containers, fields and reference tuple
+/// shapes are validated without requiring optional fields or resolving bundle-local references; unknown nested
+/// metadata is preserved, not certified. See <see cref="ProcessLandscapeValidation"/>.</param>
 public sealed record ProcessLandscapeSnapshot(
     string Schema, string SnapshotId, int ManifestVersion, string RepositoryId, string ContentProfile,
     ProcessLandscapeCoverage Coverage, IReadOnlyList<ProcessLandscapeDiagnostic> Diagnostics,
@@ -105,7 +124,8 @@ public sealed record ProcessLandscapeSnapshot(
     IReadOnlyList<ProcessLandscapeCrossProcessEvent> CrossProcessEvents,
     IReadOnlyList<ProcessLandscapeObjectLifecycle> ObjectLifecycle,
     IReadOnlyList<ProcessLandscapePhaseJourneyPhase> PhaseJourney, ProcessLandscapeOverlays Overlays,
-    IReadOnlyList<ProcessLandscapeSource> Sources, JsonElement? Navigator = null);
+    IReadOnlyList<ProcessLandscapeSource> Sources, JsonElement? Navigator = null,
+    IReadOnlyList<ProcessLandscapeDocument>? Documents = null);
 
 
 /// <summary>Whether the <c>snapshotId</c> could be independently reproduced from the delivered snapshot content.

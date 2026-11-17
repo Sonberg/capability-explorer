@@ -1,0 +1,110 @@
+name: Process landscape CI
+
+# Focused feature coverage, not the full platform/security/browser CI suite.
+# Run this same job with act before opening a PR; require its GitHub check
+# to pass before enabling auto-merge. Neither gate is bypassed for local runs.
+# Apple Silicon: the repository-pinned act image supports native linux/arm64;
+# linux/amd64 emulation is slower but matches the GitHub runner architecture.
+# From the integrated checkout (including client-next), using its Docker context:
+# DOCKER_HOST="$(docker context inspect --format '{{.Endpoints.docker.Host}}')" \
+# act pull_request -W .github/workflows/process-landscape-ci.yml \
+#   --container-architecture linux/arm64 --pull=false --concurrent-jobs 1 \
+#   -P ubuntu-24.04=catthehacker/ubuntu:act-24.04@sha256:c58e2b364da03b0c804c7d660f2ecbedf2f221a382b9baa0b344b0144780ff43 \
+#   --secret-file /dev/null --env-file /dev/null \
+#   --var-file /dev/null --input-file /dev/null
+# Add --list for discovery or --dryrun for planning, neither of which runs tests.
+# act 0.2.97 warns on Git's relativeworktrees extension; a successful dry-run
+# does not establish that copying an integrated worktree or running tests works.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: process-landscape-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  process-landscape:
+    name: Importer, navigator and host
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "true"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+          package-manager-cache: false
+
+      - name: Set up official .NET 10 SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Install importer dependencies
+        working-directory: extractors/ts
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck importer and run its complete npm test suite
+        working-directory: extractors/ts
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Install navigator dependencies
+        working-directory: platform/src/CapabilityExplorer.Explorer/client-next
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck, test and build navigator
+        working-directory: platform/src/CapabilityExplorer.Explorer/client-next
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Install legacy frontend dependencies
+        working-directory: platform/src/CapabilityExplorer.Explorer/client
+        run: npm ci --no-audit --no-fund
+
+      - name: Install shared architecture UI dependencies
+        working-directory: spikes/likec4
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Build legacy frontend
+        working-directory: platform/src/CapabilityExplorer.Explorer/client
+        run: npm run build
+
+      - name: Restore host test dependencies from lockfiles
+        working-directory: platform
+        run: dotnet restore tests/CapabilityExplorer.Explorer.Tests/CapabilityExplorer.Explorer.Tests.csproj --locked-mode
+
+      - name: Run ProcessLandscape API and navigator tests
+        working-directory: platform
+        run: >-
+          dotnet test tests/CapabilityExplorer.Explorer.Tests/CapabilityExplorer.Explorer.Tests.csproj
+          --configuration Release --no-restore
+          --filter "FullyQualifiedName~ProcessLandscape"
+          --logger "console;verbosity=normal"
+
+      - name: Publish production Explorer host
+        working-directory: platform
+        run: >-
+          dotnet publish src/CapabilityExplorer.Explorer/CapabilityExplorer.Explorer.csproj
+          --configuration Release --no-restore

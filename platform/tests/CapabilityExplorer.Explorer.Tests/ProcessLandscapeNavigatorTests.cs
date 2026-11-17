@@ -112,14 +112,14 @@ public sealed partial class ProcessLandscapeApiTests
             ["bundle"] = new JsonObject { ["path"] = "navigator/bundle.json", ["byteLength"] = bundleBytes.Length, ["sha256"] = bundleHash },
             ["verified"] = true,
             ["catalogue"] = new JsonArray(new JsonObject { ["id"] = "alpha", ["label"] = "Alpha process" }),
-            ["elements"] = new JsonArray(new JsonObject { ["id"] = "Task_1", ["type"] = "task" }),
-            ["links"] = new JsonArray(new JsonObject { ["from"] = "Task_1", ["to"] = "Task_2" }),
-            ["events"] = new JsonArray(new JsonObject { ["id"] = "evt-1" }),
+            ["elements"] = new JsonObject { ["alpha.bpmn"] = new JsonObject { ["Task_1"] = new JsonObject { ["t"] = "task", ["n"] = "" } } },
+            ["links"] = new JsonObject { ["alpha.bpmn"] = new JsonObject { ["Task_1"] = new JsonObject { ["phase"] = "" } } },
+            ["events"] = new JsonObject { ["evt-1"] = new JsonObject { ["throw"] = new JsonArray(new JsonArray("alpha.bpmn", "Task_1")) } },
             ["lifecycle"] = new JsonArray(new JsonObject { ["objectId"] = "order-1", ["stage"] = "created" }),
-            ["journey"] = new JsonArray(new JsonObject { ["phase"] = "intake" }),
+            ["journey"] = new JsonObject { ["phases"] = new JsonArray(), ["entries"] = new JsonArray() },
             ["contexts"] = new JsonArray(new JsonObject { ["tag"] = "finance" }),
             ["procFile"] = new JsonObject { ["path"] = "flows/alpha.bpmn" },
-            ["dmn"] = new JsonArray(),
+            ["dmn"] = new JsonObject { ["decision-1"] = "Synthetic decision" },
             ["phases"] = new JsonArray(new JsonObject { ["name"] = "discovery" }),
             ["generated"] = "2024-01-01T00:00:00Z",
         };
@@ -144,7 +144,7 @@ public sealed partial class ProcessLandscapeApiTests
 
         // The scan also rejects by keyword-named field, independent of whether the value itself looks like XML.
         var withKeywordedField = FullNavigator();
-        ((JsonArray)withKeywordedField["elements"]!).Add(new JsonObject { ["id"] = "Task_2", ["base64"] = "task" });
+        withKeywordedField["elements"]!["alpha.bpmn"]!["Task_2"] = new JsonObject { ["base64"] = "task" };
         var rejectedByField = Snapshots.Build([process], navigator: withKeywordedField);
         await fixture.WriteAsync(rejectedByField);
         using var rejectedByFieldResponse = await fixture.Client.GetAsync("/api/process-landscape/v1/snapshot");
@@ -302,4 +302,161 @@ public sealed partial class ProcessLandscapeApiTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("invalid", (await response.Content.ReadFromJsonAsync<ProcessLandscapeResponse>(Json))!.Status);
     }
+
+    [Theory]
+    [InlineData("catalogue", "{}")]
+    [InlineData("catalogue", "[null]")]
+    [InlineData("catalogue", "[{\"procs\":[1]}]")]
+    [InlineData("elements", "[]")]
+    [InlineData("elements", "{\"alpha.bpmn\":[]}")]
+    [InlineData("elements", "{\"alpha.bpmn\":{\"Task_1\":false}}")]
+    [InlineData("elements", "{\"alpha.bpmn\":{\"Task_1\":{\"ev\":[[\"throw\",\"message\"]]}}}")]
+    [InlineData("elements", "{\"alpha.bpmn\":{\"Task_1\":{\"out\":{}}}}")]
+    [InlineData("links", "{\"alpha.bpmn\":{\"Task_1\":{\"phase\":[]}}}")]
+    [InlineData("links", "[]")]
+    [InlineData("events", "[]")]
+    [InlineData("events", "{\"event-1\":{\"throw\":[[\"alpha.bpmn\"]]}}")]
+    [InlineData("events", "{\"event-1\":{\"catch\":[[\"alpha.bpmn\",1]]}}")]
+    [InlineData("events", "{\"event-1\":{\"ref\":null}}")]
+    [InlineData("lifecycle", "[{\"states\":[{}]}]")]
+    [InlineData("lifecycle", "{}")]
+    [InlineData("lifecycle", "[{\"tr\":[null]}]")]
+    [InlineData("lifecycle", "[{\"set\":{\"new\":[[\"alpha.bpmn\",\"Task_1\"]]}}]")]
+    [InlineData("journey", "[]")]
+    [InlineData("journey", "{\"phases\":[{\"contexts\":{}}]}")]
+    [InlineData("journey", "{\"entries\":[false]}")]
+    [InlineData("contexts", "[{\"color\":1}]")]
+    [InlineData("contexts", "{}")]
+    [InlineData("phases", "[\"phase-1\"]")]
+    [InlineData("dmn", "{\"decision-1\":{}}")]
+    [InlineData("catalogue", "null")]
+    public async Task MalformedNavigatorCategoriesAreRejectedWithoutSilentlyDroppingThem(string category, string payload)
+    {
+        await using var fixture = await Host.CreateAsync();
+        var navigator = NavigatorEnvelope();
+        navigator[category] = JsonNode.Parse(payload);
+        await fixture.WriteAsync(Snapshots.Build([], navigator: navigator));
+
+        using var response = await fixture.Client.GetAsync("/api/process-landscape/v1/snapshot");
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("invalid-navigator-category-shape",
+            (await response.Content.ReadFromJsonAsync<ProcessLandscapeResponse>(Json))!.Reason);
+    }
+
+    [Theory]
+    [InlineData("catalogue", "[{\"file\":\"../other.bpmn\"}]")]
+    [InlineData("elements", "{\"/absolute.bpmn\":{}}")]
+    [InlineData("elements", "{\"alpha.bpmn\":{\"Task_1\":{\"tgt\":\"../other.bpmn\"}}}")]
+    [InlineData("events", "{\"event-1\":{\"ref\":[[\"../other.bpmn\",\"Task_1\"]]}}")]
+    [InlineData("lifecycle", "[{\"set\":{\"new\":[[\"../other.bpmn\",\"Task_1\",\"via\"]]}}]")]
+    [InlineData("journey", "{\"phases\":[{\"files\":[\"../other.bpmn\"]}]}")]
+    [InlineData("journey", "{\"entries\":[{\"file\":\"../other.bpmn\"}]}")]
+    [InlineData("procFile", "{\"Process_1\":\"../other.bpmn\"}")]
+    [InlineData("procFile", "{\"Process_1\":{}}")]
+    public async Task NavigatorFileReferencesAreSafeEvenWhenUnresolved(string category, string payload)
+    {
+        await using var fixture = await Host.CreateAsync();
+        var navigator = NavigatorEnvelope();
+        navigator[category] = JsonNode.Parse(payload);
+        await fixture.WriteAsync(Snapshots.Build([], navigator: navigator));
+
+        using var response = await fixture.Client.GetAsync("/api/process-landscape/v1/snapshot");
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("invalid-navigator-file-reference",
+            (await response.Content.ReadFromJsonAsync<ProcessLandscapeResponse>(Json))!.Reason);
+    }
+
+    [Fact]
+    public async Task RepresentativeSourceShapesPreservePartialUnresolvedAndAdditiveData()
+    {
+        await using var fixture = await Host.CreateAsync();
+        var navigator = NavigatorEnvelope();
+        var categories = JsonNode.Parse("""
+            {
+              "catalogue": [{"file":"alpha.bpmn","pid":"A","group":"","name":"Synthetic","phases":"","ctx":"","inc":"","grain":"","proc":"","purpose":"","procs":["Process_1","Process_2"]},{}],
+              "elements": {"alpha.bpmn":{"Task_1":{"t":"task","n":"","pr":"Process_1","lane":null,"st":null,"src":null,"dst":"Missing_1","msg":null,"ev":[["throw","message","event-1"]],"out":["Missing_1",null],"in":[],"tgt":"missing.bpmn","extension":{"retained":true}}}},
+              "links": {"alpha.bpmn":{"Missing_1":{"phase":"","ctx":"","ent":"","ev":"","dmn":"","sf":"","inc":""}}},
+              "events": {"event-1":{"ctx":"","kind":"non-canonical","agg":"","phase":"","throw":[["alpha.bpmn","Task_1"]],"catch":[],"ref":[["missing.bpmn","Missing_1"]]}},
+              "lifecycle": [{"name":"Synthetic","entity":"","obj":"","ctx":"","states":["new"],"tr":[{"f":"","t":"new","cmd":"","ev":"","guard":"","dmn":""}],"set":{"new":[["missing.bpmn","Missing_1","unresolved"]]}},{}],
+              "journey": {"phases":[{"id":"P1","name":"","gate":"","purpose":"","contexts":["missing-context"],"files":["missing.bpmn"]}],"entries":[{"name":"","file":"missing.bpmn","text":""}]},
+              "contexts": [{"id":"context-1","name":"","cls":"","color":""}],
+              "procFile": {"Process_1":"alpha.bpmn","MissingProcess":"missing.bpmn"},
+              "dmn": {"decision-1":"Synthetic decision"},
+              "phases": [{"id":"P1","name":"","gate":""}],
+              "generated": {"opaque-producer-marker":true}
+            }
+            """)!.AsObject();
+        foreach (var category in categories) navigator[category.Key] = category.Value?.DeepClone();
+        var snapshot = Snapshots.Build([], navigator: navigator) with
+        {
+            Coverage = new("partial", ["navigator-shapes"], ["unresolved references retained"]),
+            Diagnostics = [new("navigator-reference-unresolved", "Synthetic unresolved reference", "unresolved")],
+        };
+        await fixture.WriteAsync(snapshot);
+
+        using var response = await fixture.Client.GetAsync("/api/process-landscape/v1/snapshot");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = (await response.Content.ReadFromJsonAsync<ProcessLandscapeResponse>(Json))!;
+        Assert.True(JsonElement.DeepEquals(snapshot.Navigator!.Value, body.Snapshot!.Navigator!.Value));
+        Assert.Equal("partial", body.Snapshot.Coverage.Status);
+        Assert.Equal(snapshot.Coverage.Limitations, body.Snapshot.Coverage.Limitations);
+        Assert.Equal(snapshot.Diagnostics, body.Snapshot.Diagnostics);
+    }
+
+    [Fact]
+    public async Task UnverifiedEnvelopeWithoutCategoriesRemainsAvailable()
+    {
+        await using var fixture = await Host.CreateAsync();
+        var navigator = NavigatorEnvelope();
+        navigator["verified"] = false;
+        await fixture.WriteAsync(Snapshots.Build([], navigator: navigator));
+
+        using var response = await fixture.Client.GetAsync("/api/process-landscape/v1/snapshot");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = (await response.Content.ReadFromJsonAsync<ProcessLandscapeResponse>(Json))!;
+        Assert.False(body.Snapshot!.Navigator!.Value.GetProperty("verified").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SharedDiagramAncestorsRemainValidOnlyWithCompleteProcessLocalParentChains(bool omitSecondPlane)
+    {
+        await using var fixture = await Host.CreateAsync();
+        const string path = "flows/shared.bpmn";
+        const string di = "http://www.omg.org/spec/BPMN/20100524/DI";
+        var diagram = Snapshots.Element("diagram", path, "Diagram_1") with
+        {
+            Type = "BPMNDiagram", Namespace = di, Kind = "unsupported",
+        };
+        var plane = Snapshots.Element("plane", path, "Plane_1") with
+        {
+            Type = "BPMNPlane", Namespace = di, Kind = "unsupported", Parent = diagram.Identity,
+        };
+        ProcessLandscapeElement Shape(string seed) => Snapshots.Element(seed, path, seed) with
+        {
+            Type = "BPMNShape", Namespace = di, Kind = "unsupported", Parent = plane.Identity,
+        };
+        var alpha = Snapshots.Process("alpha", path, 4, Snapshots.Sha256("abcd"), [diagram, plane, Shape("Shape_A")]);
+        var beta = Snapshots.Process("beta", path, 4, Snapshots.Sha256("abcd"),
+            omitSecondPlane ? [diagram, Shape("Shape_B")] : [diagram, plane, Shape("Shape_B")]);
+        await fixture.WriteAsync(Snapshots.Build([alpha, beta]));
+
+        using var response = await fixture.Client.GetAsync("/api/process-landscape/v1/snapshot");
+        Assert.Equal(omitSecondPlane ? HttpStatusCode.BadRequest : HttpStatusCode.OK, response.StatusCode);
+        var body = (await response.Content.ReadFromJsonAsync<ProcessLandscapeResponse>(Json))!;
+        if (omitSecondPlane) Assert.Equal("dangling-element-parent", body.Reason);
+        else
+        {
+            Assert.Equal(2, body.Snapshot!.Processes.Count);
+            Assert.Equal(diagram.Identity, body.Snapshot.Processes[1].Elements[0].Identity);
+            Assert.Single(body.Snapshot.Sources);
+        }
+    }
+
+    private static JsonObject NavigatorEnvelope() => new()
+    {
+        ["bundle"] = new JsonObject { ["path"] = "navigator/data.js", ["byteLength"] = 2, ["sha256"] = Snapshots.Sha256("{}") },
+        ["verified"] = true,
+    };
 }

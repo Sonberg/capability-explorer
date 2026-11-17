@@ -16,6 +16,7 @@ TestResults/
 
 # Explorer UI build output (built from platform/src/CapabilityExplorer.Explorer/client by `make ui`)
 platform/src/CapabilityExplorer.Explorer/wwwroot/
+platform/src/CapabilityExplorer.Explorer/client-next/dist/
 
 # Local credentials, agent configuration and coordination runtime state
 .env

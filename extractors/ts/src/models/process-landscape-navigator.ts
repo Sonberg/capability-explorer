@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
+import schema from "../../../../schema/models/process-landscape.v1.schema.json" with { type: "json" };
 import { parseStrictJson } from "../collection/strictJson.ts";
 import type { LandscapeDiagnostic, NavigatorBundleIdentity, NavigatorCategoryName, ProcessLandscapeNavigator } from "./process-landscape-types.ts";
 import { ProcessLandscapeError } from "./process-landscape-types.ts";
@@ -38,8 +40,54 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isContainer(value: unknown): boolean {
-  return Array.isArray(value) || isPlainObject(value);
+const categoryValidators = new Map<NavigatorCategoryName, ValidateFunction>();
+let categoryAjv: Ajv2020 | undefined;
+
+function validCategory(category: NavigatorCategoryName, value: unknown): boolean {
+  let validate = categoryValidators.get(category);
+  if (!validate) {
+    categoryAjv ??= new Ajv2020({ strict: true, strictRequired: false }).addSchema(schema);
+    validate = categoryAjv.compile({ $ref: `${schema.$id}#/$defs/navigator/properties/${category}` });
+    categoryValidators.set(category, validate);
+  }
+  if (!validate(value)) return false;
+  // JSON Schema counts code points; the API's 1024-character path bound counts UTF-16 code units.
+  for (const reference of fileReferences(category, value)) {
+    if (typeof reference === "string" && reference.length > 1024) return false;
+  }
+  return true;
+}
+
+function* fileReferences(category: NavigatorCategoryName, value: unknown): Generator<unknown> {
+  const map = value as Record<string, unknown>;
+  const rows = value as Array<Record<string, unknown>>;
+  switch (category) {
+    case "catalogue":
+      for (const row of rows) yield row.file;
+      break;
+    case "elements":
+    case "links":
+      for (const [file, elements] of Object.entries(map)) {
+        yield file;
+        if (category === "elements") for (const element of Object.values(elements as Record<string, Record<string, unknown>>)) yield element.tgt;
+      }
+      break;
+    case "events":
+      for (const event of Object.values(map) as Array<Record<string, string[][]>>) {
+        for (const key of ["throw", "catch", "ref"]) for (const tuple of event[key] ?? []) yield tuple[0];
+      }
+      break;
+    case "lifecycle":
+      for (const row of rows) for (const values of Object.values((row.set ?? {}) as Record<string, string[][]>)) {
+        for (const tuple of values) yield tuple[0];
+      }
+      break;
+    case "journey":
+      for (const phase of (map.phases ?? []) as Array<{ files?: string[] }>) yield* (phase.files ?? []);
+      for (const entry of (map.entries ?? []) as Array<{ file?: string }>) yield entry.file;
+      break;
+    case "procFile": yield* Object.values(map); break;
+  }
 }
 
 interface NavigatorParseResult {
@@ -132,10 +180,10 @@ export function parseNavigatorBundle(
     const sourceKey = CATEGORY_SOURCE_KEYS[category];
     const value = (parsed as Record<string, unknown>)[sourceKey];
     if (value === undefined) continue;
-    if (!isContainer(value)) {
+    if (!validCategory(category, value)) {
       diagnostics.push({
         code: "invalid-navigator-category-shape",
-        message: `The navigator-data "${sourceKey}" entry must be a JSON array or object`,
+        message: `The navigator-data "${sourceKey}" entry does not match its category contract or safe local file-reference bounds`,
         disposition: "partial",
         source: { path: bundleIdentity.path, ref: sourceKey },
       });
@@ -145,7 +193,7 @@ export function parseNavigatorBundle(
   }
 
   // `generated` is a provenance/version marker (e.g. a build timestamp), not a data collection, so
-  // it is copied through verbatim without the array/object `isContainer` shape restriction.
+  // it is copied through verbatim without category shape restrictions.
   if (parsed.generated !== undefined) navigator.generated = parsed.generated;
 
   return { navigator, diagnostics };

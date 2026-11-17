@@ -52,7 +52,8 @@ public static partial class ProcessLandscapeValidation
         {
             if (!referencedSourcePaths.Contains(path)) Reject("invalid", "unreferenced-source");
         }
-
+        ValidateProcessRelationships(processes);
+        ValidateDocuments(snapshot);
 
         // Elements/processes were already null-checked above during ValidateProcess; this just re-indexes them.
         var knownElementsByProcess = processes.ToDictionary(
@@ -149,9 +150,10 @@ public static partial class ProcessLandscapeValidation
     /// category keys (<see cref="NavigatorCategoryKeys"/>) - any other key is rejected as unknown rather than
     /// silently accepted. Both content profiles may carry a navigator, but only as much as the top-level
     /// <c>contentProfile</c> permits: a <c>structural</c> snapshot must receive the navigator with embedded
-    /// XML/raw model bytes already stripped by the producer, never the full embedded-content bundle. The exact
-    /// internal shape of each category is not independently re-validated here (the producer owns it), so
-    /// structural mode additionally walks the whole payload and rejects anything that looks like embedded model
+    /// XML/raw model bytes already stripped by the producer, never the full embedded-content bundle. Category
+    /// containers, known fields and reference tuple shapes are checked separately; optional fields and unresolved
+    /// references remain intact. This is not a completeness or referential-integrity guarantee. Structural
+    /// mode additionally walks the whole payload and rejects anything that looks like embedded model
     /// content: a string value that is itself an XML/markup fragment, or a property name that names a
     /// raw/base64/XML carrier. <c>model-content</c> (already gated by the deny-by-default check above) performs
     /// no such scan, since embedding XML there is expected.</summary>
@@ -187,26 +189,48 @@ public static partial class ProcessLandscapeValidation
             verifiedProperty.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
             Reject("invalid", "invalid-navigator-verified");
 
-        if (contentProfile == "structural") RejectEmbeddedModelContent(value);
+        if (contentProfile == "structural") RejectEmbeddedModelContent(value, NavigatorContentShape.Root);
+        ValidateNavigatorCategories(value);
     }
 
 
     private static readonly string[] EmbeddedContentKeywords = ["xml", "base64", "rawbytes", "sourcebytes"];
 
-    private static void RejectEmbeddedModelContent(JsonElement element)
+    private enum NavigatorContentShape { Unknown, Root, FileMap, NamedRecords, DataMap, LifecycleRows, LifecycleRecord }
+
+    private static void RejectEmbeddedModelContent(JsonElement element, NavigatorContentShape shape = NavigatorContentShape.Unknown)
     {
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
                 foreach (var property in element.EnumerateObject())
                 {
-                    if (EmbeddedContentKeywords.Any(keyword => property.Name.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+                    // Dictionary keys are source identifiers/labels, not carrier field names. In particular
+                    // a .bpmn20.xml filename or an event label containing XML does not embed XML bytes.
+                    if (shape is not (NavigatorContentShape.FileMap or NavigatorContentShape.NamedRecords or NavigatorContentShape.DataMap) &&
+                        EmbeddedContentKeywords.Any(keyword => property.Name.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
                         Reject("invalid", "structural-navigator-embedded-content");
-                    RejectEmbeddedModelContent(property.Value);
+                    var childShape = shape switch
+                    {
+                        NavigatorContentShape.Root => property.Name switch
+                        {
+                            "elements" or "links" => NavigatorContentShape.FileMap,
+                            "events" => NavigatorContentShape.NamedRecords,
+                            "procFile" or "dmn" => NavigatorContentShape.DataMap,
+                            "lifecycle" => NavigatorContentShape.LifecycleRows,
+                            _ => NavigatorContentShape.Unknown,
+                        },
+                        NavigatorContentShape.FileMap => NavigatorContentShape.NamedRecords,
+                        NavigatorContentShape.LifecycleRecord when property.Name == "set" => NavigatorContentShape.DataMap,
+                        _ => NavigatorContentShape.Unknown,
+                    };
+                    RejectEmbeddedModelContent(property.Value, childShape);
                 }
                 break;
             case JsonValueKind.Array:
-                foreach (var item in element.EnumerateArray()) RejectEmbeddedModelContent(item);
+                foreach (var item in element.EnumerateArray())
+                    RejectEmbeddedModelContent(item, shape == NavigatorContentShape.LifecycleRows
+                        ? NavigatorContentShape.LifecycleRecord : NavigatorContentShape.Unknown);
                 break;
             case JsonValueKind.String:
                 var text = element.GetString();
@@ -240,8 +264,6 @@ public static partial class ProcessLandscapeValidation
             if (element.Parent is { } parent && !elementIdentities.Contains(parent))
                 Reject("invalid", "dangling-element-parent");
         }
-        foreach (var relationshipOrNull in process.Relationships) ValidateRelationship(RequireItem(relationshipOrNull, "invalid-relationship"), elementIdentities);
-
         // Every process joins exactly one sources[] row (the final schema requires sources[] in both profiles,
         // one row per distinct admitted BPMN path): a process whose path has no matching row, or whose declared
         // (byteLength, sha256) disagrees with that row, is rejected outright. One BPMN file may legitimately
@@ -272,14 +294,19 @@ public static partial class ProcessLandscapeValidation
             Reject("invalid", "element-source-element-mismatch");
     }
 
-    private static void ValidateRelationship(ProcessLandscapeRelationship relationship, HashSet<string> elementIdentities)
+    private static void ValidateRelationship(
+        ProcessLandscapeRelationship relationship, Dictionary<string, ProcessLandscapeElement> elements,
+        Dictionary<string, ProcessLandscapeElement> declaredRoots, HashSet<string> repeatedIdentities)
     {
         if (!RelationshipIdentityPattern().IsMatch(relationship.Identity)) Reject("invalid", "invalid-relationship-identity");
         if (relationship.Kind is not ("sequenceFlow" or "messageFlow" or "association" or "reference"))
             Reject("invalid", "invalid-relationship-kind");
-        if (!ElementIdentityPattern().IsMatch(relationship.Source) || !elementIdentities.Contains(relationship.Source))
+        if (!ElementIdentityPattern().IsMatch(relationship.Source) || !elements.ContainsKey(relationship.Source))
             Reject("invalid", "dangling-relationship-source");
-        if (!ElementIdentityPattern().IsMatch(relationship.Target) || !elementIdentities.Contains(relationship.Target))
+        if (!ElementIdentityPattern().IsMatch(relationship.Target) ||
+            (!elements.ContainsKey(relationship.Target) &&
+             (relationship.Kind != "reference" || !IsDeclaredCalledProcess(
+                 elements[relationship.Source], relationship.Target, declaredRoots, repeatedIdentities))))
             Reject("invalid", "dangling-relationship-target");
         if (relationship.Order < 0) Reject("invalid", "invalid-relationship-order");
     }

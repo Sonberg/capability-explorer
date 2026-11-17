@@ -24,6 +24,7 @@
     "objectLifecycle": { "type": "array", "items": { "$ref": "#/$defs/objectLifecycle" } },
     "phaseJourney": { "type": "array", "items": { "$ref": "#/$defs/phaseJourneyPhase" } },
     "navigator": { "$ref": "#/$defs/navigator" },
+    "documents": { "type": "array", "maxItems": 512, "items": { "$ref": "#/$defs/document" } },
     "overlays": {
       "type": "object",
       "additionalProperties": false,
@@ -47,6 +48,31 @@
     }
   },
   "$defs": {
+    "document": {
+      "description": "Opt-in canonical multi-process document graph. Path joins sources; semantic process ownership is unchanged. Document parents/endpoints resolve only in this document and processes sharing its path.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "elements", "relationships"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "elements": { "type": "array", "maxItems": 25000, "items": { "$ref": "#/$defs/element" } },
+        "relationships": { "type": "array", "maxItems": 25000, "items": { "$ref": "#/$defs/documentRelationship" } }
+      }
+    },
+    "documentRelationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "kind", "source", "target", "order", "elementIdentity"],
+      "properties": {
+        "identity": { "$ref": "#/$defs/relationship/properties/identity" },
+        "kind": { "const": "messageFlow" },
+        "source": { "$ref": "#/$defs/relationship/properties/source" },
+        "target": { "$ref": "#/$defs/relationship/properties/target" },
+        "order": { "$ref": "#/$defs/relationship/properties/order" },
+        "elementIdentity": { "$ref": "#/$defs/element/properties/identity" },
+        "condition": { "$ref": "#/$defs/relationship/properties/condition" }
+      }
+    },
     "coverage": {
       "type": "object",
       "additionalProperties": false,
@@ -87,6 +113,7 @@
       }
     },
     "element": {
+      "description": "BPMN semantic or retained layout element. Process projections retain local parent references and may repeat shared layout ancestors with stable identities. Optional documents contain canonical layout and document-owned semantics; their parent references resolve against the same-file document/process union, without assigning collaboration semantics to a process.",
       "type": "object",
       "additionalProperties": false,
       "required": ["identity", "kind", "namespace", "id", "type", "order", "attributes", "source"],
@@ -170,24 +197,112 @@
       }
     },
     "navigator": {
+      "description": "Known category fields are typed but optional; partial records, additive record metadata and safe unresolved file references remain valid.",
       "type": "object",
       "additionalProperties": false,
       "required": ["bundle", "verified"],
       "properties": {
         "bundle": { "$ref": "#/$defs/navigatorBundleIdentity" },
         "verified": { "type": "boolean" },
-        "catalogue": {},
-        "elements": {},
-        "links": {},
-        "events": {},
-        "lifecycle": {},
-        "journey": {},
-        "contexts": {},
-        "procFile": {},
-        "dmn": {},
-        "phases": {},
+        "catalogue": { "$ref": "#/$defs/navigatorCatalogue" },
+        "elements": { "$ref": "#/$defs/navigatorElements" },
+        "links": { "$ref": "#/$defs/navigatorLinks" },
+        "events": { "$ref": "#/$defs/navigatorEvents" },
+        "lifecycle": { "$ref": "#/$defs/navigatorLifecycle" },
+        "journey": { "$ref": "#/$defs/navigatorJourney" },
+        "contexts": { "$ref": "#/$defs/navigatorContexts" },
+        "procFile": { "type": "object", "additionalProperties": { "$ref": "#/$defs/navigatorFile" } },
+        "dmn": { "type": "object", "additionalProperties": { "type": "string" } },
+        "phases": { "$ref": "#/$defs/navigatorPhases" },
         "generated": {}
       }
+    },
+    "navigatorFile": {
+      "description": "Bundle-local file reference; need not name an admitted file. UTF-16 length is additionally checked by the producer/API.",
+      "type": "string", "minLength": 1, "maxLength": 1024,
+      "pattern": "^(?![\\s\\S]*[\\\\:\\u0000-\\u001f\\u007f-\\u009f])(?!(?:[^/]+/)*\\.{1,2}(?:/|$))[^/]+(?:/[^/]+)*$"
+    },
+    "navigatorStrings": { "type": "array", "items": { "type": "string" } },
+    "navigatorEventTuple": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "prefixItems": [{ "type": "string" }, { "type": "string" }, { "type": "string" }], "items": false
+    },
+    "navigatorFilePair": {
+      "type": "array", "minItems": 2, "maxItems": 2,
+      "prefixItems": [{ "$ref": "#/$defs/navigatorFile" }, { "type": "string" }], "items": false
+    },
+    "navigatorFileTriple": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "prefixItems": [{ "$ref": "#/$defs/navigatorFile" }, { "type": "string" }, { "type": "string" }], "items": false
+    },
+    "navigatorCatalogue": {
+      "type": "array", "items": { "type": "object", "properties": {
+        "pid": { "type": "string" }, "group": { "type": "string" }, "name": { "type": "string" },
+        "phases": { "type": "string" }, "ctx": { "type": "string" }, "inc": { "type": "string" },
+        "grain": { "type": "string" }, "proc": { "type": "string" }, "purpose": { "type": "string" },
+        "file": { "$ref": "#/$defs/navigatorFile" }, "procs": { "$ref": "#/$defs/navigatorStrings" }
+      } }
+    },
+    "navigatorElements": {
+      "type": "object", "propertyNames": { "$ref": "#/$defs/navigatorFile" },
+      "additionalProperties": { "type": "object", "additionalProperties": { "type": "object", "properties": {
+        "t": { "type": "string" }, "n": { "type": "string" },
+        "pr": { "type": ["string", "null"] }, "lane": { "type": ["string", "null"] },
+        "st": { "type": ["string", "null"] }, "src": { "type": ["string", "null"] },
+        "dst": { "type": ["string", "null"] }, "msg": { "type": ["string", "null"] },
+        "tgt": { "$ref": "#/$defs/navigatorFile" },
+        "in": { "type": "array", "items": { "type": ["string", "null"] } },
+        "out": { "type": "array", "items": { "type": ["string", "null"] } },
+        "ev": { "type": "array", "items": { "$ref": "#/$defs/navigatorEventTuple" } }
+      } } }
+    },
+    "navigatorLinks": {
+      "type": "object", "propertyNames": { "$ref": "#/$defs/navigatorFile" },
+      "additionalProperties": { "type": "object", "additionalProperties": { "type": "object", "properties": {
+        "phase": { "type": "string" }, "ctx": { "type": "string" }, "ent": { "type": "string" },
+        "ev": { "type": "string" }, "dmn": { "type": "string" }, "sf": { "type": "string" }, "inc": { "type": "string" }
+      } } }
+    },
+    "navigatorEvents": {
+      "type": "object", "additionalProperties": { "type": "object", "properties": {
+        "ctx": { "type": "string" }, "kind": { "type": "string" }, "agg": { "type": "string" }, "phase": { "type": "string" },
+        "throw": { "type": "array", "items": { "$ref": "#/$defs/navigatorFilePair" } },
+        "catch": { "type": "array", "items": { "$ref": "#/$defs/navigatorFilePair" } },
+        "ref": { "type": "array", "items": { "$ref": "#/$defs/navigatorFilePair" } }
+      } }
+    },
+    "navigatorLifecycle": {
+      "type": "array", "items": { "type": "object", "properties": {
+        "name": { "type": "string" }, "entity": { "type": "string" }, "obj": { "type": "string" }, "ctx": { "type": "string" },
+        "states": { "$ref": "#/$defs/navigatorStrings" },
+        "tr": { "type": "array", "items": { "type": "object", "properties": {
+          "f": { "type": "string" }, "t": { "type": "string" }, "cmd": { "type": "string" },
+          "ev": { "type": "string" }, "guard": { "type": "string" }, "dmn": { "type": "string" }
+        } } },
+        "set": { "type": "object", "additionalProperties": { "type": "array", "items": { "$ref": "#/$defs/navigatorFileTriple" } } }
+      } }
+    },
+    "navigatorJourney": {
+      "type": "object", "properties": {
+        "phases": { "type": "array", "items": { "type": "object", "properties": {
+          "id": { "type": "string" }, "name": { "type": "string" }, "gate": { "type": "string" }, "purpose": { "type": "string" },
+          "contexts": { "$ref": "#/$defs/navigatorStrings" },
+          "files": { "type": "array", "items": { "$ref": "#/$defs/navigatorFile" } }
+        } } },
+        "entries": { "type": "array", "items": { "type": "object", "properties": {
+          "name": { "type": "string" }, "text": { "type": "string" }, "file": { "$ref": "#/$defs/navigatorFile" }
+        } } }
+      }
+    },
+    "navigatorContexts": {
+      "type": "array", "items": { "type": "object", "properties": {
+        "id": { "type": "string" }, "name": { "type": "string" }, "cls": { "type": "string" }, "color": { "type": "string" }
+      } }
+    },
+    "navigatorPhases": {
+      "type": "array", "items": { "type": "object", "properties": {
+        "id": { "type": "string" }, "name": { "type": "string" }, "gate": { "type": "string" }
+      } }
     },
     "searchEntry": {
       "type": "object",

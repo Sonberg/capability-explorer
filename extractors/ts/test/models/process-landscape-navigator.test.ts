@@ -80,15 +80,15 @@ test("Given a verified navigator-data bundle whose xml map matches the admitted 
       generated: "synthetic",
       xml: { "intake.bpmn": xml },
       files: [{ id: "cat-1" }],
-      el: [{ id: "el-1" }],
+      el: { "intake.bpmn": { review: { id: "el-1" } } },
       links: { "link-1": {} },
-      events: [{ id: "evt-1" }],
+      events: { "evt-1": { id: "evt-1" } },
       lifecycle: [{ id: "life-1" }],
       journey: { phases: [] },
-      contexts: ["ctx-1"],
+      contexts: [{ id: "ctx-1" }],
       procFile: { "intake": "intake.bpmn" },
-      dmn: { "dmn-1": {} },
-      phases: ["phase-1"],
+      dmn: { "dmn-1": "Synthetic decision" },
+      phases: [{ id: "phase-1" }],
     });
     await writeFile(join(root, "navigator.js"), `window.NAV_DATA = ${bundle};\n`);
     const input = manifest([
@@ -102,20 +102,43 @@ test("Given a verified navigator-data bundle whose xml map matches the admitted 
     assert.equal(snapshot.navigator?.bundle.path, "navigator.js");
     assert.match(snapshot.navigator!.bundle.sha256, /^[a-f0-9]{64}$/);
     assert.deepEqual(snapshot.navigator?.catalogue, [{ id: "cat-1" }], "the source \"files\" key must map to the catalogue field");
-    assert.deepEqual(snapshot.navigator?.elements, [{ id: "el-1" }], "the source \"el\" key must map to the elements field");
+    assert.deepEqual(snapshot.navigator?.elements, { "intake.bpmn": { review: { id: "el-1" } } }, "the source \"el\" key must map to the elements field");
     assert.deepEqual(snapshot.navigator?.links, { "link-1": {} });
-    assert.deepEqual(snapshot.navigator?.events, [{ id: "evt-1" }]);
+    assert.deepEqual(snapshot.navigator?.events, { "evt-1": { id: "evt-1" } });
     assert.deepEqual(snapshot.navigator?.lifecycle, [{ id: "life-1" }]);
     assert.deepEqual(snapshot.navigator?.journey, { phases: [] });
-    assert.deepEqual(snapshot.navigator?.contexts, ["ctx-1"]);
+    assert.deepEqual(snapshot.navigator?.contexts, [{ id: "ctx-1" }]);
     assert.deepEqual(snapshot.navigator?.procFile, { "intake": "intake.bpmn" }, "procFile must be preserved under its own name");
-    assert.deepEqual(snapshot.navigator?.dmn, { "dmn-1": {} }, "dmn must be preserved under its own name");
-    assert.deepEqual(snapshot.navigator?.phases, ["phase-1"], "phases must be preserved under its own name (not the singular \"phase\")");
+    assert.deepEqual(snapshot.navigator?.dmn, { "dmn-1": "Synthetic decision" }, "dmn must be preserved under its own name");
+    assert.deepEqual(snapshot.navigator?.phases, [{ id: "phase-1" }], "phases must be preserved under its own name (not the singular \"phase\")");
     assert.equal(snapshot.navigator?.generated, "synthetic", "generated must be copied through for provenance");
     assert.ok(
       JSON.stringify(snapshot).includes(snapshot.navigator!.bundle.sha256),
       "the navigator bundle identity (including hash) must appear in the serialized snapshot",
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Given an API-invalid navigator category, the snapshot stays verified but explicitly partial and retains independent categories", async () => {
+  const root = await makeWorkspace();
+  try {
+    const xml = bpmn("intake");
+    await writeFile(join(root, "intake.bpmn"), xml);
+    const bundle = { xml: { "intake.bpmn": xml }, el: [], contexts: [{}], procFile: { intake: "intake.bpmn" } };
+    await writeFile(join(root, "navigator.js"), `window.NAV_DATA = ${JSON.stringify(bundle)};`);
+    const snapshot = await buildProcessLandscapeSnapshot(root, manifest([
+      { path: "intake.bpmn", role: "bpmn" }, { path: "navigator.js", role: "navigator-data" },
+    ]));
+    assert.equal(snapshot.navigator?.verified, true);
+    assert.equal(snapshot.navigator?.elements, undefined);
+    assert.deepEqual(snapshot.navigator?.contexts, [{}]);
+    assert.deepEqual(snapshot.navigator?.procFile, { intake: "intake.bpmn" });
+    assert.equal(snapshot.coverage.status, "partial");
+    assert.ok(snapshot.diagnostics.some(diagnostic =>
+      diagnostic.code === "invalid-navigator-category-shape" && diagnostic.disposition === "partial"
+      && diagnostic.source?.path === "navigator.js" && diagnostic.source.ref === "el"));
   } finally {
     await rm(root, { recursive: true, force: true });
   }

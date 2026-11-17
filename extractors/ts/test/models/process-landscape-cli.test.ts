@@ -45,6 +45,7 @@ test("the process-landscape CLI writes its snapshot atomically and fails explici
     assert.equal(snapshot.schema, "ce.process-landscape.v1");
     assert.match(snapshot.snapshotId, /^landscape:[a-f0-9]{64}$/);
     assert.equal(snapshot.sources[0]?.sourceBytesBase64, undefined);
+    assert.equal(Object.hasOwn(snapshot, "documents"), false);
 
     // Invalid manifest input must fail explicitly and must not disturb the existing output file.
     const invalidManifestPath = resolve(root, "invalid-manifest.json");
@@ -55,6 +56,19 @@ test("the process-landscape CLI writes its snapshot atomically and fails explici
     await run(process.execPath, [cli, "--manifest", manifestPath, "--base", root, "--out", outPath, "--content-profile", "model-content"]);
     const withContent = JSON.parse(await readFile(outPath, "utf8"));
     assert.deepEqual(Buffer.from(withContent.sources[0].sourceBytesBase64, "base64"), Buffer.from(bpmn, "utf8"));
+    await run(process.execPath, [cli, "--manifest", manifestPath, "--base", root, "--out", outPath, "--include-document-graph"]);
+    assert.deepEqual(JSON.parse(await readFile(outPath, "utf8")).documents, [], "single-process files keep their existing implicit scope");
+    await writeFile(resolve(root, "intake.bpmn"), bpmn.replace("</definitions>", `
+      <process id="second"><task id="other"/></process>
+      <collaboration id="collaboration">
+        <participant id="pool1" processRef="intake"/><participant id="pool2"/>
+        <messageFlow id="message" sourceRef="pool1" targetRef="pool2"/>
+      </collaboration></definitions>`));
+    await run(process.execPath, [cli, "--manifest", manifestPath, "--base", root, "--out", outPath, "--include-document-graph"]);
+    const multi = JSON.parse(await readFile(outPath, "utf8"));
+    assert.equal(multi.documents.length, 1);
+    assert.equal(multi.documents[0].relationships[0].kind, "messageFlow");
+    assert.equal(multi.sources.length, 1);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

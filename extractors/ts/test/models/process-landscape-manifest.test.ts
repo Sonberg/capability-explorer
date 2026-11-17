@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import fsPromises, { mkdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { tmpdir } from "node:os";
+import { syncBuiltinESMExports } from "node:module";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { readManifestFile } from "../../src/models/process-landscape-manifest.ts";
+import { readBoundedFile, readManifestFile } from "../../src/models/process-landscape-manifest.ts";
 import { ProcessLandscapeError } from "../../src/models/process-landscape-types.ts";
 
 async function makeWorkspace(): Promise<string> {
@@ -25,31 +25,99 @@ test("Given a legitimate nested manifest path, readManifestFile returns its byte
   }
 });
 
+const readers = [
+  { name: "manifest", read: (root: string) => readManifestFile(root, "nested/intake.bpmn", 1024), raceCode: "manifest-path-race-detected" },
+  { name: "bounded", read: (root: string) => readBoundedFile(join(root, "nested/intake.bpmn"), 1024), raceCode: "bounded-file-race-detected" },
+];
+
+test("checked file opens report deterministic path races without following symlinks", async context => {
+  for (const reader of readers) for (const errno of ["ENOENT", "ENOTDIR", "ELOOP"]) {
+    await context.test(`${reader.name}: ${errno} between lstat and open`, {
+      skip: errno === "ELOOP" && process.platform === "win32" ? "O_NOFOLLOW is POSIX-only" : false,
+    }, async subtest => {
+      const root = await makeWorkspace();
+      const outside = await makeWorkspace();
+      try {
+        const nested = join(root, "nested");
+        const target = join(nested, "intake.bpmn");
+        await mkdir(nested);
+        await writeFile(target, "legit-content");
+        await writeFile(join(root, "not-a-directory"), "plain-file");
+        await writeFile(join(outside, "intake.bpmn"), "attacker-content");
+        const originalOpen = fsPromises.open;
+        let observedErrno: string | undefined;
+        subtest.mock.method(fsPromises, "open", async (...args: Parameters<typeof originalOpen>) => {
+          if (errno === "ENOTDIR") {
+            await rename(nested, join(root, "parked"));
+            await rename(join(root, "not-a-directory"), nested);
+          } else {
+            await rename(target, join(root, "parked.bpmn"));
+            if (errno === "ELOOP") await symlink(join(outside, "intake.bpmn"), target);
+          }
+          try {
+            return await originalOpen(...args);
+          } catch (error) {
+            observedErrno = (error as NodeJS.ErrnoException).code;
+            throw error;
+          }
+        });
+        syncBuiltinESMExports();
+        const error: unknown = await reader.read(root).then(() => undefined, error => error);
+        assert.equal(observedErrno, errno, "the real filesystem must exercise the intended open errno");
+        assert.ok(error instanceof ProcessLandscapeError, `${errno} must not escape as a raw filesystem error`);
+        assert.equal(error.code, reader.raceCode);
+        assert.equal((error.cause as NodeJS.ErrnoException).code, errno);
+      } finally {
+        subtest.mock.restoreAll();
+        syncBuiltinESMExports();
+        await rm(root, { recursive: true, force: true });
+        await rm(outside, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
+test("unexpected open failures retain their original identity rather than becoming path races", async context => {
+  for (const reader of readers) for (const code of ["EIO", "EACCES", "EMFILE", undefined]) {
+    await context.test(`${reader.name}: ${code ?? "programming error"}`, async subtest => {
+      const root = await makeWorkspace();
+      try {
+        await mkdir(join(root, "nested"));
+        await writeFile(join(root, "nested/intake.bpmn"), "legit-content");
+        const failure = code ? Object.assign(new Error("synthetic filesystem failure"), { code }) : new TypeError("synthetic programming error");
+        subtest.mock.method(fsPromises, "open", async () => { throw failure; });
+        syncBuiltinESMExports();
+        await assert.rejects(reader.read(root), error => error === failure);
+      } finally {
+        subtest.mock.restoreAll();
+        syncBuiltinESMExports();
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
 test("Given a parent-directory symlink swap race, readManifestFile never returns bytes from outside the base directory", async () => {
-  // Outside the base directory entirely, on a separate real temp directory to avoid any ancestor relationship.
-  const outside = await mkdtemp(join(tmpdir(), "process-landscape-outside-"));
+  const outside = await makeWorkspace();
   const root = await makeWorkspace();
   try {
     await writeFile(join(outside, "intake.bpmn"), "attacker-content");
     const nested = join(root, "nested");
-
-    const legitimateState = async () => {
-      await rm(nested, { recursive: true, force: true }).catch(() => undefined);
-      await mkdir(nested, { recursive: true });
-      await writeFile(join(nested, "intake.bpmn"), "legit-content");
-    };
-    const swappedState = async () => {
-      await rm(nested, { recursive: true, force: true }).catch(() => undefined);
-      await symlink(outside, nested);
-    };
-
-    await legitimateState();
+    const parked = join(root, "parked");
+    await mkdir(nested);
+    await writeFile(join(nested, "intake.bpmn"), "legit-content");
 
     let swapping = true;
     const swapLoop = (async () => {
       while (swapping) {
-        await swappedState();
-        await legitimateState();
+        // Move the completed file rather than racing the reader against a partially written file.
+        await rename(nested, parked);
+        try {
+          await symlink(outside, nested);
+        } finally {
+          await rm(nested, { force: true });
+          await rename(parked, nested);
+        }
       }
     })();
 
@@ -70,7 +138,7 @@ test("Given a parent-directory symlink swap race, readManifestFile never returns
       } else {
         assert.ok(
           result.reason instanceof ProcessLandscapeError,
-          "a rejected read during a symlink race must fail with an explicit ProcessLandscapeError",
+          `a rejected read during a symlink race must fail with an explicit ProcessLandscapeError (${(result.reason as NodeJS.ErrnoException)?.code ?? "no errno"})`,
         );
       }
     }
@@ -81,7 +149,7 @@ test("Given a parent-directory symlink swap race, readManifestFile never returns
 });
 
 test("Given an already-swapped symlinked directory component, readManifestFile rejects without reading its target", async () => {
-  const outside = await mkdtemp(join(tmpdir(), "process-landscape-outside-"));
+  const outside = await makeWorkspace();
   const root = await makeWorkspace();
   try {
     await writeFile(join(outside, "secret.bpmn"), "attacker-content");
@@ -107,7 +175,7 @@ test(
   "Given a Windows directory junction masquerading as a manifest path component, readManifestFile rejects it without reading its target",
   { skip: process.platform !== "win32" ? "junction reparse points can only be created and exercised on win32; could not be executed on this platform" : false },
   async () => {
-    const outside = await mkdtemp(join(tmpdir(), "process-landscape-outside-"));
+    const outside = await makeWorkspace();
     const root = await makeWorkspace();
     try {
       await writeFile(join(outside, "secret.bpmn"), "attacker-content");

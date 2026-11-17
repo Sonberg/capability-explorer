@@ -9,7 +9,7 @@ import { buildProcessLandscapeSnapshot } from "./process-landscape.ts";
 import { readBoundedFile, validateManifest } from "./process-landscape-manifest.ts";
 import { ProcessLandscapeError } from "./process-landscape-types.ts";
 
-const usage = "usage: node src/models/process-landscape-cli.ts --manifest <manifest.json> --base <dir> --out <file.json> [--content-profile model-content]";
+const usage = "usage: node src/models/process-landscape-cli.ts --manifest <manifest.json> --base <dir> --out <file.json> [--content-profile model-content] [--include-document-graph]";
 const maxManifestBytes = 1_048_576;
 
 async function readManifestBytes(path: string): Promise<Buffer> {
@@ -25,6 +25,7 @@ async function main(): Promise<number> {
         base: { type: "string" },
         out: { type: "string" },
         "content-profile": { type: "string" },
+        "include-document-graph": { type: "boolean" },
       },
       strict: true,
     }));
@@ -62,6 +63,7 @@ async function main(): Promise<number> {
 
     const snapshot = await buildProcessLandscapeSnapshot(baseResolved, manifestJson, {
       ...(contentProfile ? { contentProfile: contentProfile as "structural" | "model-content" } : {}),
+      ...(values["include-document-graph"] ? { includeDocumentGraph: true } : {}),
     });
 
     const existing = await lstat(outputPath).catch((error: NodeJS.ErrnoException) => {

@@ -28,6 +28,17 @@ export interface LandscapeRelationship {
   condition?: { text?: string; language?: string };
 }
 
+export interface LandscapeDocumentRelationship extends LandscapeRelationship {
+  kind: "messageFlow";
+  elementIdentity: string;
+}
+
+export interface LandscapeDocument {
+  path: string;
+  elements: LandscapeElement[];
+  relationships: LandscapeDocumentRelationship[];
+}
+
 export interface LandscapeDiagnostic {
   code: string;
   message: string;
@@ -175,6 +186,7 @@ export interface ProcessLandscapeSnapshot {
   phaseJourney: PhaseJourneyPhase[];
   overlays: ProcessLandscapeOverlays;
   navigator?: ProcessLandscapeNavigator;
+  documents?: LandscapeDocument[];
 }
 
 export class ProcessLandscapeError extends Error {

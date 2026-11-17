@@ -18,6 +18,22 @@ function noFollowReadFlags(): number {
   return constants.O_RDONLY | (IS_WINDOWS ? 0 : constants.O_NOFOLLOW);
 }
 
+async function openCheckedFile(path: string, raceCode: string, displayPath: string): Promise<FileHandle> {
+  try {
+    return await open(path, noFollowReadFlags());
+  } catch (error) {
+    // A checked path can disappear, lose a directory component, or become a symlink before open.
+    // Permission, I/O, resource-exhaustion and programming failures are not evidence of that race.
+    const errno = (error as NodeJS.ErrnoException | null)?.code;
+    if (errno !== "ENOENT" && errno !== "ENOTDIR" && errno !== "ELOOP") throw error;
+    const failure = new ProcessLandscapeError(
+      raceCode, `Checked file path changed before it could be opened safely: ${displayPath} (${errno})`,
+    );
+    failure.cause = error;
+    throw failure;
+  }
+}
+
 /**
  * On Windows, a directory reparse point (junction) is not reliably reported by `lstat().isSymbolicLink()`
  * the way a POSIX symlink is: junctions carry the `IO_REPARSE_TAG_MOUNT_POINT` tag rather than
@@ -220,7 +236,7 @@ export async function readManifestFile(baseDir: string, relativePath: string, ma
     throw new ProcessLandscapeError("manifest-path-escape", `Manifest path escapes the base directory: ${relativePath}`);
   }
 
-  const handle = await open(current, noFollowReadFlags());
+  const handle = await openCheckedFile(current, "manifest-path-race-detected", relativePath);
   try {
     const stat = await handle.stat();
     if (!stat.isFile() || stat.size > maxBytes) {
@@ -263,7 +279,7 @@ export async function readBoundedFile(absolutePath: string, maxBytes: number): P
   if (!info.isFile()) throw new ProcessLandscapeError("bounded-file-not-file", `File must be a regular file: ${absolutePath}`);
   await assertNoWindowsReparsePoint(absolutePath, info, "bounded-file-junction", `File is a reparse-point (junction) that cannot be verified as a plain file: ${absolutePath}`);
 
-  const handle = await open(absolutePath, noFollowReadFlags());
+  const handle = await openCheckedFile(absolutePath, "bounded-file-race-detected", absolutePath);
   try {
     const stat = await handle.stat();
     if (!stat.isFile() || stat.size < 1 || stat.size > maxBytes) {

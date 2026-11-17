@@ -99,6 +99,12 @@ public static class ProcessLandscapeLoader
         {
             using var document = JsonDocument.Parse(raw, new JsonDocumentOptions { MaxDepth = 64 });
             RejectDuplicateMembers(document.RootElement);
+            if (document.RootElement.ValueKind != JsonValueKind.Object) throw new JsonException("Invalid snapshot object.");
+            if (document.RootElement.TryGetProperty("documents", out var documents))
+            {
+                if (documents.ValueKind != JsonValueKind.Array) throw new JsonException("Invalid documents collection.");
+                ValidateDocumentJsonLimit(raw, documents.GetArrayLength());
+            }
             snapshot = document.RootElement.Deserialize<ProcessLandscapeSnapshot>(Json)
                 ?? throw new ProcessLandscapeRejectedException("invalid", "process-landscape-snapshot-null");
         }
@@ -113,6 +119,47 @@ public static class ProcessLandscapeLoader
 
         ProcessLandscapeValidation.Validate(snapshot, options.AllowModelContent);
         return snapshot;
+    }
+
+    private static void ValidateDocumentJsonLimit(byte[] raw, int documentCount)
+    {
+        // The producer sums individual document objects, excluding the enclosing array and separators.
+        var maximumBytes = (long)ProcessLandscapeDocumentLimits.MaxJsonBytes + Math.Max(2, documentCount + 1);
+        var reader = new Utf8JsonReader(raw, new JsonReaderOptions { MaxDepth = 64 });
+        while (reader.Read())
+        {
+            if (reader.TokenType != JsonTokenType.PropertyName || reader.CurrentDepth != 1 ||
+                !reader.ValueTextEquals("documents")) continue;
+            reader.Read();
+            var start = reader.TokenStartIndex;
+            reader.Skip();
+            // CLI snapshots may be indented. Count compact JSON bytes without copying private data or
+            // charging insignificant whitespace against the producer's compact document-JSON budget.
+            if (reader.BytesConsumed - start > maximumBytes)
+                ValidateCompactDocumentBytes(raw.AsSpan((int)start, checked((int)(reader.BytesConsumed - start))), maximumBytes);
+            break;
+        }
+    }
+
+    private static void ValidateCompactDocumentBytes(ReadOnlySpan<byte> raw, long maximumBytes)
+    {
+        var quoted = false;
+        var escaped = false;
+        long length = 0;
+        foreach (var value in raw)
+        {
+            if (quoted)
+            {
+                length++;
+                if (escaped) escaped = false;
+                else if (value == '\\') escaped = true;
+                else if (value == '"') quoted = false;
+            }
+            else if (value == '"') { quoted = true; length++; }
+            else if (value is not ((byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n')) length++;
+            if (length > maximumBytes)
+                throw new ProcessLandscapeRejectedException("limit", "document-json-limit");
+        }
     }
 
     /// <summary>Strict JSON (<see cref="JsonUnmappedMemberHandling.Disallow"/>) already rejects unknown members,

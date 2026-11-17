@@ -15,7 +15,7 @@ import {
 } from "./process-landscape-manifest.ts";
 import {
   ProcessLandscapeError,
-  type CrossProcessEvent, type LandscapeDiagnostic, type LandscapeSourceRecord, type ObjectLifecycle, type PhaseJourneyPhase,
+  type CrossProcessEvent, type LandscapeDiagnostic, type LandscapeDocument, type LandscapeSourceRecord, type ObjectLifecycle, type PhaseJourneyPhase,
   type ProcessEntry, type ProcessLandscapeContentProfile, type ProcessLandscapeOverlays, type ProcessLandscapeSnapshot,
   type ProposalStatus, type SearchEntry,
 } from "./process-landscape-types.ts";
@@ -42,6 +42,8 @@ function compareOrdinal(a: string, b: string): number {
 
 export interface ProcessLandscapeOptions {
   contentProfile?: ProcessLandscapeContentProfile;
+  /** Emit optional canonical multi-process document graphs; old strict v1 readers require omission. */
+  includeDocumentGraph?: boolean;
 }
 
 interface FileRecord { path: string; byteLength: number; sha256: string }
@@ -67,11 +69,17 @@ export async function buildProcessLandscapeSnapshot(
   if (contentProfile !== "structural" && contentProfile !== "model-content") {
     throw new ProcessLandscapeError("invalid-content-profile", "contentProfile must be structural or model-content");
   }
+  if (options.includeDocumentGraph !== undefined && typeof options.includeDocumentGraph !== "boolean") {
+    throw new ProcessLandscapeError("invalid-document-graph-option", "includeDocumentGraph must be boolean");
+  }
 
   const fileRecords: FileRecord[] = [];
   const diagnostics: LandscapeDiagnostic[] = [];
   const processes: ProcessEntry[] = [];
   const sources: LandscapeSourceRecord[] = [];
+  const documents: LandscapeDocument[] = [];
+  const documentSupported = new Set<string>();
+  let documentGraphBytes = 0;
   const admittedBpmnSha256 = new Set<string>();
   const admittedBpmnNewlineNormalizedSha256 = new Set<string>();
   let navigatorBundle: { path: string; bytes: Buffer } | undefined;
@@ -114,7 +122,15 @@ export async function buildProcessLandscapeSnapshot(
 
     const xml = decodeUtf8Strict(bytes, entry.path);
     admittedBpmnNewlineNormalizedSha256.add(createHash("sha256").update(xml.replace(/\r\n?/g, "\n"), "utf8").digest("hex"));
-    const extraction = extractBpmnDiagram(xml, entry.path, manifest.repositoryId);
+    const extraction = extractBpmnDiagram(xml, entry.path, manifest.repositoryId, options.includeDocumentGraph);
+    if (extraction.document) {
+      documentGraphBytes += Buffer.byteLength(JSON.stringify(extraction.document), "utf8");
+      if (documentGraphBytes > MANIFEST_LIMITS.maxTotalBytes) {
+        throw new ProcessLandscapeError("document-graph-size-limit", "Document graph projection exceeds the aggregate byte budget");
+      }
+      documents.push(extraction.document);
+      for (const feature of extraction.documentSupported ?? []) documentSupported.add(feature);
+    }
     diagnostics.push(...extraction.documentDiagnostics);
     for (const pending of extraction.pendingCalledElements) pendingCalledElementsAcrossFiles.push({ ...pending, path: entry.path });
     const singleProcessFile = extraction.processes.length <= 1;
@@ -348,7 +364,7 @@ export async function buildProcessLandscapeSnapshot(
 
   void matchedProcessIds;
   const allDiagnostics = [...diagnostics, ...processes.flatMap((process) => process.diagnostics)];
-  const supported = [...new Set(processes.flatMap((process) => process.coverage.supported))].sort();
+  const supported = [...new Set([...documentSupported, ...processes.flatMap((process) => process.coverage.supported)])].sort();
   const limitations = [...new Set(allDiagnostics.map((item) => item.code))].sort();
 
   const sortedRecords = [...fileRecords].sort((a, b) => compareOrdinal(a.path, b.path));
@@ -374,6 +390,7 @@ export async function buildProcessLandscapeSnapshot(
     phaseJourney,
     overlays,
     ...(navigator ? { navigator } : {}),
+    ...(options.includeDocumentGraph ? { documents } : {}),
   };
 
   const validate = snapshotValidator();
