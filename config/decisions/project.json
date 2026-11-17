@@ -37,6 +37,16 @@
   ],
   "sidecar": "config/decisions/ledger.json",
   "output": "docs/research/decision-ledger-preview",
+  "review": {
+    "mode": "partial",
+    "inventorySha256": "efae0075d6f8012f4559ea8c2e720298dc74fa9115e60fc7b290f6400d3dd261",
+    "includedRecords": [
+      "[\"capability-explorer\",\"local-ci\"]",
+      "[\"capability-explorer\",\"source-security\"]",
+      "[\"capability-explorer\",\"language-frontends\"]",
+      "[\"capability-explorer\",\"domain-assessment\"]"
+    ]
+  },
   "vocabulary": [
     {"facet": "topic", "values": ["governance", "semantics", "architecture", "storage"]},
     {"facet": "concern", "values": ["portability", "authority", "compatibility", "evidence"]}

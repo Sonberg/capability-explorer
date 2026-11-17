@@ -20,6 +20,8 @@ help:
 	@echo "     CE_CONTAINER_ENGINE=auto prefers Docker, then Podman; set docker or podman to pin"
 	@echo "     DEV_OLLAMA=0 skips Ollama; an Ollama startup or pull failure is non-fatal"
 	@echo "make frontend        run the Vite frontend dev server on the host (hot reload)"
+	@echo "make ui              build both shipped UIs (client-next stays separate from legacy wwwroot)"
+	@echo "make frontend-process-landscape  run the new Vite UI with its /api proxy"
 	@echo "make backend         run the Explorer API on the host at http://127.0.0.1:$(PORT)"
 	@echo "     PG_PORT=5433 OLLAMA_CHAT=none (skip the chat model) and every explore option; make dev-down stops the containers"
 	@echo "make dev-data        only the import + embed step of make dev (e.g. while the explorer runs)"
@@ -145,7 +147,7 @@ $(UI_DEPS_STAMP): $(UI)/package-lock.json
 
 restore-ui: $(UI_DEPS_STAMP) restore-likec4-native
 
-ui: restore-ui
+ui: restore-ui ui-process-landscape
 	cd $(UI) && $(NPM) run -s build
 
 frontend: restore-ui
@@ -312,7 +314,7 @@ dev-down:
 	-$(CE_ENGINE_COMMAND) stop ce-postgres ce-ollama
 
 clean:
-	rm -rf fixtures/.repos fixtures/.work extractors/ts/node_modules $(UI)/node_modules platform/src/CapabilityExplorer.Explorer/wwwroot
+	rm -rf fixtures/.repos fixtures/.work extractors/ts/node_modules $(UI)/node_modules $(PROCESS_LANDSCAPE_UI)/node_modules $(PROCESS_LANDSCAPE_UI)/dist platform/src/CapabilityExplorer.Explorer/wwwroot
 	find platform -type d \( -name bin -o -name obj \) -prune -exec rm -rf {} +
 
 .PHONY: restore-likec4-native

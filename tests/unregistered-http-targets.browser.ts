@@ -188,12 +188,10 @@ function repositoryArchitecture(url: URL, state: FixtureState) {
 
 interface ExplorerOptions { path?: string; init?: () => void }
 
-// A selected Capability with an explicit revision view, as stored by the Explorer selection provider.
+// The server resolves the selected Capability to its locked revision.
 function selectPlanningCapability() {
   localStorage.setItem("ce.capability", JSON.stringify("planning"));
-  localStorage.setItem("ce.overrides", JSON.stringify({ planning: { "planning-api": "c".repeat(40) } }));
 }
-const PLANNING_VIEW = `planning-api:${FIRST_COMMIT}`;
 
 async function withExplorer(viewport: { width: number; height: number }, state: FixtureState, run: (page: Page) => Promise<void>, options: ExplorerOptions = {}) {
   const browser = await playwright.chromium.launch({ headless: true });
@@ -576,7 +574,7 @@ test("102-J Given a selected Capability and view, when candidate occurrences are
   await withExplorer({ width: 1440, height: 1000 }, state, async page => {
     const before = lastArchitecture(state);
     assert.equal(before.searchParams.get("cap"), "planning", "The fixture selects the Planning Capability.");
-    assert.equal(before.searchParams.get("view"), PLANNING_VIEW, "The fixture selects an explicit revision view.");
+    assert.equal(before.searchParams.get("view"), null, "Capability-locked revisions are resolved by the server.");
     await selectCandidate(page);
     const inspector = page.getByRole("region", { name: "Unregistered target candidate", exact: true });
     const drilled = page.waitForRequest((request: Request) => {

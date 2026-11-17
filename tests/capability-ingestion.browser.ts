@@ -418,14 +418,14 @@ test("Given a narrow viewport, when managing a capability, then every action sta
     await page.getByRole("heading", { name: "Orders", exact: true }).waitFor();
     const layout = await page.evaluate(() => ({ width: innerWidth, contentWidth: document.documentElement.scrollWidth }));
     assert.ok(layout.contentWidth <= layout.width, `capability actions must not overflow the viewport: ${JSON.stringify(layout)}`);
-    for (const action of ["Check sources", "Analyze code", "Rebuild intelligence", "Remove"]) {
+    for (const action of ["Select", "Check sources", "Analyze code", "Remove"]) {
       const bounds = await page.getByRole("button", { name: action, exact: true }).boundingBox();
       assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= layout.width, `${action} must stay on-screen`);
     }
   });
 });
 
-test("Given a long repository identity, when managing ingestion on mobile, then revision controls stay inside the page", async () => {
+test("Given a long repository identity, when managing ingestion on mobile, then the locked scope stays inside the page", async () => {
   await withIngestionPage(async (page, origin) => {
     await page.setViewportSize({ width: 390, height: 844 });
     const repository = "apd-asq-assortmentengagementservice-api";
@@ -437,8 +437,16 @@ test("Given a long repository identity, when managing ingestion on mobile, then 
       defaultView: { [repository]: revision }, artifacts: 0, problems: [], hasSource: false, hasEvaluation: false, nodeKinds: [],
     } }));
     await page.route("**/api/view?*", (route) => route.fulfill({ json: { [repository]: revision } }));
+    await page.route("**/api/capabilities?*", (route) => route.fulfill({ json: [{
+      ...capability, repositories: [{ ...capability.repositories[0], id: repository, lockedSha: revision }]
+    }] }));
+    await page.route("**/api/generated-models/**", (route) => route.fulfill({ json: null }));
+    await page.route("**/api/generated-models", (route) => route.fulfill({ json: null }));
     await page.goto(`${origin}#/capabilities`);
-    await page.getByLabel(`Revision of ${repository}`, { exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Orders", exact: true }).waitFor();
+    await page.getByLabel("Capability", { exact: true }).selectOption("orders");
+    await page.getByText("Using capability-locked revisions").waitFor();
+    await page.getByText(repository, { exact: true }).waitFor();
     const layout = await page.evaluate(() => ({ width: innerWidth, contentWidth: document.documentElement.scrollWidth }));
     assert.ok(layout.contentWidth <= layout.width, `repository scope controls must not overflow: ${JSON.stringify(layout)}`);
   });

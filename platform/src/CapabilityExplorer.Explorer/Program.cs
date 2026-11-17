@@ -65,6 +65,7 @@ if (dataSource is not null)
 }
 builder.Services.AddTaskQueries(source);
 builder.Services.AddOwnershipAlignment();
+builder.Services.AddProcessLandscape();
 var intelligence = new Intelligence(interpretation, builder.Configuration["modelSettings"] ?? ModelSettings.DefaultPath,
     dataSource is null ? null : new EmbeddingStore(dataSource), metadataOnly: source == "postgres",
     embeddingConfiguration: source == "postgres"
@@ -102,18 +103,22 @@ app.Use(async (context, next) =>
     await next(context);
 });
 app.UseResponseCompression();
-app.UseDefaultFiles();
 var staticFiles = new StaticFileOptions
 {
     OnPrepareResponse = context => context.Context.Response.Headers.CacheControl = "no-cache"
 };
-app.UseStaticFiles(staticFiles);
+app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api"), frontend =>
+{
+    frontend.UseDefaultFiles();
+    frontend.UseStaticFiles(staticFiles);
+});
 app.MapHealthApi();
 app.MapDeprecationsApi();
 app.MapModelApi(source);
 app.MapTaskQueryApi();
 app.MapGeneratedModelsApi();
 app.MapOwnershipAlignmentApi();
+app.MapProcessLandscapeApi();
 if (source == "postgres") app.MapPostgresExplorerApi();
 else
 {
@@ -122,5 +127,20 @@ else
     app.MapGlossaryProposalApi();
     app.MapBindingPreviewApi();
 }
-app.MapFallbackToFile("index.html", staticFiles);
+app.MapFallbackToFile("/process-landscape/{*path:nonfile}", "process-landscape/index.html", staticFiles);
+app.MapFallbackToFile("index.html", staticFiles).Add(endpoint =>
+{
+    var serveIndex = endpoint.RequestDelegate!;
+    endpoint.RequestDelegate = context =>
+    {
+        // Unknown APIs and missing nested assets must never receive the legacy SPA.
+        if (context.Request.Path.StartsWithSegments("/api")
+            || context.Request.Path.StartsWithSegments("/process-landscape"))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return Task.CompletedTask;
+        }
+        return serveIndex(context);
+    };
+});
 app.Run();

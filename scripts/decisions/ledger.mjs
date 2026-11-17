@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { validate } from './schema.mjs';
 import { readJSON } from './contracts.mjs';
-import { localPath, discover, loadCollection, verifyEvidence, passage } from './source.mjs';
+import { localPath, discover, loadCollection, verifyEvidence, passage, sha256 } from './source.mjs';
 import { key, compare, canonical, relationError, validateCycles } from './semantics.mjs';
 import { resolvePointer } from './json-source.mjs';
 
@@ -24,9 +24,31 @@ export function reconcile(root, config, ledger) {
   unique(ledger.records.map(r => key(r.project, r.id)), 'duplicate record identity');
   unique(ledger.records.map(r => locator(r.project, r.path, r.pointer)), 'duplicate source locator');
   unique(ledger.edges.map(e => e.id), 'duplicate assertion identity');
+  if (ledger.records.length > config.limits.maxFiles) throw new Error('record budget');
   if (ledger.edges.length > config.limits.maxEdges) throw new Error('edge budget');
   const sources = new Map(), recordMap = new Map(), sourceLocators = new Map(), projectMap = new Map();
   const diagnostics = [], declarations = [];
+  let selectedRecords = ledger.records, selectedEdges = ledger.edges, coverage;
+  if (config.review) {
+    if (sha256(canonical(ledger)) !== config.review.inventorySha256)
+      throw new Error('partial review inventory revision mismatch');
+    const selected = new Set(config.review.includedRecords);
+    const available = new Set(ledger.records.map(r => key(r.project, r.id)));
+    if ([...selected].some(k => !available.has(k))) throw new Error('unknown included record');
+    selectedRecords = ledger.records.filter(r => selected.has(key(r.project, r.id)));
+    selectedEdges = ledger.edges.filter(e => selected.has(e.from) &&
+      (e.to.state !== 'resolved' || selected.has(key(e.to.project, e.to.id))) &&
+      [e.evidence, ...(e.corroboration ?? [])].every(receipt => selected.has(receipt.record)));
+    const includedEdges = new Set(selectedEdges.map(e => e.id));
+    for (const record of ledger.records.filter(r => !selected.has(key(r.project, r.id))))
+      diagnostics.push({ kind: 'unreviewed-record', record: key(record.project, record.id), path: record.path });
+    for (const edge of ledger.edges.filter(e => !includedEdges.has(e.id)))
+      diagnostics.push({ kind: 'unreviewed-relationship', assertion: edge.id });
+    coverage = { mode: 'partial', inventorySha256: config.review.inventorySha256,
+      records: selectedRecords.length, unreviewedRecords: ledger.records.length - selectedRecords.length,
+      relationships: selectedEdges.length, unreviewedRelationships: ledger.edges.length - selectedEdges.length };
+    diagnostics.push({ kind: 'partial-inventory', ...coverage });
+  }
   let totalBytes = 0, totalRecords = 0;
   for (const project of config.projects) {
     if ((project.adapter === 'json-collection-v1') !== (project.canonical === 'json'))
@@ -52,7 +74,7 @@ export function reconcile(root, config, ledger) {
       }
     }
   }
-  for (const record of ledger.records) {
+  for (const record of selectedRecords) {
     const k = key(record.project, record.id), project = projectMap.get(record.project);
     if (!project) throw new Error(`unknown record project: ${record.project}`);
     const loc = locator(record.project, record.path, record.pointer), source = sourceLocators.get(loc);
@@ -63,9 +85,16 @@ export function reconcile(root, config, ledger) {
     if (source.alias !== undefined && source.alias !== record.alias) throw new Error('JSON local alias mismatch');
     sources.set(k, source); recordMap.set(k, record);
   }
+  if (config.review) {
+    const selected = new Set(config.review.includedRecords);
+    for (const record of ledger.records.filter(r => !selected.has(key(r.project, r.id)))) {
+      if (sourceLocators.delete(locator(record.project, record.path, record.pointer)))
+        diagnostics.push({ kind: 'unreviewed-source-present', record: key(record.project, record.id), path: record.path });
+    }
+  }
   if (sourceLocators.size) throw new Error(`inventory coverage: ${[...sourceLocators.keys()].join(', ')}`);
   for (const project of config.projects.filter(p => p.canonical === 'json'))
-    unique(ledger.records.filter(r => r.project === project.id).map(r => r.alias), 'ambiguous JSON local id; configure separate collection namespaces');
+    unique(selectedRecords.filter(r => r.project === project.id).map(r => r.alias), 'ambiguous JSON local id; configure separate collection namespaces');
   const vocabulary = new Map(config.vocabulary.map(v => [v.facet, new Set(v.values)]));
   for (const [k, record] of recordMap) {
     const source = sources.get(k), project = projectMap.get(record.project);
@@ -100,7 +129,7 @@ export function reconcile(root, config, ledger) {
     for (const d of source.declaredRelations ?? []) declarations.push({ ...d, record: k, project: record.project });
   }
   const declaredUsed = new Set(), normalizedEdges = new Set();
-  for (const edge of ledger.edges) {
+  for (const edge of selectedEdges) {
     const why = relationError(edge);
     if (why) throw new Error(why);
     const from = recordMap.get(edge.from);
@@ -145,8 +174,8 @@ export function reconcile(root, config, ledger) {
   for (const d of declarations)
     if (!declaredUsed.has(JSON.stringify([d.record, d.pointer])))
       diagnostics.push({ record: d.record, kind: 'unimported-typed-relation', pointer: d.pointer, target: d.target, type: d.type });
-  validateCycles(ledger.edges);
-  const records = ledger.records.map(record => {
+  validateCycles(selectedEdges);
+  const records = selectedRecords.map(record => {
     const k = key(record.project, record.id), source = sources.get(k);
     return {
       ...record, facets: [...record.facets].sort((a, b) => compare(key(a.facet, a.value), key(b.facet, b.value))),
@@ -155,9 +184,9 @@ export function reconcile(root, config, ledger) {
       titleEvidence: passage(source, k, source.titleLine, source.titleEnd ?? source.titleLine, source.titlePointer)
     };
   }).sort((a, b) => compare(key(a.project, a.id), key(b.project, b.id)));
-  const edges = ledger.edges.map(e => ({ ...e, ...(e.corroboration ? {
+  const edges = selectedEdges.map(e => ({ ...e, ...(e.corroboration ? {
     corroboration: [...e.corroboration].sort((a, b) => compare(canonical(a), canonical(b)))
   } : {}) })).sort((a, b) => compare(a.id, b.id));
-  return { version: ledger.version, records, edges,
+  return { version: ledger.version, ...(coverage ? { coverage } : {}), records, edges,
     diagnostics: diagnostics.sort((a, b) => compare(JSON.stringify(a), JSON.stringify(b))) };
 }

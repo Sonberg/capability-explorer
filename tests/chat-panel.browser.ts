@@ -120,13 +120,9 @@ test("Built current chat: synthetic scoped evidence, opt-in reload and request i
           }; break;
           case "/api/generation": payload = { generation: 1, snapshotId }; break;
           case "/api/view": {
-            const view = url.searchParams.get("view");
             const cap = url.searchParams.get("cap");
             if (cap !== null && cap !== capability.id) break;
-            if (view === "") payload = { [repository]: latest };
-            else if (view === `${repository}:${selected}` || view === `${repository}:${latest}`) {
-              payload = { [repository]: view.split(":")[1] };
-            }
+            payload = { [repository]: cap === capability.id ? selected : latest };
             break;
           }
           case "/api/search": payload = { items: [], nextCursor: null, total: 0, snapshotId }; break;
@@ -160,17 +156,6 @@ test("Built current chat: synthetic scoped evidence, opt-in reload and request i
     });
     await scope.getByLabel("Capability", { exact: true }).selectOption(capability.id);
     await capabilityResolved;
-    const revisionResolved = page.waitForResponse(response => {
-      const url = new URL(response.url());
-      return url.pathname === "/api/view" && url.searchParams.get("cap") === capability.id
-        && url.searchParams.get("view") === `${repository}:${selected}`;
-    });
-    await scope.getByLabel(`Revision of ${repository}`, { exact: true }).selectOption(selected);
-    await revisionResolved;
-    await page.waitForFunction(({ repository, selected }) =>
-      document.querySelector<HTMLSelectElement>(`select[aria-label="Revision of ${repository}"]`)?.value === selected,
-    { repository, selected });
-
     const open = page.getByRole("button", { name: /^Ask (?:⌘J|Ctrl J)$/ });
     await open.click();
     const panel = page.getByRole("complementary", { name: "Ask about capabilities", exact: true });
@@ -282,9 +267,9 @@ test("Built current chat: synthetic scoped evidence, opt-in reload and request i
     await exchange();
     const changed = page.waitForResponse(response => {
       const url = new URL(response.url());
-      return url.pathname === "/api/view" && url.searchParams.get("view") === `${repository}:${latest}`;
+      return url.pathname === "/api/view" && !url.searchParams.has("cap");
     });
-    await scope.getByLabel(`Revision of ${repository}`, { exact: true }).selectOption(latest);
+    await scope.getByLabel("Capability", { exact: true }).selectOption("");
     await changed;
     await remember.waitFor();
     await panel.getByText(/Saved chat.*(?:different|changed|scope)/).waitFor();
@@ -322,7 +307,7 @@ test("Built current chat: synthetic scoped evidence, opt-in reload and request i
     const oldAborted = page.waitForEvent("requestfailed", {
       predicate: request => new URL(request.url()).pathname === "/api/chat",
     });
-    await scope.getByLabel(`Revision of ${repository}`, { exact: true }).selectOption(selected);
+    await scope.getByLabel("Capability", { exact: true }).selectOption(capability.id);
     await remember.waitFor();
     await panel.getByText(/Saved chat.*(?:different|changed|scope)/).waitFor();
     const heldForNew = holdAnswer();
@@ -356,7 +341,7 @@ test("Built current chat: synthetic scoped evidence, opt-in reload and request i
     assert.equal(await panel.getByText("Synthetic request to close", { exact: true }).count(), 0);
     assert.equal(await retained(), null);
     await panel.getByRole("button", { name: "Close chat", exact: true }).click();
-    await page.evaluate(() => localStorage.removeItem("ce.overrides"));
+    await scope.getByLabel("Capability", { exact: true }).selectOption("");
     await reopenAfterReload();
     const defaultSent = page.waitForRequest(request => new URL(request.url()).pathname === "/api/chat");
     await exchange();

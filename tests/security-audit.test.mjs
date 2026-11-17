@@ -90,7 +90,11 @@ test('dependency report covers lockfile targets while companion manifests stay s
     { VulnerabilityID: 'CVE-UNKNOWN', PkgName: 'example', InstalledVersion: '1', Severity: 'UNKNOWN' },
     { VulnerabilityID: 'CVE-CRITICAL', PkgName: 'example', InstalledVersion: '1', Severity: 'CRITICAL' },
   ] }] };
-  assert.equal(validateDependencyReport(f.root, report, source).findings.length, 2);
+  const rows = validateDependencyReport(f.root, report, source).findings;
+  assert.deepEqual(rows.map(({ rule, location, severity }) => ({ rule, location, severity })), [
+    { rule: 'CVE-UNKNOWN', location: 'package-lock.json:example@1', severity: 'UNKNOWN' },
+    { rule: 'CVE-CRITICAL', location: 'package-lock.json:example@1', severity: 'CRITICAL' },
+  ]);
   assert.throws(() => validateDependencyReport(f.root, { SchemaVersion: 2, Results: [] }, source), /omitted inventoried input/);
   report.Results[0].Vulnerabilities[1].Severity = 'UNSPECIFIED';
   assert.throws(() => validateDependencyReport(f.root, report, source), /unsupported severity/);

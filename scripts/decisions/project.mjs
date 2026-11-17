@@ -29,6 +29,7 @@ export function report(ledger) {
       e.evidence.record, ...(e.corroboration ?? []).map(r => r.record)])) invalidation.get(k)?.push(`edge:${e.id}`);
   }
   return {
+    ...(ledger.coverage ? { coverage: ledger.coverage, reportScope: 'selected records and relationships only' } : {}),
     activeByScope,
     acceptanceInterpretation: 'source-recorded exact-scope candidates, not an authenticated active-decision verdict',
     scopeReview: Object.entries(activeByScope).filter(([, ids]) => ids.length > 1)
@@ -55,6 +56,9 @@ export function projections(ledger, config, root = '.', output = config.output) 
     '| Project / stable record | Alias | Title | Raw status | State / exact scope |',
     '| --- | --- | --- | --- | --- |'
   ];
+  const partial = ledger.diagnostics.find(d => d.kind === 'partial-inventory');
+  if (partial) lines.splice(4, 0,
+    `**Incomplete inventory:** ${partial.unreviewedRecords} records and ${partial.unreviewedRelationships} relationships remain unreviewed and unverified.`, '');
   const graph = ['flowchart LR'];
   for (const r of ledger.records) {
     const k = key(r.project, r.id), n = node(k);
@@ -77,7 +81,7 @@ export function projections(ledger, config, root = '.', output = config.output) 
     '', '## Legend', '', 'Accepted: green, exact recorded scope only; proposed: yellow; draft: red.',
     'Rejected/deprecated/superseded: gray; unknown: neutral. No color proves implementation.',
     '', '## Diagnostics', '', ...ledger.diagnostics.map(d => `- ${md(JSON.stringify(d))}`),
-    '', '## Scope, alias and source-change review', '', '```json', JSON.stringify(JSON.parse(canonical(summary))), '```', '');
+    '', `## Scope, alias and source-change review${partial ? ' (selected records only)' : ''}`, '', '```json', JSON.stringify(JSON.parse(canonical(summary))), '```', '');
   return {
     'ledger.json': JSON.stringify(JSON.parse(canonical({ ...ledger, report: summary }))) + '\n',
     'index.md': lines.join('\n'),

@@ -152,6 +152,12 @@ function Shell() {
               {label}
             </a>
           ))}
+          <a
+            href="/process-landscape/"
+            className="whitespace-nowrap rounded-md px-3 py-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+          >
+            Process landscape
+          </a>
         </nav>
         {nav.after && <button type="button" aria-label="Show more views" onClick={() => nav.scroll(1)} className={NAV_SCROLL}>›</button>}
         </div>

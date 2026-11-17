@@ -15,7 +15,21 @@
   </ItemGroup>
   <ItemGroup>
     <Content Update="wwwroot/**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Keep Vite outputs independent: the legacy build empties source wwwroot. -->
+    <Content Remove="client-next/**" />
+    <Content Include="client-next/dist/**"
+             Link="wwwroot/process-landscape/%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- API builds/tests stay frontend-independent; deployment must include the navigator. -->
+  <Target Name="ValidateExplorerFrontendAssets" BeforeTargets="PrepareForPublish"
+          Condition="'$(DesignTimeBuild)' != 'true'">
+    <Error Condition="!Exists('$(MSBuildProjectDirectory)/client-next/dist/index.html')"
+           Text="Process landscape assets are missing. Integrate client-next, then run make ui-process-landscape before publishing." />
+    <Error Condition="Exists('$(MSBuildProjectDirectory)/wwwroot/process-landscape')"
+           Text="Remove stale source wwwroot/process-landscape. Only client-next/dist owns the nested SPA; do not stage it inside legacy wwwroot." />
+  </Target>
   <ItemGroup>
     <EmbeddedResource Include="glossary-weights.json" LogicalName="glossary-weights.json" />
   </ItemGroup>
