@@ -63,7 +63,10 @@ test('partial inventory preserves and exposes unreviewed sources and relationshi
   const ledger = readJSON(resolve(root, config.sidecar));
   const model = reconcile(root, config, ledger);
   const coverage = model.diagnostics.find(d => d.kind === 'partial-inventory');
-  assert.deepEqual([coverage.records, coverage.unreviewedRecords, coverage.relationships, coverage.unreviewedRelationships], [2, 37, 1, 53]);
+  assert.equal(coverage.records, config.review.includedRecords.length);
+  assert.equal(coverage.records + coverage.unreviewedRecords, ledger.records.length);
+  assert.equal(coverage.relationships, model.edges.length);
+  assert.equal(coverage.relationships + coverage.unreviewedRelationships, ledger.edges.length);
   assert.equal(model.diagnostics.filter(d => d.kind === 'unreviewed-record').length, coverage.unreviewedRecords);
   assert.equal(model.diagnostics.filter(d => d.kind === 'unreviewed-relationship').length, coverage.unreviewedRelationships);
   assert.match(projections(model, config, root)['index.md'], /Incomplete inventory/);
