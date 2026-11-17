@@ -1,6 +1,7 @@
 type UiApiState = {
   databaseMode: boolean;
   listedGeneration?: number;
+  alternateModelsGate?: Promise<void>;
   requests: string[];
   sourceRequestIds: string[];
 };
@@ -30,6 +31,11 @@ export async function installIssue78UiApiRoutes(page: any, config: {
     if (url.pathname === "/api/generation") return json({ generation: 3 });
     if (url.pathname === "/api/revisions") return json({ items: [], nextCursor: null, snapshotId: snapshot });
     if (url.pathname === "/api/search") return json([]);
+    if (url.pathname === "/api/generated-models/settings") return json({
+      provider: "none", providerConfigured: false, providerAuthorized: false, sourceSnippetsAuthorized: false,
+      modelEvidenceAccessGranted: false, sourceExcerptAccessGranted: false, dataPolicy: "no external provider"
+    });
+    if (url.pathname === "/api/generated-models/status" || url.pathname === "/api/generated-models") return json(null);
     if (url.pathname === "/api/meta") return json(state.databaseMode ? {
       source: "postgres", snapshotId: snapshot, generation: 3, capability: "cap-a",
       selection, capabilities: [{ id: "cap-a", name: "Capability A", repositories: ["repo-a"] }],
@@ -55,7 +61,7 @@ export async function installIssue78UiApiRoutes(page: any, config: {
       lastSuccessfulCompletion: null, reasonCode: "model-not-configured"
     });
     if (url.pathname === "/api/view") {
-      const alternate = url.searchParams.get("view")?.includes(revisionB);
+      const alternate = !state.databaseMode && url.searchParams.get("cap") === "cap-a";
       if (alternate) await new Promise((resolve) => setTimeout(resolve, 300));
       return json({ "repo-a": alternate ? revisionB : revisionA });
     }
@@ -63,7 +69,8 @@ export async function installIssue78UiApiRoutes(page: any, config: {
       if (url.searchParams.has("cursor") && !/^\d+$/.test(url.searchParams.get("generation") ?? "")) {
         return json({ detail: "continuation requires numeric generation" }, 400);
       }
-      const isAlternate = url.searchParams.get("view")?.includes(revisionB);
+      const isAlternate = !state.databaseMode && url.searchParams.get("cap") === "cap-a";
+      if (isAlternate) await state.alternateModelsGate;
       const currentItems = isAlternate ? [items[4]] : items.slice(0, 3);
       const continuation = url.searchParams.has("cursor") ? items.slice(3) : currentItems;
       state.listedGeneration = 3;

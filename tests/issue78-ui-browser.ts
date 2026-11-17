@@ -465,24 +465,29 @@ try {
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await page.locator(".model-viewer-frame iframe").screenshot({ path: resolve(artifacts, "issue78-ui-production-mobile-dark.png") });
   assertions.push("Tablet picker and floating insights, stable narrow-screen diagram tab, dark white notation paper, and viewport-bounded unobscured watermark are verified.");
-  const revision = page.getByLabel("Revision of repo-a");
-  const revisionRequest = page.waitForRequest((request) => {
+  let releaseScopeResponse!: () => void;
+  apiState.alternateModelsGate = new Promise<void>((resolve) => { releaseScopeResponse = resolve; });
+  const scopeRequest = page.waitForRequest((request) => {
     const url = new URL(request.url());
-    return url.pathname === "/api/view" && url.searchParams.get("view")?.includes(revisionB) === true;
+    return url.pathname === "/api/models" && url.searchParams.get("cap") === "cap-a";
   });
-  await revision.selectOption(revisionB);
-  await revisionRequest;
-  assert.equal(await page.locator(".model-viewer-frame iframe").count(), 0, "old frame must be disposed before the delayed revision response returns");
+  try {
+    await Promise.all([scopeRequest, page.getByLabel("Capability", { exact: true }).selectOption("cap-a")]);
+    assert.equal(await page.locator(".model-viewer-frame iframe").count(), 0, "old frame must be disposed before the delayed scope response returns");
+  } finally {
+    releaseScopeResponse();
+  }
   await page.locator("summary").filter({ hasText: "Model picker" }).click();
   await page.getByRole("button", { name: /oversized\.bpmn\.json/ }).waitFor();
   await page.waitForFunction(() => document.querySelectorAll(".model-viewer-frame iframe").length === 0);
   assert.equal(await page.locator(".model-viewer-frame iframe").count(), 0);
-  assertions.push("Revision switch immediately removes old viewer content while the new generation-bound model list is pending.");
+  assertions.push("Capability switch immediately removes old viewer content while the new revision-bound model list is pending.");
   await page.getByRole("button", { name: /oversized\.bpmn\.json/ }).click();
   await page.getByRole("alert").filter({ hasText: "bounded response limit" }).waitFor();
   assert.equal(await page.locator(".model-viewer-frame iframe").count(), 0, "oversized API source must not reach viewer construction");
   assertions.push("Streaming response byte limit cancels an oversized source wrapper before parsing or renderer creation.");
 
+  await page.evaluate(() => localStorage.removeItem("ce.capability"));
   apiState.databaseMode = true;
   await page.goto(`${origin}/?issue78-db=1#/processes-decisions?id=model-denied&tab=elements&element=Task_Review`);
   await page.getByRole("heading", { name: "Processes & decisions" }).waitFor();
