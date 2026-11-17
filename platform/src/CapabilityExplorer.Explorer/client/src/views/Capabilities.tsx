@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { ApiError, request, shortSha, type AnalysisJob, type CapabilityCreated, type CapabilityStatus, type GitHubAccounts, type RebuildResult } from "../api";
+import { ApiError, request, shortSha, type AnalysisJob, type CapabilityCreated, type CapabilityStatus, type GitHubAccounts } from "../api";
+import { GeneratedModelsPanel } from "../components/GeneratedModelsPanel";
 import { Button, Card, ErrorBox, H1, H2, inputClass, Loading, Mono, Muted, Note, Pill, Table } from "../components/ui";
 import { useApi, useSelection } from "../state";
 
@@ -15,12 +16,6 @@ export function Capabilities() {
   const [busy, setBusy] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string>();
   const [actionError, setActionError] = useState<string>();
-  const [rebuilt, setRebuilt] = useState<{ id: string; result: RebuildResult }>();
-  const intelligenceOff = !meta.similarity.database
-    ? "Needs the database: start with make dev (or CE_DATABASE)"
-    : !meta.similarity.embeddings
-      ? "Needs an embedding model: make ollama or the Settings page"
-      : undefined;
 
   const reloadList = list.reload;
   const refresh = useCallback(() => {
@@ -114,20 +109,6 @@ export function Capabilities() {
     }
   };
 
-  const rebuild = async (id: string) => {
-    setBusy(id);
-    setActionError(undefined);
-    setRebuilt(undefined);
-    try {
-      setRebuilt({ id, result: await request<RebuildResult>(`/api/capabilities/${encodeURIComponent(id)}/rebuild`, { method: "POST" }) });
-      refresh();
-    } catch (e) {
-      setActionError((e as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  };
-
   const check = async (c: CapabilityStatus, cancel = false) => {
     setBusy(c.id);
     setActionError(undefined);
@@ -192,9 +173,10 @@ export function Capabilities() {
       {analysisError && <ErrorBox message={`Analysis status unavailable: ${analysisError}. Retrying automatically.`} />}
       {list.error && <ErrorBox message={list.error} />}
       {!list.data && !list.error && <Loading />}
-      {list.data?.length === 0 && <Card className="text-zinc-500">No capabilities yet. Define one below.</Card>}
-      {list.data?.map((c) => (
-        <Card key={c.id}>
+      <div className="grid min-w-0 items-start gap-3 lg:grid-cols-2">
+        {list.data?.length === 0 && <Card className="text-zinc-500">No capabilities yet. Define one below.</Card>}
+        {list.data?.map((c) => (
+          <Card key={c.id}>
           <div className="flex flex-wrap items-center gap-2">
             <H2 className="mb-0">{c.name}</H2>
             <Mono className="text-xs text-zinc-500">{c.id}</Mono>
@@ -225,15 +207,13 @@ export function Capabilities() {
                   Retry interrupted run
                 </Button>
               )}
-              <Button variant="secondary" onClick={() => rebuild(c.id)} disabled={busy !== null || intelligenceOff !== undefined} title={intelligenceOff}>
-                {busy === c.id && removing !== c.id ? "Rebuilding…" : "Rebuild intelligence"}
-              </Button>
               <Button variant="danger" onClick={() => remove(c)} disabled={busy !== null || pendingAnalysis[c.id]}>
                 {removing === c.id ? "Removing…" : "Remove"}
               </Button>
             </span>
           </div>
           {c.description && <Muted className="mt-1">{c.description}</Muted>}
+          {capability === c.id && <GeneratedModelsPanel capability={c} snapshotId={meta.snapshotId} generation={meta.generation} />}
           <p className="my-2 text-xs text-zinc-500">{c.checkedAt ? `Last checked ${new Date(c.checkedAt).toLocaleString()}` : "Not checked yet."}</p>
           {c.check && <Note>
             Source check: <strong>{c.check.state}</strong> · <Mono>{c.check.requestId}</Mono>
@@ -244,14 +224,6 @@ export function Capabilities() {
             {c.check.state === "cancelling" && <span className="block">Cancellation requested; execution termination is not yet confirmed.</span>}
           </Note>}
           <AnalysisProgress job={jobs[c.id]} />
-          {rebuilt?.id === c.id && (
-            <Note>
-              Imported {rebuilt.result.imported} artifact(s) ({rebuilt.result.unchanged} unchanged), embedded {rebuilt.result.embedded} symbol(s) with <Mono>{rebuilt.result.model}</Mono>.
-              {rebuilt.result.failed.map((f) => (
-                <span key={f} className="block text-red-700 dark:text-red-300">{f}</span>
-              ))}
-            </Note>
-          )}
           {c.analysed < c.repositories.length && <AnalyseHint id={c.id} />}
           <Table
             columns={["Repository", "Source", "Ref", "Locked revision", "Analysis"]}
@@ -302,9 +274,10 @@ export function Capabilities() {
               ),
             ])}
           />
-        </Card>
-      ))}
-      <NewCapability onCreated={(id) => { refresh(); setCapability(id); }} />
+          </Card>
+        ))}
+        <NewCapability onCreated={(id) => { refresh(); setCapability(id); }} />
+      </div>
     </div>
   );
 }

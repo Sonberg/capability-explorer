@@ -229,9 +229,9 @@ function Routed({ path, params, scope, mode }: { path: string; params: URLSearch
   }
 }
 
-/** Capability selector and the revision chosen for each repository in scope. */
+/** Capability selector and automatically resolved revision scope. */
 function ScopeBar() {
-  const { meta, capability, setCapability, view, setRevision } = useSelection();
+  const { meta, capability, setCapability, view } = useSelection();
   const current = meta.capabilities.find((c) => c.id === capability);
   return (
     <section aria-label="Scope" className="flex flex-wrap items-center gap-2 border-b border-zinc-200 bg-zinc-100/70 px-3 py-2 text-[13px] sm:px-5 dark:border-zinc-800 dark:bg-zinc-900/60">
@@ -254,30 +254,14 @@ function ScopeBar() {
       <a href={href("capabilities")} className="text-xs text-blue-700 hover:underline dark:text-blue-300">
         manage
       </a>
-      <span className="mx-1 hidden h-5 w-px bg-zinc-300 sm:block dark:bg-zinc-700" />
-      {Object.keys(view)
-        .sort()
-        .map((repo) => (
-          <label key={repo} className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-full border border-zinc-200 bg-white py-0.5 pl-2.5 pr-1 dark:border-zinc-700 dark:bg-zinc-900">
-            <span className="min-w-0 break-all">{repo}</span>
-            <select aria-label={`Revision of ${repo}`} value={view[repo]} onChange={(e) => setRevision(repo, e.target.value)} className="max-w-full cursor-pointer bg-transparent px-1 py-0.5 font-medium">
-              {meta.revisions
-                .filter((r) => r.repositoryId === repo)
-                .map((r) => (
-                  <option key={r.commitSha} value={r.commitSha}>
-                    {r.label}
-                    {r.commitSha === meta.defaultView[repo] ? " (latest)" : ""}
-                  </option>
-                ))}
-            </select>
-          </label>
-        ))}
       {current && current.repositories.filter((r) => !(r in view)).length > 0 && (
         <span className="text-xs text-amber-700 dark:text-amber-300" title="Repositories in this capability with no analysed revision loaded">
           not analysed: {current.repositories.filter((r) => !(r in view)).join(", ")}
         </span>
       )}
-      <span className="w-full text-xs text-zinc-500 sm:ml-auto sm:w-auto">A chosen combination of code revisions — not a deployment record.</span>
+      <span className="w-full text-xs text-zinc-500 sm:ml-auto sm:w-auto">
+        {current ? "Using capability-locked revisions" : "Using latest available revisions"}
+      </span>
     </section>
   );
 }
